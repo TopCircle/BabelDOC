@@ -384,6 +384,30 @@ def create_parser():
         default=False,
         help="Skip formula offset calculation (default: False)",
     )
+    translation_group.add_argument(
+        "--skip-header",
+        action="store_true",
+        default=False,
+        help="Skip translating paragraphs fully inside the page header region.",
+    )
+    translation_group.add_argument(
+        "--skip-footer",
+        action="store_true",
+        default=False,
+        help="Skip translating paragraphs fully inside the page footer region.",
+    )
+    translation_group.add_argument(
+        "--header-height",
+        type=float,
+        default=40,
+        help="Header region height in PDF points for --skip-header (default: 40).",
+    )
+    translation_group.add_argument(
+        "--footer-height",
+        type=float,
+        default=40,
+        help="Footer region height in PDF points for --skip-footer (default: 40).",
+    )
     # service option argument group
     service_group = translation_group.add_mutually_exclusive_group()
     service_group.add_argument(
@@ -729,6 +753,10 @@ async def main():
             skip_formula_offset_calculation=args.skip_formula_offset_calculation,
             metadata_extra_data=args.metadata_extra_data,
             term_pool_max_workers=args.term_pool_max_workers,
+            skip_header=args.skip_header,
+            skip_footer=args.skip_footer,
+            header_height=args.header_height,
+            footer_height=args.footer_height,
         )
 
         def nop(_x):

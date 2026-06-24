@@ -436,6 +436,8 @@ class ILTranslator:
         """
         for page in docs.page:
             for paragraph in page.pdf_paragraph:
+                if self.should_skip_region_paragraph(page, paragraph):
+                    continue
                 if paragraph.layout_label == "title":
                     logger.info(f"Found title paragraph: {paragraph.unicode}")
                     return paragraph
@@ -450,6 +452,10 @@ class ILTranslator:
     ):
         self.translation_config.raise_if_cancelled()
         for paragraph in page.pdf_paragraph:
+            if self.should_skip_region_paragraph(page, paragraph):
+                if pbar:
+                    pbar.advance(1)
+                continue
             page_font_map = {}
             for font in page.pdf_font:
                 page_font_map[font.font_id] = font
@@ -479,6 +485,46 @@ class ILTranslator:
                 title_paragraph=self.translation_config.shared_context_cross_split_part.first_paragraph,
                 local_title_paragraph=self.translation_config.shared_context_cross_split_part.recent_title_paragraph,
             )
+
+    def should_skip_region_paragraph(
+        self,
+        page: Page,
+        paragraph: PdfParagraph,
+    ) -> bool:
+        if not (
+            (self.translation_config.skip_header or self.translation_config.skip_footer)
+            and page.cropbox
+            and page.cropbox.box
+            and paragraph.box
+        ):
+            return False
+
+        page_top = page.cropbox.box.y2
+        page_bottom = page.cropbox.box.y
+        paragraph_top = paragraph.box.y2
+        paragraph_bottom = paragraph.box.y
+
+        if (
+            page_top is None
+            or page_bottom is None
+            or paragraph_top is None
+            or paragraph_bottom is None
+        ):
+            return False
+
+        if (
+            self.translation_config.skip_header
+            and paragraph_bottom >= page_top - self.translation_config.header_height
+        ):
+            return True
+
+        if (
+            self.translation_config.skip_footer
+            and paragraph_top <= page_bottom + self.translation_config.footer_height
+        ):
+            return True
+
+        return False
 
     class TranslateInput:
         def __init__(

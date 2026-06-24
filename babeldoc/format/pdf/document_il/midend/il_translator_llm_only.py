@@ -167,6 +167,8 @@ class ILTranslatorLLMOnly:
         """
         for page in docs.page:
             for paragraph in page.pdf_paragraph:
+                if self.il_translator.should_skip_region_paragraph(page, paragraph):
+                    continue
                 if paragraph.layout_label == "title":
                     logger.info(f"Found title paragraph: {paragraph.unicode}")
                     return paragraph
@@ -273,6 +275,7 @@ class ILTranslatorLLMOnly:
 
     def _should_translate_paragraph(
         self,
+        page: Page,
         paragraph: PdfParagraph,
         translated_ids: set[int] | None = None,
         require_body_text: bool = False,
@@ -293,6 +296,9 @@ class ILTranslatorLLMOnly:
 
         # Check if already translated
         if translated_ids is not None and id(paragraph) in translated_ids:
+            return False
+
+        if self.il_translator.should_skip_region_paragraph(page, paragraph):
             return False
 
         # CID paragraph check
@@ -329,7 +335,7 @@ class ILTranslatorLLMOnly:
             paragraph
             for paragraph in page.pdf_paragraph
             if self._should_translate_paragraph(
-                paragraph, translated_ids, require_body_text
+                page, paragraph, translated_ids, require_body_text
             )
         ]
 
@@ -554,6 +560,11 @@ class ILTranslatorLLMOnly:
 
             # Check basic validation
             if paragraph.debug_id is None or paragraph.unicode is None:
+                continue
+
+            if self.il_translator.should_skip_region_paragraph(page, paragraph):
+                if pbar:
+                    pbar.advance(1)
                 continue
 
             # Check CID paragraph - advance progress bar if filtered out
