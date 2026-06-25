@@ -36,7 +36,7 @@ def analyze_il(il):
         font_registry = {}
         for font in page.pdf_font:
             font_registry[font.font_id] = font
-            print(f"  font_id={font.font_id:>4d}  bold={str(font.bold):5s}  italic={str(font.italic):5s}  "
+            print(f"  font_id={str(font.font_id):>20s}  bold={str(font.bold):5s}  italic={str(font.italic):5s}  "
                   f"monospace={str(font.monospace):5s}  serif={str(font.serif):5s}  name={font.name}")
 
         # --- Paragraph analysis ---
