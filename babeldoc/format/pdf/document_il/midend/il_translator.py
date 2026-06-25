@@ -714,29 +714,21 @@ class ILTranslator:
                 base_style = paragraph.pdf_style
 
                 if disable_rich_text_translate:
-                    # Non-LLM path: record style spans for post-translation recovery
-                    fonta = self.font_mapper.map(
-                        page_font_map[comp_style.font_id], "1",
-                    )
-                    fontb = self.font_mapper.map(
-                        page_font_map[base_style.font_id], "1",
-                    )
+                    # Non-LLM path: any different font_id implies intentional
+                    # visual distinction (bold, italic, different typeface).
+                    # Don't rely on font_mapper.map() to decide — the original
+                    # PDF author chose a different font for a reason.
                     if (
                         is_same_style(comp_style, base_style)
                         or is_same_style_except_size(comp_style, base_style)
-                        or (
-                            is_same_style_except_font(comp_style, base_style)
-                            and fonta and fontb
-                            and fonta.font_id == fontb.font_id
-                        )
                     ):
-                        # Style maps to same output font → no styled segment needed
+                        # Truly same style, or only size differs → skip
                         chars.extend(
                             composition.pdf_same_style_characters.pdf_character,
                         )
                         continue
 
-                    # Distinct style → record span for proportional mapping
+                    # Different font_id → record span for proportional mapping
                     start_idx = len(chars)
                     chars.extend(
                         composition.pdf_same_style_characters.pdf_character,
