@@ -478,12 +478,18 @@ class ParagraphFinder:
                         char_layout.id != current_layout.id
                         and not SPACE_REGEX.match(char.char_unicode)
                     )
-                    or (  # not same xobject
+                    or (  # not same xobject — but merge if visually same line
                         current_paragraph.pdf_paragraph_composition
                         and current_paragraph.pdf_paragraph_composition[
                             -1
                         ].pdf_character.xobj_id
                         != char.xobj_id
+                        and not self._is_same_visual_line(
+                            current_paragraph.pdf_paragraph_composition[
+                                -1
+                            ].pdf_character,
+                            char,
+                        )
                     )
                     or (
                         is_bullet_point(char)
@@ -510,6 +516,46 @@ class ParagraphFinder:
         for para in paragraphs:
             self.update_paragraph_data(para)
         return paragraphs
+
+    @staticmethod
+    def _is_same_visual_line(prev_char: PdfCharacter, curr_char: PdfCharacter) -> bool:
+        """Check if two characters from different XObjects belong to the same line.
+
+        When a PDF creator emits a single visual line as multiple text objects
+        (e.g. a heading split across objects), the Paragraph Builder should
+        merge them rather than creating separate paragraphs.
+        """
+        prev_box = prev_char.visual_bbox.box
+        curr_box = curr_char.visual_bbox.box
+
+        # 1. Vertical overlap: characters must share the same visual line
+        y_overlap = min(prev_box.y2, curr_box.y2) - max(prev_box.y, curr_box.y)
+        if y_overlap <= 0:
+            return False
+        prev_h = prev_box.y2 - prev_box.y
+        curr_h = curr_box.y2 - curr_box.y
+        if prev_h <= 0 or curr_h <= 0:
+            return False
+        if y_overlap < min(prev_h, curr_h) * 0.5:
+            return False
+
+        # 2. Horizontal proximity: must be close, not columns apart
+        gap = curr_box.x - prev_box.x2
+        char_w = prev_box.x2 - prev_box.x
+        if char_w <= 0:
+            return False
+        if gap > char_w * 5:  # more than 5 char widths → different column
+            return False
+
+        # 3. Similar font size: same visual importance level
+        prev_fs = prev_char.pdf_style.font_size
+        curr_fs = curr_char.pdf_style.font_size
+        if prev_fs and curr_fs and prev_fs > 0 and curr_fs > 0:
+            ratio = prev_fs / curr_fs
+            if ratio < 0.5 or ratio > 2.0:
+                return False
+
+        return True
 
     def _merge_overlapping_clusters(
         self, lines: dict[int, list[PdfCharacter]], char_height_average: float
