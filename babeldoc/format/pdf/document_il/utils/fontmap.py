@@ -158,11 +158,49 @@ class FontMapper:
             italic = original_font.is_italic
             monospaced = original_font.is_monospaced
             serif = original_font.is_serif
+
+            # Fallback: infer bold/italic from font name when metadata is absent
+            if not bold or not italic:
+                font_name = getattr(original_font, "name", "")
+                if not font_name:
+                    font_name = getattr(original_font, "font_id", "")
+                if font_name:
+                    name_lower = font_name.lower()
+                    if "+" in name_lower:
+                        name_lower = name_lower.split("+", 1)[1]
+                    if not bold and any(
+                        kw in name_lower
+                        for kw in ("bold", "heavy", "black", "semibold", "extrabold")
+                    ):
+                        bold = True
+                    if not italic and any(
+                        kw in name_lower
+                        for kw in ("italic", "oblique")
+                    ):
+                        italic = True
         elif isinstance(original_font, PdfFont):
             bold = original_font.bold
             italic = original_font.italic
             monospaced = original_font.monospace
             serif = original_font.serif
+
+            # Fallback: many PDFs use a separate-weight font (e.g.,
+            # "Arial-BoldMT") that is visually bold but whose OS/2 table
+            # doesn't set the bold flag.  Check the font name.
+            if not bold and original_font.name:
+                name_lower = original_font.name.lower()
+                # Strip subset prefix like "ABCDEE+"
+                if "+" in name_lower:
+                    name_lower = name_lower.split("+", 1)[1]
+                if any(
+                    kw in name_lower
+                    for kw in ("bold", "heavy", "black", "semibold", "extrabold")
+                ):
+                    bold = True
+                    logger.debug(
+                        "Font %s: bold inferred from font name (is_bold was False)",
+                        original_font.name,
+                    )
         else:
             logger.error(
                 f"Unknown font type: {type(original_font)}. "
