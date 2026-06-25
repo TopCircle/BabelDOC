@@ -228,33 +228,20 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
     将字符列表转换为 Unicode 字符串，根据字符间距自动插入空格。
     有些 PDF 不会显式编码空格，这时需要根据间距自动插入空格。
 
+    Space detection uses a character-width-relative threshold instead of
+    a global median: a gap is treated as a word boundary when it exceeds
+    30% of the average width of the two adjacent characters.  This avoids
+    false positives caused by kerning pairs whose gap happens to match
+    the paragraph-wide median.
+
     Args:
         chars: 字符列表，可以是 PdfCharacter 对象或字符串
 
     Returns:
         str: 处理后的 Unicode 字符串
     """
-    # 计算字符间距的中位数
-    distances = []
-    for i in range(len(chars) - 1):
-        if not (
-            isinstance(chars[i], PdfCharacter)
-            and isinstance(chars[i + 1], PdfCharacter)
-        ):
-            continue
-        distance = chars[i + 1].box.x - chars[i].box.x2
-        if distance > 1:  # 只考虑正向距离
-            distances.append(distance)
-
-    # 去重后的距离
-    distinct_distances = sorted(set(distances))
-
-    if not distinct_distances:
-        median_distance = 1
-    elif len(distinct_distances) == 1:
-        median_distance = distinct_distances[0]
-    else:
-        median_distance = distinct_distances[1]
+    # Space threshold: gap must exceed this fraction of average char width
+    SPACE_WIDTH_RATIO = 0.3
 
     # 构建 unicode 字符串，根据间距插入空格
     unicode_chars = []
@@ -280,10 +267,17 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
         # 如果两个字符都是 PdfCharacter，检查间距
         if i < len(chars) - 1 and isinstance(chars[i + 1], PdfCharacter):
             distance = chars[i + 1].box.x - chars[i].box.x2
-            if distance >= median_distance or Layout.is_newline(  # 间距大于中位数
+            if distance <= 0:
+                continue
+            curr_w = chars[i].box.x2 - chars[i].box.x
+            next_w = chars[i + 1].box.x2 - chars[i + 1].box.x
+            avg_w = (curr_w + next_w) / 2
+            if (
+                avg_w > 0 and distance > avg_w * SPACE_WIDTH_RATIO
+            ) or Layout.is_newline(
                 chars[i],
                 chars[i + 1],
-            ):  # 换行
+            ):
                 unicode_chars.append(" ")  # 添加空格
 
     result = "".join(unicode_chars)
