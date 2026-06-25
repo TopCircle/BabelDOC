@@ -539,6 +539,9 @@ class ILTranslator:
             # Original placeholder-like tokens extracted from the source text.
             # Key: exact matched token string; Value: occurrence count.
             self.original_placeholder_tokens: dict[str, int] = {}
+            # Style spans for non-LLM translators: list of (start, end, PdfStyle)
+            # Positions are approximate indices in the unicode string.
+            self.style_spans: list[tuple[int, int, PdfStyle]] = []
 
         def set_original_placeholder_tokens(self, tokens: dict[str, int] | None):
             """Attach original placeholder-like tokens from source text."""
@@ -690,6 +693,7 @@ class ILTranslator:
         placeholder_id = 1
         placeholders = []
         chars = []
+        style_spans = []  # (start_char_idx, end_char_idx, PdfStyle) for non-LLM path
         for composition in paragraph.pdf_paragraph_composition:
             if composition.pdf_line:
                 chars.extend(composition.pdf_line.pdf_character)
@@ -706,9 +710,39 @@ class ILTranslator:
             elif composition.pdf_character:
                 chars.append(composition.pdf_character)
             elif composition.pdf_same_style_characters:
+                comp_style = composition.pdf_same_style_characters.pdf_style
+                base_style = paragraph.pdf_style
+
                 if disable_rich_text_translate:
-                    # 如果禁用富文本翻译，直接添加字符
-                    chars.extend(composition.pdf_same_style_characters.pdf_character)
+                    # Non-LLM path: record style spans for post-translation recovery
+                    fonta = self.font_mapper.map(
+                        page_font_map[comp_style.font_id], "1",
+                    )
+                    fontb = self.font_mapper.map(
+                        page_font_map[base_style.font_id], "1",
+                    )
+                    if (
+                        is_same_style(comp_style, base_style)
+                        or is_same_style_except_size(comp_style, base_style)
+                        or (
+                            is_same_style_except_font(comp_style, base_style)
+                            and fonta and fontb
+                            and fonta.font_id == fontb.font_id
+                        )
+                    ):
+                        # Style maps to same output font → no styled segment needed
+                        chars.extend(
+                            composition.pdf_same_style_characters.pdf_character,
+                        )
+                        continue
+
+                    # Distinct style → record span for proportional mapping
+                    start_idx = len(chars)
+                    chars.extend(
+                        composition.pdf_same_style_characters.pdf_character,
+                    )
+                    end_idx = len(chars)
+                    style_spans.append((start_idx, end_idx, comp_style))
                     continue
 
                 fonta = self.font_mapper.map(
@@ -777,6 +811,20 @@ class ILTranslator:
         text = get_char_unicode_string(chars)
         translate_input = self.TranslateInput(text, placeholders, paragraph.pdf_style)
         translate_input.set_original_placeholder_tokens(original_placeholder_tokens)
+
+        # Convert char-level style_spans to approximate text-level positions
+        if style_spans:
+            total_chars = len(chars)
+            text_len = len(text)
+            text_spans = []
+            for start_char, end_char, style in style_spans:
+                if total_chars > 0 and text_len > 0:
+                    start_text = int(start_char / total_chars * text_len)
+                    end_text = int(end_char / total_chars * text_len)
+                    if end_text > start_text:
+                        text_spans.append((start_text, end_text, style))
+            translate_input.style_spans = text_spans
+
         return translate_input
 
     def process_formula(
@@ -814,6 +862,160 @@ class ILTranslator:
 
         return placeholder
 
+    @staticmethod
+    def _is_cjk_char(ch: str) -> bool:
+        """Check if a single character is CJK (Chinese/Japanese/Korean)."""
+        cp = ord(ch)
+        return (
+            (0x4E00 <= cp <= 0x9FFF)  # CJK Unified Ideographs
+            or (0x3400 <= cp <= 0x4DBF)  # CJK Unified Ideographs Extension A
+            or (0x3000 <= cp <= 0x303F)  # CJK Symbols and Punctuation
+            or (0x3040 <= cp <= 0x309F)  # Hiragana
+            or (0x30A0 <= cp <= 0x30FF)  # Katakana
+            or (0xAC00 <= cp <= 0xD7AF)  # Hangul Syllables
+            or (0xFF00 <= cp <= 0xFFEF)  # Halfwidth and Fullwidth Forms
+            or (0x2E80 <= cp <= 0x2EFF)  # CJK Radicals Supplement
+            or (0xFE30 <= cp <= 0xFE4F)  # CJK Compatibility Forms
+        )
+
+    @classmethod
+    def _snap_to_char_boundary(cls, text: str, pos: int, snap_left: bool) -> int:
+        """Snap a position out of the middle of a Latin word.
+
+        CJK characters are each one Python string index, so positions between
+        CJK chars are already valid boundaries and need no snapping.  This
+        method only adjusts positions that would split a Latin-script word.
+
+        Args:
+            text: The output text.
+            pos: The position to snap.
+            snap_left: If True, snap left (for start boundaries).
+                       If False, snap right (for end boundaries).
+
+        Returns:
+            Snapped position in [0, len(text)].
+        """
+        pos = max(0, min(pos, len(text)))
+        if pos == 0 or pos == len(text):
+            return pos
+
+        ch_before = text[pos - 1]
+        ch_after = text[pos] if pos < len(text) else ""
+
+        # At a CJK boundary → already valid
+        if cls._is_cjk_char(ch_before) or cls._is_cjk_char(ch_after):
+            return pos
+        # At a space boundary → already valid
+        if ch_before == " " or ch_after == " ":
+            return pos
+
+        # Inside a Latin word → snap to the nearest space or CJK boundary
+        if snap_left:
+            while pos > 0 and text[pos - 1] != " " and not cls._is_cjk_char(text[pos - 1]):
+                pos -= 1
+        else:
+            while pos < len(text) and text[pos] != " " and not cls._is_cjk_char(text[pos]):
+                pos += 1
+        return pos
+
+    def _split_output_by_style_spans(
+        self,
+        output: str,
+        input_text: TranslateInput,
+    ) -> list[PdfParagraphComposition]:
+        """Split translated output by proportional style-span mapping.
+
+        When rich-text translation is disabled (non-LLM translators),
+        style_spans recorded from the source text are mapped proportionally
+        to the translated output, then snapped to CJK character boundaries.
+
+        Limitations:
+        - Proportional mapping is character-count based, not semantic.
+          For English→Chinese where length ratios vary significantly,
+          misalignment can occur on long paragraphs with uneven compression.
+        - Works best for paragraphs under ~200 characters.
+        - Style is attached to the FULL PdfStyle object (font_id, font_size,
+          graphic_state), not just font_id, preserving all styling attributes.
+        """
+        result = []
+        input_len = len(input_text.unicode)
+        output_len = len(output)
+
+        if input_len == 0 or output_len == 0 or not input_text.style_spans:
+            comp = PdfParagraphComposition()
+            comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
+            comp.pdf_same_style_unicode_characters.unicode = output
+            comp.pdf_same_style_unicode_characters.pdf_style = input_text.base_style
+            return [comp]
+
+        last_end = 0
+        for start, end, style in input_text.style_spans:
+            mapped_start = int(start / input_len * output_len)
+            mapped_end = int(end / input_len * output_len)
+
+            # Clamp to valid range
+            mapped_start = max(0, min(mapped_start, output_len))
+            mapped_end = max(mapped_start, min(mapped_end, output_len))
+
+            # Snap to character boundaries to avoid splitting CJK chars
+            mapped_start = self._snap_to_char_boundary(
+                output, mapped_start, snap_left=True,
+            )
+            mapped_end = self._snap_to_char_boundary(
+                output, mapped_end, snap_left=False,
+            )
+
+            # Avoid overlapping spans
+            mapped_start = max(mapped_start, last_end)
+            mapped_end = max(mapped_end, mapped_start)
+
+            # Base-style text before this styled span
+            if mapped_start > last_end:
+                text = output[last_end:mapped_start]
+                if text.strip():
+                    comp = PdfParagraphComposition()
+                    comp.pdf_same_style_unicode_characters = (
+                        PdfSameStyleUnicodeCharacters()
+                    )
+                    comp.pdf_same_style_unicode_characters.unicode = text
+                    comp.pdf_same_style_unicode_characters.pdf_style = (
+                        input_text.base_style
+                    )
+                    result.append(comp)
+
+            # Styled text span (e.g., bold)
+            if mapped_end > mapped_start:
+                text = output[mapped_start:mapped_end]
+                if text.strip():
+                    comp = PdfParagraphComposition()
+                    comp.pdf_same_style_unicode_characters = (
+                        PdfSameStyleUnicodeCharacters()
+                    )
+                    comp.pdf_same_style_unicode_characters.unicode = text
+                    comp.pdf_same_style_unicode_characters.pdf_style = style
+                    result.append(comp)
+
+            last_end = mapped_end
+
+        # Remaining base-style text after the last span
+        if last_end < output_len:
+            text = output[last_end:]
+            if text.strip():
+                comp = PdfParagraphComposition()
+                comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
+                comp.pdf_same_style_unicode_characters.unicode = text
+                comp.pdf_same_style_unicode_characters.pdf_style = input_text.base_style
+                result.append(comp)
+
+        if not result:
+            comp = PdfParagraphComposition()
+            comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
+            comp.pdf_same_style_unicode_characters.unicode = output
+            comp.pdf_same_style_unicode_characters.pdf_style = input_text.base_style
+            return [comp]
+
+        return result
+
     def parse_translate_output(
         self,
         input_text: TranslateInput,
@@ -823,8 +1025,12 @@ class ILTranslator:
     ) -> [PdfParagraphComposition]:
         result = []
 
-        # 如果没有占位符，直接返回整个文本
+        # 如果没有占位符，检查是否有 style_spans（非 LLM 翻译器的样式保留路径）
         if not input_text.placeholders:
+            if input_text.style_spans:
+                # Non-LLM path: split output by proportional style-span mapping
+                return self._split_output_by_style_spans(output, input_text)
+
             comp = PdfParagraphComposition()
             comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
             comp.pdf_same_style_unicode_characters.unicode = output
