@@ -541,7 +541,7 @@ class ILTranslator:
             self.original_placeholder_tokens: dict[str, int] = {}
             # Style spans for non-LLM translators: list of (start, end, PdfStyle)
             # Positions are approximate indices in the unicode string.
-            self.style_spans: list[tuple[int, int, PdfStyle]] = []
+            self.style_spans: list[tuple[int, PdfStyle]] = []  # (span_id, PdfStyle)
 
         def set_original_placeholder_tokens(self, tokens: dict[str, int] | None):
             """Attach original placeholder-like tokens from source text."""
@@ -693,7 +693,7 @@ class ILTranslator:
         placeholder_id = 1
         placeholders = []
         chars = []
-        style_spans = []  # (start_char_idx, end_char_idx, PdfStyle) for non-LLM path
+        style_spans = []  # (span_id, PdfStyle) — markers embedded in text, not indices
         for composition in paragraph.pdf_paragraph_composition:
             if composition.pdf_line:
                 chars.extend(composition.pdf_line.pdf_character)
@@ -728,13 +728,17 @@ class ILTranslator:
                         )
                         continue
 
-                    # Different font_id → record span for proportional mapping
-                    start_idx = len(chars)
+                    # Different font_id → wrap with invisible markers for
+                    # post-translation extraction.  Markers use Unicode
+                    # corner brackets (〖〗) which survive DeepLX/Google
+                    # translation and don't appear in natural text.
+                    span_id = len(style_spans)
+                    chars.append(f"〖B{span_id}〗")
                     chars.extend(
                         composition.pdf_same_style_characters.pdf_character,
                     )
-                    end_idx = len(chars)
-                    style_spans.append((start_idx, end_idx, comp_style))
+                    chars.append(f"〖/B{span_id}〗")
+                    style_spans.append((span_id, comp_style))
                     continue
 
                 fonta = self.font_mapper.map(
@@ -804,18 +808,11 @@ class ILTranslator:
         translate_input = self.TranslateInput(text, placeholders, paragraph.pdf_style)
         translate_input.set_original_placeholder_tokens(original_placeholder_tokens)
 
-        # Convert char-level style_spans to approximate text-level positions
+        # Style spans now contain (span_id, PdfStyle) from marker wrapping.
+        # The markers are already embedded in the text; style_spans info
+        # is passed through for post-translation marker parsing.
         if style_spans:
-            total_chars = len(chars)
-            text_len = len(text)
-            text_spans = []
-            for start_char, end_char, style in style_spans:
-                if total_chars > 0 and text_len > 0:
-                    start_text = int(start_char / total_chars * text_len)
-                    end_text = int(end_char / total_chars * text_len)
-                    if end_text > start_text:
-                        text_spans.append((start_text, end_text, style))
-            translate_input.style_spans = text_spans
+            translate_input.style_spans = style_spans
 
         return translate_input
 
@@ -910,110 +907,106 @@ class ILTranslator:
                 pos += 1
         return pos
 
-    def _split_output_by_style_spans(
+    def _parse_style_markers(
         self,
         output: str,
         input_text: TranslateInput,
     ) -> list[PdfParagraphComposition]:
-        """Split translated output by proportional style-span mapping.
+        """Parse marker-wrapped spans from translated output.
 
-        When rich-text translation is disabled (non-LLM translators),
-        style_spans recorded from the source text are mapped proportionally
-        to the translated output, then snapped to CJK character boundaries.
+        Uses Unicode corner-bracket markers (〖B0〗...〖/B0〗) that survive
+        non-LLM translation (DeepLX, Google Translate).  This gives word-level
+        alignment instead of the proportional character-count guessing used
+        by the old _split_output_by_style_spans approach.
 
-        Limitations:
-        - Proportional mapping is character-count based, not semantic.
-          For English→Chinese where length ratios vary significantly,
-          misalignment can occur on long paragraphs with uneven compression.
-        - Works best for paragraphs under ~200 characters.
-        - Style is attached to the FULL PdfStyle object (font_id, font_size,
-          graphic_state), not just font_id, preserving all styling attributes.
+        The markers are embedded in the source text before translation:
+            ...from 〖B0〗vaginismus〖/B0〗 (vaginal tightness) or 〖B1〗...
+        and survive translation:
+            ...因〖B0〗阴道痉挛〖/B0〗（阴道紧缩）或〖B1〗...
+
+        We regex-extract each span, build styled compositions, and strip
+        the markers from the final output.
         """
-        result = []
-        input_len = len(input_text.unicode)
-        output_len = len(output)
+        import re
 
-        if input_len == 0 or output_len == 0 or not input_text.style_spans:
-            comp = PdfParagraphComposition()
-            comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
-            comp.pdf_same_style_unicode_characters.unicode = output
-            comp.pdf_same_style_unicode_characters.pdf_style = input_text.base_style
-            return [comp]
+        result = []
+        # Match: 〖B<digits>〗<content>〖/B<same_digits>〗
+        marker_re = re.compile(r"〖B(\d+)〗(.*?)〖/B\1〗")
+
+        # Build a lookup: span_id → PdfStyle
+        style_by_id = {}
+        for span_id, style in input_text.style_spans:
+            style_by_id[span_id] = style
 
         last_end = 0
-        for start, end, style in input_text.style_spans:
-            mapped_start = int(start / input_len * output_len)
-            mapped_end = int(end / input_len * output_len)
+        for m in marker_re.finditer(output):
+            span_id = int(m.group(1))
+            styled_text = m.group(2)
 
-            # Clamp to valid range
-            mapped_start = max(0, min(mapped_start, output_len))
-            mapped_end = max(mapped_start, min(mapped_end, output_len))
-
-            # Snap to character boundaries to avoid splitting CJK chars
-            mapped_start = self._snap_to_char_boundary(
-                output, mapped_start, snap_left=True,
-            )
-            mapped_end = self._snap_to_char_boundary(
-                output, mapped_end, snap_left=False,
-            )
-
-            # Avoid overlapping spans
-            mapped_start = max(mapped_start, last_end)
-            mapped_end = max(mapped_end, mapped_start)
-
-            # Base-style text before this styled span
-            if mapped_start > last_end:
-                text = output[last_end:mapped_start]
-                if text.strip():
+            # Unstyled text between previous span end and this marker
+            if m.start() > last_end:
+                unstyled = output[last_end:m.start()]
+                if unstyled.strip():
                     comp = PdfParagraphComposition()
                     comp.pdf_same_style_unicode_characters = (
                         PdfSameStyleUnicodeCharacters()
                     )
-                    comp.pdf_same_style_unicode_characters.unicode = text
+                    comp.pdf_same_style_unicode_characters.unicode = unstyled
                     comp.pdf_same_style_unicode_characters.pdf_style = (
                         input_text.base_style
                     )
                     result.append(comp)
 
-            # Styled text span (e.g., bold)
-            if mapped_end > mapped_start:
-                text = output[mapped_start:mapped_end]
-                if text.strip():
-                    comp = PdfParagraphComposition()
-                    comp.pdf_same_style_unicode_characters = (
-                        PdfSameStyleUnicodeCharacters()
-                    )
-                    comp.pdf_same_style_unicode_characters.unicode = text
-                    # Normalize font_size to paragraph base so that bold Chinese
-                    # text renders at the same visual size as surrounding text.
-                    # Original PDF authors sometimes set bold terms at a smaller
-                    # point size (e.g. 9.66pt bold vs 11.8pt regular), which works
-                    # for English but makes Chinese bold disproportionately small.
+            # Styled text span
+            if styled_text.strip():
+                comp = PdfParagraphComposition()
+                comp.pdf_same_style_unicode_characters = (
+                    PdfSameStyleUnicodeCharacters()
+                )
+                comp.pdf_same_style_unicode_characters.unicode = styled_text
+
+                style = style_by_id.get(span_id)
+                if style:
+                    # Normalize font_size to paragraph base — preserves
+                    # font_id (bold/italic) but uses uniform size so
+                    # Chinese bold text isn't disproportionately small.
                     normalized_style = PdfStyle(
                         font_id=style.font_id,
                         font_size=input_text.base_style.font_size,
                         graphic_state=style.graphic_state,
                     )
-                    comp.pdf_same_style_unicode_characters.pdf_style = normalized_style
-                    result.append(comp)
+                    comp.pdf_same_style_unicode_characters.pdf_style = (
+                        normalized_style
+                    )
+                else:
+                    comp.pdf_same_style_unicode_characters.pdf_style = (
+                        input_text.base_style
+                    )
 
-            last_end = mapped_end
+                result.append(comp)
 
-        # Remaining base-style text after the last span
-        if last_end < output_len:
-            text = output[last_end:]
-            if text.strip():
+            last_end = m.end()
+
+        # Remaining base-style text after the last marker
+        if last_end < len(output):
+            remaining = output[last_end:]
+            if remaining.strip():
                 comp = PdfParagraphComposition()
                 comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
-                comp.pdf_same_style_unicode_characters.unicode = text
-                comp.pdf_same_style_unicode_characters.pdf_style = input_text.base_style
+                comp.pdf_same_style_unicode_characters.unicode = remaining
+                comp.pdf_same_style_unicode_characters.pdf_style = (
+                    input_text.base_style
+                )
                 result.append(comp)
 
         if not result:
+            # Fallback: all base-style
             comp = PdfParagraphComposition()
             comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
             comp.pdf_same_style_unicode_characters.unicode = output
-            comp.pdf_same_style_unicode_characters.pdf_style = input_text.base_style
+            comp.pdf_same_style_unicode_characters.pdf_style = (
+                input_text.base_style
+            )
             return [comp]
 
         return result
@@ -1030,8 +1023,10 @@ class ILTranslator:
         # 如果没有占位符，检查是否有 style_spans（非 LLM 翻译器的样式保留路径）
         if not input_text.placeholders:
             if input_text.style_spans:
-                # Non-LLM path: split output by proportional style-span mapping
-                return self._split_output_by_style_spans(output, input_text)
+                # Non-LLM path: parse marker-wrapped spans from translation output.
+                # Markers like 〖B0〗...〖/B0〗 survive DeepLX/Google translation,
+                # giving us word-level alignment instead of proportional guesswork.
+                return self._parse_style_markers(output, input_text)
 
             comp = PdfParagraphComposition()
             comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
