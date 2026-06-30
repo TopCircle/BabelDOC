@@ -813,7 +813,7 @@ class ILTranslator:
         # is passed through for post-translation marker parsing.
         if style_spans:
             translate_input.style_spans = style_spans
-            logger.info(
+            logger.warning(
                 "Style markers embedded: %d span(s) in paragraph[%s] "
                 "(text_len=%d, preview=%s)",
                 len(style_spans),
@@ -824,7 +824,7 @@ class ILTranslator:
         elif not disable_rich_text_translate:
             pass  # LLM path — uses rich-text placeholders, not markers
         elif len(paragraph.pdf_paragraph_composition) > 1:
-            logger.debug(
+            logger.warning(
                 "No style spans in multi-comp paragraph[%s] "
                 "(comps=%d, base_font=%s, text_preview=%s)",
                 paragraph.debug_id,

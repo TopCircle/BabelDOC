@@ -1241,7 +1241,7 @@ class StylesAndFormulas:
 
         import logging as _logging
         _log = _logging.getLogger(__name__)
-        _log.info(
+        _log.warning(
             "remove_non_formula_lines: curves=%d paragraphs=%d",
             len(page.pdf_curve),
             len(page.pdf_paragraph),
