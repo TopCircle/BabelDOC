@@ -34,6 +34,9 @@ from babeldoc.format.pdf.document_il.utils.layout_helper import (
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     is_curve_overlapping_with_paragraphs,
 )
+from babeldoc.format.pdf.document_il.utils.layout_helper import (
+    get_paragraph_bounding_box,
+)
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_same_style
 from babeldoc.format.pdf.document_il.utils.spatial_analyzer import (
     is_element_contained_in_formula,
@@ -1249,6 +1252,13 @@ class StylesAndFormulas:
             self.translation_config, "non_formula_line_iou_threshold", 0.9
         )
 
+        # Pre-compute paragraph bounding boxes for underline detection
+        para_boxes = []
+        for para in page.pdf_paragraph:
+            para_box = get_paragraph_bounding_box(para)
+            if para_box:
+                para_boxes.append(para_box)
+
         for curve in page.pdf_curve:
             # Skip if curve is in figure/table layout areas
             if is_curve_in_figure_table_layout(
@@ -1256,11 +1266,20 @@ class StylesAndFormulas:
             ):
                 continue
 
-            # Only remove if curve overlaps with text paragraph areas
+            # Check regular IoU overlap
             if is_curve_overlapping_with_paragraphs(
                 curve, page.pdf_paragraph, overlap_threshold
             ):
                 curves_to_remove.append(curve)
+                continue
+
+            # Underline detection: thin horizontal lines near text baselines.
+            # IoU fails for 0.5pt-tall underlines (IoU ≈ 0.03 << 0.9).
+            # Instead check: curve height < 2pt AND within paragraph vertical
+            # bounds (with small margin for descenders).
+            if curve.box and _is_thin_horizontal_line(curve.box):
+                if _curve_within_paragraph_vertical_bounds(curve.box, para_boxes):
+                    curves_to_remove.append(curve)
 
         # Remove identified curves
         removed_count = 0
@@ -1274,3 +1293,29 @@ class StylesAndFormulas:
 
             logger = logging.getLogger(__name__)
             logger.debug(f"Removed {removed_count} non-formula lines from paragraphs")
+
+
+def _is_thin_horizontal_line(box: Box) -> bool:
+    """Check if a bounding box looks like an underline: very thin and horizontal."""
+    height = box.y2 - box.y
+    width = box.x2 - box.x
+    # Underline height typically 0.5-2pt, width at least 3pt to filter dots
+    return height > 0 and height < 2.0 and width > 3.0 and width / height > 3.0
+
+
+def _curve_within_paragraph_vertical_bounds(curve_box: Box, para_boxes: list[Box]) -> bool:
+    """Check if a thin curve sits within the vertical range of any paragraph.
+
+    Underlines appear just below the text baseline, within ~3pt of the
+    paragraph's character boxes.  We check vertical overlap with a small
+    margin rather than IoU, which fails for 0.5pt-tall lines.
+    """
+    MARGIN = 3.0  # pts — covers descenders + underline offset
+    curve_mid_y = (curve_box.y + curve_box.y2) / 2
+    for para_box in para_boxes:
+        # Check vertical containment with margin
+        if (para_box.y - MARGIN) <= curve_mid_y <= (para_box.y2 + MARGIN):
+            # Check horizontal: curve must at least partially overlap paragraph
+            if curve_box.x2 > para_box.x and curve_box.x < para_box.x2:
+                return True
+    return False
