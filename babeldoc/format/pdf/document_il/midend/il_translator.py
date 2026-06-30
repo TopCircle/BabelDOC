@@ -984,7 +984,17 @@ class ILTranslator:
                         PdfSameStyleUnicodeCharacters()
                     )
                     comp.pdf_same_style_unicode_characters.unicode = text
-                    comp.pdf_same_style_unicode_characters.pdf_style = style
+                    # Normalize font_size to paragraph base so that bold Chinese
+                    # text renders at the same visual size as surrounding text.
+                    # Original PDF authors sometimes set bold terms at a smaller
+                    # point size (e.g. 9.66pt bold vs 11.8pt regular), which works
+                    # for English but makes Chinese bold disproportionately small.
+                    normalized_style = PdfStyle(
+                        font_id=style.font_id,
+                        font_size=input_text.base_style.font_size,
+                        graphic_state=style.graphic_state,
+                    )
+                    comp.pdf_same_style_unicode_characters.pdf_style = normalized_style
                     result.append(comp)
 
             last_end = mapped_end
