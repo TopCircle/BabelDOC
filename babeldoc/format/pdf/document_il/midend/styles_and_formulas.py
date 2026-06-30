@@ -378,6 +378,13 @@ class StylesAndFormulas:
         # Process remaining non-formula lines after formula assignment is complete
         if self.translation_config.remove_non_formula_lines:
             self.remove_non_formula_lines_from_paragraphs(page)
+        else:
+            import logging as _log2
+            _log2.getLogger(__name__).warning(
+                "RM_LINES_DISABLED: config=%s curves=%d",
+                self.translation_config.remove_non_formula_lines,
+                len(page.pdf_curve),
+            )
 
         if not self.translation_config.skip_formula_offset_calculation:
             self.process_page_offsets(page)
