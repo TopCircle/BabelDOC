@@ -1239,6 +1239,14 @@ class StylesAndFormulas:
         if not page.pdf_curve:
             return
 
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
+        _log.info(
+            "remove_non_formula_lines: curves=%d paragraphs=%d",
+            len(page.pdf_curve),
+            len(page.pdf_paragraph),
+        )
+
         # Build layout index for efficient spatial queries
         layout_index, layout_map = build_layout_index(page)
 
