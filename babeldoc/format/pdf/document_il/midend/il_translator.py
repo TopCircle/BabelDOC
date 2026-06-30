@@ -813,6 +813,25 @@ class ILTranslator:
         # is passed through for post-translation marker parsing.
         if style_spans:
             translate_input.style_spans = style_spans
+            logger.info(
+                "Style markers embedded: %d span(s) in paragraph[%s] "
+                "(text_len=%d, preview=%s)",
+                len(style_spans),
+                paragraph.debug_id,
+                len(text),
+                text[:120],
+            )
+        elif not disable_rich_text_translate:
+            pass  # LLM path — uses rich-text placeholders, not markers
+        elif len(paragraph.pdf_paragraph_composition) > 1:
+            logger.debug(
+                "No style spans in multi-comp paragraph[%s] "
+                "(comps=%d, base_font=%s, text_preview=%s)",
+                paragraph.debug_id,
+                len(paragraph.pdf_paragraph_composition),
+                paragraph.pdf_style.font_id if paragraph.pdf_style else "?",
+                text[:120],
+            )
 
         return translate_input
 
@@ -1009,6 +1028,16 @@ class ILTranslator:
             )
             return [comp]
 
+        logger.info(
+            "Style markers parsed: %d span(s) from %d composition(s) "
+            "(preview=%s)",
+            sum(1 for c in result if c.pdf_same_style_unicode_characters
+                and c.pdf_same_style_unicode_characters.pdf_style
+                and c.pdf_same_style_unicode_characters.pdf_style.font_id
+                != input_text.base_style.font_id) if input_text.base_style else 0,
+            len(result),
+            output[:120],
+        )
         return result
 
     def parse_translate_output(
