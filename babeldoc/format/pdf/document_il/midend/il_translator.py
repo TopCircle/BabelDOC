@@ -870,6 +870,20 @@ class ILTranslator:
 
         return placeholder
 
+
+    _MARKER_RE = re.compile(r"〖B\d+〗|〖/B\d+〗")
+
+    @staticmethod
+    def _strip_style_markers(text: str) -> str:
+        """Remove any residual style markers from text.
+
+        Safety net for cases where markers survive translation but
+        style_spans is empty (e.g. cached translations from a previous
+        run where markers were embedded but the new TranslateInput has
+        no style_spans).
+        """
+        return ILTranslator._MARKER_RE.sub("", text)
+
     @staticmethod
     def _is_cjk_char(ch: str) -> bool:
         """Check if a single character is CJK (Chinese/Japanese/Korean)."""
@@ -1063,6 +1077,9 @@ class ILTranslator:
                 # giving us word-level alignment instead of proportional guesswork.
                 return self._parse_style_markers(output, input_text)
 
+            # Strip any stray markers that survived (e.g. from cached translations
+            # where style_spans was populated in a previous run but is now empty)
+            output = self._strip_style_markers(output)
             comp = PdfParagraphComposition()
             comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
             comp.pdf_same_style_unicode_characters.unicode = output
