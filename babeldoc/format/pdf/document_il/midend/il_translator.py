@@ -826,10 +826,11 @@ class ILTranslator:
         elif len(paragraph.pdf_paragraph_composition) > 1:
             logger.warning(
                 "No style spans in multi-comp paragraph[%s] "
-                "(comps=%d, base_font=%s, text_preview=%s)",
+                "(comps=%d, base_font=%s, comp_types=%s, text_preview=%s)",
                 paragraph.debug_id,
                 len(paragraph.pdf_paragraph_composition),
                 paragraph.pdf_style.font_id if paragraph.pdf_style else "?",
+                [type(c).__name__ for c in paragraph.pdf_paragraph_composition[:5]],
                 text[:120],
             )
 
