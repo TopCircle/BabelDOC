@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """
-Diagnostic script: analyze a PDF through BabelDOC's IL pipeline.
-Dumps font, paragraph, xobj, and style data for debugging.
+Focused diagnostic: analyze LESSON fragmentation, "ther" residuals,
+XObject boundaries, and multi-font lines in a PDF through BabelDOC's IL pipeline.
 
 Usage:
-    python3 debug_analyze_pdf.py /path/to/input.pdf [--pages "1,6,20"]
+    python3 debug_analyze_pdf.py Day_1.pdf --pages "6,20"
 """
 
 import argparse
 import sys
 from pathlib import Path
 
-# Add local repo to path so we use our patched code
 REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -23,7 +22,7 @@ from babeldoc.progress_monitor import ProgressMonitor
 
 
 def run_paragraph_finder(il):
-    """Run paragraph_finder on the IL to populate pdf_paragraph."""
+    """Run paragraph_finder on the IL."""
     from babeldoc.format.pdf.document_il.midend.paragraph_finder import ParagraphFinder
 
     config = TranslationConfig(
@@ -43,30 +42,15 @@ def run_paragraph_finder(il):
     return finder
 
 
-def analyze_raw_characters(page, page_num, font_registry):
-    """Dump raw pdf_character data before paragraph finding."""
+def analyze_page(page, page_num, font_registry):
+    """Compact analysis focusing on keyword matches and structural issues."""
     chars = page.pdf_character
     if not chars:
-        print(f"\n  (no raw characters on this page)")
+        print(f"  (no chars)")
         return
 
-    print(f"\n--- RAW CHARACTERS ({len(chars)}) ---")
-
-    # Group characters by visual line (same y-range)
-    # First, show overall stats
-    font_ids = {}
-    xobj_ids = {}
-    for c in chars:
-        fid = c.pdf_style.font_id if c.pdf_style else None
-        xid = c.xobj_id
-        font_ids[fid] = font_ids.get(fid, 0) + 1
-        xobj_ids[xid] = xobj_ids.get(xid, 0) + 1
-
-    print(f"  Font distribution: {font_ids}")
-    print(f"  XObj distribution: {xobj_ids}")
-
-    # Group chars by approximate visual line (similar y)
-    LINE_Y_TOLERANCE = 5  # pts
+    # Group by visual line
+    LINE_Y_TOLERANCE = 5
     lines = []
     sorted_chars = sorted(chars, key=lambda c: (c.visual_bbox.box.y if c.visual_bbox else 0))
     for c in sorted_chars:
@@ -81,222 +65,167 @@ def analyze_raw_characters(page, page_num, font_registry):
                 break
         if not placed:
             lines.append({"y": cy, "chars": [c]})
-
-    # Sort lines by y
     lines.sort(key=lambda l: l["y"])
 
-    print(f"  Visual lines: {len(lines)} (tolerance={LINE_Y_TOLERANCE}pt)")
-    print()
+    # Quick stats
+    font_ids = {}
+    xobj_ids = {}
+    for c in chars:
+        fid = c.pdf_style.font_id if c.pdf_style else None
+        xid = c.xobj_id
+        font_ids[fid] = font_ids.get(fid, 0) + 1
+        xobj_ids[xid] = xobj_ids.get(xid, 0) + 1
+
+    has_multi_xobj = len([k for k, v in xobj_ids.items() if v > 0 and k != 0]) > 0
+    multi_font_lines = 0
+    keyword_lines = []
+
+    print(f"\n  Chars={len(chars)}  Fonts={len(font_ids)}  XObjs={len(xobj_ids)}"
+          f"  Lines≈{len(lines)}")
+    print(f"  Font dist: {{{', '.join(f'{k}:{v}' for k,v in sorted(font_ids.items(), key=lambda x:-x[1])[:6])}}}")
+    if has_multi_xobj:
+        xobj_nonzero = {k: v for k, v in sorted(xobj_ids.items(), key=lambda x: -x[1]) if k != 0}
+        print(f"  XObj non-0: {xobj_nonzero}")
 
     for li, line in enumerate(lines):
         lchars = sorted(line["chars"], key=lambda c: c.visual_bbox.box.x if c.visual_bbox else 0)
         text = "".join(c.char_unicode or "" for c in lchars)
-        fids_in_line = set()
-        xids_in_line = set()
+        fids = set()
+        xids = set()
         for c in lchars:
             if c.pdf_style and c.pdf_style.font_id:
-                fids_in_line.add(c.pdf_style.font_id)
+                fids.add(c.pdf_style.font_id)
             if c.xobj_id is not None:
-                xids_in_line.add(c.xobj_id)
+                xids.add(c.xobj_id)
 
-        show = ("LESSON" in text.upper() or "ther" in text.lower()
-                or len(fids_in_line) > 1 or len(xids_in_line) > 1
-                or "TT" in str(fids_in_line) or "T1_3" in str(fids_in_line))
-
-        flags = []
-        if len(fids_in_line) > 1:
-            flags.append(f"MULTI-FONT({fids_in_line})")
-        if len(xids_in_line) > 1:
-            flags.append(f"MULTI-XOBJ({xids_in_line})")
+        is_interesting = False
+        reasons = []
         if "LESSON" in text.upper():
-            flags.append("LESSON")
+            is_interesting = True
+            reasons.append("LESSON")
+        if "ther" in text.lower() and len(text) < 200:
+            is_interesting = True
+            reasons.append("ther")
+        if len(fids) > 1:
+            is_interesting = True
+            reasons.append(f"MULTI-FONT({fids})")
+            multi_font_lines += 1
+        if len(xids) > 1:
+            is_interesting = True
+            reasons.append(f"MULTI-XOBJ({xids})")
 
-        print(f"  L{li}: y={line['y']:.0f} {len(lchars)} chars {len(fids_in_line)} fonts "
-              f"{len(xids_in_line)} xobjs{(' | ' + ', '.join(flags)) if flags else ''}")
-        print(f"    text: {repr(text[:250])}")
+        if is_interesting:
+            keyword_lines.append((li, line, text, fids, xids, reasons))
 
-        if show:
+    # Show all interesting lines
+    print(f"\n  Interesting lines: {len(keyword_lines)} (multi-font: {multi_font_lines})")
+    for li, line, text, fids, xids, reasons in keyword_lines:
+        lchars = sorted(line["chars"], key=lambda c: c.visual_bbox.box.x if c.visual_bbox else 0)
+        print(f"\n  L{li} y={line['y']:.0f} | {' '.join(reasons)}")
+        print(f"    text: {repr(text[:200])}")
+
+        # Show per-char details for XObject boundaries or LESSON
+        if "LESSON" in reasons or "MULTI-XOBJ" in reasons or "ther" in reasons:
+            prev_xid = None
             for ci, c in enumerate(lchars):
-                style = c.pdf_style
-                fid = style.font_id if style else None
-                fs = style.font_size if style else None
+                fid = c.pdf_style.font_id if c.pdf_style else "?"
+                fs = c.pdf_style.font_size if c.pdf_style else 0
                 xid = c.xobj_id
                 uc = c.char_unicode or ""
                 cbox = c.visual_bbox.box if c.visual_bbox else None
-                box_str = f"({cbox.x:.0f},{cbox.y:.0f},{cbox.x2:.0f},{cbox.y2:.0f})" if cbox else "?"
                 finfo = font_registry.get(fid)
                 b = f"b={finfo.bold}" if finfo else "?"
-                it = f"i={finfo.italic}" if finfo else ""
-                print(f"      [{ci}] fid={fid} {b} {it} sz={fs} xid={xid} {box_str} {repr(uc)}")
-            print()
+                i = f"i={finfo.italic}" if finfo else ""
 
+                # Mark XObject transitions
+                xobj_flag = ""
+                if prev_xid is not None and xid != prev_xid:
+                    xobj_flag = f" <-- XOBJ {prev_xid}→{xid}"
+                prev_xid = xid
 
-def analyze_paragraphs(il):
-    """Analyze paragraphs after paragraph_finder has run."""
-    for page_idx, page in enumerate(il.page):
-        page_num = page_idx + 1
-
-        # Build font registry for this page
-        font_registry = {f.font_id: f for f in page.pdf_font}
-
-        print(f"\n{'='*80}")
-        print(f"PAGE {page_num} — PARAGRAPHS ({len(page.pdf_paragraph)})")
-        print(f"{'='*80}")
-
-        for para_idx, para in enumerate(page.pdf_paragraph):
-            comps = para.pdf_paragraph_composition
-            if not comps:
-                continue
-
-            all_text = []
-            font_ids_in_para = set()
-            xobj_ids_in_para = set()
-            style_changes = []
-            prev_fid = None
-            prev_xid = None
-            prev_fs = None
-
-            for comp in comps:
-                line = comp.pdf_line
-                if not line:
-                    continue
-                for char in line.pdf_character:
-                    style = char.pdf_style
-                    fid = style.font_id if style else None
-                    fs = style.font_size if style else None
-                    xid = char.xobj_id
-                    uc = char.char_unicode or ""
-
-                    if fid:
-                        font_ids_in_para.add(fid)
-                    if xid is not None:
-                        xobj_ids_in_para.add(xid)
-                    all_text.append(uc)
-
-                    if fid != prev_fid or xid != prev_xid:
-                        if prev_fid is not None:
-                            style_changes.append({
-                                "at_char": len(all_text),
-                                "prev_fid": prev_fid,
-                                "new_fid": fid,
-                                "prev_xid": prev_xid,
-                                "new_xid": xid,
-                                "prev_fs": prev_fs,
-                                "new_fs": fs,
-                            })
-                    prev_fid = fid
-                    prev_xid = xid
-                    prev_fs = fs
-
-            text = "".join(all_text)
-            has_lesson = "LESSON" in text.upper()
-            has_ther = "ther" in text.lower()
-            multi_font = len(font_ids_in_para) > 1
-            multi_xobj = len(xobj_ids_in_para) > 1
-
-            if not (has_lesson or has_ther or multi_font or multi_xobj or style_changes):
-                continue  # skip unremarkable paragraphs
-
-            flags = []
-            if multi_font:
-                flags.append(f"MULTI-FONT({font_ids_in_para})")
-            if multi_xobj:
-                flags.append(f"MULTI-XOBJ({xobj_ids_in_para})")
-            if has_lesson:
-                flags.append("LESSON")
-            if has_ther:
-                flags.append("THER")
-            if style_changes:
-                flags.append(f"STYLE-CHANGES({len(style_changes)})")
-
-            print(f"\n  Para {para_idx}: {len(comps)} comps, {len(all_text)} chars, "
-                  f"{len(font_ids_in_para)} fonts, {len(xobj_ids_in_para)} xobjs"
-                  f"{' | ' + ', '.join(flags) if flags else ''}")
-            print(f"    text: {repr(text[:300])}")
-
-            # Detail
-            for ci, comp in enumerate(comps):
-                line = comp.pdf_line
-                if not line:
-                    continue
-                for chi, char in enumerate(line.pdf_character):
-                    style = char.pdf_style
-                    fid = style.font_id if style else None
-                    fs = style.font_size if style else None
-                    xid = char.xobj_id
-                    uc = char.char_unicode or ""
-                    cbox = char.visual_bbox.box if char.visual_bbox else None
-                    box_str = f"({cbox.x:.0f},{cbox.y:.0f},{cbox.x2:.0f},{cbox.y2:.0f})" if cbox else "?"
-                    finfo = font_registry.get(fid)
-                    b = f"b={finfo.bold}" if finfo else "?"
-                    it = f"i={finfo.italic}" if finfo else ""
-                    print(f"      comp[{ci}][{chi}] fid={fid} {b} {it} sz={fs} "
-                          f"xid={xid} {box_str} {repr(uc)}")
-
-            if style_changes:
-                print(f"    --- Style changes ({len(style_changes)}) ---")
-                for sc in style_changes:
-                    print(f"      @char[{sc['at_char']}]: "
-                          f"fid {sc['prev_fid']}→{sc['new_fid']} "
-                          f"xid {sc['prev_xid']}→{sc['new_xid']} "
-                          f"sz {sc['prev_fs']}→{sc['new_fs']}")
+                if uc.strip():
+                    print(f"      [{ci}] fid={fid} {b} {i} sz={fs:.1f} xid={xid}"
+                          f" ({cbox.x:.0f},{cbox.y:.0f}-{cbox.x2:.0f},{cbox.y2:.0f})"
+                          f" '{uc}'{xobj_flag}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Diagnose BabelDOC PDF processing")
-    parser.add_argument("pdf_path", help="Path to the PDF file")
-    parser.add_argument("--pages", help="Page range to parse (e.g. '1,6,20')", default=None)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("pdf_path")
+    parser.add_argument("--pages", default=None)
     args = parser.parse_args()
 
     pdf_path = Path(args.pdf_path)
     if not pdf_path.exists():
-        print(f"ERROR: File not found: {pdf_path}", file=sys.stderr)
+        print(f"ERROR: {pdf_path} not found", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Parsing: {pdf_path}")
-    print(f"Pages filter: {args.pages or 'all'}")
-    print()
+    print(f"Parsing: {pdf_path}  pages={args.pages or 'all'}")
 
-    # Step 1: Create raw IL
+    # Step 1: Parse raw IL
     il = parse_with_legacy_ir(str(pdf_path), pages=args.pages, debug=False)
+    print(f"Pages parsed: {len(il.page)}")
 
-    print("=" * 80)
-    print(f"PDF ANALYSIS REPORT")
-    print(f"Total pages: {len(il.page)}")
-    print("=" * 80)
-
+    # Step 2: Analyze raw characters (pre-paragraph)
     for page_idx, page in enumerate(il.page):
-        page_num = page_idx + 1
-        print(f"\n{'='*80}")
-        print(f"PAGE {page_num}")
-        print(f"{'='*80}")
+        pg = page_idx + 1
+        font_reg = {f.font_id: f for f in page.pdf_font}
+        print(f"\n{'='*60}")
+        print(f"PAGE {pg} — RAW CHARS")
+        print(f"{'='*60}")
+        analyze_page(page, pg, font_reg)
 
-        # Font inventory
-        print(f"\n--- FONTS ({len(page.pdf_font)}) ---")
-        font_registry = {}
-        for font in page.pdf_font:
-            font_registry[font.font_id] = font
-            # Flag fonts whose name contains bold keywords but bold=False
-            name_lower = (font.name or "").lower()
-            if "+" in name_lower:
-                name_lower = name_lower.split("+", 1)[1]
-            kw_match = [kw for kw in ("bold", "heavy", "black", "semibold", "extrabold", "medium")
-                        if kw in name_lower]
-            mismatch = " *** NAME_HAS_BOLD_KW_BUT_bold=False ***" if (kw_match and not font.bold) else ""
-            print(f"  fid={str(font.font_id):>20s}  bold={str(font.bold):5s}  italic={str(font.italic):5s}  "
-                  f"monospace={str(font.monospace):5s}  serif={str(font.serif):5s}  name={font.name}{mismatch}")
-
-        # Analyze raw characters (before paragraph finding)
-        analyze_raw_characters(page, page_num, font_registry)
-
-    # Step 2: Run paragraph finder
-    print(f"\n{'='*80}")
+    # Step 3: Run paragraph finder
+    print(f"\n{'='*60}")
     print("Running paragraph_finder...")
-    print(f"{'='*80}")
     run_paragraph_finder(il)
 
-    # Step 3: Analyze paragraphs
-    analyze_paragraphs(il)
+    # Step 4: Check paragraphs
+    for page_idx, page in enumerate(il.page):
+        pg = page_idx + 1
+        paras = page.pdf_paragraph
+        print(f"\nPAGE {pg} — PARAGRAPHS ({len(paras)})")
+
+        for pi, para in enumerate(paras):
+            comps = para.pdf_paragraph_composition
+            if not comps:
+                continue
+            # Extract text from paragraph
+            all_text = []
+            fids = set()
+            xids = set()
+            for comp in comps:
+                if comp.pdf_line:
+                    for c in comp.pdf_line.pdf_character:
+                        all_text.append(c.char_unicode or "")
+                        if c.pdf_style:
+                            fids.add(c.pdf_style.font_id)
+                        if c.xobj_id is not None:
+                            xids.add(c.xobj_id)
+                elif comp.pdf_character:
+                    all_text.append(comp.pdf_character.char_unicode or "")
+                    if comp.pdf_character.pdf_style:
+                        fids.add(comp.pdf_character.pdf_style.font_id)
+                    if comp.pdf_character.xobj_id is not None:
+                        xids.add(comp.pdf_character.xobj_id)
+
+            text = "".join(all_text)
+            is_interesting = any([
+                "LESSON" in text.upper(),
+                "ther" in text.lower(),
+                len(fids) > 1,
+                len(xids) > 1,
+            ])
+
+            if is_interesting or pi < 5:
+                flags = []
+                if len(fids) > 1:
+                    flags.append(f"fonts={fids}")
+                if len(xids) > 1:
+                    flags.append(f"xobjs={xids}")
+                print(f"  P{pi}: {len(comps)} comps, {len(all_text)} chars"
+                      f"{' | ' + ', '.join(flags) if flags else ''}")
+                print(f"    text: {repr(text[:250])}")
 
     print("\nDone.")
 
