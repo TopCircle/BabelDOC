@@ -230,9 +230,10 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
 
     Space detection uses a character-width-relative threshold instead of
     a global median: a gap is treated as a word boundary when it exceeds
-    30% of the average width of the two adjacent characters.  This avoids
-    false positives caused by kerning pairs whose gap happens to match
-    the paragraph-wide median.
+    40% of the wider of the two adjacent characters' widths.  Using the
+    wider character avoids false positives from narrow chars (like 'r' at
+    2pt) pulling the threshold too low next to wide chars (like 'e' at 5pt),
+    which previously split words like "There" → "The re".
 
     Args:
         chars: 字符列表，可以是 PdfCharacter 对象或字符串
@@ -240,8 +241,11 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
     Returns:
         str: 处理后的 Unicode 字符串
     """
-    # Space threshold: gap must exceed this fraction of average char width
-    SPACE_WIDTH_RATIO = 0.3
+    # Space threshold: gap must exceed this fraction of the wider character's
+    # width.  Using max(w1,w2) instead of avg(w1,w2) prevents narrow characters
+    # (e.g. 'r'=2pt beside 'e'=5pt) from pulling the threshold too low, which
+    # would falsely split words like "There" → "The re".
+    SPACE_WIDTH_RATIO = 0.4
 
     # 构建 unicode 字符串，根据间距插入空格
     unicode_chars = []
@@ -271,9 +275,9 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
                 continue
             curr_w = chars[i].box.x2 - chars[i].box.x
             next_w = chars[i + 1].box.x2 - chars[i + 1].box.x
-            avg_w = (curr_w + next_w) / 2
+            max_w = max(curr_w, next_w)
             if (
-                avg_w > 0 and distance > avg_w * SPACE_WIDTH_RATIO
+                max_w > 0 and distance > max_w * SPACE_WIDTH_RATIO
             ) or Layout.is_newline(
                 chars[i],
                 chars[i + 1],
