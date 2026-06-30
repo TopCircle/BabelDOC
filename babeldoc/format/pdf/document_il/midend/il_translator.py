@@ -1039,10 +1039,12 @@ class ILTranslator:
                     "Markers NOT parsed but present in output (preview=%s)",
                     output[:200],
                 )
-            # Fallback: all base-style
+            # Fallback: strip markers and use base-style
             comp = PdfParagraphComposition()
             comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
-            comp.pdf_same_style_unicode_characters.unicode = output
+            comp.pdf_same_style_unicode_characters.unicode = (
+                ILTranslator._strip_style_markers(output)
+            )
             comp.pdf_same_style_unicode_characters.pdf_style = (
                 input_text.base_style
             )
