@@ -1020,6 +1020,12 @@ class ILTranslator:
                 result.append(comp)
 
         if not result:
+            # Fallback: no markers matched — check if raw markers are in text
+            if "〖B" in output:
+                logger.warning(
+                    "Markers NOT parsed but present in output (preview=%s)",
+                    output[:200],
+                )
             # Fallback: all base-style
             comp = PdfParagraphComposition()
             comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
