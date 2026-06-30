@@ -1060,6 +1060,18 @@ class ILTranslator:
             len(result),
             output[:120],
         )
+        # Strip any remaining markers from _parse_style_markers result
+        for comp in result:
+            if (
+                comp.pdf_same_style_unicode_characters
+                and comp.pdf_same_style_unicode_characters.unicode
+                and "〖B" in comp.pdf_same_style_unicode_characters.unicode
+            ):
+                comp.pdf_same_style_unicode_characters.unicode = (
+                    ILTranslator._strip_style_markers(
+                        comp.pdf_same_style_unicode_characters.unicode
+                    )
+                )
         return result
 
     def parse_translate_output(
@@ -1251,6 +1263,21 @@ class ILTranslator:
                 )
                 comp.pdf_same_style_unicode_characters.pdf_style = input_text.base_style
                 result.append(comp)
+
+        # Final safety net: strip any residual markers from ALL compositions.
+        # This catches edge cases where placeholders or cache-reuse paths
+        # let markers leak into the final text.
+        for comp in result:
+            if (
+                comp.pdf_same_style_unicode_characters
+                and comp.pdf_same_style_unicode_characters.unicode
+                and "〖B" in comp.pdf_same_style_unicode_characters.unicode
+            ):
+                comp.pdf_same_style_unicode_characters.unicode = (
+                    ILTranslator._strip_style_markers(
+                        comp.pdf_same_style_unicode_characters.unicode
+                    )
+                )
 
         return result
 
