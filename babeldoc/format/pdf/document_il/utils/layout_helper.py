@@ -425,8 +425,15 @@ def add_space_dummy_chars(paragraph: PdfParagraph) -> None:
             continue
 
         # 检查两个组成部分之间是否需要添加空格
+        # 使用与 _add_space_dummy_chars_to_list 一致的 width-relative 阈值
         distance = next_first_char.box.x - curr_last_char.box.x2
-        if distance > 1:  # 只考虑正向距离
+        if distance > 0:
+            curr_w = curr_last_char.box.x2 - curr_last_char.box.x
+            next_w = next_first_char.box.x2 - next_first_char.box.x
+            max_w = max(curr_w, next_w)
+            SPACE_WIDTH_RATIO = 0.4
+            if not (max_w > 0 and distance > max_w * SPACE_WIDTH_RATIO):
+                continue
             # 创建一个 dummy 字符作为空格
             space_box = Box(
                 x=curr_last_char.box.x2,
@@ -491,44 +498,42 @@ def _add_space_dummy_chars_to_list(chars: list[PdfCharacter]) -> None:
     """
     在字符列表中的适当位置添加表示空格的 dummy 字符。
 
+    使用基于字符宽度的相对阈值（与 get_char_unicode_string 一致），
+    而非全局中位数。避免窄字符（如 'r'=2pt）拉低阈值导致
+    "There" → "The re" 的错误拆分。
+
     Args:
         chars: PdfCharacter 对象列表
     """
     if not chars:
         return
 
-    # 计算字符间距的中位数
-    distances = []
-    for i in range(len(chars) - 1):
-        distance = chars[i + 1].box.x - chars[i].box.x2
-        if distance > 1:  # 只考虑正向距离
-            distances.append(distance)
+    # Space threshold: gap must exceed this fraction of the wider character's
+    # width, matching get_char_unicode_string's approach.
+    SPACE_WIDTH_RATIO = 0.4
 
-    # 去重后的距离
-    distinct_distances = sorted(set(distances))
-
-    if not distinct_distances:
-        median_distance = 1
-    elif len(distinct_distances) == 1:
-        median_distance = distinct_distances[0]
-    else:
-        median_distance = distinct_distances[1]
-
-    # 在需要的地方插入空格字符
     i = 0
     while i < len(chars) - 1:
         curr_char = chars[i]
         next_char = chars[i + 1]
 
         distance = next_char.box.x - curr_char.box.x2
-        if distance >= median_distance or Layout.is_newline(curr_char, next_char):
-            if distance < 0:
-                distance = -distance
+        if distance <= 0:
+            i += 1
+            continue
+
+        curr_w = curr_char.box.x2 - curr_char.box.x
+        next_w = next_char.box.x2 - next_char.box.x
+        max_w = max(curr_w, next_w)
+
+        if (max_w > 0 and distance > max_w * SPACE_WIDTH_RATIO) or Layout.is_newline(
+            curr_char, next_char
+        ):
             # 创建一个 dummy 字符作为空格
             space_box = Box(
                 x=curr_char.box.x2,
                 y=curr_char.box.y,
-                x2=curr_char.box.x2 + min(distance, median_distance),
+                x2=curr_char.box.x2 + distance,
                 y2=curr_char.box.y2,
             )
 
