@@ -813,24 +813,10 @@ class ILTranslator:
         # is passed through for post-translation marker parsing.
         if style_spans:
             translate_input.style_spans = style_spans
-            logger.warning(
-                "Style markers embedded: %d span(s) in paragraph[%s] "
-                "(text_len=%d, preview=%s)",
+            logger.debug(
+                "Style markers embedded: %d span(s) in paragraph[%s]",
                 len(style_spans),
                 paragraph.debug_id,
-                len(text),
-                text[:120],
-            )
-        elif not disable_rich_text_translate:
-            pass  # LLM path — uses rich-text placeholders, not markers
-        elif len(paragraph.pdf_paragraph_composition) > 1:
-            comp_types = [type(c).__name__ for c in paragraph.pdf_paragraph_composition[:5]]
-            logger.warning(
-                "NO_STYLE: comps=%d base=%s types=%s txt=%s",
-                len(paragraph.pdf_paragraph_composition),
-                paragraph.pdf_style.font_id if paragraph.pdf_style else "?",
-                "+".join(comp_types),
-                text[:80],
             )
 
         return translate_input
@@ -960,11 +946,11 @@ class ILTranslator:
         We regex-extract each span, build styled compositions, and strip
         the markers from the final output.
         """
-        import re
-
         result = []
         # Match: 〖B<digits>〗<content>〖/B<same_digits>〗
-        marker_re = re.compile(r"〖B(\d+)〗(.*?)〖/B\1〗")
+        # Use [\s\S]*? instead of .*? to match across newlines — translators
+        # may reformat text and insert line breaks inside marker pairs.
+        marker_re = re.compile(r"〖B(\d+)〗([\s\S]*?)〖/B\1〗")
 
         # Build a lookup: span_id → PdfStyle
         style_by_id = {}
@@ -976,9 +962,13 @@ class ILTranslator:
             span_id = int(m.group(1))
             styled_text = m.group(2)
 
-            # Unstyled text between previous span end and this marker
+            # Unstyled text between previous span end and this marker.
+            # Strip any residual markers that the regex didn't match
+            # (e.g. corrupted by translator, partial match, etc.)
             if m.start() > last_end:
-                unstyled = output[last_end:m.start()]
+                unstyled = ILTranslator._strip_style_markers(
+                    output[last_end:m.start()]
+                )
                 if unstyled.strip():
                     comp = PdfParagraphComposition()
                     comp.pdf_same_style_unicode_characters = (
@@ -1022,7 +1012,7 @@ class ILTranslator:
 
         # Remaining base-style text after the last marker
         if last_end < len(output):
-            remaining = output[last_end:]
+            remaining = ILTranslator._strip_style_markers(output[last_end:])
             if remaining.strip():
                 comp = PdfParagraphComposition()
                 comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
@@ -1050,16 +1040,6 @@ class ILTranslator:
             )
             return [comp]
 
-        logger.info(
-            "Style markers parsed: %d span(s) from %d composition(s) "
-            "(preview=%s)",
-            sum(1 for c in result if c.pdf_same_style_unicode_characters
-                and c.pdf_same_style_unicode_characters.pdf_style
-                and c.pdf_same_style_unicode_characters.pdf_style.font_id
-                != input_text.base_style.font_id) if input_text.base_style else 0,
-            len(result),
-            output[:120],
-        )
         # Strip any remaining markers from _parse_style_markers result
         for comp in result:
             if (
@@ -1338,6 +1318,13 @@ class ILTranslator:
             tracker,
             tracker.last_llm_translate_tracker(),
         )
+        # Clean residual markers from paragraph.unicode — downstream code
+        # (e.g. get_paragraph_unicode, pdf_creater) may read this field
+        # directly instead of going through compositions.
+        if "〖B" in paragraph.unicode:
+            paragraph.unicode = ILTranslator._strip_style_markers(
+                paragraph.unicode
+            )
         for composition in paragraph.pdf_paragraph_composition:
             if (
                 composition.pdf_same_style_unicode_characters
