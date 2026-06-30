@@ -824,14 +824,13 @@ class ILTranslator:
         elif not disable_rich_text_translate:
             pass  # LLM path — uses rich-text placeholders, not markers
         elif len(paragraph.pdf_paragraph_composition) > 1:
+            comp_types = [type(c).__name__ for c in paragraph.pdf_paragraph_composition[:5]]
             logger.warning(
-                "No style spans in multi-comp paragraph[%s] "
-                "(comps=%d, base_font=%s, comp_types=%s, text_preview=%s)",
-                paragraph.debug_id,
+                "NO_STYLE: comps=%d base=%s types=%s txt=%s",
                 len(paragraph.pdf_paragraph_composition),
                 paragraph.pdf_style.font_id if paragraph.pdf_style else "?",
-                [type(c).__name__ for c in paragraph.pdf_paragraph_composition[:5]],
-                text[:120],
+                "+".join(comp_types),
+                text[:80],
             )
 
         return translate_input
