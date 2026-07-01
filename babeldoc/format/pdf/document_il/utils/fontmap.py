@@ -209,10 +209,10 @@ class FontMapper:
             )
             return None
 
-        # Log bold detection for debugging
+        # Log bold detection
         if bold:
-            logger.debug(
-                "font_mapper.map: BOLD detected font=%s font_id=%s char=%r",
+            logger.warning(
+                "font_mapper: BOLD font=%s id=%s char=%r",
                 getattr(original_font, "name", "?"),
                 getattr(original_font, "font_id", "?"),
                 char_unicode,

@@ -673,7 +673,7 @@ class StylesAndFormulas:
             base_style = self._calculate_base_style(paragraph)
             paragraph.pdf_style = base_style
             if paragraph.layout_label == "title" and base_style:
-                logger.debug(
+                logger.warning(
                     "Title base_style: font_id=%s font_size=%s paragraph=%s text=%s",
                     base_style.font_id,
                     base_style.font_size,

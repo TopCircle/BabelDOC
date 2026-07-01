@@ -1093,17 +1093,17 @@ class ILTranslator:
     ) -> [PdfParagraphComposition]:
         result = []
 
-        # Debug: trace translation I/O for diagnosing repeated text (#3)
-        # and style preservation (#5).
-        if logger.isEnabledFor(logging.DEBUG):
-            _input_preview = (input_text.unicode or "")[:120]
-            _output_preview = (output or "")[:120]
-            _n_spans = len(input_text.style_spans) if input_text.style_spans else 0
-            _n_ph = len(input_text.placeholders) if input_text.placeholders else 0
-            _base_fid = getattr(input_text.base_style, "font_id", None) if input_text.base_style else None
-            logger.debug(
-                "parse_translate_output: INPUT=%r OUTPUT=%r spans=%d placeholders=%d base_font=%s",
-                _input_preview, _output_preview, _n_spans, _n_ph, _base_fid,
+        # Trace translation I/O for diagnosing repeated text (#3)
+        # and style preservation (#5). Only log when style_spans present
+        # or when base_style has a bold font (title paragraphs).
+        _n_spans = len(input_text.style_spans) if input_text.style_spans else 0
+        _base_fid = getattr(input_text.base_style, "font_id", None) if input_text.base_style else None
+        if _n_spans > 0 or (_base_fid and "bold" in str(_base_fid).lower()):
+            _input_preview = (input_text.unicode or "")[:80]
+            _output_preview = (output or "")[:80]
+            logger.warning(
+                "parse_translate: IN=%r OUT=%r spans=%d base_font=%s",
+                _input_preview, _output_preview, _n_spans, _base_fid,
             )
 
         # 如果没有占位符，检查是否有 style_spans（非 LLM 翻译器的样式保留路径）
