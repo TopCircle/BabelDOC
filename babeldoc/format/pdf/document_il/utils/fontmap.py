@@ -197,9 +197,11 @@ class FontMapper:
                     for kw in ("bold", "heavy", "black", "semibold", "extrabold")
                 ):
                     bold = True
-                    logger.debug(
-                        "Font %s: bold inferred from font name (is_bold was False)",
+                    logger.warning(
+                        "FontMapper: PdfFont bold inferred from name=%s id=%s (bold was %s)",
                         original_font.name,
+                        original_font.font_id,
+                        original_font.bold,
                     )
         else:
             logger.error(
