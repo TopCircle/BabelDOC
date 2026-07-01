@@ -1239,6 +1239,13 @@ class PdfParagraph:
             "type": "Attribute",
         },
     )
+    decorative_tracking: float | None = field(
+        default=None,
+        metadata={
+            "name": "decorativeTracking",
+            "type": "Attribute",
+        },
+    )
 
 
 @dataclass(slots=True)

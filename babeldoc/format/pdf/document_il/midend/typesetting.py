@@ -1361,10 +1361,23 @@ class Typesetting:
         if paragraph.first_line_indent:
             current_x += space_width * 4
         # 遍历所有排版单元
+        # Decorative tracking: extra spacing between characters for art text
+        # (e.g. "G e n t l y" → "轻 轻 地").  Scaled by the same factor as
+        # the rest of the layout.
+        decorative_tracking = (
+            paragraph.decorative_tracking * scale
+            if getattr(paragraph, "decorative_tracking", None)
+            else 0
+        )
+
         for i, unit in enumerate(typesetting_units):
             # 计算当前单元在当前缩放下的尺寸
             unit_width = unit.width * scale
             unit_height = unit.height * scale
+
+            # Apply decorative tracking (skip for spaces and line starts)
+            if decorative_tracking and not unit.is_space and current_x > box.x:
+                unit_width += decorative_tracking
 
             # 跳过行首的空格
             if current_x == box.x and unit.is_space:

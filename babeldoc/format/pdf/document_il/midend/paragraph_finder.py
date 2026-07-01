@@ -144,6 +144,17 @@ class ParagraphFinder:
                 )
                 continue
 
+        # Detect decorative text and compute tracking for re-layout
+        if chars:
+            from babeldoc.format.pdf.document_il.utils.layout_helper import (
+                _is_decorative_text,
+                compute_decorative_tracking,
+            )
+            if _is_decorative_text(chars):
+                tracking = compute_decorative_tracking(chars)
+                if tracking and tracking > 0:
+                    paragraph.decorative_tracking = tracking
+
         if update_unicode and chars:
             paragraph.unicode = get_char_unicode_string(chars)
         if not chars:
