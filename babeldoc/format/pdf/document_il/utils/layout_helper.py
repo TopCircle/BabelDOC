@@ -501,49 +501,82 @@ def _get_last_char_from_composition(
 def _is_decorative_text(chars: list[PdfCharacter]) -> bool:
     """Detect decorative/artistic text layouts like 'G e n t l y'.
 
-    Pattern: most characters are single letters with inter-character gaps
-    much larger than normal word spacing (gap > 2x average character width).
+    All conditions must hold simultaneously:
+      1. ≥70% of characters are single letters (A, B, C...)
+      2. ≥50% of inter-character gaps exceed 2× average char width
+      3. Font size consistency: max/min ratio < 1.10 (±10%)
+      4. Baseline consistency: max baseline spread < 1pt
 
-    Returns True if the character list looks like decorative spacing,
-    in which case _add_space_dummy_chars_to_list should skip space insertion.
+    This prevents false positives on body text, mixed-font paragraphs,
+    and vertically staggered art layouts.
     """
     if len(chars) < 3:
         return False
 
-    # Count single-letter characters and their gaps
-    single_letter_count = 0
-    large_gap_count = 0
-    total_gaps = 0
-    char_widths = []
-    gaps = []
-
-    for i, c in enumerate(chars):
-        if not isinstance(c, PdfCharacter) or not c.visual_bbox:
-            continue
-        w = c.visual_bbox.box.x2 - c.visual_bbox.box.x
-        char_widths.append(w)
-        uc = (c.char_unicode or "").strip()
-        if len(uc) == 1 and uc.isalpha():
-            single_letter_count += 1
-
-        if i < len(chars) - 1 and isinstance(chars[i + 1], PdfCharacter):
-            next_c = chars[i + 1]
-            if next_c.visual_bbox:
-                gap = next_c.visual_bbox.box.x - c.visual_bbox.box.x2
-                gaps.append(gap)
-                total_gaps += 1
-                avg_w = (w + (next_c.visual_bbox.box.x2 - next_c.visual_bbox.box.x)) / 2
-                if avg_w > 0 and gap > avg_w * 2.0:
-                    large_gap_count += 1
-
-    if total_gaps < 2:
+    pdf_chars = [c for c in chars if isinstance(c, PdfCharacter) and c.visual_bbox]
+    if len(pdf_chars) < 3:
         return False
 
-    # Decorative if: ≥70% single letters AND ≥50% large gaps
-    letter_ratio = single_letter_count / len(chars) if chars else 0
-    gap_ratio = large_gap_count / total_gaps
+    # Condition 1: ≥70% single letters
+    single_letter_count = sum(
+        1 for c in pdf_chars
+        if len((c.char_unicode or "").strip()) == 1
+        and (c.char_unicode or "").strip().isalpha()
+    )
+    if single_letter_count / len(pdf_chars) < 0.7:
+        return False
 
-    return letter_ratio >= 0.7 and gap_ratio >= 0.5
+    # Condition 2: ≥50% large gaps (>2× avg char width)
+    large_gap_count = 0
+    total_gaps = 0
+    for i in range(len(pdf_chars) - 1):
+        c1, c2 = pdf_chars[i], pdf_chars[i + 1]
+        gap = c2.visual_bbox.box.x - c1.visual_bbox.box.x2
+        if gap <= 0:
+            continue
+        total_gaps += 1
+        w1 = c1.visual_bbox.box.x2 - c1.visual_bbox.box.x
+        w2 = c2.visual_bbox.box.x2 - c2.visual_bbox.box.x
+        avg_w = (w1 + w2) / 2
+        if avg_w > 0 and gap > avg_w * 2.0:
+            large_gap_count += 1
+
+    if total_gaps < 2 or large_gap_count / total_gaps < 0.5:
+        return False
+
+    # Condition 3: font size consistency (max/min ratio < 1.10)
+    sizes = [c.pdf_style.font_size for c in pdf_chars if c.pdf_style and c.pdf_style.font_size]
+    if sizes:
+        min_s, max_s = min(sizes), max(sizes)
+        if min_s > 0 and max_s / min_s > 1.10:
+            return False
+
+    # Condition 4: baseline consistency (max spread < 1pt)
+    baselines = [c.visual_bbox.box.y for c in pdf_chars]
+    if baselines and (max(baselines) - min(baselines)) > 1.0:
+        return False
+
+    return True
+
+
+def compute_decorative_tracking(chars: list[PdfCharacter]) -> float | None:
+    """Compute average letter-spacing (tracking) for decorative text.
+
+    Returns the average inter-character gap in points, or None if not
+    decorative or insufficient data.  Used to re-lay out translated text
+    with matching visual rhythm.
+    """
+    pdf_chars = [c for c in chars if isinstance(c, PdfCharacter) and c.visual_bbox]
+    if len(pdf_chars) < 2:
+        return None
+
+    gaps = []
+    for i in range(len(pdf_chars) - 1):
+        gap = pdf_chars[i + 1].visual_bbox.box.x - pdf_chars[i].visual_bbox.box.x2
+        if gap > 0:
+            gaps.append(gap)
+
+    return sum(gaps) / len(gaps) if gaps else None
 
 
 def _add_space_dummy_chars_to_list(chars: list[PdfCharacter]) -> None:

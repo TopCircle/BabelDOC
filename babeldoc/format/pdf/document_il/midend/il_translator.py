@@ -870,39 +870,36 @@ class ILTranslator:
         """
         return ILTranslator._MARKER_RE.sub("", text)
 
-    # Heading patterns: "第N课.", "第N章:", "DAY 3.", "LESSON 6." etc.
-    # Only matches when followed by content (not standalone numbers).
+    # Heading patterns for CJK localization:
+    # "第N课. 小事..." → "第N课：小事..."
+    # "第5章. 内容..." → "第5章：内容..."
     _HEADING_PUNCT_RE = re.compile(
-        r"^("
-        r"(?:第?\d+(?:课|章|节|天|部分|篇|讲|回))"
-        r"|(?:第?\d+(?:课|章|节|天|部分|篇|讲|回))\.\s*$"
-        r")\.\s*"
-    )
-    _HEADING_PUNCT_EN_RE = re.compile(
-        r"^(LESSON|CHAPTER|DAY|PART|SECTION|EXERCISE|APPENDIX)\s+\d+[\.:]\s*",
-        re.IGNORECASE,
+        r"^(第?\d+(?:课|章|节|天|部分|篇|讲|回))\.\s*"
     )
 
     @staticmethod
     def _localize_heading_punctuation(text: str) -> str:
         """Convert heading separator '.' to '：' for CJK output.
 
-        Only applies to recognized heading patterns:
-          '第2课. 小事...' → '第2课：小事...'
-          '第5章. 内容...' → '第5章：内容...'
-        Does NOT affect body text, version numbers (v2.0), or abbreviations.
+        Rules:
+        - Only matches recognized heading patterns (第N课, 第N章, etc.)
+        - Does NOT replace '.' between digits (e.g. "2.5", "v3.0")
+        - Only replaces the FIRST '.' in the heading prefix
         """
-        # Try Chinese heading pattern first
         m = ILTranslator._HEADING_PUNCT_RE.match(text)
         if m:
-            # Replace the "." after the heading number with "："
-            end = m.end()
-            return text[:end].replace(".", "：", 1) + text[end:]
+            # Protect decimal numbers: check if '.' is between digits
+            dot_pos = m.end() - 1  # position of the '.'
+            if dot_pos > 0 and dot_pos < len(text) - 1:
+                if text[dot_pos - 1].isdigit() and text[dot_pos + 1].isdigit():
+                    return text  # "2.5" — don't replace
+            return text[:m.end()].replace(".", "：", 1) + text[m.end():]
 
-        # The heading might already be translated — check for CJK heading + "."
-        # Pattern: CJK heading chars + digit(s) + ". " + rest
-        if re.match(r"^[一-鿿぀-ヿ]+\d+[\.：:]\s*\S", text):
-            text = re.sub(r"^([一-鿿぀-ヿ]+\d+)\.\s*", r"\1：", text)
+        # Also handle already-translated CJK heading + "."
+        # Pattern: CJK chars + digits + "." + space/content
+        m2 = re.match(r"^([一-鿿぀-ヿ]+\d+)\.\s+", text)
+        if m2:
+            return text[:m2.end()].replace(".", "：", 1) + text[m2.end():]
 
         return text
 
