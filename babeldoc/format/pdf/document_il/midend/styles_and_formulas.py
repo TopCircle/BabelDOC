@@ -1,5 +1,8 @@
+import logging
 import math
 import re
+
+logger = logging.getLogger(__name__)
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import Document
