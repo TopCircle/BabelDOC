@@ -289,7 +289,15 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
                 unicode_chars.append(" ")  # 添加空格
 
     result = "".join(unicode_chars)
-    # use unicode regex to replace all space with " "
+    # Normalize inline whitespace: TAB, NBSP (U+00A0), em-space (U+2003),
+    # en-space (U+2002), thin-space (U+2009), etc. → regular space.
+    # NFKC handles most; explicit replacements catch the rest.
+    result = result.replace("\t", " ")
+    result = result.replace(" ", " ")  # NBSP
+    result = result.replace(" ", " ")  # EN SPACE
+    result = result.replace(" ", " ")  # EM SPACE
+    result = result.replace(" ", " ")  # THIN SPACE
+    result = result.replace("​", "")   # ZERO-WIDTH SPACE (remove)
     normalize = unicodedata.normalize("NFKC", result)
     result = SPACE_REGEX.sub(" ", normalize).strip()
     return result

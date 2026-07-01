@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import re
@@ -1023,16 +1024,12 @@ class ILTranslator:
 
                 style = style_by_id.get(span_id)
                 if style:
-                    # Normalize font_size to paragraph base — preserves
-                    # font_id (bold/italic) but uses uniform size so
-                    # Chinese bold text isn't disproportionately small.
-                    normalized_style = PdfStyle(
-                        font_id=style.font_id,
-                        font_size=input_text.base_style.font_size,
-                        graphic_state=style.graphic_state,
-                    )
+                    # Preserve the FULL original style (font_id, font_size,
+                    # graphic_state) — not just font_id.  The original PDF
+                    # author chose a specific size for a reason; normalizing
+                    # to base_style.font_size made bold text the wrong size.
                     comp.pdf_same_style_unicode_characters.pdf_style = (
-                        normalized_style
+                        copy.deepcopy(style)
                     )
                 else:
                     comp.pdf_same_style_unicode_characters.pdf_style = (
