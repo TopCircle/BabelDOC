@@ -1311,11 +1311,21 @@ class StylesAndFormulas:
 
 
 def _is_thin_horizontal_line(box: Box) -> bool:
-    """Check if a bounding box looks like an underline: very thin and horizontal."""
+    """Check if a bounding box looks like an underline: very thin and horizontal.
+
+    PDF underlines are often zero-height lines (h=0.00) drawn as degenerate
+    rectangles or line operators.  We treat height <= 1pt as thin-horizontal
+    if the width is substantial.
+    """
     height = box.y2 - box.y
     width = box.x2 - box.x
-    # Underline height typically 0.5-2pt, width at least 3pt to filter dots
-    return height > 0 and height < 2.0 and width > 3.0 and width / height > 3.0
+    if width < 3.0:
+        return False
+    if height <= 1.0:
+        return True  # zero or near-zero height = line, not shape
+    if height < 2.0 and width / height > 3.0:
+        return True  # thin rectangle
+    return False
 
 
 def _curve_within_paragraph_vertical_bounds(curve_box: Box, para_boxes: list[Box]) -> bool:

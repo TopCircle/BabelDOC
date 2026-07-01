@@ -477,6 +477,17 @@ class ParagraphFinder:
                     (
                         char_layout.id != current_layout.id
                         and not SPACE_REGEX.match(char.char_unicode)
+                        # Don't split if visually on the same line — headings
+                        # often span multiple layout regions but are one visual line.
+                        and not (
+                            current_paragraph.pdf_paragraph_composition
+                            and self._is_same_visual_line(
+                                current_paragraph.pdf_paragraph_composition[
+                                    -1
+                                ].pdf_character,
+                                char,
+                            )
+                        )
                     )
                     or (  # not same xobject — but merge if visually same line
                         current_paragraph.pdf_paragraph_composition
