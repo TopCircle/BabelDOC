@@ -201,15 +201,6 @@ class FontMapper:
                         "Font %s: bold inferred from font name (is_bold was False)",
                         original_font.name,
                     )
-
-        # Log bold detection for debugging
-        _font_name = getattr(original_font, "name", "?")
-        _font_id = getattr(original_font, "font_id", "?")
-        if bold:
-            logger.debug(
-                "font_mapper.map: BOLD detected font=%s font_id=%s char=%r",
-                _font_name, _font_id, char_unicode,
-            )
         else:
             logger.error(
                 f"Unknown font type: {type(original_font)}. "
@@ -217,6 +208,15 @@ class FontMapper:
                 f"Char unicode: {char_unicode}. ",
             )
             return None
+
+        # Log bold detection for debugging
+        if bold:
+            logger.debug(
+                "font_mapper.map: BOLD detected font=%s font_id=%s char=%r",
+                getattr(original_font, "name", "?"),
+                getattr(original_font, "font_id", "?"),
+                char_unicode,
+            )
 
         if self.primary_font_family == PrimaryFontFamily.SERIF:
             serif = True
