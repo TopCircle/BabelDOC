@@ -669,6 +669,14 @@ class StylesAndFormulas:
             # 计算基准样式（除公式外所有文字样式的交集）
             base_style = self._calculate_base_style(paragraph)
             paragraph.pdf_style = base_style
+            if paragraph.layout_label == "title" and base_style:
+                logger.debug(
+                    "Title base_style: font_id=%s font_size=%s paragraph=%s text=%s",
+                    base_style.font_id,
+                    base_style.font_size,
+                    paragraph.debug_id,
+                    (paragraph.unicode or "")[:60],
+                )
 
             # 重新组织段落中的文本，将相同样式的文本组合在一起
             new_compositions = []

@@ -298,6 +298,8 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
     result = result.replace(" ", " ")  # EM SPACE
     result = result.replace(" ", " ")  # THIN SPACE
     result = result.replace("​", "")   # ZERO-WIDTH SPACE (remove)
+    result = result.replace(" ", " ")  # NARROW NO-BREAK SPACE
+    result = result.replace(" ", " ")  # MEDIUM MATHEMATICAL SPACE
     normalize = unicodedata.normalize("NFKC", result)
     result = SPACE_REGEX.sub(" ", normalize).strip()
     return result

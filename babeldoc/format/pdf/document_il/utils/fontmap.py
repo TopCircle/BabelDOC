@@ -239,6 +239,12 @@ class FontMapper:
         if fallback_font_map_result is not None:
             return fallback_font_map_result
 
+        # If original is bold, prefer a bold fallback font to preserve
+        # weight (e.g. heading "Day 1" should stay bold after translation).
+        if bold:
+            for font in self.fallback_fonts:
+                if font.has_glyph(current_char) and font.is_bold:
+                    return font
         for font in self.fallback_fonts:
             if font.has_glyph(current_char):
                 return font
