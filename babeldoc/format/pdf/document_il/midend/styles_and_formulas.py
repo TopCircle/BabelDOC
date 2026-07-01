@@ -673,10 +673,20 @@ class StylesAndFormulas:
             base_style = self._calculate_base_style(paragraph)
             paragraph.pdf_style = base_style
             if paragraph.layout_label == "title" and base_style:
+                # Look up actual PdfFont from page's font list
+                _font_info = ""
+                if base_style.font_id and page.pdf_font:
+                    _matched = [f for f in page.pdf_font if f.font_id == base_style.font_id]
+                    if _matched:
+                        _f = _matched[0]
+                        _font_info = f" font_name={_f.name} bold={_f.bold} xref={_f.xref_id}"
+                    else:
+                        _font_info = f" (font_id not found in page.pdf_font)"
                 logger.warning(
-                    "Title base_style: font_id=%s font_size=%s paragraph=%s text=%s",
+                    "Title base_style: font_id=%s font_size=%s%s paragraph=%s text=%s",
                     base_style.font_id,
                     base_style.font_size,
+                    _font_info,
                     paragraph.debug_id,
                     (paragraph.unicode or "")[:60],
                 )

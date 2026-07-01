@@ -1528,7 +1528,16 @@ class Typesetting:
                     )
                     continue
                 font = get_font(font_id, paragraph.xobj_id)
-                if getattr(font, "bold", None):
+                # Log font info for all translated compositions (title detection + bold)
+                if getattr(paragraph, "layout_label", None) == "title":
+                    logger.warning(
+                        "typesetting: TITLE font_id=%s name=%s bold=%s size=%.1f text=%r",
+                        font_id, getattr(font, "name", "?"),
+                        getattr(font, "bold", None),
+                        style.font_size,
+                        (composition.pdf_same_style_unicode_characters.unicode or "")[:40],
+                    )
+                elif getattr(font, "bold", None):
                     logger.warning(
                         "typesetting: BOLD font_id=%s name=%s size=%.1f text=%r",
                         font_id, getattr(font, "name", "?"),
