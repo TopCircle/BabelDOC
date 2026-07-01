@@ -870,6 +870,42 @@ class ILTranslator:
         """
         return ILTranslator._MARKER_RE.sub("", text)
 
+    # Heading patterns: "第N课.", "第N章:", "DAY 3.", "LESSON 6." etc.
+    # Only matches when followed by content (not standalone numbers).
+    _HEADING_PUNCT_RE = re.compile(
+        r"^("
+        r"(?:第?\d+(?:课|章|节|天|部分|篇|讲|回))"
+        r"|(?:第?\d+(?:课|章|节|天|部分|篇|讲|回))\.\s*$"
+        r")\.\s*"
+    )
+    _HEADING_PUNCT_EN_RE = re.compile(
+        r"^(LESSON|CHAPTER|DAY|PART|SECTION|EXERCISE|APPENDIX)\s+\d+[\.:]\s*",
+        re.IGNORECASE,
+    )
+
+    @staticmethod
+    def _localize_heading_punctuation(text: str) -> str:
+        """Convert heading separator '.' to '：' for CJK output.
+
+        Only applies to recognized heading patterns:
+          '第2课. 小事...' → '第2课：小事...'
+          '第5章. 内容...' → '第5章：内容...'
+        Does NOT affect body text, version numbers (v2.0), or abbreviations.
+        """
+        # Try Chinese heading pattern first
+        m = ILTranslator._HEADING_PUNCT_RE.match(text)
+        if m:
+            # Replace the "." after the heading number with "："
+            end = m.end()
+            return text[:end].replace(".", "：", 1) + text[end:]
+
+        # The heading might already be translated — check for CJK heading + "."
+        # Pattern: CJK heading chars + digit(s) + ". " + rest
+        if re.match(r"^[一-鿿぀-ヿ]+\d+[\.：:]\s*\S", text):
+            text = re.sub(r"^([一-鿿぀-ヿ]+\d+)\.\s*", r"\1：", text)
+
+        return text
+
     @staticmethod
     def _is_cjk_char(ch: str) -> bool:
         """Check if a single character is CJK (Chinese/Japanese/Korean)."""
@@ -1323,6 +1359,18 @@ class ILTranslator:
         # directly instead of going through compositions.
         if "〖B" in paragraph.unicode:
             paragraph.unicode = ILTranslator._strip_style_markers(
+                paragraph.unicode
+            )
+
+        # Heading punctuation localization for CJK targets.
+        # English headings use "." as separator (e.g. "LESSON 6. Things..."),
+        # but Chinese uses "：" (e.g. "第6课：小事……").  Only apply to title
+        # paragraphs to avoid affecting body text, version numbers, etc.
+        if (
+            paragraph.layout_label == "title"
+            and self.translation_config.lang_out in ("zh", "zh-CN", "zh-TW", "ja", "ko")
+        ):
+            paragraph.unicode = self._localize_heading_punctuation(
                 paragraph.unicode
             )
         for composition in paragraph.pdf_paragraph_composition:

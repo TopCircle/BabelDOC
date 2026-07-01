@@ -247,6 +247,12 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
     # would falsely split words like "There" → "The re".
     SPACE_WIDTH_RATIO = 0.4
 
+    # Decorative text detection: skip space insertion for art layouts
+    # like "G e n t l y" where gaps are intentionally large.
+    skip_space_insertion = _is_decorative_text(
+        [c for c in chars if isinstance(c, PdfCharacter)]
+    )
+
     # 构建 unicode 字符串，根据间距插入空格
     unicode_chars = []
     for i in range(len(chars)):
@@ -276,11 +282,9 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
             curr_w = chars[i].box.x2 - chars[i].box.x
             next_w = chars[i + 1].box.x2 - chars[i + 1].box.x
             max_w = max(curr_w, next_w)
-            if (
-                max_w > 0 and distance > max_w * SPACE_WIDTH_RATIO
-            ) or Layout.is_newline(
-                chars[i],
-                chars[i + 1],
+            if not skip_space_insertion and (
+                (max_w > 0 and distance > max_w * SPACE_WIDTH_RATIO)
+                or Layout.is_newline(chars[i], chars[i + 1])
             ):
                 unicode_chars.append(" ")  # 添加空格
 
@@ -494,6 +498,54 @@ def _get_last_char_from_composition(
     return None
 
 
+def _is_decorative_text(chars: list[PdfCharacter]) -> bool:
+    """Detect decorative/artistic text layouts like 'G e n t l y'.
+
+    Pattern: most characters are single letters with inter-character gaps
+    much larger than normal word spacing (gap > 2x average character width).
+
+    Returns True if the character list looks like decorative spacing,
+    in which case _add_space_dummy_chars_to_list should skip space insertion.
+    """
+    if len(chars) < 3:
+        return False
+
+    # Count single-letter characters and their gaps
+    single_letter_count = 0
+    large_gap_count = 0
+    total_gaps = 0
+    char_widths = []
+    gaps = []
+
+    for i, c in enumerate(chars):
+        if not isinstance(c, PdfCharacter) or not c.visual_bbox:
+            continue
+        w = c.visual_bbox.box.x2 - c.visual_bbox.box.x
+        char_widths.append(w)
+        uc = (c.char_unicode or "").strip()
+        if len(uc) == 1 and uc.isalpha():
+            single_letter_count += 1
+
+        if i < len(chars) - 1 and isinstance(chars[i + 1], PdfCharacter):
+            next_c = chars[i + 1]
+            if next_c.visual_bbox:
+                gap = next_c.visual_bbox.box.x - c.visual_bbox.box.x2
+                gaps.append(gap)
+                total_gaps += 1
+                avg_w = (w + (next_c.visual_bbox.box.x2 - next_c.visual_bbox.box.x)) / 2
+                if avg_w > 0 and gap > avg_w * 2.0:
+                    large_gap_count += 1
+
+    if total_gaps < 2:
+        return False
+
+    # Decorative if: ≥70% single letters AND ≥50% large gaps
+    letter_ratio = single_letter_count / len(chars) if chars else 0
+    gap_ratio = large_gap_count / total_gaps
+
+    return letter_ratio >= 0.7 and gap_ratio >= 0.5
+
+
 def _add_space_dummy_chars_to_list(chars: list[PdfCharacter]) -> None:
     """
     在字符列表中的适当位置添加表示空格的 dummy 字符。
@@ -506,6 +558,13 @@ def _add_space_dummy_chars_to_list(chars: list[PdfCharacter]) -> None:
         chars: PdfCharacter 对象列表
     """
     if not chars:
+        return
+
+    # Decorative text detection: "G e n t l y", "C O N T E N T S", "D A Y"
+    # Pattern: most characters are single letters with gaps >> char width.
+    # If detected, skip space insertion entirely — these are art layouts,
+    # not word boundaries.
+    if _is_decorative_text(chars):
         return
 
     # Space threshold: gap must exceed this fraction of the wider character's
