@@ -1375,10 +1375,6 @@ class Typesetting:
             unit_width = unit.width * scale
             unit_height = unit.height * scale
 
-            # Apply decorative tracking (skip for spaces and line starts)
-            if decorative_tracking and not unit.is_space and current_x > box.x:
-                unit_width += decorative_tracking
-
             # 跳过行首的空格
             if current_x == box.x and unit.is_space:
                 continue
@@ -1417,15 +1413,17 @@ class Typesetting:
                 width_before_next_break_point = 0
 
             # 如果当前行放不下这个元素，换行
+            # Include tracking in width calculation for accurate line breaks
+            effective_width = unit_width + (decorative_tracking if not unit.is_space else 0)
             if not unit.is_hung_punctuation and (
-                (current_x + unit_width > box.x2)
+                (current_x + effective_width > box.x2)
                 or (
                     use_english_line_break
-                    and current_x + unit_width + width_before_next_break_point > box.x2
+                    and current_x + effective_width + width_before_next_break_point > box.x2
                 )
                 or (
                     unit.is_cannot_appear_in_line_end_punctuation
-                    and current_x + unit_width * 2 > box.x2
+                    and current_x + effective_width * 2 > box.x2
                 )
             ):
                 # 换行
@@ -1461,6 +1459,9 @@ class Typesetting:
             prev_x = current_x
             # 更新 x 坐标
             current_x = relocated_unit.box.x2
+            # Apply decorative tracking: add extra spacing after each character
+            if decorative_tracking and not unit.is_space:
+                current_x += decorative_tracking
             if prev_x > current_x:
                 logger.warning(f"坐标回绕！！！TypesettingUnit: {unit.box}, ")
 
