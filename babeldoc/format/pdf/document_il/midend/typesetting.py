@@ -1528,6 +1528,19 @@ class Typesetting:
                     )
                     continue
                 font = get_font(font_id, paragraph.xobj_id)
+                if logger.isEnabledFor(logging.DEBUG):
+                    _comp_preview = (
+                        composition.pdf_same_style_unicode_characters.unicode or ""
+                    )[:40]
+                    _font_name = getattr(font, "name", "?")
+                    _font_bold = getattr(font, "bold", None)
+                    logger.debug(
+                        "create_typesetting_units: font_id=%s font_name=%s "
+                        "bold=%s font_size=%s text=%r para=%s",
+                        font_id, _font_name, _font_bold,
+                        style.font_size, _comp_preview,
+                        paragraph.debug_id,
+                    )
                 if composition.pdf_same_style_unicode_characters.unicode:
                     result.extend(
                         [
