@@ -1093,12 +1093,12 @@ class ILTranslator:
     ) -> [PdfParagraphComposition]:
         result = []
 
-        # Trace translation I/O for diagnosing repeated text (#3)
-        # and style preservation (#5). Log when output differs from input.
-        _input_short = (input_text.unicode or "")[:30]
-        _output_short = (output or "")[:30]
-        if _input_short != _output_short:
-            logger.warning("TR_IN=%r TR_OUT=%r", _input_short, _output_short)
+        # Trace translation I/O to file for diagnosis (Docker truncates logs)
+        try:
+            with open("/tmp/translation_io.log", "a", encoding="utf-8") as _f:
+                _f.write(f"IN={input_text.unicode!r}\nOUT={output!r}\n---\n")
+        except Exception:
+            pass
 
         # 如果没有占位符，检查是否有 style_spans（非 LLM 翻译器的样式保留路径）
         if not input_text.placeholders:
