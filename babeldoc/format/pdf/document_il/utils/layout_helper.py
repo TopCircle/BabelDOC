@@ -244,8 +244,10 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
     # Space threshold: gap must exceed this fraction of the wider character's
     # width.  Using max(w1,w2) instead of avg(w1,w2) prevents narrow characters
     # (e.g. 'r'=2pt beside 'e'=5pt) from pulling the threshold too low, which
-    # would falsely split words like "There" → "The re".
-    SPACE_WIDTH_RATIO = 0.4
+    # would falsely split words like "There" → "The re".  Raised from 0.4 to
+    # 0.5 to fix residual fragments like "li ke" (from "like") and "ther"
+    # (from "There") caused by fonts with wider intra-word kerning.
+    SPACE_WIDTH_RATIO = 0.5
 
     # Decorative text detection: skip space insertion for art layouts
     # like "G e n t l y" where gaps are intentionally large.
@@ -445,7 +447,7 @@ def add_space_dummy_chars(paragraph: PdfParagraph) -> None:
             curr_w = curr_last_char.box.x2 - curr_last_char.box.x
             next_w = next_first_char.box.x2 - next_first_char.box.x
             max_w = max(curr_w, next_w)
-            SPACE_WIDTH_RATIO = 0.4
+            SPACE_WIDTH_RATIO = 0.5
             if not (max_w > 0 and distance > max_w * SPACE_WIDTH_RATIO):
                 continue
             # 创建一个 dummy 字符作为空格
@@ -612,7 +614,7 @@ def _add_space_dummy_chars_to_list(chars: list[PdfCharacter]) -> None:
 
     # Space threshold: gap must exceed this fraction of the wider character's
     # width, matching get_char_unicode_string's approach.
-    SPACE_WIDTH_RATIO = 0.4
+    SPACE_WIDTH_RATIO = 0.5
 
     i = 0
     while i < len(chars) - 1:
