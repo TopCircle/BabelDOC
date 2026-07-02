@@ -1094,13 +1094,13 @@ class ILTranslator:
         result = []
 
         # Trace translation I/O for diagnosing repeated text (#3)
-        # and style preservation (#5). Only log when style_spans present
-        # or when base_style has a bold font (title paragraphs).
+        # and style preservation (#5). Log when output differs from input
+        # or when style_spans present or base_style has a bold font.
         _n_spans = len(input_text.style_spans) if input_text.style_spans else 0
         _base_fid = getattr(input_text.base_style, "font_id", None) if input_text.base_style else None
-        if _n_spans > 0 or (_base_fid and "bold" in str(_base_fid).lower()):
-            _input_preview = (input_text.unicode or "")[:80]
-            _output_preview = (output or "")[:80]
+        _input_preview = (input_text.unicode or "")[:80]
+        _output_preview = (output or "")[:80]
+        if _input_preview != _output_preview:
             logger.warning(
                 "parse_translate: IN=%r OUT=%r spans=%d base_font=%s",
                 _input_preview, _output_preview, _n_spans, _base_fid,
