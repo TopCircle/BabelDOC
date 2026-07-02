@@ -1094,17 +1094,11 @@ class ILTranslator:
         result = []
 
         # Trace translation I/O for diagnosing repeated text (#3)
-        # and style preservation (#5). Log when output differs from input
-        # or when style_spans present or base_style has a bold font.
-        _n_spans = len(input_text.style_spans) if input_text.style_spans else 0
-        _base_fid = getattr(input_text.base_style, "font_id", None) if input_text.base_style else None
-        _input_preview = (input_text.unicode or "")[:80]
-        _output_preview = (output or "")[:80]
-        if _input_preview != _output_preview:
-            logger.warning(
-                "parse_translate: IN=%r OUT=%r spans=%d base_font=%s",
-                _input_preview, _output_preview, _n_spans, _base_fid,
-            )
+        # and style preservation (#5). Log when output differs from input.
+        _input_short = (input_text.unicode or "")[:30]
+        _output_short = (output or "")[:30]
+        if _input_short != _output_short:
+            logger.warning("TR_IN=%r TR_OUT=%r", _input_short, _output_short)
 
         # 如果没有占位符，检查是否有 style_spans（非 LLM 翻译器的样式保留路径）
         if not input_text.placeholders:
