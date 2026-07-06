@@ -1024,13 +1024,13 @@ class ILTranslator:
 
                 style = style_by_id.get(span_id)
                 if style:
-                    # Preserve the FULL original style (font_id, font_size,
-                    # graphic_state) — not just font_id.  The original PDF
-                    # author chose a specific size for a reason; normalizing
-                    # to base_style.font_size made bold text the wrong size.
-                    comp.pdf_same_style_unicode_characters.pdf_style = (
-                        copy.deepcopy(style)
-                    )
+                    # Preserve font_id (for bold/italic detection) and
+                    # graphic_state, but use base_style.font_size so that
+                    # bold text matches the surrounding normal text size.
+                    merged = copy.deepcopy(style)
+                    if input_text.base_style and input_text.base_style.font_size:
+                        merged.font_size = input_text.base_style.font_size
+                    comp.pdf_same_style_unicode_characters.pdf_style = merged
                 else:
                     comp.pdf_same_style_unicode_characters.pdf_style = (
                         input_text.base_style
