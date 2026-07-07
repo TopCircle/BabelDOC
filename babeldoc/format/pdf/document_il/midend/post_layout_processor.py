@@ -465,21 +465,19 @@ class OverlapResolver:
     ) -> Box | None:
         """计算收缩后的 box。
 
+        收缩策略（PDF 坐标系，y 向上）：
+        - shrink 在 keep 之下 → 收缩顶部 (new_y2 = keep.y - 1)
+        - shrink 在 keep 之上 → 收缩底部 (new_y = keep.y2 + 1)
+        - 两者同时（containment）→ 优先收缩底部
+
         Returns:
             收缩后的 Box，或 None 如果无法收缩。
         """
-        if shrink_box.y < keep_box.y2:
-            # shrink 段落在 keep 之下 → 收缩顶部
-            new_y2 = keep_box.y - 1
-            if new_y2 > layout_box.y:
-                return Box(
-                    x=layout_box.x,
-                    y=layout_box.y,
-                    x2=layout_box.x2,
-                    y2=new_y2,
-                )
-        elif shrink_box.y2 > keep_box.y2:
-            # shrink 段落在 keep 之上 → 收缩底部
+        extends_below = shrink_box.y < keep_box.y2
+        extends_above = shrink_box.y2 > keep_box.y2
+
+        if extends_above:
+            # shrink 顶部在 keep 之上 → 收缩底部
             new_y = keep_box.y2 + 1
             if new_y < (layout_box.y2 or float("inf")):
                 return Box(
@@ -487,6 +485,16 @@ class OverlapResolver:
                     y=new_y,
                     x2=layout_box.x2,
                     y2=layout_box.y2,
+                )
+        if extends_below:
+            # shrink 底部在 keep 之下 → 收缩顶部
+            new_y2 = keep_box.y - 1
+            if new_y2 > layout_box.y:
+                return Box(
+                    x=layout_box.x,
+                    y=layout_box.y,
+                    x2=layout_box.x2,
+                    y2=new_y2,
                 )
         return None
 
