@@ -148,7 +148,15 @@ class GeometryCache:
             elif comp.pdf_same_style_characters:
                 chars.extend(comp.pdf_same_style_characters.pdf_character)
             # pdf_same_style_unicode_characters 无 pdf_character 字段，跳过
-        chars = [c for c in chars if c.box is not None]
+        chars = [
+            c
+            for c in chars
+            if c.box is not None
+            and c.box.x is not None
+            and c.box.y is not None
+            and c.box.x2 is not None
+            and c.box.y2 is not None
+        ]
         if not chars:
             return None
         return Box(
@@ -309,6 +317,13 @@ class OverlapDetector:
         Returns:
             (iou, coverage) — iou = intersection/union, coverage = intersection/smaller_area
         """
+        # Box 坐标字段可能为 None，提前检查
+        if any(
+            v is None
+            for v in (b1.x, b1.y, b1.x2, b1.y2, b2.x, b2.y, b2.x2, b2.y2)
+        ):
+            return 0.0, 0.0
+
         inter_x = max(b1.x, b2.x)
         inter_y = max(b1.y, b2.y)
         inter_x2 = min(b1.x2, b2.x2)

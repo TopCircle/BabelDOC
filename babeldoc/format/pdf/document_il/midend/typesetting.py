@@ -1258,7 +1258,15 @@ class Typesetting:
                 chars.extend(composition.pdf_same_style_characters.pdf_character)
             # pdf_same_style_unicode_characters 无 pdf_character 字段，跳过
 
-        chars = [c for c in chars if c.box is not None]
+        chars = [
+            c
+            for c in chars
+            if c.box is not None
+            and c.box.x is not None
+            and c.box.y is not None
+            and c.box.x2 is not None
+            and c.box.y2 is not None
+        ]
         if not chars:
             return None
 
