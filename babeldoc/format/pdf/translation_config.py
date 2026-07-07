@@ -221,6 +221,7 @@ class TranslationConfig:
         skip_footer: bool = False,
         header_height: float = 40,
         footer_height: float = 40,
+        enable_post_layout_optimization: bool = False,
     ):
         self.translator = translator
         self.term_extraction_translator = term_extraction_translator or translator
@@ -390,6 +391,7 @@ class TranslationConfig:
             float(footer_height if footer_height is not None else 0),
             0.0,
         )
+        self.enable_post_layout_optimization = enable_post_layout_optimization
 
         if self.ocr_workaround:
             self.remove_non_formula_lines = False

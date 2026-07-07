@@ -2,6 +2,7 @@ import asyncio
 import copy
 import hashlib
 import io
+import json
 import logging
 import pathlib
 import re
@@ -1042,6 +1043,25 @@ def _do_translate_single(
             docs,
             translation_config.get_working_file_path("typsetting.json"),
         )
+
+    if translation_config.enable_post_layout_optimization:
+        from babeldoc.format.pdf.document_il.midend.post_layout_processor import (
+            DocumentContext,
+            OverlapDetector,
+            PostLayoutProcessor,
+        )
+
+        context = DocumentContext.from_document(docs)
+        processor = PostLayoutProcessor(context)
+        processor.register_detector(OverlapDetector())
+        report = processor.run()
+        if translation_config.debug:
+            debug_path = translation_config.get_working_file_path(
+                "post_layout_report.json"
+            )
+            with open(debug_path, "w", encoding="utf-8") as f:
+                json.dump(report.debug_output, f, indent=2, ensure_ascii=False)
+            logger.debug(f"PostLayout report saved to {debug_path}")
 
     pdf_creater = PDFCreater(temp_pdf_path, docs, translation_config, mediabox_data)
     result = pdf_creater.write(translation_config)

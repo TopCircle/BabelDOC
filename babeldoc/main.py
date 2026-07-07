@@ -408,6 +408,12 @@ def create_parser():
         default=40,
         help="Footer region height in PDF points for --skip-footer (default: 40).",
     )
+    translation_group.add_argument(
+        "--enable-post-layout-optimization",
+        action="store_true",
+        default=False,
+        help="Enable post-layout optimization pass that detects paragraph overlaps after typesetting (Phase 1: detection only).",
+    )
     # service option argument group
     service_group = translation_group.add_mutually_exclusive_group()
     service_group.add_argument(
@@ -757,6 +763,7 @@ async def main():
             skip_footer=args.skip_footer,
             header_height=args.header_height,
             footer_height=args.footer_height,
+            enable_post_layout_optimization=args.enable_post_layout_optimization,
         )
 
         def nop(_x):

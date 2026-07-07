@@ -1252,6 +1252,11 @@ class Typesetting:
                 chars.append(composition.pdf_character)
             elif composition.pdf_line:
                 chars.extend(composition.pdf_line.pdf_character)
+            elif composition.pdf_formula:
+                chars.extend(composition.pdf_formula.pdf_character)
+            elif composition.pdf_same_style_characters:
+                chars.extend(composition.pdf_same_style_characters.pdf_character)
+            # pdf_same_style_unicode_characters 无 pdf_character 字段，跳过
 
         chars = [c for c in chars if c.box is not None]
         if not chars:
@@ -1263,49 +1268,23 @@ class Typesetting:
         max_y = max(c.box.y2 for c in chars)
         return Box(x=min_x, y=min_y, x2=max_x, y2=max_y)
 
-    # 正文类 label——这些段落优先保留不动，非正文类段落做收缩。
-    _MAIN_TEXT_LABELS = frozenset({
-        "text", "content", "paragraph", "plain text", "abstract",
-        "list_item", "title", "paragraph_title", "doc_title",
-    })
-
     @staticmethod
     def _bbox_overlap(b1: Box, b2: Box) -> bool:
         return b1.x < b2.x2 and b1.x2 > b2.x and b1.y < b2.y2 and b1.y2 > b2.y
 
-    def _should_fix_overlap(self, p1: il_version_1.PdfParagraph, p2: il_version_1.PdfParagraph) -> bool:
-        """判断两个段落的重叠是否需要修正。
-
-        同 label 且纵向包含关系的重叠通常是同一个逻辑段落被拆分的结果，跳过；
-        不同 label 的重叠（正文 vs 引用框等）需要修正。
-        """
-        label1 = getattr(p1, "layout_label", None)
-        label2 = getattr(p2, "layout_label", None)
-        # 不同 label 的重叠一定是真正需要修的
-        if label1 != label2:
-            return True
-        # 同 label：只有当两者都不属于正文类时才修（两个引用框重叠之类的罕见情况）
-        if label1 not in self._MAIN_TEXT_LABELS:
-            return True
-        # 同为正文类 label 的重叠通常是同一段落的拆分，跳过
-        return False
-
-    def _get_priority(self, paragraph: il_version_1.PdfParagraph) -> int:
-        """返回段落的优先级，数值越小越优先保留（不被收缩）。"""
-        label = getattr(paragraph, "layout_label", None)
-        if label in self._MAIN_TEXT_LABELS:
-            return 0  # 正文最优先
-        return 1  # 引用框/图注/表注等靠后
+    @staticmethod
+    def _is_bbox_contain_in_vertical(b1: Box, b2: Box) -> bool:
+        b1_in_b2 = b1.y > b2.y and b1.y2 < b2.y2
+        b2_in_b1 = b2.y > b1.y and b2.y2 < b1.y2
+        return b1_in_b2 or b2_in_b1
 
     def fix_overlapping_paragraphs_post_typesetting(self, page: il_version_1.Page):
         """译文排版完成后，对实际渲染结果做完整的二维重叠检测与修正。
 
         发现重叠时不能像 paragraph_finder 那样简单挪动 box.y——译文字符已经
-        画出来了。这里的策略是：保留优先级更高的段落（正文类）不动，收缩
-        优先级更低的段落（引用框/图注等），再用它已经算好的 optimal_scale
+        画出来了。这里的策略是：保留 render_order 更靠前的段落不动，收缩
+        render_order 更靠后的段落的可用高度，再用它已经算好的 optimal_scale
         重新排版一次（自动降低缩放/换行来避开冲突区域）。
-
-        同时处理纵向重叠（上下方向侵入）和横向重叠（左右方向侵入）两种情况。
         """
         paragraphs = [p for p in page.pdf_paragraph if p.pdf_paragraph_composition]
         if len(paragraphs) < 2:
@@ -1332,65 +1311,66 @@ class Typesetting:
                         continue
                     if not self._bbox_overlap(b1, b2):
                         continue
-                    if not self._should_fix_overlap(p1, p2):
+                    if self._is_bbox_contain_in_vertical(b1, b2):
                         continue
 
                     overlap_found = True
 
-                    # 按优先级决定保留谁、收缩谁（优先级低的被收缩）
-                    p1_pri = self._get_priority(p1)
-                    p2_pri = self._get_priority(p2)
-                    if p1_pri < p2_pri or (p1_pri == p2_pri and (p1.render_order or 0) <= (p2.render_order or 0)):
-                        keep_para, keep_box = p1, b1
-                        shrink_para, shrink_box = p2, b2
+                    if (p1.render_order or 0) <= (p2.render_order or 0):
+                        keep_box, shrink, shrink_box = b1, p2, b2
                     else:
-                        keep_para, keep_box = p2, b2
-                        shrink_para, shrink_box = p1, b1
+                        keep_box, shrink, shrink_box = b2, p1, b1
 
-                    if shrink_para.box is None:
+                    if shrink.box is None:
                         continue
 
-                    # 计算纵向和横向的重叠量，选重叠更大的方向做修正
-                    y_overlap = min(shrink_box.y2, keep_box.y2) - max(shrink_box.y, keep_box.y)
-                    x_overlap = min(shrink_box.x2, keep_box.x2) - max(shrink_box.x, keep_box.x)
-
-                    new_box = None
-                    if y_overlap >= x_overlap:
-                        # 纵向重叠：收缩被收缩段落的 y2 到保留段落的 y 以下
+                    if shrink_box.y < keep_box.y2:
+                        # shrink 段落在 keep 段落之下 → 收缩 shrink 顶部
                         new_y2 = keep_box.y - 1
-                        if new_y2 > shrink_para.box.y:
-                            new_box = Box(
-                                x=shrink_para.box.x,
-                                y=shrink_para.box.y,
-                                x2=shrink_para.box.x2,
+                        if new_y2 > shrink.box.y:
+                            shrink.box = Box(
+                                x=shrink.box.x,
+                                y=shrink.box.y,
+                                x2=shrink.box.x2,
                                 y2=new_y2,
                             )
-                    else:
-                        # 横向重叠：收缩被收缩段落的 x2 到保留段落的 x 以前
-                        new_x2 = keep_box.x - 1
-                        if new_x2 > shrink_para.box.x:
-                            new_box = Box(
-                                x=shrink_para.box.x,
-                                y=shrink_para.box.y,
-                                x2=new_x2,
-                                y2=shrink_para.box.y2,
+                    elif shrink_box.y2 > keep_box.y2:
+                        # shrink 段落在 keep 段落之上 → 收缩 shrink 底部
+                        new_y = keep_box.y2 + 1
+                        if new_y < (shrink.box.y2 or float("inf")):
+                            shrink.box = Box(
+                                x=shrink.box.x,
+                                y=new_y,
+                                x2=shrink.box.x2,
+                                y2=shrink.box.y2,
                             )
+                        else:
+                            continue
+                    else:
+                        continue
 
-                    if new_box is not None:
-                        shrink_para.box = new_box
+                    # 重新排版（异常安全：保存旧 composition 以便恢复）
+                    old_compositions = shrink.pdf_paragraph_composition[:]
+                    try:
                         fonts = self._collect_fonts_for_page(page)
                         typesetting_units = self.create_typesetting_units(
-                            shrink_para, fonts
+                            shrink, fonts
                         )
-                        precomputed_scale = shrink_para.optimal_scale or 1.0
-                        shrink_para.pdf_paragraph_composition = []
+                        precomputed_scale = shrink.optimal_scale or 1.0
+                        shrink.pdf_paragraph_composition = []
                         self.retypeset_with_precomputed_scale(
-                            shrink_para, page, typesetting_units, precomputed_scale
+                            shrink, page, typesetting_units, precomputed_scale
                         )
-                        self._update_paragraph_render_order(shrink_para)
-                        new_rendered_box = self._recompute_rendered_box(shrink_para)
-                        if new_rendered_box is not None:
-                            rendered_boxes[id(shrink_para)] = new_rendered_box
+                        self._update_paragraph_render_order(shrink)
+                        new_box = self._recompute_rendered_box(shrink)
+                        if new_box is not None:
+                            rendered_boxes[id(shrink)] = new_box
+                    except Exception:
+                        shrink.pdf_paragraph_composition = old_compositions
+                        logger.warning(
+                            f"Page {page.page_number}: 段落重新排版失败，"
+                            "已恢复原始 composition。"
+                        )
 
             if not overlap_found:
                 break
