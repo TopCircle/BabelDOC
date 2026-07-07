@@ -12,8 +12,12 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
 from babeldoc.format.pdf.document_il.midend.post_layout_processor import (
     DocumentContext,
+    FixAction,
     GeometryCache,
+    LayoutIssue,
     OverlapDetector,
+    OverlapFixer,
+    OverlapResolver,
     PostLayoutProcessor,
 )
 
@@ -501,3 +505,287 @@ class TestBboxEvidenceSnapshot:
         # evidence 不应受影响
         assert report.issues[0].bbox_evidence == evidence_before
         assert report.issues[0].bbox_evidence["p1"]["x"] == 0  # 原始值
+
+
+# ──────────────────────────────────────────────────────────────
+# Phase 2: OverlapResolver 测试
+# ──────────────────────────────────────────────────────────────
+
+
+class TestOverlapResolver:
+    """测试 OverlapResolver 的修复决策逻辑。"""
+
+    def test_resolve_shrink_from_above(self):
+        """shrink 段落在 keep 之下 → 收缩顶部。"""
+        # Paragraph A (render_order=0): y=0..60, rendered y=0..60
+        para_a = _make_paragraph(
+            chars=[_make_char(0, 0, 100, 60)],
+            layout_box=Box(x=0, y=0, x2=100, y2=60),
+            render_order=0,
+        )
+        # Paragraph B (render_order=1): y=40..100, rendered y=40..100
+        para_b = _make_paragraph(
+            chars=[_make_char(0, 40, 100, 100)],
+            layout_box=Box(x=0, y=40, x2=100, y2=100),
+            render_order=1,
+        )
+
+        page = _make_page([para_a, para_b])
+        doc = _make_document([page])
+
+        context = DocumentContext.from_document(doc)
+        resolver = OverlapResolver()
+
+        # 创建一个 overlap issue
+        issues = [LayoutIssue(
+            page_id=0,
+            detector_name="test",
+            issue_type="overlap",
+            affected_paragraph_ids=(0, 1),
+            iou=0.1,
+            coverage=0.2,
+            description="test overlap",
+        )]
+
+        actions = resolver.resolve_all(issues, context)
+
+        assert len(actions) == 1
+        action = actions[0]
+        # B 的 render_order 更高，应该被收缩
+        assert action.shrink_paragraph_id == 1
+        assert action.keep_paragraph_id == 0
+        # 收缩顶部：new_y2 = keep_box.y - 1 = -1
+        # 但 shrink.box.y = 40, -1 < 40 所以 new_box 应该为 None
+        # 等等，这里 keep_box.y = 0, new_y2 = -1, -1 > 40? 不对
+        # 让我重新想：shrink_box.y=40, keep_box.y2=60
+        # 40 < 60 → shrink 在 keep 之下 → new_y2 = keep_box.y - 1 = -1
+        # -1 > shrink.box.y(40)? No → 返回 None
+        # 这说明当段落高度重叠时，收缩可能失败
+        # 实际上应该 shrink 段落在 keep 之上时收缩底部
+        # 让我重新检查：shrink_box.y2=100 > keep_box.y2=60
+        # 所以应该走 elif 分支，收缩底部
+        assert action.new_box is not None
+        # new_y = keep_box.y2 + 1 = 61
+        assert action.new_box.y == 61
+
+    def test_resolve_no_action_when_no_overlap(self):
+        """没有 overlap issue 时不生成 FixAction。"""
+        context = DocumentContext.from_document(_make_document([_make_page([])]))
+        resolver = OverlapResolver()
+        actions = resolver.resolve_all([], context)
+        assert len(actions) == 0
+
+    def test_resolve_merges_constraints_for_same_paragraph(self):
+        """同一段落出现在多个 issue 中时，合并为最严格的约束。"""
+        # 三个段落：A, B, C
+        # A-B 重叠，A-C 重叠
+        # A 都是 keep（render_order 最低）
+        # B 和 C 都要收缩
+        para_a = _make_paragraph(
+            chars=[_make_char(0, 0, 100, 100)],
+            layout_box=Box(x=0, y=0, x2=100, y2=100),
+            render_order=0,
+        )
+        para_b = _make_paragraph(
+            chars=[_make_char(0, 80, 100, 150)],
+            layout_box=Box(x=0, y=80, x2=100, y2=150),
+            render_order=1,
+        )
+        para_c = _make_paragraph(
+            chars=[_make_char(0, 90, 100, 160)],
+            layout_box=Box(x=0, y=90, x2=100, y2=160),
+            render_order=2,
+        )
+
+        page = _make_page([para_a, para_b, para_c])
+        doc = _make_document([page])
+
+        context = DocumentContext.from_document(doc)
+        resolver = OverlapResolver()
+
+        issues = [
+            LayoutIssue(
+                page_id=0, detector_name="test", issue_type="overlap",
+                affected_paragraph_ids=(0, 1), iou=0.1, coverage=0.2,
+                description="A-B overlap",
+            ),
+            LayoutIssue(
+                page_id=0, detector_name="test", issue_type="overlap",
+                affected_paragraph_ids=(0, 2), iou=0.1, coverage=0.2,
+                description="A-C overlap",
+            ),
+        ]
+
+        actions = resolver.resolve_all(issues, context)
+
+        # B 和 C 各有一个 FixAction
+        assert len(actions) == 2
+        action_pids = {a.shrink_paragraph_id for a in actions}
+        assert action_pids == {1, 2}
+
+
+# ──────────────────────────────────────────────────────────────
+# Phase 2: OverlapFixer 测试（需要 mock Typesetting）
+# ──────────────────────────────────────────────────────────────
+
+
+class _MockTypesetting:
+    """模拟 Typesetting，不执行实际排版。"""
+
+    def __init__(self):
+        self.retypeset_calls = []
+
+    def _collect_fonts_for_page(self, page):
+        return {}
+
+    def create_typesetting_units(self, paragraph, fonts):
+        return []
+
+    def retypeset_with_precomputed_scale(
+        self, paragraph, page, typesetting_units, precomputed_scale
+    ):
+        self.retypeset_calls.append({
+            "paragraph": paragraph,
+            "page": page,
+            "scale": precomputed_scale,
+        })
+        # 模拟排版：添加一个 composition
+        paragraph.pdf_paragraph_composition = [
+            PdfParagraphComposition(
+                pdf_character=_make_char(
+                    paragraph.box.x,
+                    paragraph.box.y,
+                    paragraph.box.x2,
+                    paragraph.box.y + 10,
+                )
+            )
+        ]
+
+    def _update_paragraph_render_order(self, paragraph):
+        pass
+
+
+class TestOverlapFixer:
+    """测试 OverlapFixer 的修复执行。"""
+
+    def test_apply_fix_success(self):
+        """成功修复：修改 box 并重新排版。"""
+        para = _make_paragraph(
+            chars=[_make_char(0, 0, 100, 100)],
+            layout_box=Box(x=0, y=0, x2=100, y2=100),
+            render_order=1,
+        )
+        page = _make_page([para])
+        doc = _make_document([page])
+
+        context = DocumentContext.from_document(doc)
+        mock_typesetter = _MockTypesetting()
+        fixer = OverlapFixer(mock_typesetter)
+
+        action = FixAction(
+            shrink_paragraph_id=0,
+            keep_paragraph_id=0,
+            new_box=Box(x=0, y=50, x2=100, y2=100),
+        )
+
+        success = fixer.apply_fix(context, action)
+
+        assert success is True
+        assert para.box.y == 50
+        assert len(mock_typesetter.retypeset_calls) == 1
+
+    def test_apply_fix_rollback_on_failure(self):
+        """修复失败时回滚到原始状态。"""
+        para = _make_paragraph(
+            chars=[_make_char(0, 0, 100, 100)],
+            layout_box=Box(x=0, y=0, x2=100, y2=100),
+            render_order=1,
+        )
+        page = _make_page([para])
+        doc = _make_document([page])
+
+        context = DocumentContext.from_document(doc)
+
+        # 创建一个会抛异常的 mock
+        class _FailingTypesetting(_MockTypesetting):
+            def retypeset_with_precomputed_scale(self, *args, **kwargs):
+                raise RuntimeError("font not found")
+
+        fixer = OverlapFixer(_FailingTypesetting())
+
+        old_box = para.box
+        old_comps = para.pdf_paragraph_composition[:]
+
+        action = FixAction(
+            shrink_paragraph_id=0,
+            keep_paragraph_id=0,
+            new_box=Box(x=0, y=50, x2=100, y2=100),
+        )
+
+        success = fixer.apply_fix(context, action)
+
+        assert success is False
+        # 回滚：box 和 composition 恢复
+        assert para.box == old_box
+        assert para.pdf_paragraph_composition == old_comps
+
+
+# ──────────────────────────────────────────────────────────────
+# Phase 2: PostLayoutProcessor 修复循环测试
+# ──────────────────────────────────────────────────────────────
+
+
+class TestPostLayoutProcessorFixLoop:
+    """测试 PostLayoutProcessor 的 detect→fix→re-detect 循环。"""
+
+    def test_dry_run_does_not_fix(self):
+        """dry_run=True 时不修复。"""
+        para_a = _make_paragraph(
+            chars=[_make_char(0, 0, 100, 60)],
+            layout_box=Box(x=0, y=0, x2=100, y2=60),
+            render_order=0,
+        )
+        para_b = _make_paragraph(
+            chars=[_make_char(0, 40, 100, 100)],
+            layout_box=Box(x=0, y=40, x2=100, y2=100),
+            render_order=1,
+        )
+
+        page = _make_page([para_a, para_b])
+        doc = _make_document([page])
+
+        context = DocumentContext.from_document(doc)
+        mock_typesetter = _MockTypesetting()
+        processor = PostLayoutProcessor(context, typesetter=mock_typesetter)
+        processor.register_detector(OverlapDetector())
+
+        report = processor.run(dry_run=True)
+
+        assert report.metrics.issues_fixed == 0
+        assert report.metrics.iterations == 0
+        assert len(mock_typesetter.retypeset_calls) == 0
+
+    def test_no_typesetter_does_not_fix(self):
+        """typesetter=None 时不修复。"""
+        para_a = _make_paragraph(
+            chars=[_make_char(0, 0, 100, 60)],
+            layout_box=Box(x=0, y=0, x2=100, y2=60),
+            render_order=0,
+        )
+        para_b = _make_paragraph(
+            chars=[_make_char(0, 40, 100, 100)],
+            layout_box=Box(x=0, y=40, x2=100, y2=100),
+            render_order=1,
+        )
+
+        page = _make_page([para_a, para_b])
+        doc = _make_document([page])
+
+        context = DocumentContext.from_document(doc)
+        processor = PostLayoutProcessor(context, typesetter=None)
+        processor.register_detector(OverlapDetector())
+
+        report = processor.run(dry_run=False)
+
+        assert report.metrics.issues_fixed == 0
+        assert report.metrics.iterations == 0

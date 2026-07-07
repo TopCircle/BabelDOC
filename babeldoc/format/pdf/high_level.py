@@ -1036,7 +1036,8 @@ def _do_translate_single(
         mono_watermark_first_page_doc_bytes = None
         dual_watermark_first_page_doc_bytes = None
 
-    Typesetting(translation_config).typesetting_document(docs)
+    typesetter = Typesetting(translation_config)
+    typesetter.typesetting_document(docs)
     logger.debug(f"finish typsetting from {temp_pdf_path}")
     if translation_config.debug:
         xml_converter.write_json(
@@ -1052,7 +1053,7 @@ def _do_translate_single(
         )
 
         context = DocumentContext.from_document(docs)
-        processor = PostLayoutProcessor(context)
+        processor = PostLayoutProcessor(context, typesetter=typesetter)
         processor.register_detector(OverlapDetector())
         report = processor.run()
         if translation_config.debug:

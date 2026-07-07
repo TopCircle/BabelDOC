@@ -28,6 +28,12 @@ from babeldoc.format.pdf.document_il.il_version_1 import Document
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 
+# 避免循环导入：TYPE_CHECKING 时导入 Typesetting
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,6 +64,15 @@ class LayoutIssue:
     coverage: float  # intersection / smaller_box_area
     description: str
     bbox_evidence: dict = field(default_factory=dict)
+
+
+@dataclass
+class FixAction:
+    """单个修复动作。"""
+
+    shrink_paragraph_id: int  # 要收缩的段落
+    keep_paragraph_id: int  # 保持不变的段落
+    new_box: Box  # 收缩后的 box
 
 
 @dataclass
@@ -349,16 +364,236 @@ class OverlapDetector:
 
 
 # ──────────────────────────────────────────────────────────────
+# OverlapResolver
+# ──────────────────────────────────────────────────────────────
+
+
+class OverlapResolver:
+    """将 LayoutIssue 解析为 FixAction。
+
+    决策逻辑：
+    - render_order 更低的段落保持不变
+    - shrink 段落在 keep 之下 → 收缩顶部 (new_y2 = keep_box.y - 1)
+    - shrink 段落在 keep 之上 → 收缩底部 (new_y = keep_box.y2 + 1)
+    - 同一段落出现在多个 issue 中时，合并为最严格的约束
+    """
+
+    def resolve_all(
+        self, issues: list[LayoutIssue], context: DocumentContext
+    ) -> list[FixAction]:
+        """为所有 issue 生成修复动作列表。
+
+        同一段落只生成一个 FixAction（最严格的约束）。
+        """
+        # {paragraph_id: (new_box, keep_paragraph_id)}
+        constraints: dict[int, tuple[Box, int]] = {}
+
+        for issue in issues:
+            if issue.issue_type != "overlap":
+                continue
+
+            pid_i, pid_j = issue.affected_paragraph_ids
+            para_i = context.get_paragraph(pid_i)
+            para_j = context.get_paragraph(pid_j)
+            if para_i is None or para_j is None:
+                continue
+
+            geom_i = context.geometry_cache.get_geometry(pid_i)
+            geom_j = context.geometry_cache.get_geometry(pid_j)
+            box_i = geom_i.rendered_box
+            box_j = geom_j.rendered_box
+            if box_i is None or box_j is None:
+                continue
+
+            # 确定 keep / shrink
+            if (para_i.render_order or 0) <= (para_j.render_order or 0):
+                keep_para, shrink_para = para_i, para_j
+                keep_box, shrink_box = box_i, box_j
+            else:
+                keep_para, shrink_para = para_j, para_i
+                keep_box, shrink_box = box_j, box_i
+
+            if shrink_para.box is None:
+                continue
+
+            # 确定收缩方向
+            new_box = self._compute_shrunk_box(
+                shrink_para.box, shrink_box, keep_box
+            )
+            if new_box is None:
+                continue
+
+            # 合并约束：如果同一段落已有约束，取更严格的
+            shrink_pid = self._find_paragraph_id(context, shrink_para)
+            if shrink_pid is None:
+                continue
+
+            # keep_paragraph_id: 取 render_order 最低的那个
+            keep_pid = self._find_paragraph_id(context, keep_para)
+            if keep_pid is None:
+                continue
+
+            if shrink_pid in constraints:
+                existing_box, existing_keep = constraints[shrink_pid]
+                merged = self._merge_constraints(existing_box, new_box)
+                constraints[shrink_pid] = (merged, existing_keep)
+            else:
+                constraints[shrink_pid] = (new_box, keep_pid)
+
+        return [
+            FixAction(
+                shrink_paragraph_id=pid,
+                keep_paragraph_id=keep_pid,
+                new_box=new_box,
+            )
+            for pid, (new_box, keep_pid) in constraints.items()
+        ]
+
+    @staticmethod
+    def _find_paragraph_id(
+        context: DocumentContext, para: PdfParagraph
+    ) -> int | None:
+        """从 context 中找到段落的 paragraph_id。"""
+        for pid, p in context.paragraphs.items():
+            if p is para:
+                return pid
+        return None
+
+    @staticmethod
+    def _compute_shrunk_box(
+        layout_box: Box, shrink_box: Box, keep_box: Box
+    ) -> Box | None:
+        """计算收缩后的 box。
+
+        Returns:
+            收缩后的 Box，或 None 如果无法收缩。
+        """
+        if shrink_box.y < keep_box.y2:
+            # shrink 段落在 keep 之下 → 收缩顶部
+            new_y2 = keep_box.y - 1
+            if new_y2 > layout_box.y:
+                return Box(
+                    x=layout_box.x,
+                    y=layout_box.y,
+                    x2=layout_box.x2,
+                    y2=new_y2,
+                )
+        elif shrink_box.y2 > keep_box.y2:
+            # shrink 段落在 keep 之上 → 收缩底部
+            new_y = keep_box.y2 + 1
+            if new_y < (layout_box.y2 or float("inf")):
+                return Box(
+                    x=layout_box.x,
+                    y=new_y,
+                    x2=layout_box.x2,
+                    y2=layout_box.y2,
+                )
+        return None
+
+    @staticmethod
+    def _merge_constraints(box_a: Box, box_b: Box) -> Box:
+        """合并两个约束，取更严格的（更小的有效区域）。"""
+        # 取两个 box 的交集作为合并结果
+        return Box(
+            x=max(box_a.x or 0, box_b.x or 0),
+            y=max(box_a.y or 0, box_b.y or 0),
+            x2=min(box_a.x2 or float("inf"), box_b.x2 or float("inf")),
+            y2=min(box_a.y2 or float("inf"), box_b.y2 or float("inf")),
+        )
+
+
+# ──────────────────────────────────────────────────────────────
+# OverlapFixer
+# ──────────────────────────────────────────────────────────────
+
+
+class OverlapFixer:
+    """应用 FixAction：收缩 box + 重新排版。"""
+
+    def __init__(self, typesetter: Typesetting):
+        self._typesetter = typesetter
+
+    def apply_fix(
+        self, context: DocumentContext, action: FixAction
+    ) -> bool:
+        """应用单个修复动作。
+
+        Returns:
+            True 表示成功，False 表示失败（已回滚）。
+        """
+        para = context.get_paragraph(action.shrink_paragraph_id)
+        if para is None:
+            return False
+
+        page_id = context.paragraph_page.get(action.shrink_paragraph_id)
+        if page_id is None:
+            return False
+        page = context.get_page(page_id)
+        if page is None:
+            return False
+
+        # 保存旧状态用于回滚
+        old_box = para.box
+        old_compositions = para.pdf_paragraph_composition[:]
+
+        try:
+            # 收缩 box
+            para.box = action.new_box
+
+            # 重新排版
+            fonts = self._typesetter._collect_fonts_for_page(page)
+            typesetting_units = self._typesetter.create_typesetting_units(
+                para, fonts
+            )
+            precomputed_scale = para.optimal_scale or 1.0
+            para.pdf_paragraph_composition = []
+            self._typesetter.retypeset_with_precomputed_scale(
+                para, page, typesetting_units, precomputed_scale
+            )
+            self._typesetter._update_paragraph_render_order(para)
+
+            # 失效几何缓存
+            context.geometry_cache.invalidate(action.shrink_paragraph_id)
+
+            logger.debug(
+                f"Fixed paragraph {action.shrink_paragraph_id}: "
+                f"box {old_box} → {action.new_box}"
+            )
+            return True
+
+        except Exception:
+            # 回滚
+            para.box = old_box
+            para.pdf_paragraph_composition = old_compositions
+            logger.warning(
+                f"Failed to fix paragraph {action.shrink_paragraph_id}, "
+                "rolled back."
+            )
+            return False
+
+
+# ──────────────────────────────────────────────────────────────
 # PostLayoutProcessor
 # ──────────────────────────────────────────────────────────────
 
 
 class PostLayoutProcessor:
-    """主编排器。Phase 1: 只读检测 + 报告。"""
+    """主编排器。
 
-    def __init__(self, context: DocumentContext):
+    Phase 1: 只读检测 + 报告（typesetter=None 或 dry_run=True）。
+    Phase 2: 检测 + 修复循环（需要 typesetter）。
+    """
+
+    def __init__(
+        self,
+        context: DocumentContext,
+        typesetter: Typesetting | None = None,
+    ):
         self.context = context
+        self.typesetter = typesetter
         self.detectors: list[OverlapDetector] = []
+        self.resolver = OverlapResolver()
+        self.fixer = OverlapFixer(typesetter) if typesetter else None
 
     def register_detector(self, detector: OverlapDetector):
         self.detectors.append(detector)
@@ -367,16 +602,52 @@ class PostLayoutProcessor:
         """主入口。
 
         Args:
-            dry_run: True 时只检测不修复（Phase 1 始终为 True）。
+            dry_run: True 时只检测不修复。
         """
         start_time = time.monotonic()
 
-        # Detect
-        all_issues: list[LayoutIssue] = []
-        for detector in self.detectors:
-            issues = detector.detect(self.context)
-            all_issues.extend(issues)
-            logger.debug(f"[{detector.name}] found {len(issues)} issues")
+        can_fix = not dry_run and self.fixer is not None
+        total_fixed = 0
+        total_retypeset = 0
+        iterations = 0
+        max_iterations = self.context.config.max_iterations
+
+        # Phase 2: 检测→修复循环
+        if can_fix:
+            for iteration in range(max_iterations):
+                issues = self._detect_all()
+                if not issues:
+                    iterations = iteration + 1
+                    break
+
+                actions = self.resolver.resolve_all(issues, self.context)
+                if not actions:
+                    iterations = iteration + 1
+                    break
+
+                fixed_in_round = 0
+                for action in actions:
+                    success = self.fixer.apply_fix(self.context, action)
+                    if success:
+                        fixed_in_round += 1
+                        total_retypeset += 1
+
+                total_fixed += fixed_in_round
+                iterations = iteration + 1
+                logger.debug(
+                    f"Iteration {iteration + 1}: "
+                    f"{len(issues)} issues, {fixed_in_round} fixed"
+                )
+
+                if fixed_in_round == 0:
+                    # 没有任何修复成功，退出循环
+                    break
+        else:
+            # Phase 1: 只检测
+            iterations = 0
+
+        # 最终检测（无论是否修复都执行）
+        all_issues = self._detect_all()
 
         elapsed = time.monotonic() - start_time
 
@@ -385,11 +656,11 @@ class PostLayoutProcessor:
         metrics = OptimizationMetrics(
             total_pages=len(self.context.pages),
             total_paragraphs=len(self.context.paragraphs),
-            issues_detected=len(all_issues),
-            issues_fixed=0,
+            issues_detected=len(all_issues) + total_fixed,
+            issues_fixed=total_fixed,
             issues_remaining=len(all_issues),
-            iterations=0,  # Phase 1: detection-only, no fix iterations
-            paragraphs_retypeset=0,
+            iterations=iterations,
+            paragraphs_retypeset=total_retypeset,
             geometry_recomputed=self.context.geometry_cache.computed_count,
             avg_iou=sum(iou_values) / len(iou_values) if iou_values else 0.0,
             max_iou=max(iou_values) if iou_values else 0.0,
@@ -407,6 +678,14 @@ class PostLayoutProcessor:
 
         self._log_report(report)
         return report
+
+    def _detect_all(self) -> list[LayoutIssue]:
+        """执行所有检测器，返回全部 issue。"""
+        all_issues: list[LayoutIssue] = []
+        for detector in self.detectors:
+            issues = detector.detect(self.context)
+            all_issues.extend(issues)
+        return all_issues
 
     def _build_debug_output(self, issues: list[LayoutIssue]) -> dict:
         """构建结构化调试输出，可序列化为 JSON。"""
