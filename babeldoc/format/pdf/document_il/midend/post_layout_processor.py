@@ -38,6 +38,72 @@ logger = logging.getLogger(__name__)
 
 
 # ──────────────────────────────────────────────────────────────
+# 共享工具函数
+# ──────────────────────────────────────────────────────────────
+
+
+def extract_rendered_chars(para: PdfParagraph) -> list:
+    """从段落 composition 中提取所有可渲染字符。
+
+    覆盖全部 5 种 composition 类型：
+    pdf_character, pdf_line, pdf_formula, pdf_same_style_characters,
+    pdf_same_style_unicode_characters（无字符坐标，跳过）。
+    """
+    chars = []
+    for comp in para.pdf_paragraph_composition or []:
+        if comp.pdf_character:
+            chars.append(comp.pdf_character)
+        elif comp.pdf_line:
+            chars.extend(comp.pdf_line.pdf_character)
+        elif comp.pdf_formula:
+            chars.extend(comp.pdf_formula.pdf_character)
+        elif comp.pdf_same_style_characters:
+            chars.extend(comp.pdf_same_style_characters.pdf_character)
+        # pdf_same_style_unicode_characters 无 pdf_character 字段，跳过
+    return chars
+
+
+def char_has_valid_box(c) -> bool:
+    """检查字符的 box 字段是否完整可用。"""
+    return (
+        c.box is not None
+        and c.box.x is not None
+        and c.box.y is not None
+        and c.box.x2 is not None
+        and c.box.y2 is not None
+    )
+
+
+def compute_rendered_box(para: PdfParagraph) -> Box | None:
+    """从段落实际字符坐标计算紧密包围盒。"""
+    chars = [c for c in extract_rendered_chars(para) if char_has_valid_box(c)]
+    if not chars:
+        return None
+    return Box(
+        x=min(c.box.x for c in chars),
+        y=min(c.box.y for c in chars),
+        x2=max(c.box.x2 for c in chars),
+        y2=max(c.box.y2 for c in chars),
+    )
+
+
+def box_intersection(b1: Box, b2: Box) -> tuple[float, float, float, float] | None:
+    """计算两个 Box 的交集坐标。返回 (x, y, x2, y2) 或 None。"""
+    if any(
+        v is None
+        for v in (b1.x, b1.y, b1.x2, b1.y2, b2.x, b2.y, b2.x2, b2.y2)
+    ):
+        return None
+    ix = max(b1.x, b2.x)
+    iy = max(b1.y, b2.y)
+    ix2 = min(b1.x2, b2.x2)
+    iy2 = min(b1.y2, b2.y2)
+    if ix >= ix2 or iy >= iy2:
+        return None
+    return ix, iy, ix2, iy2
+
+
+# ──────────────────────────────────────────────────────────────
 # 数据结构
 # ──────────────────────────────────────────────────────────────
 
@@ -71,7 +137,6 @@ class FixAction:
     """单个修复动作。"""
 
     shrink_paragraph_id: int  # 要收缩的段落
-    keep_paragraph_id: int  # 保持不变的段落
     new_box: Box  # 收缩后的 box
 
 
@@ -139,46 +204,9 @@ class GeometryCache:
             )
         return ParagraphGeometry(
             paragraph_id=paragraph_id,
-            rendered_box=self._compute_rendered_box(para),
+            rendered_box=compute_rendered_box(para),
             layout_box=para.box,
             ink_box=None,
-        )
-
-    @staticmethod
-    def _compute_rendered_box(para: PdfParagraph) -> Box | None:
-        """从 pdf_paragraph_composition 的实际字符坐标计算紧密包围盒。
-
-        覆盖全部 5 种 composition 类型：pdf_character, pdf_line,
-        pdf_formula, pdf_same_style_characters,
-        pdf_same_style_unicode_characters（无字符坐标，跳过）。
-        """
-        chars = []
-        for comp in para.pdf_paragraph_composition or []:
-            if comp.pdf_character:
-                chars.append(comp.pdf_character)
-            elif comp.pdf_line:
-                chars.extend(comp.pdf_line.pdf_character)
-            elif comp.pdf_formula:
-                chars.extend(comp.pdf_formula.pdf_character)
-            elif comp.pdf_same_style_characters:
-                chars.extend(comp.pdf_same_style_characters.pdf_character)
-            # pdf_same_style_unicode_characters 无 pdf_character 字段，跳过
-        chars = [
-            c
-            for c in chars
-            if c.box is not None
-            and c.box.x is not None
-            and c.box.y is not None
-            and c.box.x2 is not None
-            and c.box.y2 is not None
-        ]
-        if not chars:
-            return None
-        return Box(
-            x=min(c.box.x for c in chars),
-            y=min(c.box.y for c in chars),
-            x2=max(c.box.x2 for c in chars),
-            y2=max(c.box.y2 for c in chars),
         )
 
 
@@ -211,6 +239,7 @@ class DocumentContext:
         self.paragraphs: dict[int, PdfParagraph] = {}
         self.paragraph_page: dict[int, int] = {}  # paragraph_id -> page_id
         self.page_paragraphs: dict[int, list[int]] = {}  # page_id -> [paragraph_id]
+        self._para_to_id: dict[int, int] = {}  # id(para) -> paragraph_id
         self.geometry_cache = GeometryCache()
         self._next_page_id = 0
         self._next_paragraph_id = 0
@@ -249,12 +278,17 @@ class DocumentContext:
                 self.paragraphs[para_id] = para
                 self.paragraph_page[para_id] = page_id
                 self.page_paragraphs[page_id].append(para_id)
+                self._para_to_id[id(para)] = para_id
                 self.geometry_cache.bind(para_id, para)
 
         logger.debug(
             f"DocumentContext: {self._next_page_id} pages, "
             f"{self._next_paragraph_id} paragraphs indexed"
         )
+
+    def get_paragraph_id(self, para: PdfParagraph) -> int | None:
+        """O(1) 查找段落的 paragraph_id。"""
+        return self._para_to_id.get(id(para))
 
 
 # ──────────────────────────────────────────────────────────────
@@ -332,21 +366,11 @@ class OverlapDetector:
         Returns:
             (iou, coverage) — iou = intersection/union, coverage = intersection/smaller_area
         """
-        # Box 坐标字段可能为 None，提前检查
-        if any(
-            v is None
-            for v in (b1.x, b1.y, b1.x2, b1.y2, b2.x, b2.y, b2.x2, b2.y2)
-        ):
+        inter = box_intersection(b1, b2)
+        if inter is None:
             return 0.0, 0.0
 
-        inter_x = max(b1.x, b2.x)
-        inter_y = max(b1.y, b2.y)
-        inter_x2 = min(b1.x2, b2.x2)
-        inter_y2 = min(b1.y2, b2.y2)
-
-        if inter_x >= inter_x2 or inter_y >= inter_y2:
-            return 0.0, 0.0
-
+        inter_x, inter_y, inter_x2, inter_y2 = inter
         inter_area = (inter_x2 - inter_x) * (inter_y2 - inter_y)
         area1 = (b1.x2 - b1.x) * (b1.y2 - b1.y)
         area2 = (b2.x2 - b2.x) * (b2.y2 - b2.y)
@@ -424,40 +448,24 @@ class OverlapResolver:
                 continue
 
             # 合并约束：如果同一段落已有约束，取更严格的
-            shrink_pid = self._find_paragraph_id(context, shrink_para)
+            shrink_pid = context.get_paragraph_id(shrink_para)
             if shrink_pid is None:
                 continue
 
-            # keep_paragraph_id: 取 render_order 最低的那个
-            keep_pid = self._find_paragraph_id(context, keep_para)
-            if keep_pid is None:
-                continue
-
             if shrink_pid in constraints:
-                existing_box, existing_keep = constraints[shrink_pid]
+                existing_box = constraints[shrink_pid]
                 merged = self._merge_constraints(existing_box, new_box)
-                constraints[shrink_pid] = (merged, existing_keep)
+                constraints[shrink_pid] = merged
             else:
-                constraints[shrink_pid] = (new_box, keep_pid)
+                constraints[shrink_pid] = new_box
 
         return [
             FixAction(
                 shrink_paragraph_id=pid,
-                keep_paragraph_id=keep_pid,
                 new_box=new_box,
             )
-            for pid, (new_box, keep_pid) in constraints.items()
+            for pid, new_box in constraints.items()
         ]
-
-    @staticmethod
-    def _find_paragraph_id(
-        context: DocumentContext, para: PdfParagraph
-    ) -> int | None:
-        """从 context 中找到段落的 paragraph_id。"""
-        for pid, p in context.paragraphs.items():
-            if p is para:
-                return pid
-        return None
 
     @staticmethod
     def _compute_shrunk_box(
@@ -501,7 +509,10 @@ class OverlapResolver:
     @staticmethod
     def _merge_constraints(box_a: Box, box_b: Box) -> Box:
         """合并两个约束，取更严格的（更小的有效区域）。"""
-        # 取两个 box 的交集作为合并结果
+        inter = box_intersection(box_a, box_b)
+        if inter is not None:
+            return Box(x=inter[0], y=inter[1], x2=inter[2], y2=inter[3])
+        # 无交集时返回更小的 box（保守策略）
         return Box(
             x=max(box_a.x or 0, box_b.x or 0),
             y=max(box_a.y or 0, box_b.y or 0),
@@ -540,43 +551,21 @@ class OverlapFixer:
         if page is None:
             return False
 
-        # 保存旧状态用于回滚
+        # 保存旧 box 用于回滚（composition 回滚由 retypeset_paragraph 处理）
         old_box = para.box
-        old_compositions = para.pdf_paragraph_composition[:]
+        para.box = action.new_box
 
-        try:
-            # 收缩 box
-            para.box = action.new_box
-
-            # 重新排版
-            fonts = self._typesetter._collect_fonts_for_page(page)
-            typesetting_units = self._typesetter.create_typesetting_units(
-                para, fonts
-            )
-            precomputed_scale = para.optimal_scale or 1.0
-            para.pdf_paragraph_composition = []
-            self._typesetter.retypeset_with_precomputed_scale(
-                para, page, typesetting_units, precomputed_scale
-            )
-            self._typesetter._update_paragraph_render_order(para)
-
-            # 失效几何缓存
+        success = self._typesetter.retypeset_paragraph(para, page)
+        if success:
             context.geometry_cache.invalidate(action.shrink_paragraph_id)
-
             logger.debug(
                 f"Fixed paragraph {action.shrink_paragraph_id}: "
                 f"box {old_box} → {action.new_box}"
             )
             return True
-
-        except Exception:
-            # 回滚
+        else:
+            # retypeset_paragraph 已回滚 composition，这里回滚 box
             para.box = old_box
-            para.pdf_paragraph_composition = old_compositions
-            logger.warning(
-                f"Failed to fix paragraph {action.shrink_paragraph_id}, "
-                "rolled back."
-            )
             return False
 
 
@@ -598,7 +587,6 @@ class PostLayoutProcessor:
         typesetter: Typesetting | None = None,
     ):
         self.context = context
-        self.typesetter = typesetter
         self.detectors: list[OverlapDetector] = []
         self.resolver = OverlapResolver()
         self.fixer = OverlapFixer(typesetter) if typesetter else None
@@ -617,7 +605,9 @@ class PostLayoutProcessor:
         can_fix = not dry_run and self.fixer is not None
         total_fixed = 0
         total_retypeset = 0
+        total_detected = 0
         iterations = 0
+        loop_found_clean = False
         max_iterations = self.context.config.max_iterations
 
         # Phase 2: 检测→修复循环
@@ -626,8 +616,10 @@ class PostLayoutProcessor:
                 issues = self._detect_all()
                 if not issues:
                     iterations = iteration + 1
+                    loop_found_clean = True
                     break
 
+                total_detected += len(issues)
                 actions = self.resolver.resolve_all(issues, self.context)
                 if not actions:
                     iterations = iteration + 1
@@ -648,14 +640,16 @@ class PostLayoutProcessor:
                 )
 
                 if fixed_in_round == 0:
-                    # 没有任何修复成功，退出循环
                     break
         else:
-            # Phase 1: 只检测
             iterations = 0
 
-        # 最终检测（无论是否修复都执行）
-        all_issues = self._detect_all()
+        # 最终检测：仅当循环未确认 clean 时执行
+        if loop_found_clean:
+            all_issues = []
+        else:
+            all_issues = self._detect_all()
+            total_detected += len(all_issues)
 
         elapsed = time.monotonic() - start_time
 
@@ -664,7 +658,7 @@ class PostLayoutProcessor:
         metrics = OptimizationMetrics(
             total_pages=len(self.context.pages),
             total_paragraphs=len(self.context.paragraphs),
-            issues_detected=len(all_issues) + total_fixed,
+            issues_detected=total_detected,
             issues_fixed=total_fixed,
             issues_remaining=len(all_issues),
             iterations=iterations,

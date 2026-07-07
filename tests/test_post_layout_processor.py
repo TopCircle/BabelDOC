@@ -553,17 +553,6 @@ class TestOverlapResolver:
         action = actions[0]
         # B 的 render_order 更高，应该被收缩
         assert action.shrink_paragraph_id == 1
-        assert action.keep_paragraph_id == 0
-        # 收缩顶部：new_y2 = keep_box.y - 1 = -1
-        # 但 shrink.box.y = 40, -1 < 40 所以 new_box 应该为 None
-        # 等等，这里 keep_box.y = 0, new_y2 = -1, -1 > 40? 不对
-        # 让我重新想：shrink_box.y=40, keep_box.y2=60
-        # 40 < 60 → shrink 在 keep 之下 → new_y2 = keep_box.y - 1 = -1
-        # -1 > shrink.box.y(40)? No → 返回 None
-        # 这说明当段落高度重叠时，收缩可能失败
-        # 实际上应该 shrink 段落在 keep 之上时收缩底部
-        # 让我重新检查：shrink_box.y2=100 > keep_box.y2=60
-        # 所以应该走 elif 分支，收缩底部
         assert action.new_box is not None
         # new_y = keep_box.y2 + 1 = 61
         assert action.new_box.y == 61
@@ -635,19 +624,10 @@ class _MockTypesetting:
     def __init__(self):
         self.retypeset_calls = []
 
-    def _collect_fonts_for_page(self, page):
-        return {}
-
-    def create_typesetting_units(self, paragraph, fonts):
-        return []
-
-    def retypeset_with_precomputed_scale(
-        self, paragraph, page, typesetting_units, precomputed_scale
-    ):
+    def retypeset_paragraph(self, paragraph, page):
         self.retypeset_calls.append({
             "paragraph": paragraph,
             "page": page,
-            "scale": precomputed_scale,
         })
         # 模拟排版：添加一个 composition
         paragraph.pdf_paragraph_composition = [
@@ -660,9 +640,7 @@ class _MockTypesetting:
                 )
             )
         ]
-
-    def _update_paragraph_render_order(self, paragraph):
-        pass
+        return True
 
 
 class TestOverlapFixer:
@@ -684,7 +662,6 @@ class TestOverlapFixer:
 
         action = FixAction(
             shrink_paragraph_id=0,
-            keep_paragraph_id=0,
             new_box=Box(x=0, y=50, x2=100, y2=100),
         )
 
@@ -708,8 +685,8 @@ class TestOverlapFixer:
 
         # 创建一个会抛异常的 mock
         class _FailingTypesetting(_MockTypesetting):
-            def retypeset_with_precomputed_scale(self, *args, **kwargs):
-                raise RuntimeError("font not found")
+            def retypeset_paragraph(self, paragraph, page):
+                return False
 
         fixer = OverlapFixer(_FailingTypesetting())
 
@@ -718,7 +695,6 @@ class TestOverlapFixer:
 
         action = FixAction(
             shrink_paragraph_id=0,
-            keep_paragraph_id=0,
             new_box=Box(x=0, y=50, x2=100, y2=100),
         )
 

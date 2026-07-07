@@ -1153,6 +1153,32 @@ class Typesetting:
                         fonts[xobj.xobj_id][font.font_id] = font
         return fonts
 
+    def retypeset_paragraph(
+        self, paragraph: il_version_1.PdfParagraph, page: il_version_1.Page
+    ) -> bool:
+        """重新排版单个段落（异常安全，自动回滚）。
+
+        用于 PostLayoutProcessor 的 OverlapFixer。
+        Returns: True 成功，False 失败（已回滚）。
+        """
+        old_compositions = paragraph.pdf_paragraph_composition[:]
+        try:
+            fonts = self._collect_fonts_for_page(page)
+            typesetting_units = self.create_typesetting_units(paragraph, fonts)
+            precomputed_scale = paragraph.optimal_scale or 1.0
+            paragraph.pdf_paragraph_composition = []
+            self.retypeset_with_precomputed_scale(
+                paragraph, page, typesetting_units, precomputed_scale
+            )
+            self._update_paragraph_render_order(paragraph)
+            return True
+        except Exception:
+            paragraph.pdf_paragraph_composition = old_compositions
+            logger.warning(
+                f"Failed to retypeset paragraph, rolled back."
+            )
+            return False
+
     def render_page(self, page: il_version_1.Page):
         fonts = self._collect_fonts_for_page(page)
         if (
@@ -1304,7 +1330,9 @@ class Typesetting:
             if box is not None:
                 rendered_boxes[id(p)] = box
 
-        max_iterations = 3
+        max_iterations = getattr(
+            self.translation_config, "post_layout_max_iterations", 3
+        )
         for _ in range(max_iterations):
             overlap_found = False
 
