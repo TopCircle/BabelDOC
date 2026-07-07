@@ -1134,7 +1134,10 @@ class Typesetting:
                 self.translation_config.raise_if_cancelled()
                 self.render_page(page)
 
-    def render_page(self, page: il_version_1.Page):
+    def _collect_fonts_for_page(
+        self, page: il_version_1.Page
+    ) -> dict[str | int, il_version_1.PdfFont | dict[str, il_version_1.PdfFont]]:
+        """提取自 render_page，供渲染主流程和重叠修正流程复用。"""
         fonts: dict[
             str | int,
             il_version_1.PdfFont | dict[str, il_version_1.PdfFont],
@@ -1148,6 +1151,10 @@ class Typesetting:
                 for font in xobj.pdf_font:
                     if font.font_id:
                         fonts[xobj.xobj_id][font.font_id] = font
+        return fonts
+
+    def render_page(self, page: il_version_1.Page):
+        fonts = self._collect_fonts_for_page(page)
         if (
             page.page_number == 0
             and self.translation_config.watermark_output_mode
@@ -1216,6 +1223,182 @@ class Typesetting:
         # 开始实际的渲染过程
         for paragraph in page.pdf_paragraph:
             self.render_paragraph(paragraph, page, fonts)
+
+        # 译文排版完成后，基于「实际渲染结果」再做一次完整的二维重叠检测与修正。
+        # 上面的 rtree 检测只能发现「紧贴边缘」的重叠（正文与正文首尾相接的场景），
+        # 无法发现引用框/侧栏这类嵌在段落中段、与正文左右或纵向大范围重叠的情况——
+        # 这类重叠是中文行距（1.5x）比英文（1.3x）更高、导致译文比原文占用更多纵向
+        # 空间后才会出现的，必须在译文实际排版完成后才能检测到。
+        try:
+            self.fix_overlapping_paragraphs_post_typesetting(page)
+        except Exception as e:
+            logger.warning(
+                f"Failed to fix post-typesetting paragraph overlaps on page "
+                f"{page.page_number}: {e}"
+            )
+
+    def _recompute_rendered_box(
+        self, paragraph: il_version_1.PdfParagraph
+    ) -> Box | None:
+        """根据段落译文渲染后的真实字符位置，重新计算紧密包围盒。
+
+        算法与 paragraph_finder.py 的 update_paragraph_data() 一致，
+        但作用对象是「译文排版完成后」的 pdf_paragraph_composition，
+        而不是原文字符——用来发现因中文行距更高而产生的新增重叠。
+        """
+        chars = []
+        for composition in paragraph.pdf_paragraph_composition or []:
+            if composition.pdf_character:
+                chars.append(composition.pdf_character)
+            elif composition.pdf_line:
+                chars.extend(composition.pdf_line.pdf_character)
+
+        chars = [c for c in chars if c.box is not None]
+        if not chars:
+            return None
+
+        min_x = min(c.box.x for c in chars)
+        min_y = min(c.box.y for c in chars)
+        max_x = max(c.box.x2 for c in chars)
+        max_y = max(c.box.y2 for c in chars)
+        return Box(x=min_x, y=min_y, x2=max_x, y2=max_y)
+
+    # 正文类 label——这些段落优先保留不动，非正文类段落做收缩。
+    _MAIN_TEXT_LABELS = frozenset({
+        "text", "content", "paragraph", "plain text", "abstract",
+        "list_item", "title", "paragraph_title", "doc_title",
+    })
+
+    @staticmethod
+    def _bbox_overlap(b1: Box, b2: Box) -> bool:
+        return b1.x < b2.x2 and b1.x2 > b2.x and b1.y < b2.y2 and b1.y2 > b2.y
+
+    def _should_fix_overlap(self, p1: il_version_1.PdfParagraph, p2: il_version_1.PdfParagraph) -> bool:
+        """判断两个段落的重叠是否需要修正。
+
+        同 label 且纵向包含关系的重叠通常是同一个逻辑段落被拆分的结果，跳过；
+        不同 label 的重叠（正文 vs 引用框等）需要修正。
+        """
+        label1 = getattr(p1, "layout_label", None)
+        label2 = getattr(p2, "layout_label", None)
+        # 不同 label 的重叠一定是真正需要修的
+        if label1 != label2:
+            return True
+        # 同 label：只有当两者都不属于正文类时才修（两个引用框重叠之类的罕见情况）
+        if label1 not in self._MAIN_TEXT_LABELS:
+            return True
+        # 同为正文类 label 的重叠通常是同一段落的拆分，跳过
+        return False
+
+    def _get_priority(self, paragraph: il_version_1.PdfParagraph) -> int:
+        """返回段落的优先级，数值越小越优先保留（不被收缩）。"""
+        label = getattr(paragraph, "layout_label", None)
+        if label in self._MAIN_TEXT_LABELS:
+            return 0  # 正文最优先
+        return 1  # 引用框/图注/表注等靠后
+
+    def fix_overlapping_paragraphs_post_typesetting(self, page: il_version_1.Page):
+        """译文排版完成后，对实际渲染结果做完整的二维重叠检测与修正。
+
+        发现重叠时不能像 paragraph_finder 那样简单挪动 box.y——译文字符已经
+        画出来了。这里的策略是：保留优先级更高的段落（正文类）不动，收缩
+        优先级更低的段落（引用框/图注等），再用它已经算好的 optimal_scale
+        重新排版一次（自动降低缩放/换行来避开冲突区域）。
+
+        同时处理纵向重叠（上下方向侵入）和横向重叠（左右方向侵入）两种情况。
+        """
+        paragraphs = [p for p in page.pdf_paragraph if p.pdf_paragraph_composition]
+        if len(paragraphs) < 2:
+            return
+
+        rendered_boxes: dict[int, Box] = {}
+        for p in paragraphs:
+            box = self._recompute_rendered_box(p)
+            if box is not None:
+                rendered_boxes[id(p)] = box
+
+        max_iterations = 3
+        for _ in range(max_iterations):
+            overlap_found = False
+
+            for i in range(len(paragraphs)):
+                for j in range(i + 1, len(paragraphs)):
+                    p1, p2 = paragraphs[i], paragraphs[j]
+                    if p1.xobj_id != p2.xobj_id:
+                        continue
+                    b1 = rendered_boxes.get(id(p1))
+                    b2 = rendered_boxes.get(id(p2))
+                    if b1 is None or b2 is None:
+                        continue
+                    if not self._bbox_overlap(b1, b2):
+                        continue
+                    if not self._should_fix_overlap(p1, p2):
+                        continue
+
+                    overlap_found = True
+
+                    # 按优先级决定保留谁、收缩谁（优先级低的被收缩）
+                    p1_pri = self._get_priority(p1)
+                    p2_pri = self._get_priority(p2)
+                    if p1_pri < p2_pri or (p1_pri == p2_pri and (p1.render_order or 0) <= (p2.render_order or 0)):
+                        keep_para, keep_box = p1, b1
+                        shrink_para, shrink_box = p2, b2
+                    else:
+                        keep_para, keep_box = p2, b2
+                        shrink_para, shrink_box = p1, b1
+
+                    if shrink_para.box is None:
+                        continue
+
+                    # 计算纵向和横向的重叠量，选重叠更大的方向做修正
+                    y_overlap = min(shrink_box.y2, keep_box.y2) - max(shrink_box.y, keep_box.y)
+                    x_overlap = min(shrink_box.x2, keep_box.x2) - max(shrink_box.x, keep_box.x)
+
+                    new_box = None
+                    if y_overlap >= x_overlap:
+                        # 纵向重叠：收缩被收缩段落的 y2 到保留段落的 y 以下
+                        new_y2 = keep_box.y - 1
+                        if new_y2 > shrink_para.box.y:
+                            new_box = Box(
+                                x=shrink_para.box.x,
+                                y=shrink_para.box.y,
+                                x2=shrink_para.box.x2,
+                                y2=new_y2,
+                            )
+                    else:
+                        # 横向重叠：收缩被收缩段落的 x2 到保留段落的 x 以前
+                        new_x2 = keep_box.x - 1
+                        if new_x2 > shrink_para.box.x:
+                            new_box = Box(
+                                x=shrink_para.box.x,
+                                y=shrink_para.box.y,
+                                x2=new_x2,
+                                y2=shrink_para.box.y2,
+                            )
+
+                    if new_box is not None:
+                        shrink_para.box = new_box
+                        fonts = self._collect_fonts_for_page(page)
+                        typesetting_units = self.create_typesetting_units(
+                            shrink_para, fonts
+                        )
+                        precomputed_scale = shrink_para.optimal_scale or 1.0
+                        shrink_para.pdf_paragraph_composition = []
+                        self.retypeset_with_precomputed_scale(
+                            shrink_para, page, typesetting_units, precomputed_scale
+                        )
+                        self._update_paragraph_render_order(shrink_para)
+                        new_rendered_box = self._recompute_rendered_box(shrink_para)
+                        if new_rendered_box is not None:
+                            rendered_boxes[id(shrink_para)] = new_rendered_box
+
+            if not overlap_found:
+                break
+        else:
+            logger.warning(
+                f"Page {page.page_number}: 重叠修正达到最大迭代次数，"
+                "可能仍存在未解决的重叠。"
+            )
 
     def add_watermark(self, page: il_version_1.Page):
         page_width = page.cropbox.box.x2 - page.cropbox.box.x
