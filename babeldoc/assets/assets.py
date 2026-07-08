@@ -80,7 +80,7 @@ def _retry_if_not_cancelled_and_failed(retry_state):
         if isinstance(
             exception, httpx.HTTPError | ConnectionError | ValueError | TimeoutError
         ):
-            logger.warning(f"Network error occurred: {exception}, will retry")
+            logger.warning(f"Network error occurred: {type(exception).__name__}: {exception}, will retry")
             return True
     # Don't retry on success
     return False
@@ -153,7 +153,7 @@ async def download_file_with_fallback(
             return
         except Exception as e:
             last_exc = e
-            logger.warning(f"Download from {upstream} failed: {e}")
+            logger.warning(f"Download from {upstream} failed: {type(e).__name__}: {e}")
 
     # All upstreams exhausted
     raise last_exc
