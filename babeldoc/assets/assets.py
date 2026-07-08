@@ -86,6 +86,25 @@ def _retry_if_not_cancelled_and_failed(retry_state):
     return False
 
 
+def _wait_for_retry_after(retry_state):
+    """Custom wait strategy: honor Retry-After header on 429 responses, otherwise exponential backoff."""
+    if retry_state.outcome and retry_state.outcome.failed:
+        exception = retry_state.outcome.exception()
+        if isinstance(exception, httpx.HTTPStatusError) and exception.response.status_code == 429:
+            retry_after = exception.response.headers.get("Retry-After")
+            if retry_after is not None:
+                try:
+                    wait = float(retry_after)
+                    logger.info(f"Rate limited (429), server requested Retry-After: {wait}s")
+                    return min(wait, 60)
+                except (ValueError, TypeError):
+                    pass
+            # No Retry-After header — use a longer default for 429
+            return 10
+    # Default exponential backoff for other errors
+    return wait_exponential(multiplier=1, min=1, max=15)(retry_state)
+
+
 def verify_file(path: Path, sha3_256: str):
     if not path.exists():
         return False
@@ -99,10 +118,51 @@ def verify_file(path: Path, sha3_256: str):
     return hash_.hexdigest() == sha3_256
 
 
+async def download_file_with_fallback(
+    client: httpx.AsyncClient | None = None,
+    url_map: dict[str, str] | None = None,
+    primary_upstream: str | None = None,
+    path: Path = None,
+    sha3_256: str = None,
+):
+    """Download a file with automatic upstream fallback.
+
+    Tries the primary_upstream URL first (with retries). If that fails,
+    falls back to other upstreams in url_map order.
+
+    Args:
+        client: Optional httpx async client.
+        url_map: Dict mapping upstream name -> download URL.
+        primary_upstream: The upstream to try first.
+        path: Local path to save the file.
+        sha3_256: Expected SHA3-256 hash for verification.
+    """
+    # Build ordered list: primary first, then the rest
+    upstreams = list(url_map.keys())
+    if primary_upstream and primary_upstream in upstreams:
+        upstreams.remove(primary_upstream)
+        upstreams.insert(0, primary_upstream)
+
+    last_exc: BaseException | None = None
+    for upstream in upstreams:
+        url = url_map[upstream]
+        try:
+            logger.info(f"Trying download from {upstream}: {url}")
+            await download_file(client, url, path, sha3_256)
+            logger.info(f"Download from {upstream} succeeded")
+            return
+        except Exception as e:
+            last_exc = e
+            logger.warning(f"Download from {upstream} failed: {e}")
+
+    # All upstreams exhausted
+    raise last_exc
+
+
 @retry(
     retry=_retry_if_not_cancelled_and_failed,
     stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=15),
+    wait=_wait_for_retry_after,
     before_sleep=lambda retry_state: logger.warning(
         f"Download file failed, retrying in {retry_state.next_action.sleep} seconds... "
         f"(Attempt {retry_state.attempt_number}/3)"
@@ -131,7 +191,7 @@ async def download_file(
 @retry(
     retry=_retry_if_not_cancelled_and_failed,
     stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=15),
+    wait=_wait_for_retry_after,
     before_sleep=lambda retry_state: logger.warning(
         f"Get font metadata failed, retrying in {retry_state.next_action.sleep} seconds... "
         f"(Attempt {retry_state.attempt_number}/3)"
@@ -245,10 +305,12 @@ async def get_doclayout_onnx_model_path_async(client: httpx.AsyncClient | None =
         logger.error("Failed to get fastest upstream")
         exit(1)
 
-    url = DOC_LAYOUT_ONNX_MODEL_URL[fastest_upstream]
-
-    await download_file(
-        client, url, onnx_path, DOCLAYOUT_YOLO_DOCSTRUCTBENCH_IMGSZ1024ONNX_SHA3_256
+    await download_file_with_fallback(
+        client,
+        DOC_LAYOUT_ONNX_MODEL_URL,
+        fastest_upstream,
+        onnx_path,
+        DOCLAYOUT_YOLO_DOCSTRUCTBENCH_IMGSZ1024ONNX_SHA3_256,
     )
     logger.info(f"Download doclayout onnx model from {fastest_upstream} success")
     return onnx_path
@@ -269,14 +331,6 @@ def get_doclayout_onnx_model_path():
 
 def get_table_detection_rapidocr_model_path():
     return run_coro(get_table_detection_rapidocr_model_path_async())
-
-
-def get_font_url_by_name_and_upstream(font_file_name: str, upstream: str):
-    if upstream not in FONT_URL_BY_UPSTREAM:
-        logger.critical(f"Invalid upstream: {upstream}")
-        exit(1)
-
-    return FONT_URL_BY_UPSTREAM[upstream](font_file_name)
 
 
 async def get_font_and_metadata_async(
@@ -308,12 +362,15 @@ async def get_font_and_metadata_async(
     assert font_metadata is not None
     logger.info(f"download {font_file_name} from {fastest_upstream}")
 
-    url = get_font_url_by_name_and_upstream(font_file_name, fastest_upstream)
     if "sha3_256" not in font_metadata[font_file_name]:
         logger.critical(f"Font {font_file_name} not found in {font_metadata}")
         exit(1)
-    await download_file(
-        client, url, cache_file_path, font_metadata[font_file_name]["sha3_256"]
+    url_map = {
+        name: fn(font_file_name) for name, fn in FONT_URL_BY_UPSTREAM.items()
+    }
+    await download_file_with_fallback(
+        client, url_map, fastest_upstream, cache_file_path,
+        font_metadata[font_file_name]["sha3_256"],
     )
     return cache_file_path, font_metadata[font_file_name]
 
@@ -351,7 +408,7 @@ async def get_cmap_file_path_async(
 async def download_cmap_file_async(
     file_name: str, client: httpx.AsyncClient | None = None
 ) -> Path:
-    """Download a single cmap file to cache directory."""
+    """Download a single cmap file to cache directory with upstream fallback."""
     if file_name not in CMAP_METADATA:
         logger.critical(f"CMap {file_name} not found in CMAP_METADATA")
         exit(1)
@@ -361,14 +418,12 @@ async def download_cmap_file_async(
         logger.critical("Failed to get fastest upstream for cmap")
         exit(1)
 
-    if fastest_upstream not in CMAP_URL_BY_UPSTREAM:
-        logger.critical(f"Invalid fastest upstream for cmap: {fastest_upstream}")
-        exit(1)
-
-    url = CMAP_URL_BY_UPSTREAM[fastest_upstream](file_name)
     cache_file_path = get_cache_file_path(file_name, "cmap")
     sha3_256 = CMAP_METADATA[file_name]["sha3_256"]
-    await download_file(client, url, cache_file_path, sha3_256)
+    url_map = {name: fn(file_name) for name, fn in CMAP_URL_BY_UPSTREAM.items()}
+    await download_file_with_fallback(
+        client, url_map, fastest_upstream, cache_file_path, sha3_256
+    )
     return cache_file_path
 
 
@@ -410,12 +465,17 @@ async def download_all_fonts_async(client: httpx.AsyncClient | None = None):
         exit(1)
     logger.info(f"Downloading fonts from {fastest_upstream}")
 
-    font_tasks = [
-        asyncio.create_task(
-            get_font_and_metadata_async(
+    # Limit concurrent downloads to avoid triggering rate limits (429)
+    semaphore = asyncio.Semaphore(4)
+
+    async def _download_font_with_limit(font_file_name):
+        async with semaphore:
+            return await get_font_and_metadata_async(
                 font_file_name, client, fastest_upstream, font_metadata
             )
-        )
+
+    font_tasks = [
+        asyncio.create_task(_download_font_with_limit(font_file_name))
         for font_file_name in EMBEDDING_FONT_METADATA
     ]
     await asyncio.gather(*font_tasks)
@@ -439,8 +499,15 @@ async def download_all_cmaps_async(client: httpx.AsyncClient | None = None):
         exit(1)
     logger.info(f"Downloading cmaps from {fastest_upstream}")
 
+    # Limit concurrent downloads to avoid triggering rate limits (429)
+    semaphore = asyncio.Semaphore(4)
+
+    async def _download_cmap_with_limit(cmap_file_name):
+        async with semaphore:
+            return await get_cmap_file_path_async(cmap_file_name, client)
+
     cmap_tasks = [
-        asyncio.create_task(get_cmap_file_path_async(cmap_file_name, client))
+        asyncio.create_task(_download_cmap_with_limit(cmap_file_name))
         for cmap_file_name in CMAP_METADATA
     ]
     await asyncio.gather(*cmap_tasks)
