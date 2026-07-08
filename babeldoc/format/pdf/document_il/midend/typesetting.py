@@ -874,13 +874,44 @@ class Typesetting:
             or ("TW" in self.lang_code)
         )
 
-    def preprocess_document(self, document: il_version_1.Document, pbar):
-        """预处理文档，获取每个段落的最优缩放因子，不执行实际排版"""
+    def preprocess_document(
+        self,
+        document: il_version_1.Document,
+        pbar,
+        build_zone_index: bool = False,
+    ):
+        """预处理文档，获取每个段落的最优缩放因子，不执行实际排版
+
+        Args:
+            document: 文档对象
+            pbar: 进度条
+            build_zone_index: 是否为每页构建排除区域索引（影响 scale 计算）
+        """
+        from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
+            ExclusionZoneBuilder,
+            ExclusionZoneIndex,
+        )
+
         all_scales: list[float] = []
         all_paragraphs: list[il_version_1.PdfParagraph] = []
 
         for page in document.page:
-            pbar.advance()
+            if pbar is not None:
+                pbar.advance()
+
+            # 为当前页构建排除区域索引（优先使用缓存）
+            if build_zone_index:
+                cache = getattr(self, "_page_zone_cache", None)
+                if cache and id(page) in cache:
+                    self._current_zone_index = cache[id(page)]
+                else:
+                    zones = ExclusionZoneBuilder.build(page)
+                    self._current_zone_index = (
+                        ExclusionZoneIndex(zones) if zones else None
+                    )
+            else:
+                self._current_zone_index = None
+
             # 准备字体信息（复制自 render_page 的逻辑）
             fonts: dict[
                 str | int,
@@ -1020,7 +1051,10 @@ class Typesetting:
 
             # 添加与原 retypeset 一致的逻辑检查
             if not hasattr(paragraph, "debug_id") or not paragraph.debug_id:
-                return scale, final_typeset_units
+                # 如果 apply_layout 且尚未成功布局，不要提前返回
+                # 否则调用者已清空 pdf_paragraph_composition 会导致空渲染
+                if not apply_layout or final_typeset_units is not None:
+                    return scale, final_typeset_units
 
             # 减小缩放因子
             if scale > 0.6:
@@ -1135,6 +1169,19 @@ class Typesetting:
         )
 
     def typesetting_document(self, document: il_version_1.Document):
+        from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
+            ExclusionZoneBuilder,
+            ExclusionZoneIndex,
+        )
+
+        # 预先构建每页的排除区域缓存，避免重复构建
+        self._page_zone_cache: dict[int, ExclusionZoneIndex | None] = {}
+        for page in document.page:
+            zones = ExclusionZoneBuilder.build(page)
+            self._page_zone_cache[id(page)] = (
+                ExclusionZoneIndex(zones) if zones else None
+            )
+
         # 原有的排版逻辑
         if self.translation_config.progress_monitor:
             with self.translation_config.progress_monitor.stage_start(
@@ -1142,16 +1189,22 @@ class Typesetting:
                 len(document.page) * 2,
             ) as pbar:
                 # 预处理：获取所有段落的最优缩放因子
-                self.preprocess_document(document, pbar)
+                self.preprocess_document(document, pbar, build_zone_index=True)
 
                 for page in document.page:
                     self.translation_config.raise_if_cancelled()
+                    self._current_zone_index = self._page_zone_cache.get(id(page))
                     self.render_page(page)
                     pbar.advance()
         else:
+            self.preprocess_document(document, None, build_zone_index=True)
             for page in document.page:
                 self.translation_config.raise_if_cancelled()
+                self._current_zone_index = self._page_zone_cache.get(id(page))
                 self.render_page(page)
+
+        # 清理缓存
+        self._page_zone_cache.clear()
 
     def _collect_fonts_for_page(
         self, page: il_version_1.Page
@@ -1184,7 +1237,18 @@ class Typesetting:
         Returns: True 成功，False 失败（已回滚）。
         """
         old_compositions = paragraph.pdf_paragraph_composition[:]
+        # 保存并恢复 zone_index，确保使用目标页面的 zones
+        old_zone_index = getattr(self, "_current_zone_index", None)
         try:
+            from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
+                ExclusionZoneBuilder,
+                ExclusionZoneIndex,
+            )
+            zones = ExclusionZoneBuilder.build(page)
+            self._current_zone_index = (
+                ExclusionZoneIndex(zones) if zones else None
+            )
+
             fonts = self._collect_fonts_for_page(page)
             typesetting_units = self.create_typesetting_units(paragraph, fonts)
             precomputed_scale = paragraph.optimal_scale or 1.0
@@ -1201,6 +1265,8 @@ class Typesetting:
                 f"Failed to retypeset paragraph, rolled back."
             )
             return False
+        finally:
+            self._current_zone_index = old_zone_index
 
     def retypeset_with_scale_range(
         self,
@@ -1659,9 +1725,21 @@ class Typesetting:
                 avg_height = sum(unit_heights) / len(unit_heights) * scale
 
         # 初始化位置为右上角，并减去一个平均行高
-        current_x = box.x
         current_y = box.y2 - avg_height
         box = copy.deepcopy(box)
+
+        # 动态行宽：查询排除区域，计算当前行的可用 x 范围
+        zone_index = getattr(self, "_current_zone_index", None)
+        if zone_index and avg_height > 0:
+            available_x, available_x2 = zone_index.get_available_x_range(
+                current_y, current_y + avg_height, box.x, box.x2
+            )
+            # 防止反转区间（exclusion zones 从两侧收窄导致 available_x >= available_x2）
+            if available_x >= available_x2:
+                available_x, available_x2 = box.x, box.x2
+        else:
+            available_x, available_x2 = box.x, box.x2
+        current_x = available_x
         # box.y -= avg_height * (line_spacing - 1.01) # line_spacing 已被替换为 line_skip
         line_height = 0
         current_line_heights = []  # 存储当前行所有元素的高度
@@ -1672,7 +1750,9 @@ class Typesetting:
         last_unit: TypesettingUnit | None = None
         line_ys = [current_y]
         if paragraph.first_line_indent:
-            current_x += space_width * 4
+            # 缩进相对于 box.x 而非 available_x，避免 zone 偏移叠加
+            indented_x = box.x + space_width * 4
+            current_x = max(current_x, min(indented_x, available_x2))
         # 遍历所有排版单元
         # Decorative tracking: extra spacing between characters for art text
         # (e.g. "G e n t l y" → "轻 轻 地").  Scaled by the same factor as
@@ -1689,7 +1769,7 @@ class Typesetting:
             unit_height = unit.height * scale
 
             # 跳过行首的空格
-            if current_x == box.x and unit.is_space:
+            if current_x == available_x and unit.is_space:
                 continue
 
             if (
@@ -1704,7 +1784,7 @@ class Typesetting:
                 )  # 在同一行，且有垂直重叠
                 and not last_unit.mixed_character_blacklist  # 不是混排空格黑名单字符
                 and not unit.mixed_character_blacklist  # 同上
-                and current_x > box.x  # 不是行首
+                and current_x > available_x  # 不是行首
                 and unit.try_get_unicode() != " "  # 不是空格
                 and last_unit.try_get_unicode() != " "  # 不是空格
                 and last_unit.try_get_unicode()
@@ -1729,18 +1809,17 @@ class Typesetting:
             # Include tracking in width calculation for accurate line breaks
             effective_width = unit_width + (decorative_tracking if not unit.is_space else 0)
             if not unit.is_hung_punctuation and (
-                (current_x + effective_width > box.x2)
+                (current_x + effective_width > available_x2)
                 or (
                     use_english_line_break
-                    and current_x + effective_width + width_before_next_break_point > box.x2
+                    and current_x + effective_width + width_before_next_break_point > available_x2
                 )
                 or (
                     unit.is_cannot_appear_in_line_end_punctuation
-                    and current_x + effective_width * 2 > box.x2
+                    and current_x + effective_width * 2 > available_x2
                 )
             ):
                 # 换行
-                current_x = box.x
                 if not current_line_heights:
                     return [], False
                 max_height = max(current_line_heights)
@@ -1750,6 +1829,19 @@ class Typesetting:
                 line_ys.append(current_y)
                 line_height = 0.0
                 current_line_heights = []  # 清空当前行高度列表
+
+                # 动态行宽：为新行计算可用 x 范围
+                # 使用上一行的实际行高（max_height）而非 avg_height，避免高行遗漏 zone
+                zone_query_height = max(max_height, avg_height) if max_height > 0 else avg_height
+                if zone_index and zone_query_height > 0:
+                    available_x, available_x2 = zone_index.get_available_x_range(
+                        current_y, current_y + zone_query_height, box.x, box.x2
+                    )
+                    if available_x >= available_x2:
+                        available_x, available_x2 = box.x, box.x2
+                else:
+                    available_x, available_x2 = box.x, box.x2
+                current_x = available_x
 
                 # 检查是否超出底部边界
                 # if current_y - unit_height < box.y:
@@ -1764,6 +1856,9 @@ class Typesetting:
             # 放置当前单元
             relocated_unit = unit.relocate(current_x, current_y, scale)
             typeset_units.append(relocated_unit)
+
+            # 更新行高（所有单元，不仅限空格），用于 CJK 混排间距判断
+            line_height = max(line_height, unit_height)
 
             # 添加当前单元的高度到当前行高度列表
             if not unit.is_space:
@@ -1956,6 +2051,15 @@ class Typesetting:
             ):
                 max_x = min(max_x, figure.box.x)
 
+        # 检查排除区域（Quote 等）
+        zone_index = getattr(self, "_current_zone_index", None)
+        if zone_index:
+            for zone in zone_index.zones:
+                if zone.box.x > current_box.x and not (
+                    zone.box.y >= current_box.y2 or zone.box.y2 <= current_box.y
+                ):
+                    max_x = min(max_x, zone.box.x)
+
         return max_x
 
     def get_max_bottom_space(self, current_box: Box, page: il_version_1.Page) -> float:
@@ -1991,6 +2095,15 @@ class Typesetting:
                 figure.box.x >= current_box.x2 or figure.box.x2 <= current_box.x
             ):
                 min_y = max(min_y, figure.box.y2)
+
+        # 检查排除区域（Quote 等）
+        zone_index = getattr(self, "_current_zone_index", None)
+        if zone_index:
+            for zone in zone_index.zones:
+                if zone.box.y2 < current_box.y and not (
+                    zone.box.x >= current_box.x2 or zone.box.x2 <= current_box.x
+                ):
+                    min_y = max(min_y, zone.box.y2)
 
         return min_y
 
