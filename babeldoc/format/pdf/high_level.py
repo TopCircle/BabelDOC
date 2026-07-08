@@ -971,6 +971,20 @@ def _do_translate_single(
             )
     ParagraphFinder(translation_config).process(docs)
     logger.debug(f"finish paragraph finder from {temp_pdf_path}")
+
+    # Capture reference metrics before translation destroys compositions
+    try:
+        from babeldoc.format.pdf.document_il.utils.layout_helper import (
+            compute_reference_metrics,
+        )
+    except ImportError:
+        compute_reference_metrics = None
+        logger.debug("layout_helper dependencies not available, skipping reference metrics capture")
+
+    if compute_reference_metrics is not None:
+        for page in docs.page:
+            for para in page.pdf_paragraph:
+                compute_reference_metrics(para)
     if translation_config.debug:
         xml_converter.write_json(
             docs,

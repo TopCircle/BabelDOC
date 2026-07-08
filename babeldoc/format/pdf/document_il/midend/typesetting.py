@@ -5,6 +5,7 @@ import logging
 import re
 import statistics
 import unicodedata
+from dataclasses import dataclass
 from functools import cache
 
 import pymupdf
@@ -85,6 +86,15 @@ LINE_BREAK_REGEX = regex.compile(
     r"ʻ"  # Spacing Modifier Letters U+02BB
     r"]+$"
 )
+
+
+@dataclass
+class RetypesetResult:
+    """Result of retypeset_with_scale_range()."""
+
+    success: bool  # whether retypesetting succeeded
+    best_scale: float | None = None  # the scale that was applied
+    reason: str = ""  # failure reason or notes
 
 
 class TypesettingUnit:
@@ -845,6 +855,8 @@ class TypesettingUnit:
 
 class Typesetting:
     stage_name = "Typesetting"
+    _DEFAULT_LINE_SKIP_CJK = 1.50
+    _DEFAULT_LINE_SKIP_NON_CJK = 1.3
 
     def __init__(self, translation_config: TranslationConfig):
         self.font_mapper = FontMapper(translation_config)
@@ -946,6 +958,7 @@ class Typesetting:
         initial_scale: float = 1.0,
         use_english_line_break: bool = True,
         apply_layout: bool = False,
+        line_skip: float | None = None,
     ) -> tuple[float, list[TypesettingUnit] | None]:
         """查找最优缩放因子并可选择性地执行布局
 
@@ -965,7 +978,8 @@ class Typesetting:
 
         box = paragraph.box
         scale = initial_scale
-        line_skip = 1.50 if self.is_cjk else 1.3
+        if line_skip is None:
+            line_skip = self._DEFAULT_LINE_SKIP_CJK if self.is_cjk else self._DEFAULT_LINE_SKIP_NON_CJK
         min_scale = 0.1
         expand_space_flag = 0
         final_typeset_units = None
@@ -1070,6 +1084,7 @@ class Typesetting:
                 initial_scale,
                 use_english_line_break=False,
                 apply_layout=apply_layout,
+                line_skip=line_skip,
             )
 
         # 最后返回最小缩放因子
@@ -1081,6 +1096,7 @@ class Typesetting:
         page: il_version_1.Page,
         typesetting_units: list[TypesettingUnit],
         use_english_line_break: bool = True,
+        line_skip: float | None = None,
     ) -> float:
         """获取段落的最优缩放因子，不执行实际排版"""
         scale, _ = self._find_optimal_scale_and_layout(
@@ -1090,6 +1106,7 @@ class Typesetting:
             1.0,
             use_english_line_break,
             apply_layout=False,
+            line_skip=line_skip,
         )
         return scale
 
@@ -1100,6 +1117,7 @@ class Typesetting:
         typesetting_units: list[TypesettingUnit],
         precomputed_scale: float,
         use_english_line_break: bool = True,
+        line_skip: float | None = None,
     ):
         """使用预计算的缩放因子进行排版"""
         if not paragraph.box:
@@ -1113,6 +1131,7 @@ class Typesetting:
             precomputed_scale,
             use_english_line_break,
             apply_layout=True,
+            line_skip=line_skip,
         )
 
     def typesetting_document(self, document: il_version_1.Document):
@@ -1154,7 +1173,10 @@ class Typesetting:
         return fonts
 
     def retypeset_paragraph(
-        self, paragraph: il_version_1.PdfParagraph, page: il_version_1.Page
+        self,
+        paragraph: il_version_1.PdfParagraph,
+        page: il_version_1.Page,
+        line_skip: float | None = None,
     ) -> bool:
         """重新排版单个段落（异常安全，自动回滚）。
 
@@ -1168,7 +1190,8 @@ class Typesetting:
             precomputed_scale = paragraph.optimal_scale or 1.0
             paragraph.pdf_paragraph_composition = []
             self.retypeset_with_precomputed_scale(
-                paragraph, page, typesetting_units, precomputed_scale
+                paragraph, page, typesetting_units, precomputed_scale,
+                line_skip=line_skip,
             )
             self._update_paragraph_render_order(paragraph)
             return True
@@ -1178,6 +1201,97 @@ class Typesetting:
                 f"Failed to retypeset paragraph, rolled back."
             )
             return False
+
+    def retypeset_with_scale_range(
+        self,
+        paragraph: il_version_1.PdfParagraph,
+        page: il_version_1.Page,
+        min_scale: float = 0.1,
+        max_scale: float = 1.0,
+        line_skip: float | None = None,
+    ) -> RetypesetResult:
+        """Re-typeset with bidirectional scale search.
+
+        Unlike retypeset_with_precomputed_scale which only searches DOWNWARD
+        from initial_scale, this method searches the full [min_scale, max_scale]
+        range to find the LARGEST scale where all text fits in the box.
+
+        This is critical when box has been EXPANDED — the old optimal_scale
+        may be too small, and the current search strategy would never discover
+        that a larger scale is now possible.
+
+        Returns RetypesetResult with success flag, best_scale, and reason.
+        """
+        if not paragraph.box:
+            return RetypesetResult(success=False, reason="no box")
+
+        old_compositions = paragraph.pdf_paragraph_composition[:]
+        old_scale = getattr(paragraph, 'scale', None)
+        old_box = paragraph.box
+        try:
+            fonts = self._collect_fonts_for_page(page)
+            typesetting_units = self.create_typesetting_units(paragraph, fonts)
+            if not typesetting_units:
+                return RetypesetResult(success=False, reason="no typesetting units")
+
+            if line_skip is None:
+                line_skip = self._DEFAULT_LINE_SKIP_CJK if self.is_cjk else self._DEFAULT_LINE_SKIP_NON_CJK
+
+            # Binary search for the largest scale where all text fits
+            best_scale = None
+            lo, hi = min_scale, max_scale
+
+            while hi - lo > 0.02:
+                mid = (lo + hi) / 2
+                typeset_units, all_fit = self._layout_typesetting_units(
+                    typesetting_units, paragraph.box, mid, line_skip, paragraph,
+                )
+                if all_fit:
+                    best_scale = mid
+                    lo = mid  # try larger
+                else:
+                    hi = mid  # try smaller
+
+            # If no scale fits, try the minimum
+            if best_scale is None:
+                _, all_fit = self._layout_typesetting_units(
+                    typesetting_units, paragraph.box, min_scale, line_skip, paragraph,
+                )
+                if all_fit:
+                    best_scale = min_scale
+                else:
+                    # Even min_scale doesn't fit — fall back to downward search
+                    # which handles box expansion
+                    paragraph.pdf_paragraph_composition = []
+                    self.retypeset_with_precomputed_scale(
+                        paragraph, page, typesetting_units, max_scale,
+                        line_skip=line_skip,
+                    )
+                    self._update_paragraph_render_order(paragraph)
+                    # Read actual applied scale (set by _find_optimal_scale_and_layout)
+                    actual_scale = getattr(paragraph, 'scale', None) or max_scale
+                    return RetypesetResult(
+                        success=True, best_scale=actual_scale,
+                        reason="fallback to downward search with box expansion",
+                    )
+
+            # Apply layout with the best scale
+            paragraph.pdf_paragraph_composition = []
+            self._find_optimal_scale_and_layout(
+                paragraph, page, typesetting_units, best_scale,
+                apply_layout=True, line_skip=line_skip,
+            )
+            self._update_paragraph_render_order(paragraph)
+            return RetypesetResult(success=True, best_scale=best_scale)
+
+        except Exception:
+            paragraph.pdf_paragraph_composition = old_compositions
+            paragraph.scale = old_scale
+            paragraph.box = old_box
+            logger.warning(
+                "Failed to retypeset paragraph with scale range, rolled back."
+            )
+            return RetypesetResult(success=False, reason="exception during retypeset")
 
     def render_page(self, page: il_version_1.Page):
         fonts = self._collect_fonts_for_page(page)

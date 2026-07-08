@@ -27,6 +27,7 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import Document
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
+from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
 
 # 避免循环导入：TYPE_CHECKING 时导入 Typesetting
 from typing import TYPE_CHECKING
@@ -74,17 +75,21 @@ def char_has_valid_box(c) -> bool:
     )
 
 
-def compute_rendered_box(para: PdfParagraph) -> Box | None:
-    """从段落实际字符坐标计算紧密包围盒。"""
+def compute_rendered_box(para: PdfParagraph) -> tuple[Box | None, list]:
+    """从段落实际字符坐标计算紧密包围盒。
+
+    Returns (box, valid_chars) — the bounding box and the filtered chars used
+    to compute it, so callers can reuse the char list without re-extracting.
+    """
     chars = [c for c in extract_rendered_chars(para) if char_has_valid_box(c)]
     if not chars:
-        return None
+        return None, []
     return Box(
         x=min(c.box.x for c in chars),
         y=min(c.box.y for c in chars),
         x2=max(c.box.x2 for c in chars),
         y2=max(c.box.y2 for c in chars),
-    )
+    ), chars
 
 
 def box_intersection(b1: Box, b2: Box) -> tuple[float, float, float, float] | None:
@@ -109,6 +114,23 @@ def box_intersection(b1: Box, b2: Box) -> tuple[float, float, float, float] | No
 
 
 @dataclass
+class ParagraphLayoutInfo:
+    """Computed layout metrics for a translated paragraph (post-typesetting).
+
+    Field names mirror ReferenceMetrics for symmetric comparison,
+    plus height (recomputable from rendered_box) and density.
+    """
+
+    height: float | None = None  # rendered_box.y2 - rendered_box.y
+    line_count: int | None = None
+    avg_line_width: float | None = None
+    last_line_width: float | None = None
+    last_line_ratio: float | None = None  # last_line_width / avg_line_width
+    font_size: float | None = None  # mode of char font sizes
+    density: float | None = None  # total char area / rendered box area
+
+
+@dataclass
 class ParagraphGeometry:
     """段落几何信息快照。"""
 
@@ -116,6 +138,8 @@ class ParagraphGeometry:
     rendered_box: Box | None  # 从实际 char 坐标计算的紧密包围盒
     layout_box: Box | None  # paragraph.box，排版时的逻辑包围盒
     ink_box: Box | None  # 预留
+    reference_metrics: ReferenceMetrics | None = None  # 原始英文布局指标
+    layout_info: ParagraphLayoutInfo | None = None  # 译文布局指标
 
 
 @dataclass
@@ -202,11 +226,94 @@ class GeometryCache:
                 layout_box=None,
                 ink_box=None,
             )
+
+        rendered_box, valid_chars = compute_rendered_box(para)
+
+        # Compute layout_info from rendered chars (reuse already-filtered chars)
+        layout_info = None
+        if rendered_box:
+            layout_info = self._compute_layout_info(para, rendered_box, valid_chars)
+
         return ParagraphGeometry(
             paragraph_id=paragraph_id,
-            rendered_box=compute_rendered_box(para),
+            rendered_box=rendered_box,
             layout_box=para.box,
             ink_box=None,
+            reference_metrics=getattr(para, 'reference_metrics', None),
+            layout_info=layout_info,
+        )
+
+    @staticmethod
+    def _compute_layout_info(
+        para: PdfParagraph, rendered_box: Box, valid_chars: list | None = None,
+    ) -> ParagraphLayoutInfo | None:
+        """Compute translated layout metrics from rendered characters.
+
+        Args:
+            para: The paragraph to analyze.
+            rendered_box: Pre-computed bounding box.
+            valid_chars: Pre-filtered chars with valid boxes (avoids re-extraction).
+        """
+        try:
+            from babeldoc.format.pdf.document_il.utils.layout_helper import (
+                count_lines_from_compositions,
+                compute_per_line_widths,
+            )
+        except ImportError:
+            return None
+
+        height = rendered_box.y2 - rendered_box.y
+
+        line_count = count_lines_from_compositions(para)
+        per_line_widths = compute_per_line_widths(para)
+
+        avg_line_width = (
+            sum(per_line_widths) / len(per_line_widths) if per_line_widths else None
+        )
+        last_line_width = per_line_widths[-1] if per_line_widths else None
+        last_line_ratio = (
+            last_line_width / avg_line_width
+            if avg_line_width and avg_line_width > 0
+            else None
+        )
+
+        # font_size: mode of char font sizes
+        font_size = None
+        if valid_chars is None:
+            chars = extract_rendered_chars(para)
+            valid_chars = [c for c in chars if char_has_valid_box(c)]
+        font_sizes = [
+            c.pdf_style.font_size
+            for c in valid_chars
+            if c.pdf_style and c.pdf_style.font_size is not None
+        ]
+        if font_sizes:
+            import statistics
+
+            try:
+                font_size = statistics.mode(font_sizes)
+            except statistics.StatisticsError:
+                font_size = statistics.median(font_sizes)
+
+        # Density: total char area / rendered box area
+        density = None
+        if valid_chars and rendered_box:
+            total_char_area = sum(
+                (c.box.x2 - c.box.x) * (c.box.y2 - c.box.y) for c in valid_chars
+            )
+            box_area = (rendered_box.x2 - rendered_box.x) * (
+                rendered_box.y2 - rendered_box.y
+            )
+            density = total_char_area / box_area if box_area > 0 else None
+
+        return ParagraphLayoutInfo(
+            height=height,
+            line_count=line_count,
+            avg_line_width=avg_line_width,
+            last_line_width=last_line_width,
+            last_line_ratio=last_line_ratio,
+            font_size=font_size,
+            density=density,
         )
 
 

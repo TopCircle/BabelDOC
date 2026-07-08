@@ -1107,6 +1107,24 @@ class PdfSameStyleCharacters:
 
 
 @dataclass(slots=True)
+class ReferenceMetrics:
+    """Original layout metrics captured before translation.
+
+    Runtime-only — not serialized to XML (no metadata).
+    Captured after ParagraphFinder, before ILTranslator destroys compositions.
+
+    Only stores data that CANNOT be recomputed later.
+    height/width are intentionally omitted — use (box.y2 - box.y) directly.
+    """
+
+    line_count: int  # counted from original compositions
+    avg_line_width: float  # mean of per-line widths
+    last_line_width: float  # width of last line
+    last_line_ratio: float  # last_line_width / avg_line_width
+    font_size: float  # mode of char font sizes
+
+
+@dataclass(slots=True)
 class PdfParagraphComposition:
     class Meta:
         name = "pdfParagraphComposition"
@@ -1246,6 +1264,7 @@ class PdfParagraph:
             "type": "Attribute",
         },
     )
+    reference_metrics: ReferenceMetrics | None = field(default=None)
 
 
 @dataclass(slots=True)

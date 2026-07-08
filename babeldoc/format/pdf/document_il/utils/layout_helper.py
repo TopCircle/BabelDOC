@@ -1118,3 +1118,172 @@ def get_paragraph_bounding_box(paragraph) -> Box | None:
         return None
 
     return Box(min_x, min_y, max_x, max_y)
+
+
+def _extract_chars_from_compositions(para: PdfParagraph) -> list:
+    """Extract all characters from paragraph compositions.
+
+    Handles pdf_line, pdf_character, pdf_same_style_characters, and pdf_formula.
+    """
+    chars = []
+    for comp in para.pdf_paragraph_composition or []:
+        if comp.pdf_line:
+            chars.extend(comp.pdf_line.pdf_character or [])
+        elif comp.pdf_character:
+            chars.append(comp.pdf_character)
+        elif comp.pdf_same_style_characters:
+            chars.extend(comp.pdf_same_style_characters.pdf_character or [])
+        elif comp.pdf_formula and comp.pdf_formula.pdf_character:
+            chars.extend(comp.pdf_formula.pdf_character)
+    return chars
+
+
+def _cluster_chars_by_line(para: PdfParagraph) -> list[list]:
+    """Cluster paragraph characters into visual lines by y-coordinate.
+
+    Returns a list of char groups, one per visual line (top to bottom).
+    Uses PdfLine compositions when available; falls back to y-clustering.
+    """
+    # Fast path: use PdfLine compositions directly
+    pdf_lines = []
+    has_non_line = False
+    for comp in para.pdf_paragraph_composition or []:
+        if comp.pdf_line:
+            pdf_lines.append(comp.pdf_line)
+        elif comp.pdf_character or comp.pdf_same_style_characters or comp.pdf_formula:
+            has_non_line = True
+
+    if pdf_lines and not has_non_line:
+        # Pure PdfLine compositions — authoritative
+        return [line.pdf_character or [] for line in pdf_lines]
+
+    # Fallback: y-coordinate clustering
+    all_chars = _extract_chars_from_compositions(para)
+    all_chars = [
+        c for c in all_chars
+        if c.box and c.box.y is not None and c.box.y2 is not None
+        and c.box.x is not None and c.box.x2 is not None
+    ]
+    if not all_chars:
+        return []
+
+    all_chars.sort(key=lambda c: -(c.box.y + c.box.y2) / 2)
+
+    heights = [c.box.y2 - c.box.y for c in all_chars if c.box.y2 > c.box.y]
+    if not heights:
+        return [all_chars]
+
+    median_height = sorted(heights)[len(heights) // 2]
+    threshold = median_height * 0.5
+
+    clusters = [[all_chars[0]]]
+    for i in range(1, len(all_chars)):
+        prev_center = (all_chars[i - 1].box.y + all_chars[i - 1].box.y2) / 2
+        curr_center = (all_chars[i].box.y + all_chars[i].box.y2) / 2
+        if abs(prev_center - curr_center) > threshold:
+            clusters.append([all_chars[i]])
+        else:
+            clusters[-1].append(all_chars[i])
+
+    return clusters
+
+
+def count_lines_from_compositions(para: PdfParagraph) -> int:
+    """Count the number of visual lines in a paragraph.
+
+    Uses PdfLine compositions when available (accurate).
+    Falls back to y-coordinate clustering for other composition types.
+    """
+    # Count formula compositions (each counts as one line unit)
+    formula_count = sum(
+        1 for comp in para.pdf_paragraph_composition or []
+        if comp.pdf_formula
+    )
+
+    clusters = _cluster_chars_by_line(para)
+    if not clusters:
+        return max(formula_count, 0)
+
+    return max(formula_count, len(clusters))
+
+
+def compute_per_line_widths(para: PdfParagraph) -> list[float]:
+    """Compute the width of each line in a paragraph.
+
+    Uses PdfLine.box when available. Falls back to char-based computation.
+    """
+    # Fast path: use PdfLine/PdfFormula box directly
+    widths = []
+    for comp in para.pdf_paragraph_composition or []:
+        if comp.pdf_line and comp.pdf_line.box:
+            widths.append(comp.pdf_line.box.x2 - comp.pdf_line.box.x)
+        elif comp.pdf_formula and comp.pdf_formula.box:
+            widths.append(comp.pdf_formula.box.x2 - comp.pdf_formula.box.x)
+
+    if widths:
+        return widths
+
+    # Fallback: cluster chars by y, compute per-cluster width
+    clusters = _cluster_chars_by_line(para)
+    widths = []
+    for cluster in clusters:
+        if cluster:
+            line_min_x = min(c.box.x for c in cluster)
+            line_max_x = max(c.box.x2 for c in cluster)
+            widths.append(line_max_x - line_min_x)
+
+    return widths
+
+
+def compute_reference_metrics(para: PdfParagraph):
+    """Compute and attach ReferenceMetrics to a paragraph.
+
+    Call this AFTER ParagraphFinder, BEFORE ILTranslator.
+    Requires para.box and para.pdf_paragraph_composition to be set.
+    """
+    from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
+
+    if not para.box or not para.pdf_paragraph_composition:
+        return
+
+    width = para.box.x2 - para.box.x
+    if width <= 0:
+        return
+
+    line_count = count_lines_from_compositions(para)
+    per_line_widths = compute_per_line_widths(para)
+
+    avg_line_width = sum(per_line_widths) / len(per_line_widths) if per_line_widths else width
+    last_line_width = per_line_widths[-1] if per_line_widths else width
+    last_line_ratio = last_line_width / avg_line_width if avg_line_width > 0 else 1.0
+
+    # Compute font size mode from characters
+    font_sizes = []
+    for comp in para.pdf_paragraph_composition or []:
+        chars = []
+        if comp.pdf_line:
+            chars = comp.pdf_line.pdf_character or []
+        elif comp.pdf_character:
+            chars = [comp.pdf_character]
+        elif comp.pdf_same_style_characters:
+            chars = comp.pdf_same_style_characters.pdf_character or []
+        for c in chars:
+            if c.pdf_style and c.pdf_style.font_size is not None:
+                font_sizes.append(c.pdf_style.font_size)
+
+    if font_sizes:
+        import statistics
+        try:
+            font_size = statistics.mode(font_sizes)
+        except statistics.StatisticsError:
+            font_size = statistics.median(font_sizes)
+    else:
+        font_size = 0.0
+
+    para.reference_metrics = ReferenceMetrics(
+        line_count=line_count,
+        avg_line_width=avg_line_width,
+        last_line_width=last_line_width,
+        last_line_ratio=last_line_ratio,
+        font_size=font_size,
+    )
