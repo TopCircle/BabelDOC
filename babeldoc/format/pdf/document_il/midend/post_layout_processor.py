@@ -37,6 +37,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# 浮点比较容差：IoU/coverage 低于此值视为无重叠（避免舍入误差误报）
+_OVERLAP_EPSILON = 1e-9
+
 
 # ──────────────────────────────────────────────────────────────
 # 共享工具函数
@@ -495,6 +498,426 @@ class OverlapDetector:
 
 
 # ──────────────────────────────────────────────────────────────
+# QuoteDetector
+# ──────────────────────────────────────────────────────────────
+
+
+class QuoteDetector:
+    """检测 Quote（引文框）块与正文的碰撞问题。
+
+    Quote 块的特征：
+    1. 宽度明显窄于页面宽度（两侧有留白）
+    2. 左侧有明显缩进
+    3. 右侧有明显留白
+
+    检测逻辑：
+    1. 识别所有 Quote 块
+    2. 对每个 Quote 块，检查与同页正文段落的重叠
+    3. 生成 LayoutIssue（issue_type="quote_collision"）
+    """
+
+    name = "QuoteDetector"
+
+    def __init__(
+        self,
+        narrow_threshold: float = 0.8,
+        indent_threshold: float = 0.05,
+        right_margin_threshold: float = 0.05,
+    ):
+        self.narrow_threshold = narrow_threshold
+        self.indent_threshold = indent_threshold
+        self.right_margin_threshold = right_margin_threshold
+
+    def detect(self, context: DocumentContext) -> list[LayoutIssue]:
+        """检测所有 Quote 块，返回与正文碰撞的 issue 列表。"""
+        from babeldoc.format.pdf.document_il.utils.layout_helper import is_quote_block
+
+        issues: list[LayoutIssue] = []
+
+        for page_id, para_ids in context.page_paragraphs.items():
+            if len(para_ids) < 2:
+                continue
+
+            page = context.get_page(page_id)
+            if page is None:
+                continue
+
+            # 获取页面宽度
+            page_width = self._get_page_width(page)
+            if page_width <= 0:
+                continue
+
+            # 识别 Quote 块和正文段落
+            quote_paras: list[int] = []
+            text_paras: list[int] = []
+
+            for pid in para_ids:
+                para = context.get_paragraph(pid)
+                if para is None:
+                    continue
+
+                if is_quote_block(
+                    para,
+                    page_width,
+                    narrow_threshold=self.narrow_threshold,
+                    indent_threshold=self.indent_threshold,
+                    right_margin_threshold=self.right_margin_threshold,
+                ):
+                    quote_paras.append(pid)
+                else:
+                    text_paras.append(pid)
+
+            # 检查每个 Quote 块与正文段落的碰撞
+            for quote_pid in quote_paras:
+                quote_geom = context.geometry_cache.get_geometry(quote_pid)
+                quote_box = quote_geom.rendered_box
+                if quote_box is None:
+                    continue
+
+                for text_pid in text_paras:
+                    text_geom = context.geometry_cache.get_geometry(text_pid)
+                    text_box = text_geom.rendered_box
+                    if text_box is None:
+                        continue
+
+                    # 检查是否重叠（使用 epsilon 避免舍入误差误报）
+                    iou, coverage = self._compute_overlap_metrics(quote_box, text_box)
+
+                    if iou > _OVERLAP_EPSILON or coverage > _OVERLAP_EPSILON:
+                        quote_para = context.get_paragraph(quote_pid)
+                        text_para = context.get_paragraph(text_pid)
+
+                        # 跳过不同 XObject 的段落
+                        if quote_para and text_para and quote_para.xobj_id != text_para.xobj_id:
+                            continue
+
+                        issues.append(
+                            LayoutIssue(
+                                page_id=page_id,
+                                detector_name=self.name,
+                                issue_type="quote_collision",
+                                affected_paragraph_ids=(quote_pid, text_pid),
+                                iou=iou,
+                                coverage=coverage,
+                                description=(
+                                    f"Quote block {quote_pid} collides with "
+                                    f"text paragraph {text_pid} "
+                                    f"(iou={iou:.4f}, coverage={coverage:.4f})"
+                                ),
+                                bbox_evidence={
+                                    "quote_box": self._box_to_dict(quote_box),
+                                    "text_box": self._box_to_dict(text_box),
+                                },
+                            )
+                        )
+
+        return issues
+
+    @staticmethod
+    def _get_page_width(page) -> float:
+        """获取页面宽度。"""
+        if page.cropbox and page.cropbox.box:
+            return page.cropbox.box.x2 - page.cropbox.box.x
+        if page.mediabox and page.mediabox.box:
+            return page.mediabox.box.x2 - page.mediabox.box.x
+        return 0.0
+
+    @staticmethod
+    def _compute_overlap_metrics(b1: Box, b2: Box) -> tuple[float, float]:
+        """计算 IoU 和 coverage。"""
+        inter = box_intersection(b1, b2)
+        if inter is None:
+            return 0.0, 0.0
+
+        inter_x, inter_y, inter_x2, inter_y2 = inter
+        inter_area = (inter_x2 - inter_x) * (inter_y2 - inter_y)
+        area1 = (b1.x2 - b1.x) * (b1.y2 - b1.y)
+        area2 = (b2.x2 - b2.x) * (b2.y2 - b2.y)
+        union_area = area1 + area2 - inter_area
+
+        iou = inter_area / union_area if union_area > 0 else 0.0
+        smaller = min(area1, area2)
+        coverage = inter_area / smaller if smaller > 0 else 0.0
+
+        return iou, coverage
+
+    @staticmethod
+    def _box_to_dict(box: Box) -> dict:
+        return {"x": box.x, "y": box.y, "x2": box.x2, "y2": box.y2}
+
+
+# ──────────────────────────────────────────────────────────────
+# QuoteResolver
+# ──────────────────────────────────────────────────────────────
+
+
+class QuoteResolver:
+    """将 Quote 碰撞 issue 解析为 FixAction。
+
+    决策逻辑：
+    - Quote 块优先级高于正文（Quote 不动，正文让路）
+    - 如果 Quote 与正文重叠，收缩/移动正文段落
+    - 收缩方向：根据 Quote 与正文的相对位置决定
+    """
+
+    def resolve_all(
+        self, issues: list[LayoutIssue], context: DocumentContext
+    ) -> list[FixAction]:
+        """为所有 quote_collision issue 生成修复动作列表。
+
+        同一段落只生成一个 FixAction（最严格的约束）。
+        """
+        # {paragraph_id: new_box}
+        constraints: dict[int, Box] = {}
+
+        for issue in issues:
+            if issue.issue_type != "quote_collision":
+                continue
+
+            quote_pid, text_pid = issue.affected_paragraph_ids
+            quote_para = context.get_paragraph(quote_pid)
+            text_para = context.get_paragraph(text_pid)
+            if quote_para is None or text_para is None:
+                continue
+
+            quote_geom = context.geometry_cache.get_geometry(quote_pid)
+            text_geom = context.geometry_cache.get_geometry(text_pid)
+            quote_box = quote_geom.rendered_box
+            text_box = text_geom.rendered_box
+            if quote_box is None or text_box is None:
+                continue
+
+            # Quote 优先：收缩正文段落
+            if text_para.box is None:
+                continue
+
+            new_box = self._compute_shrunk_box_for_quote(
+                text_para.box, text_box, quote_box
+            )
+            if new_box is None:
+                continue
+
+            # 合并约束：如果同一段落已有约束，取更严格的
+            if text_pid in constraints:
+                constraints[text_pid] = self._merge_constraints(
+                    constraints[text_pid], new_box
+                )
+            else:
+                constraints[text_pid] = new_box
+
+        return [
+            FixAction(
+                shrink_paragraph_id=pid,
+                new_box=new_box,
+            )
+            for pid, new_box in constraints.items()
+        ]
+
+    @staticmethod
+    def _compute_shrunk_box_for_quote(
+        layout_box: Box, text_box: Box, quote_box: Box
+    ) -> Box | None:
+        """计算为 Quote 让路后的正文 box。
+
+        策略（PDF 坐标系，y 向上）：
+        - 如果正文在 Quote 下方 → 收缩正文顶部 (new_y2 = quote.y - 1)
+        - 如果正文在 Quote 上方 → 收缩正文底部 (new_y = quote.y2 + 1)
+        - 如果正文与 Quote 左右重叠 → 收缩正文右侧 (new_x2 = quote.x - 1)
+        """
+        # 检查垂直重叠
+        vertical_overlap = (
+            text_box.y < quote_box.y2 and text_box.y2 > quote_box.y
+        )
+
+        # 检查水平重叠
+        horizontal_overlap = (
+            text_box.x < quote_box.x2 and text_box.x2 > quote_box.x
+        )
+
+        if not vertical_overlap or not horizontal_overlap:
+            return None
+
+        # 优先处理垂直方向的碰撞
+        # 正文在 Quote 下方（正文顶部低于或等于 Quote 顶部）
+        if text_box.y2 <= quote_box.y2 and text_box.y < quote_box.y:
+            new_y2 = quote_box.y - 1
+            if new_y2 > layout_box.y:
+                return Box(
+                    x=layout_box.x,
+                    y=layout_box.y,
+                    x2=layout_box.x2,
+                    y2=new_y2,
+                )
+
+        # 正文在 Quote 上方（正文底部高于或等于 Quote 底部）
+        if text_box.y >= quote_box.y and text_box.y2 > quote_box.y2:
+            new_y = quote_box.y2 + 1
+            if new_y < (layout_box.y2 or float("inf")):
+                return Box(
+                    x=layout_box.x,
+                    y=new_y,
+                    x2=layout_box.x2,
+                    y2=layout_box.y2,
+                )
+
+        # 正文横跨 Quote（顶部在 Quote 上方，底部在 Quote 下方）
+        # 选择空间更大的一侧收缩
+        if text_box.y2 > quote_box.y2 and text_box.y < quote_box.y:
+            space_above = text_box.y2 - quote_box.y2
+            space_below = quote_box.y - text_box.y
+            if space_above >= space_below:
+                new_y = quote_box.y2 + 1
+                if new_y < (layout_box.y2 or float("inf")):
+                    return Box(
+                        x=layout_box.x,
+                        y=new_y,
+                        x2=layout_box.x2,
+                        y2=layout_box.y2,
+                    )
+            else:
+                new_y2 = quote_box.y - 1
+                if new_y2 > layout_box.y:
+                    return Box(
+                        x=layout_box.x,
+                        y=layout_box.y,
+                        x2=layout_box.x2,
+                        y2=new_y2,
+                    )
+
+        # 处理包含情况：text 完全在 quote 内部或 quote 完全在 text 内部
+        # 选择收缩方向：向空间更大的方向收缩
+        text_in_quote = (
+            text_box.y >= quote_box.y
+            and text_box.y2 <= quote_box.y2
+            and text_box.x >= quote_box.x
+            and text_box.x2 <= quote_box.x2
+        )
+        quote_in_text = (
+            quote_box.y >= text_box.y
+            and quote_box.y2 <= text_box.y2
+            and quote_box.x >= text_box.x
+            and quote_box.x2 <= text_box.x2
+        )
+
+        if text_in_quote or quote_in_text:
+            # 使用 Quote 高度作为扩展参考（需要逃出 Quote 区域）
+            quote_height = quote_box.y2 - quote_box.y
+            expand_limit = max(quote_height * 0.5, 50)  # 至少 50pt
+            # 尝试向上收缩（new_y = quote.y2 + 1）
+            new_y = quote_box.y2 + 1
+            if new_y < (text_box.y2 + expand_limit):
+                effective_y2 = (
+                    layout_box.y2
+                    if layout_box.y2 is not None
+                    else text_box.y2
+                )
+                return Box(
+                    x=layout_box.x,
+                    y=new_y,
+                    x2=layout_box.x2,
+                    y2=max(effective_y2, text_box.y2),
+                )
+            # 尝试向下收缩（new_y2 = quote.y - 1）
+            new_y2 = quote_box.y - 1
+            if new_y2 > (text_box.y - expand_limit):
+                return Box(
+                    x=layout_box.x,
+                    y=min(layout_box.y, text_box.y),
+                    x2=layout_box.x2,
+                    y2=new_y2,
+                )
+
+        # 如果垂直方向无法收缩，尝试水平方向
+        # 正文在 Quote 右侧
+        if text_box.x >= quote_box.x2:
+            new_x = quote_box.x2 + 1
+            if new_x < (layout_box.x2 or float("inf")):
+                return Box(
+                    x=new_x,
+                    y=layout_box.y,
+                    x2=layout_box.x2,
+                    y2=layout_box.y2,
+                )
+
+        # 正文在 Quote 左侧
+        if text_box.x2 <= quote_box.x:
+            new_x2 = quote_box.x - 1
+            if new_x2 > layout_box.x:
+                return Box(
+                    x=layout_box.x,
+                    y=layout_box.y,
+                    x2=new_x2,
+                    y2=layout_box.y2,
+                )
+
+        return None
+
+    @staticmethod
+    def _merge_constraints(box_a: Box, box_b: Box) -> Box:
+        """合并两个约束，取更严格的（更小的有效区域）。"""
+        inter = box_intersection(box_a, box_b)
+        if inter is not None:
+            return Box(x=inter[0], y=inter[1], x2=inter[2], y2=inter[3])
+        # 无交集时返回更小的 box（保守策略）
+        x = max(box_a.x or 0, box_b.x or 0)
+        y = max(box_a.y or 0, box_b.y or 0)
+        x2 = min(box_a.x2 or float("inf"), box_b.x2 or float("inf"))
+        y2 = min(box_a.y2 or float("inf"), box_b.y2 or float("inf"))
+        # 防止退化 box（x > x2 或 y > y2），回退到 box_a
+        if x > x2 or y > y2:
+            return box_a
+        return Box(x=x, y=y, x2=x2, y2=y2)
+
+
+# ──────────────────────────────────────────────────────────────
+# QuoteFixer
+# ──────────────────────────────────────────────────────────────
+
+
+class QuoteFixer:
+    """应用 Quote 修复动作：收缩正文 box + 重新排版。"""
+
+    def __init__(self, typesetter: Typesetting):
+        self._typesetter = typesetter
+
+    def apply_fix(
+        self, context: DocumentContext, action: FixAction
+    ) -> bool:
+        """应用单个 Quote 修复动作。
+
+        Returns:
+            True 表示成功，False 表示失败（已回滚）。
+        """
+        para = context.get_paragraph(action.shrink_paragraph_id)
+        if para is None:
+            return False
+
+        page_id = context.paragraph_page.get(action.shrink_paragraph_id)
+        if page_id is None:
+            return False
+        page = context.get_page(page_id)
+        if page is None:
+            return False
+
+        # 保存旧 box 用于回滚
+        old_box = para.box
+        para.box = action.new_box
+
+        success = self._typesetter.retypeset_paragraph(para, page)
+        if success:
+            context.geometry_cache.invalidate(action.shrink_paragraph_id)
+            logger.debug(
+                f"Quote fix: paragraph {action.shrink_paragraph_id}: "
+                f"box {old_box} → {action.new_box}"
+            )
+            return True
+        else:
+            # retypeset_paragraph 已回滚 composition，这里回滚 box
+            para.box = old_box
+            return False
+
+
+# ──────────────────────────────────────────────────────────────
 # OverlapResolver
 # ──────────────────────────────────────────────────────────────
 
@@ -620,12 +1043,14 @@ class OverlapResolver:
         if inter is not None:
             return Box(x=inter[0], y=inter[1], x2=inter[2], y2=inter[3])
         # 无交集时返回更小的 box（保守策略）
-        return Box(
-            x=max(box_a.x or 0, box_b.x or 0),
-            y=max(box_a.y or 0, box_b.y or 0),
-            x2=min(box_a.x2 or float("inf"), box_b.x2 or float("inf")),
-            y2=min(box_a.y2 or float("inf"), box_b.y2 or float("inf")),
-        )
+        x = max(box_a.x or 0, box_b.x or 0)
+        y = max(box_a.y or 0, box_b.y or 0)
+        x2 = min(box_a.x2 or float("inf"), box_b.x2 or float("inf"))
+        y2 = min(box_a.y2 or float("inf"), box_b.y2 or float("inf"))
+        # 防止退化 box（x > x2 或 y > y2），回退到 box_a
+        if x > x2 or y > y2:
+            return box_a
+        return Box(x=x, y=y, x2=x2, y2=y2)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -685,18 +1110,31 @@ class PostLayoutProcessor:
     """主编排器。
 
     Phase 1: 只读检测 + 报告（typesetter=None 或 dry_run=True）。
-    Phase 2: 检测 + 修复循环（需要 typesetter）。
+    Phase 2: Quote 碰撞检测 + 修复（优先级高于通用重叠）。
+    Phase 3: 通用重叠检测 + 修复循环（需要 typesetter）。
     """
 
     def __init__(
         self,
         context: DocumentContext,
         typesetter: Typesetting | None = None,
+        quote_narrow_threshold: float = 0.8,
+        quote_indent_threshold: float = 0.05,
+        quote_right_margin_threshold: float = 0.05,
     ):
         self.context = context
         self.detectors: list[OverlapDetector] = []
         self.resolver = OverlapResolver()
         self.fixer = OverlapFixer(typesetter) if typesetter else None
+
+        # Quote 组件
+        self.quote_detector = QuoteDetector(
+            narrow_threshold=quote_narrow_threshold,
+            indent_threshold=quote_indent_threshold,
+            right_margin_threshold=quote_right_margin_threshold,
+        )
+        self.quote_resolver = QuoteResolver()
+        self.quote_fixer = QuoteFixer(typesetter) if typesetter else None
 
     def register_detector(self, detector: OverlapDetector):
         self.detectors.append(detector)
@@ -717,10 +1155,48 @@ class PostLayoutProcessor:
         loop_found_clean = False
         max_iterations = self.context.config.max_iterations
 
-        # Phase 2: 检测→修复循环
+        # Phase 2: Quote 碰撞检测 + 修复（优先级高于通用重叠）
+        quote_issues = []
+        quote_fixed = 0
+        fixed_quote_pids: set[str] = set()  # 已修复的 Quote 段落 ID
+        # 检测始终执行（dry_run 也需要报告），修复仅在 can_fix 时执行
+        if self.quote_detector:
+            quote_issues = self.quote_detector.detect(self.context)
+            if quote_issues:
+                total_detected += len(quote_issues)
+                if can_fix and self.quote_fixer:
+                    quote_actions = self.quote_resolver.resolve_all(
+                        quote_issues, self.context
+                    )
+                    for action in quote_actions:
+                        success = self.quote_fixer.apply_fix(
+                            self.context, action
+                        )
+                        if success:
+                            quote_fixed += 1
+                            total_fixed += 1
+                            total_retypeset += 1
+                            # 记录已修复的段落 ID，避免 Phase 3 重复计数
+                            fixed_quote_pids.add(
+                                action.shrink_paragraph_id
+                            )
+                    logger.debug(
+                        f"Quote collision: {len(quote_issues)} issues, "
+                        f"{quote_fixed} fixed"
+                    )
+
+        # Phase 3: 通用重叠检测→修复循环
+        # 排除已修复的 Quote 段落，避免重复计数和优先级冲突
         if can_fix:
             for iteration in range(max_iterations):
-                issues = self._detect_all()
+                issues = [
+                    i
+                    for i in self._detect_all()
+                    if not any(
+                        pid in fixed_quote_pids
+                        for pid in i.affected_paragraph_ids
+                    )
+                ]
                 if not issues:
                     iterations = iteration + 1
                     loop_found_clean = True
@@ -755,8 +1231,26 @@ class PostLayoutProcessor:
         if loop_found_clean:
             all_issues = []
         else:
-            all_issues = self._detect_all()
+            all_issues = [
+                i
+                for i in self._detect_all()
+                if not any(
+                    pid in fixed_quote_pids
+                    for pid in i.affected_paragraph_ids
+                )
+            ]
             total_detected += len(all_issues)
+
+        # 合并未修复的 Quote issues 到 all_issues 用于报告
+        unfixed_quote_issues = [
+            qi
+            for qi in quote_issues
+            if not any(
+                pid in fixed_quote_pids
+                for pid in qi.affected_paragraph_ids
+            )
+        ]
+        all_issues = unfixed_quote_issues + all_issues
 
         elapsed = time.monotonic() - start_time
 

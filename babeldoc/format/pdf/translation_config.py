@@ -222,6 +222,9 @@ class TranslationConfig:
         header_height: float = 40,
         footer_height: float = 40,
         enable_post_layout_optimization: bool = False,
+        quote_narrow_threshold: float = 0.8,
+        quote_indent_threshold: float = 0.05,
+        quote_right_margin_threshold: float = 0.05,
     ):
         self.translator = translator
         self.term_extraction_translator = term_extraction_translator or translator
@@ -392,6 +395,18 @@ class TranslationConfig:
             0.0,
         )
         self.enable_post_layout_optimization = enable_post_layout_optimization
+        self.quote_narrow_threshold = max(
+            min(float(quote_narrow_threshold if quote_narrow_threshold is not None else 0.8), 1.0),
+            0.1,
+        )
+        self.quote_indent_threshold = max(
+            min(float(quote_indent_threshold if quote_indent_threshold is not None else 0.05), 0.5),
+            0.0,
+        )
+        self.quote_right_margin_threshold = max(
+            min(float(quote_right_margin_threshold if quote_right_margin_threshold is not None else 0.05), 0.5),
+            0.0,
+        )
 
         if self.ocr_workaround:
             self.remove_non_formula_lines = False

@@ -1067,7 +1067,13 @@ def _do_translate_single(
         )
 
         context = DocumentContext.from_document(docs)
-        processor = PostLayoutProcessor(context, typesetter=typesetter)
+        processor = PostLayoutProcessor(
+            context,
+            typesetter=typesetter,
+            quote_narrow_threshold=translation_config.quote_narrow_threshold,
+            quote_indent_threshold=translation_config.quote_indent_threshold,
+            quote_right_margin_threshold=translation_config.quote_right_margin_threshold,
+        )
         processor.register_detector(OverlapDetector())
         report = processor.run()
         if translation_config.debug:

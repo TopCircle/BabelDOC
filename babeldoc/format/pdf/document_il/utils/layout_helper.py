@@ -1287,3 +1287,113 @@ def compute_reference_metrics(para: PdfParagraph):
         last_line_ratio=last_line_ratio,
         font_size=font_size,
     )
+
+
+def is_quote_block(
+    para: PdfParagraph,
+    page_width: float,
+    *,
+    narrow_threshold: float = 0.8,
+    indent_threshold: float = 0.05,
+    right_margin_threshold: float = 0.05,
+) -> bool:
+    """启发式判断段落是否为 Quote（引文框）块。
+
+    Quote 块的典型特征：
+    1. 段落宽度明显窄于页面宽度（两侧有留白）
+    2. 左侧有明显缩进
+    3. 右侧有明显留白
+    4. 文本内容可能以引号开头/结尾（辅助判断）
+
+    Args:
+        para: 要判断的段落
+        page_width: 页面宽度（cropbox.x2 - cropbox.x）
+        narrow_threshold: 段落宽度 / 页面宽度 < 此值视为窄段落
+        indent_threshold: 左侧缩进 / 页面宽度 > 此值视为有缩进
+        right_margin_threshold: 右侧留白 / 页面宽度 > 此值视为有留白
+
+    Returns:
+        True 如果段落被判断为 Quote 块
+    """
+    if not para.box or page_width <= 0:
+        return False
+
+    box = para.box
+    if any(v is None for v in [box.x, box.y, box.x2, box.y2]):
+        return False
+
+    para_width = box.x2 - box.x
+    if para_width <= 0:
+        return False
+
+    # 规则 1: 段落宽度明显窄于页面宽度
+    width_ratio = para_width / page_width
+    if width_ratio >= narrow_threshold:
+        return False
+
+    # 规则 2: 左侧有明显缩进
+    left_indent = box.x
+    indent_ratio = left_indent / page_width
+    if indent_ratio < indent_threshold:
+        return False
+
+    # 规则 3: 右侧有明显留白
+    right_margin = page_width - box.x2
+    margin_ratio = right_margin / page_width
+    if margin_ratio < right_margin_threshold:
+        return False
+
+    # 辅助规则: 检查文本内容是否包含引号标记
+    # 这不是硬性要求，但可以增加置信度
+    has_quote_marks = False
+    try:
+        text = get_paragraph_unicode(para)
+        if text:
+            # 检查中英文引号
+            quote_chars = {'"', '“', '”', "'", '‘', '’',
+                           '「', '」', '『', '』',
+                           '《', '》'}
+            first_char = text.strip()[:1] if text.strip() else ''
+            last_char = text.strip()[-1:] if text.strip() else ''
+            has_quote_marks = (
+                first_char in quote_chars or last_char in quote_chars
+            )
+    except (UnicodeDecodeError, AttributeError, IndexError):
+        pass
+
+    # 如果满足几何规则（窄 + 缩进 + 留白），认为是 Quote 块
+    # 引号标记只是辅助，不作为必要条件
+    return True
+
+
+def get_quote_exclusion_margins(
+    para: PdfParagraph,
+    page_width: float,
+    page_height: float,
+    *,
+    left_margin: float = 0.02,
+    top_margin: float = 0.01,
+    bottom_margin: float = 0.01,
+) -> tuple[float, float, float, float]:
+    """获取 Quote 块的排斥区域边距（绝对值）。
+
+    Args:
+        para: Quote 块段落
+        page_width: 页面宽度
+        page_height: 页面高度
+        left_margin: 左侧边距比例（相对于页面宽度）
+        top_margin: 上方边距比例（相对于页面高度）
+        bottom_margin: 下方边距比例（相对于页面高度）
+
+    Returns:
+        (left, top, right, bottom) 边距（绝对值）
+    """
+    if not para.box or page_width <= 0 or page_height <= 0:
+        return (0.0, 0.0, 0.0, 0.0)
+
+    return (
+        page_width * left_margin,   # left
+        page_height * top_margin,   # top
+        0.0,                        # right
+        page_height * bottom_margin, # bottom
+    )
