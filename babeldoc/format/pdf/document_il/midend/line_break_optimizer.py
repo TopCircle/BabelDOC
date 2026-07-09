@@ -138,8 +138,10 @@ def optimal_line_break(
             # 如果这个 unit 可以断行，或者是段落末尾，计算代价并更新 DP
             # 段落末尾（j == n）总是合法的断行点
             if unit.can_break_line or j == n:
+                # 计算非空格 unit 数量（用于孤行惩罚判断）
+                non_space_count = sum(1 for k in range(i, j) if not units[k].is_space)
                 raggedness = _line_cost(
-                    line_width, available, j - i, j == n, widow_penalty
+                    line_width, available, non_space_count, j == n, widow_penalty
                 )
                 new_cost = cost[i] + raggedness
                 if new_cost < cost[j]:

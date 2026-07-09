@@ -1041,7 +1041,10 @@ class Typesetting:
                                     font_sizes.append(u.font_size)
                                 if u.char and u.char.pdf_style and u.char.pdf_style.font_size:
                                     font_sizes.append(u.char.pdf_style.font_size)
-                            font_size = statistics.mode(font_sizes) if font_sizes else 10
+                            try:
+                                font_size = statistics.mode(font_sizes) if font_sizes else 10
+                            except statistics.StatisticsError:
+                                font_size = sum(font_sizes) / len(font_sizes) if font_sizes else 10
                             opt_space_width = (
                                 self.font_mapper.base_font.char_lengths("你", font_size * scale)[0] * 0.5
                             )
@@ -1072,9 +1075,9 @@ class Typesetting:
                                     )
                                     if opt_fit and opt_units:
                                         optimized_typeset_units = opt_units
-                        except Exception:
+                        except Exception as e:
                             # DP 优化失败，使用贪心结果
-                            pass
+                            logger.warning(f"DP line break optimization failed: {e}")
 
                         if optimized_typeset_units:
                             typeset_units = optimized_typeset_units
@@ -1810,6 +1813,10 @@ class Typesetting:
         Returns:
             tuple[list[TypesettingUnit], bool]: (已布局的排版单元列表，是否所有单元都放得下)
         """
+        # 预处理 break_points：转为 set 以加速 O(1) 查找
+        if break_points is not None and not isinstance(break_points, set):
+            break_points = set(break_points)
+
         # 计算字号众数
         font_sizes = []
         for unit in typesetting_units:
@@ -1924,7 +1931,12 @@ class Typesetting:
             # Include tracking in width calculation for accurate line breaks
             effective_width = unit_width + (decorative_tracking if not unit.is_space else 0)
             # DP 断行：在指定位置强制断行；否则使用贪心判断
-            dp_break = break_points is not None and i in break_points
+            # DP 断行仍需检查 hung punctuation 守卫
+            dp_break = (
+                break_points is not None
+                and i in break_points
+                and not unit.is_hung_punctuation
+            )
             if dp_break or (
                 not unit.is_hung_punctuation and (
                     (current_x + effective_width > available_x2)

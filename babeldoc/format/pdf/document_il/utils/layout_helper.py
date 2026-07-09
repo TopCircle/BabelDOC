@@ -1414,4 +1414,4 @@ def get_adaptive_image_padding(font_size: float, default: float = 28.0) -> float
     """
     if font_size <= 0:
         return default
-    return min(font_size * 0.5, 12.0)
+    return max(font_size * 0.5, 12.0)
