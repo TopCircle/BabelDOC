@@ -9,10 +9,10 @@ TIKTOKEN_CACHES = {
 }
 
 FONT_METADATA_URL = {
-    "github": "https://raw.githubusercontent.com/funstory-ai/BabelDOC-Assets/refs/heads/main/font_metadata.json",
     "huggingface": "https://huggingface.co/datasets/awwaawwa/BabelDOC-Assets/resolve/main/font_metadata.json?download=true",
     # "hf-mirror": "https://hf-mirror.com/datasets/awwaawwa/BabelDOC-Assets/resolve/main/font_metadata.json?download=true",
     "modelscope": "https://www.modelscope.cn/datasets/awwaawwa/BabelDOCAssets/resolve/master/font_metadata.json",
+    # github removed from default: use HF/ModelScope for font downloads
 }
 
 FONT_URL_BY_UPSTREAM = {

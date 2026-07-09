@@ -280,14 +280,8 @@ async def get_fastest_upstream(client: httpx.AsyncClient | None = None):
         logger.error("Failed to get fastest upstream")
         exit(1)
 
-    if fastest_upstream_for_font == "github":
-        # since github is only store font, we need to get the fastest upstream for model
-        fastest_upstream_for_model, _ = await get_fastest_upstream_for_model(client)
-        if fastest_upstream_for_model is None:
-            logger.error("Failed to get fastest upstream")
-            exit(1)
-    else:
-        fastest_upstream_for_model = fastest_upstream_for_font
+    # Font and model use the same upstream (github removed from font sources)
+    fastest_upstream_for_model = fastest_upstream_for_font
 
     return online_font_metadata, fastest_upstream_for_font, fastest_upstream_for_model
 
