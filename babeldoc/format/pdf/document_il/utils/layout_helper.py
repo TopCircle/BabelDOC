@@ -1286,6 +1286,7 @@ def compute_reference_metrics(para: PdfParagraph):
         last_line_width=last_line_width,
         last_line_ratio=last_line_ratio,
         font_size=font_size,
+        per_line_widths=per_line_widths,
     )
 
 

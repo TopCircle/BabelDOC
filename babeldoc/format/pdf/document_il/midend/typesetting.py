@@ -1012,6 +1012,14 @@ class Typesetting:
         scale = initial_scale
         if line_skip is None:
             line_skip = self._DEFAULT_LINE_SKIP_CJK if self.is_cjk else self._DEFAULT_LINE_SKIP_NON_CJK
+
+        # 提取原版行宽，用于参考布局
+        reference_widths = self._extract_original_line_widths(paragraph)
+        if reference_widths:
+            logger.debug(
+                f"Reference layout: {len(reference_widths)} original lines, "
+                f"widths={[f'{w:.1f}' for w in reference_widths]}"
+            )
         min_scale = 0.1
         expand_space_flag = 0
         final_typeset_units = None
@@ -1072,6 +1080,7 @@ class Typesetting:
                                 opt_breaks = self._compute_optimal_breaks(
                                     typesetting_units, box, scale, opt_avg_height,
                                     line_skip, opt_space_width, opt_tracking,
+                                    reference_widths=reference_widths,
                                 )
                                 if opt_breaks:
                                     opt_units, opt_fit = self._layout_typesetting_units(
@@ -1698,20 +1707,15 @@ class Typesetting:
         ],
     ):
         # 诊断：记录原版段落的行结构
-        original_lines = [
-            c.pdf_line for c in (paragraph.pdf_paragraph_composition or [])
-            if c.pdf_line
-        ]
-        if original_lines:
-            line_widths = [
-                (l.box.x2 - l.box.x) if l.box else 0 for l in original_lines
-            ]
+        rm = getattr(paragraph, 'reference_metrics', None)
+        if rm:
             logger.debug(
-                f"Original paragraph: {len(original_lines)} lines, "
-                f"widths={[f'{w:.1f}' for w in line_widths]}, "
+                f"Original paragraph: {rm.line_count} lines, "
+                f"avg_width={rm.avg_line_width:.1f}, "
+                f"per_line_widths={[f'{w:.1f}' for w in (rm.per_line_widths or [])]}, "
                 f"box=[{paragraph.box.x:.1f},{paragraph.box.y:.1f}]-[{paragraph.box.x2:.1f},{paragraph.box.y2:.1f}]"
                 if paragraph.box else
-                f"Original paragraph: {len(original_lines)} lines, no box"
+                f"Original paragraph: {rm.line_count} lines, no box"
             )
 
         typesetting_units = self.create_typesetting_units(paragraph, fonts)
@@ -1751,6 +1755,27 @@ class Typesetting:
             total_width += unit.width
         return total_width * scale
 
+    @staticmethod
+    def _extract_original_line_widths(paragraph: il_version_1.PdfParagraph) -> list[float]:
+        """从原版段落提取每行的宽度。
+
+        优先从 reference_metrics（翻译前缓存）获取，
+        回退到从 compositions 提取（翻译前调用时有效）。
+        """
+        # 优先使用翻译前缓存的 reference_metrics
+        rm = getattr(paragraph, 'reference_metrics', None)
+        if rm and rm.per_line_widths:
+            return rm.per_line_widths
+
+        # 回退：从 compositions 提取（仅在翻译前有效）
+        widths = []
+        for comp in paragraph.pdf_paragraph_composition or []:
+            if comp.pdf_line and comp.pdf_line.box:
+                w = comp.pdf_line.box.x2 - comp.pdf_line.box.x
+                if w > 0:
+                    widths.append(w)
+        return widths
+
     def _estimate_line_widths(
         self,
         typesetting_units: list[TypesettingUnit],
@@ -1758,10 +1783,14 @@ class Typesetting:
         scale: float,
         avg_height: float,
         line_skip: float,
+        reference_widths: list[float] | None = None,
     ) -> list[float]:
         """估算每行的可用宽度（用于 DP 断行优化的近似值）。
 
-        用 avg_height 步进 Y 位置，查询 ExclusionZone 得到每行可用宽度。
+        如果提供 reference_widths（原版行宽），则优先使用原版行宽作为目标，
+        同时尊重 ExclusionZone 约束（取两者中较小值）。
+
+        否则用 avg_height 步进 Y 位置，查询 ExclusionZone 得到每行可用宽度。
         """
         zone_index = getattr(self, "_current_zone_index", None)
         widths = []
@@ -1775,7 +1804,9 @@ class Typesetting:
         query_h = max(max_unit_height, avg_height)
 
         y = box.y2 - avg_height
+        line_idx = 0
         while y > box.y:
+            # 获取 zone 约束的宽度
             if zone_index and query_h > 0:
                 x1, x2 = zone_index.get_available_x_range(
                     y, y + query_h, box.x, box.x2
@@ -1784,8 +1815,18 @@ class Typesetting:
                     x1, x2 = box.x, box.x2
             else:
                 x1, x2 = box.x, box.x2
-            widths.append(x2 - x1)
+            zone_width = x2 - x1
+
+            # 如果有参考宽度，使用参考宽度（但不超过 zone 约束）
+            if reference_widths and line_idx < len(reference_widths):
+                ref_w = reference_widths[line_idx]
+                width = min(ref_w, zone_width)
+            else:
+                width = zone_width
+
+            widths.append(width)
             y -= max(avg_height * line_skip, max_unit_height * 1.05)
+            line_idx += 1
 
         return widths
 
@@ -1798,10 +1839,12 @@ class Typesetting:
         line_skip: float,
         space_width: float,
         decorative_tracking: float,
+        reference_widths: list[float] | None = None,
     ) -> list[int] | None:
         """计算 DP 优化的断行位置。失败时返回 None。"""
         line_widths = self._estimate_line_widths(
-            typesetting_units, box, scale, avg_height, line_skip
+            typesetting_units, box, scale, avg_height, line_skip,
+            reference_widths=reference_widths,
         )
         if not line_widths:
             return None
