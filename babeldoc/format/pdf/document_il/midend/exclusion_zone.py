@@ -27,6 +27,7 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.utils.layout_helper import box_to_tuple
+from babeldoc.format.pdf.document_il.utils.layout_helper import get_adaptive_image_padding
 
 logger = logging.getLogger(__name__)
 
@@ -121,12 +122,19 @@ def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZ
         ):
             continue
 
-        # 计算含边距的排除区域
+        # 计算含边距的排除区域（自适应 padding）
+        font_size = para.font_size if para.font_size else 10.0
+        adaptive_margin = get_adaptive_image_padding(font_size)
+        # 将自适应 margin 转为相对于页面尺寸的比例
+        adaptive_left = adaptive_margin / page_width if page_width > 0 else config.left_margin
+        adaptive_top = adaptive_margin / page_height if page_height > 0 else config.top_margin
+        adaptive_bottom = adaptive_margin / page_height if page_height > 0 else config.bottom_margin
+
         margins = get_quote_exclusion_margins(
             para, page_width, page_height,
-            left_margin=config.left_margin,
-            top_margin=config.top_margin,
-            bottom_margin=config.bottom_margin,
+            left_margin=adaptive_left,
+            top_margin=adaptive_top,
+            bottom_margin=adaptive_bottom,
         )
         left_margin, top_margin, right_margin, bottom_margin = margins
 

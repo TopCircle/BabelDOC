@@ -23,6 +23,7 @@ from babeldoc.format.pdf.document_il import PdfStyle
 from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
 from babeldoc.format.pdf.document_il.utils.formular_helper import update_formula_data
+from babeldoc.format.pdf.document_il.midend.line_break_optimizer import optimal_line_break
 from babeldoc.format.pdf.document_il.utils.layout_helper import box_to_tuple
 from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.format.pdf.translation_config import WatermarkOutputMode
@@ -1030,6 +1031,54 @@ class Typesetting:
                 # 如果所有单元都放得下
                 if all_units_fit:
                     if apply_layout:
+                        # DP 断行优化：在最终布局时尝试更优的断行方案
+                        optimized_typeset_units = None
+                        try:
+                            # 计算必要的参数
+                            font_sizes = []
+                            for u in typesetting_units:
+                                if u.font_size:
+                                    font_sizes.append(u.font_size)
+                                if u.char and u.char.pdf_style and u.char.pdf_style.font_size:
+                                    font_sizes.append(u.char.pdf_style.font_size)
+                            font_size = statistics.mode(font_sizes) if font_sizes else 10
+                            opt_space_width = (
+                                self.font_mapper.base_font.char_lengths("你", font_size * scale)[0] * 0.5
+                            )
+                            opt_tracking = (
+                                paragraph.decorative_tracking * scale
+                                if getattr(paragraph, "decorative_tracking", None)
+                                else 0
+                            )
+                            unit_heights = [u.height for u in typesetting_units if u.height]
+                            if unit_heights:
+                                try:
+                                    opt_avg_height = statistics.mode(unit_heights) * scale
+                                except statistics.StatisticsError:
+                                    opt_avg_height = sum(unit_heights) / len(unit_heights) * scale
+                            else:
+                                opt_avg_height = 0
+
+                            if opt_avg_height > 0:
+                                opt_breaks = self._compute_optimal_breaks(
+                                    typesetting_units, box, scale, opt_avg_height,
+                                    line_skip, opt_space_width, opt_tracking,
+                                )
+                                if opt_breaks:
+                                    opt_units, opt_fit = self._layout_typesetting_units(
+                                        typesetting_units, box, scale, line_skip,
+                                        paragraph, use_english_line_break,
+                                        break_points=opt_breaks,
+                                    )
+                                    if opt_fit and opt_units:
+                                        optimized_typeset_units = opt_units
+                        except Exception:
+                            # DP 优化失败，使用贪心结果
+                            pass
+
+                        if optimized_typeset_units:
+                            typeset_units = optimized_typeset_units
+
                         # 实际应用排版结果
                         paragraph.scale = scale
                         paragraph.pdf_paragraph_composition = []
@@ -1676,6 +1725,69 @@ class Typesetting:
             total_width += unit.width
         return total_width * scale
 
+    def _estimate_line_widths(
+        self,
+        typesetting_units: list[TypesettingUnit],
+        box: Box,
+        scale: float,
+        avg_height: float,
+        line_skip: float,
+    ) -> list[float]:
+        """估算每行的可用宽度（用于 DP 断行优化的近似值）。
+
+        用 avg_height 步进 Y 位置，查询 ExclusionZone 得到每行可用宽度。
+        """
+        zone_index = getattr(self, "_current_zone_index", None)
+        widths = []
+
+        # 用段落中最高的 unit 修正查询高度
+        max_unit_height = avg_height
+        for u in typesetting_units:
+            h = u.height * scale
+            if h > max_unit_height:
+                max_unit_height = h
+        query_h = max(max_unit_height, avg_height)
+
+        y = box.y2 - avg_height
+        while y > box.y:
+            if zone_index and query_h > 0:
+                x1, x2 = zone_index.get_available_x_range(
+                    y, y + query_h, box.x, box.x2
+                )
+                if x1 >= x2:
+                    x1, x2 = box.x, box.x2
+            else:
+                x1, x2 = box.x, box.x2
+            widths.append(x2 - x1)
+            y -= max(avg_height * line_skip, max_unit_height * 1.05)
+
+        return widths
+
+    def _compute_optimal_breaks(
+        self,
+        typesetting_units: list[TypesettingUnit],
+        box: Box,
+        scale: float,
+        avg_height: float,
+        line_skip: float,
+        space_width: float,
+        decorative_tracking: float,
+    ) -> list[int] | None:
+        """计算 DP 优化的断行位置。失败时返回 None。"""
+        line_widths = self._estimate_line_widths(
+            typesetting_units, box, scale, avg_height, line_skip
+        )
+        if not line_widths:
+            return None
+
+        return optimal_line_break(
+            units=typesetting_units,
+            line_widths=line_widths,
+            scale=scale,
+            space_width=space_width,
+            decorative_tracking=decorative_tracking,
+        )
+
     def _layout_typesetting_units(
         self,
         typesetting_units: list[TypesettingUnit],
@@ -1684,6 +1796,7 @@ class Typesetting:
         line_skip: float,
         paragraph: il_version_1.PdfParagraph,
         use_english_line_break: bool = True,
+        break_points: list[int] | None = None,
     ) -> tuple[list[TypesettingUnit], bool]:
         """布局排版单元。
 
@@ -1691,6 +1804,8 @@ class Typesetting:
             typesetting_units: 要布局的排版单元列表
             box: 布局边界框
             scale: 缩放因子
+            break_points: 可选的预计算断行位置列表（DP 优化结果）。
+                         提供时在指定位置强制断行，否则使用贪心断行。
 
         Returns:
             tuple[list[TypesettingUnit], bool]: (已布局的排版单元列表，是否所有单元都放得下)
@@ -1808,15 +1923,19 @@ class Typesetting:
             # 如果当前行放不下这个元素，换行
             # Include tracking in width calculation for accurate line breaks
             effective_width = unit_width + (decorative_tracking if not unit.is_space else 0)
-            if not unit.is_hung_punctuation and (
-                (current_x + effective_width > available_x2)
-                or (
-                    use_english_line_break
-                    and current_x + effective_width + width_before_next_break_point > available_x2
-                )
-                or (
-                    unit.is_cannot_appear_in_line_end_punctuation
-                    and current_x + effective_width * 2 > available_x2
+            # DP 断行：在指定位置强制断行；否则使用贪心判断
+            dp_break = break_points is not None and i in break_points
+            if dp_break or (
+                not unit.is_hung_punctuation and (
+                    (current_x + effective_width > available_x2)
+                    or (
+                        use_english_line_break
+                        and current_x + effective_width + width_before_next_break_point > available_x2
+                    )
+                    or (
+                        unit.is_cannot_appear_in_line_end_punctuation
+                        and current_x + effective_width * 2 > available_x2
+                    )
                 )
             ):
                 # 换行

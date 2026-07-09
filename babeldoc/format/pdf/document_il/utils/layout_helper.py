@@ -1397,3 +1397,21 @@ def get_quote_exclusion_margins(
         0.0,                        # right
         page_height * bottom_margin, # bottom
     )
+
+
+def get_adaptive_image_padding(font_size: float, default: float = 28.0) -> float:
+    """根据字号自适应计算图片与文字的间距。
+
+    英文原文的图文间距通常只有 12-15px，而固定 28px 会浪费太多空间。
+    自适应规则：不超过字号的一半，最小 12px。
+
+    Args:
+        font_size: 当前字号
+        default: 默认间距（当 font_size 无效时使用）
+
+    Returns:
+        自适应间距值
+    """
+    if font_size <= 0:
+        return default
+    return min(font_size * 0.5, 12.0)
