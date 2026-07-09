@@ -129,7 +129,8 @@ def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZ
             continue
 
         # 计算含边距的排除区域（自适应 padding）
-        font_size = para.font_size if para.font_size else 10.0
+        from babeldoc.format.pdf.document_il.midend.flow_skeleton import get_paragraph_font_size
+        font_size = get_paragraph_font_size(para)
         adaptive_margin = get_adaptive_image_padding(font_size)
         # 将自适应 margin 转为相对于页面尺寸的比例
         adaptive_left = adaptive_margin / page_width if page_width > 0 else config.left_margin
