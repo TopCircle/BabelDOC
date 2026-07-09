@@ -1697,6 +1697,23 @@ class Typesetting:
             il_version_1.PdfFont | dict[str, il_version_1.PdfFont],
         ],
     ):
+        # 诊断：记录原版段落的行结构
+        original_lines = [
+            c.pdf_line for c in (paragraph.pdf_paragraph_composition or [])
+            if c.pdf_line
+        ]
+        if original_lines:
+            line_widths = [
+                (l.box.x2 - l.box.x) if l.box else 0 for l in original_lines
+            ]
+            logger.debug(
+                f"Original paragraph: {len(original_lines)} lines, "
+                f"widths={[f'{w:.1f}' for w in line_widths]}, "
+                f"box=[{paragraph.box.x:.1f},{paragraph.box.y:.1f}]-[{paragraph.box.x2:.1f},{paragraph.box.y2:.1f}]"
+                if paragraph.box else
+                f"Original paragraph: {len(original_lines)} lines, no box"
+            )
+
         typesetting_units = self.create_typesetting_units(paragraph, fonts)
         # 如果所有单元都可以直接传递，则直接传递
         if all(unit.can_passthrough for unit in typesetting_units):
@@ -1861,6 +1878,10 @@ class Typesetting:
 
         # 动态行宽：查询排除区域，计算当前行的可用 x 范围
         zone_index = getattr(self, "_current_zone_index", None)
+        if zone_index and zone_index.zones:
+            logger.debug(
+                f"Laying out paragraph with {len(zone_index.zones)} exclusion zones"
+            )
         if zone_index and avg_height > 0:
             available_x, available_x2 = zone_index.get_available_x_range(
                 current_y, current_y + avg_height, box.x, box.x2

@@ -119,13 +119,31 @@ def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZ
         if para.box is None:
             continue
 
-        if not is_quote_block(
+        box = para.box
+        para_width = box.x2 - box.x
+        width_ratio = para_width / page_width if page_width > 0 else 1.0
+        left_indent = box.x
+        indent_ratio = left_indent / page_width if page_width > 0 else 0.0
+        right_margin = page_width - box.x2
+        margin_ratio = right_margin / page_width if page_width > 0 else 0.0
+
+        is_quote = is_quote_block(
             para,
             page_width,
             narrow_threshold=config.narrow_threshold,
             indent_threshold=config.indent_threshold,
             right_margin_threshold=config.right_margin_threshold,
-        ):
+        )
+
+        if not is_quote:
+            # 诊断日志：记录为什么不是 Quote
+            if width_ratio < 0.9:  # 只记录窄段落（排除明显不是 Quote 的）
+                logger.debug(
+                    f"Page {page.page_number}: para at ({box.x:.1f},{box.y:.1f})-({box.x2:.1f},{box.y2:.1f}) "
+                    f"NOT quote: width_ratio={width_ratio:.3f}(<{config.narrow_threshold}), "
+                    f"indent_ratio={indent_ratio:.3f}(>{config.indent_threshold}), "
+                    f"margin_ratio={margin_ratio:.3f}(>{config.right_margin_threshold})"
+                )
             continue
 
         # 计算含边距的排除区域（自适应 padding）
@@ -434,6 +452,15 @@ class ExclusionZoneIndex:
                 available_x, available_x2, all_blocked
             )
             available_x, available_x2 = result
+
+        # 诊断日志：记录 zone 对可用宽度的影响
+        if available_x != default_x or available_x2 != default_x2:
+            logger.debug(
+                f"Zone narrowed line at y=[{y_bottom:.1f},{y_top:.1f}]: "
+                f"original=[{default_x:.1f},{default_x2:.1f}] "
+                f"→ available=[{available_x:.1f},{available_x2:.1f}] "
+                f"(narrowed by {len(candidates)} zones)"
+            )
 
         return (available_x, available_x2)
 
