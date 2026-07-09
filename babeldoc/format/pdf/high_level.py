@@ -998,6 +998,14 @@ def _do_translate_single(
             translation_config.get_working_file_path("styles_and_formulas.json"),
         )
 
+    # Generate Flow Debug SVG files for layout analysis visualization
+    if translation_config.debug:
+        from babeldoc.format.pdf.document_il.midend.flow_debug_svg import FlowDebugSvg
+
+        debug_svg_dir = translation_config.get_working_file_path("flow_debug_svg")
+        FlowDebugSvg(translation_config).process(docs, debug_svg_dir)
+        logger.debug(f"finish flow debug SVG generation")
+
     translate_engine = translation_config.translator
     term_extraction_engine = translation_config.get_term_extraction_translator()
 

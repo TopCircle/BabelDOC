@@ -21,6 +21,10 @@ import logging
 from dataclasses import dataclass
 from typing import Literal
 
+# polygon_scanline_blocked_intervals 的类型别名
+# 每个元素是一个 (x_start, x_end) 区间，表示多边形在该 y 处覆盖的 x 范围
+BlockedInterval = tuple[float, float]
+
 from rtree import index as rtree_index
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
@@ -50,12 +54,14 @@ class ExclusionZone:
         kind: 区域类型（quote, figure, table, formula, sidebar）
         priority: 优先级，数字越大越优先保留（正文让路）
         margins: 原始边距 (left, top, right, bottom)，用于调试
+        polygon: 可选的多边形顶点列表，用于非矩形排除区（Phase 2b）
     """
 
     box: Box
     kind: ZoneKind
     priority: int = 10
     margins: tuple[float, float, float, float] | None = None
+    polygon: tuple[tuple[float, float], ...] | None = None
 
 
 class ExclusionZoneBuilder:
@@ -77,8 +83,8 @@ class ExclusionZoneBuilder:
 
         zones: list[ExclusionZone] = []
         zones.extend(_collect_quote_zones(page, quote_config))
+        zones.extend(_collect_figure_zones(page))
         # 未来扩展:
-        # zones.extend(_collect_figure_zones(page))
         # zones.extend(_collect_table_zones(page))
         return zones
 
@@ -161,6 +167,68 @@ def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZ
     return zones
 
 
+def _collect_figure_zones(page: Page) -> list[ExclusionZone]:
+    """收集页面中所有图形区域，转换为 ExclusionZone。
+
+    来源：
+    1. PdfFigure — 布局模型检测的图形 bounding box
+    2. PdfForm (form_type="image") — PDF 中的图片 XObject
+    """
+    zones: list[ExclusionZone] = []
+    seen_boxes: set[tuple[float, float, float, float]] = set()
+
+    page_width = _get_page_width(page)
+    page_height = _get_page_height(page)
+    if page_width <= 0 or page_height <= 0:
+        return zones
+
+    def _add_zone(box: Box, kind: str = ZONE_FIGURE) -> None:
+        """添加一个 figure 排除区，自动去重和添加 padding。"""
+        # 去重：同一位置的图形只添加一次
+        key = (round(box.x, 1), round(box.y, 1), round(box.x2, 1), round(box.y2, 1))
+        if key in seen_boxes:
+            return
+        seen_boxes.add(key)
+
+        # 使用固定 padding（不依赖图形高度，避免巨大 padding）
+        # 12pt 是合理的图文间距，与 get_adaptive_image_padding 的最小值一致
+        padding = 12.0
+        # padding 是绝对值，转为相对值
+        pad_x = padding / page_width if page_width > 0 else 0.01
+        pad_y = padding / page_height if page_height > 0 else 0.005
+
+        exclusion_box = Box(
+            x=box.x - pad_x,
+            y=box.y - pad_y,
+            x2=box.x2 + pad_x,
+            y2=box.y2 + pad_y,
+        )
+
+        zones.append(ExclusionZone(
+            box=exclusion_box,
+            kind=kind,
+            priority=20,  # Figure 优先级高于 quote(10)
+            margins=(pad_x, pad_y, pad_x, pad_y),
+        ))
+
+    # 收集 PdfFigure（布局模型检测的图形区域）
+    for figure in page.pdf_figure or []:
+        if figure.box is not None:
+            _add_zone(figure.box)
+
+    # 收集 PdfForm 中的图片（form_type="image"）
+    for form in page.pdf_form or []:
+        if form.form_type == "image" and form.box is not None:
+            _add_zone(form.box)
+
+    if zones:
+        logger.debug(
+            f"Page {page.page_number}: built {len(zones)} figure exclusion zones"
+        )
+
+    return zones
+
+
 def _get_page_width(page: Page) -> float:
     if page.cropbox and page.cropbox.box:
         return page.cropbox.box.x2 - page.cropbox.box.x
@@ -175,6 +243,88 @@ def _get_page_height(page: Page) -> float:
     if page.mediabox and page.mediabox.box:
         return page.mediabox.box.y2 - page.mediabox.box.y
     return 0.0
+
+
+def polygon_scanline_blocked_intervals(
+    y: float,
+    polygon: tuple[tuple[float, float], ...],
+) -> list[BlockedInterval]:
+    """计算水平扫描线 y 与多边形的交集区间。
+
+    使用 even-odd rule：排序交点，配对后每对之间的区间为 blocked。
+
+    Args:
+        y: 扫描线的 y 坐标
+        polygon: 多边形顶点列表，每对 (x, y) 是一个顶点，隐式闭合
+
+    Returns:
+        blocked 区间列表 [(x_start, x_end), ...]，按 x 排序且不重叠
+    """
+    if len(polygon) < 3:
+        return []
+
+    n = len(polygon)
+    intersections: list[float] = []
+
+    for i in range(n):
+        x1, y1 = polygon[i]
+        x2, y2 = polygon[(i + 1) % n]
+
+        # 确保 y1 <= y2（方便后续判断）
+        if y1 > y2:
+            x1, y1, x2, y2 = x2, y2, x1, y1
+
+        # 边与扫描线无交集
+        if y < y1 or y >= y2:
+            continue
+
+        # y == y2 时跳过（vertex-on-scanline 守卫：只在 y_max 端计数）
+        # 这避免了退化交点（多边形顶点恰好在扫描线上）
+        if y == y2 and y1 != y2:
+            continue
+
+        # 计算交点的 x 坐标（线性插值）
+        if abs(y2 - y1) < 1e-10:
+            # 水平边，跳过
+            continue
+
+        t = (y - y1) / (y2 - y1)
+        x_intersect = x1 + t * (x2 - x1)
+        intersections.append(x_intersect)
+
+    # 排序并配对
+    intersections.sort()
+
+    # 配对：每两个交点之间是 blocked 区间
+    intervals: list[BlockedInterval] = []
+    i = 0
+    while i + 1 < len(intersections):
+        x_start = intersections[i]
+        x_end = intersections[i + 1]
+        if x_end - x_start > 1e-6:  # 忽略退化区间
+            intervals.append((x_start, x_end))
+        i += 2
+
+    return intervals
+
+
+def _merge_blocked_intervals(intervals: list[BlockedInterval]) -> list[BlockedInterval]:
+    """合并重叠的 blocked 区间。"""
+    if not intervals:
+        return []
+
+    sorted_intervals = sorted(intervals, key=lambda iv: iv[0])
+    merged = [sorted_intervals[0]]
+
+    for start, end in sorted_intervals[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end + 1e-6:
+            # 重叠或相邻，合并
+            merged[-1] = (last_start, max(last_end, end))
+        else:
+            merged.append((start, end))
+
+    return merged
 
 
 class ExclusionZoneIndex:
@@ -203,6 +353,7 @@ class ExclusionZoneIndex:
         对于与行有垂直交集的排除区域：
         - 如果区域在文本右侧 → 收窄 available_x2
         - 如果区域在文本左侧 → 收窄 available_x
+        - 如果区域有多边形 → 使用 scanline 计算精确 blocked 区间
 
         Args:
             y_bottom: 行底部 y 坐标
@@ -218,6 +369,9 @@ class ExclusionZoneIndex:
 
         available_x = default_x
         available_x2 = default_x2
+
+        # 收集所有 blocked 区间（来自多边形 zones）
+        all_blocked: list[BlockedInterval] = []
 
         # 查询与行 y 范围有交集的 zones
         # R-tree 查询使用 (x_min, y_min, x_max, y_max)
@@ -239,6 +393,20 @@ class ExclusionZoneIndex:
             if z.x2 <= default_x or z.x >= default_x2:
                 continue
 
+            # 多边形 zone：使用 scanline 计算精确 blocked 区间
+            if zone.polygon is not None:
+                scan_y = (y_bottom + y_top) / 2.0
+                blocked = polygon_scanline_blocked_intervals(scan_y, zone.polygon)
+                # 只保留与文本区域有交集的 blocked 区间
+                for bx_start, bx_end in blocked:
+                    if bx_end > default_x and bx_start < default_x2:
+                        all_blocked.append((
+                            max(bx_start, default_x),
+                            min(bx_end, default_x2),
+                        ))
+                continue
+
+            # 矩形 zone：原有逻辑
             # Zone 完全覆盖文本区域 → 无可用空间
             if z.x <= available_x and z.x2 >= available_x2:
                 available_x = available_x2  # 降级为零宽度
@@ -259,4 +427,48 @@ class ExclusionZoneIndex:
                 # Zone 从左侧收窄
                 available_x = max(available_x, z.x2)
 
+        # 多边形 blocked 区间处理：从可用区间中减去 blocked，取最宽的连续区间
+        if all_blocked:
+            result = _subtract_blocked_from_range(
+                available_x, available_x2, all_blocked
+            )
+            available_x, available_x2 = result
+
         return (available_x, available_x2)
+
+
+def _subtract_blocked_from_range(
+    range_start: float,
+    range_end: float,
+    blocked: list[BlockedInterval],
+) -> tuple[float, float]:
+    """从可用区间中减去 blocked 区间，返回最宽的连续子区间。
+
+    例如：range=[0, 100], blocked=[(30, 50)] → [(0, 30), (50, 100)] → 返回 (50, 100)
+
+    注意：对于倾斜多边形，随着扫描线 y 变化，最宽子区间可能在左右两侧之间切换，
+    导致文本位置跳跃。这是单区间返回值的固有限制。
+    """
+    if not blocked:
+        return (range_start, range_end)
+
+    merged = _merge_blocked_intervals(blocked)
+
+    # 计算所有可用子区间
+    available: list[tuple[float, float]] = []
+    cursor = range_start
+
+    for bx_start, bx_end in merged:
+        if bx_start > cursor:
+            available.append((cursor, bx_start))
+        cursor = max(cursor, bx_end)
+
+    if cursor < range_end:
+        available.append((cursor, range_end))
+
+    if not available:
+        return (range_start, range_start)  # 完全 blocked
+
+    # 返回最宽的区间；宽度相等时优先选择左侧（更符合阅读习惯）
+    best = max(available, key=lambda iv: (iv[1] - iv[0], -(iv[0])))
+    return best

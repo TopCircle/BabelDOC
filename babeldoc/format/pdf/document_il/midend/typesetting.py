@@ -1044,7 +1044,13 @@ class Typesetting:
                             try:
                                 font_size = statistics.mode(font_sizes) if font_sizes else 10
                             except statistics.StatisticsError:
+                                # 多模态字号数据：使用均值作为回退
+                                # 这可能 indicate 段落内有混合字号（如正文+脚注）
                                 font_size = sum(font_sizes) / len(font_sizes) if font_sizes else 10
+                                logger.warning(
+                                    f"Ambiguous font sizes in paragraph, using mean: {font_size:.1f} "
+                                    f"(sizes: {sorted(set(font_sizes))})"
+                                )
                             opt_space_width = (
                                 self.font_mapper.base_font.char_lengths("你", font_size * scale)[0] * 0.5
                             )
@@ -1825,7 +1831,10 @@ class Typesetting:
             if unit.char and unit.char.pdf_style and unit.char.pdf_style.font_size:
                 font_sizes.append(unit.char.pdf_style.font_size)
         font_sizes.sort()
-        font_size = statistics.mode(font_sizes)
+        try:
+            font_size = statistics.mode(font_sizes)
+        except statistics.StatisticsError:
+            font_size = sum(font_sizes) / len(font_sizes) if font_sizes else 10.0
 
         space_width = (
             self.font_mapper.base_font.char_lengths("你", font_size * scale)[0] * 0.5
@@ -1954,7 +1963,10 @@ class Typesetting:
                 if not current_line_heights:
                     return [], False
                 max_height = max(current_line_heights)
-                mode_height = statistics.mode(current_line_heights)
+                try:
+                    mode_height = statistics.mode(current_line_heights)
+                except statistics.StatisticsError:
+                    mode_height = sum(current_line_heights) / len(current_line_heights)
 
                 current_y -= max(mode_height * line_skip, max_height * 1.05)
                 line_ys.append(current_y)
