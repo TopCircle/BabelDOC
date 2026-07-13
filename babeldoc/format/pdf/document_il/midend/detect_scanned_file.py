@@ -42,7 +42,7 @@ class DetectScannedFile:
         unicode = f"scanned score: {similarity * 100:.2f} %"
         page.pdf_paragraph.append(
             il_version_1.PdfParagraph(
-                first_line_indent=False,
+                first_line_indent=0.0,
                 box=il_version_1.Box(
                     x=page.cropbox.box.x + page_width * 0.03,
                     y=page.cropbox.box.y,

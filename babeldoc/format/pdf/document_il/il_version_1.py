@@ -1226,7 +1226,7 @@ class PdfParagraph:
             "type": "Attribute",
         },
     )
-    first_line_indent: bool | None = field(
+    first_line_indent: str | None = field(
         default=None,
         metadata={
             "name": "FirstLineIndent",

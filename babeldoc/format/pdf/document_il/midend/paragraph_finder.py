@@ -39,6 +39,31 @@ from babeldoc.format.pdf.translation_config import TranslationConfig
 
 logger = logging.getLogger(__name__)
 
+# 默认缩进量：当旧 XML 中 FirstLineIndent="true" 时使用
+_DEFAULT_INDENT = 12.0
+
+
+def _normalize_first_line_indent(paragraph):
+    """向后兼容：将旧 XML 中的 bool/字符串 first_line_indent 转为 float。"""
+    val = paragraph.first_line_indent
+    if val is None:
+        paragraph.first_line_indent = 0.0
+    elif isinstance(val, bool):
+        paragraph.first_line_indent = _DEFAULT_INDENT if val else 0.0
+    elif isinstance(val, (int, float)):
+        paragraph.first_line_indent = float(val)
+    elif isinstance(val, str):
+        if val.lower() == "true":
+            paragraph.first_line_indent = _DEFAULT_INDENT
+        elif val.lower() == "false":
+            paragraph.first_line_indent = 0.0
+        else:
+            try:
+                paragraph.first_line_indent = float(val)
+            except (ValueError, TypeError):
+                paragraph.first_line_indent = 0.0
+
+
 # Base58 alphabet (Bitcoin style, without numbers 0, O, I, l)
 BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
@@ -125,6 +150,9 @@ class ParagraphFinder:
         if not paragraph.pdf_paragraph_composition:
             return
 
+        # 向后兼容：旧 XML 中 FirstLineIndent 可能是 bool 或字符串 "true"
+        _normalize_first_line_indent(paragraph)
+
         chars = []
         for composition in paragraph.pdf_paragraph_composition:
             if composition.pdf_line:
@@ -168,17 +196,21 @@ class ParagraphFinder:
         paragraph.vertical = chars[0].vertical
         paragraph.xobj_id = chars[0].xobj_id
 
-        paragraph.first_line_indent = False
+        paragraph.first_line_indent = 0.0
         if (
             paragraph.pdf_paragraph_composition
             and paragraph.pdf_paragraph_composition[0].pdf_line
             and paragraph.pdf_paragraph_composition[0]
-            .pdf_line.pdf_character[0]
-            .visual_bbox.box.x
-            - paragraph.box.x
-            > 1
+            .pdf_line.pdf_character
         ):
-            paragraph.first_line_indent = True
+            first_char_x = (
+                paragraph.pdf_paragraph_composition[0]
+                .pdf_line.pdf_character[0]
+                .visual_bbox.box.x
+            )
+            indent = first_char_x - paragraph.box.x
+            if indent > 1:
+                paragraph.first_line_indent = indent
 
     def update_line_data(self, line: PdfLine):
         min_x = min(char.visual_bbox.box.x for char in line.pdf_character)

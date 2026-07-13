@@ -183,7 +183,7 @@ def test_extract_publisher_skeleton():
             il_version_1.PdfParagraph(
                 box=il_version_1.Box(x=50, y=700, x2=562, y2=710),
                 pdf_paragraph_composition=[],
-                first_line_indent=False,
+                first_line_indent=0.0,
                 vertical=False,
                 xobj_id=-1,
             ),

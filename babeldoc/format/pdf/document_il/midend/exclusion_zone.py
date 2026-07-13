@@ -209,25 +209,22 @@ def _collect_figure_zones(page: Page) -> list[ExclusionZone]:
             return
         seen_boxes.add(key)
 
-        # 使用固定 padding（不依赖图形高度，避免巨大 padding）
+        # 使用固定 padding（绝对值，单位 pt）
         # 12pt 是合理的图文间距，与 get_adaptive_image_padding 的最小值一致
         padding = 12.0
-        # padding 是绝对值，转为相对值
-        pad_x = padding / page_width if page_width > 0 else 0.01
-        pad_y = padding / page_height if page_height > 0 else 0.005
 
         exclusion_box = Box(
-            x=box.x - pad_x,
-            y=box.y - pad_y,
-            x2=box.x2 + pad_x,
-            y2=box.y2 + pad_y,
+            x=box.x - padding,
+            y=box.y - padding,
+            x2=box.x2 + padding,
+            y2=box.y2 + padding,
         )
 
         zones.append(ExclusionZone(
             box=exclusion_box,
             kind=kind,
             priority=20,  # Figure 优先级高于 quote(10)
-            margins=(pad_x, pad_y, pad_x, pad_y),
+            margins=(padding, padding, padding, padding),
         ))
 
     # 收集 PdfFigure（布局模型检测的图形区域）

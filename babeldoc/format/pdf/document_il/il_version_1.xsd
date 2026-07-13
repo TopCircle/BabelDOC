@@ -157,7 +157,7 @@
       <xs:attribute name="scale" type="xs:float"/>
       <xs:attribute name="optimal_scale" type="xs:float"/>
       <xs:attribute name="vertical" type="xs:boolean"/>
-      <xs:attribute name="FirstLineIndent" type="xs:boolean"/>
+      <xs:attribute name="FirstLineIndent" type="xs:string"/>
       <xs:attribute name="debug_id" type="xs:string"/>
       <xs:attribute name="layout_label" type="xs:string"/>
       <xs:attribute name="layout_id" type="xs:int"/>

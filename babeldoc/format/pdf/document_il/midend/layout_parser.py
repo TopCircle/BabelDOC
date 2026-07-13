@@ -93,7 +93,7 @@ class LayoutParser:
             )
             page.pdf_paragraph.append(
                 il_version_1.PdfParagraph(
-                    first_line_indent=False,
+                    first_line_indent=0.0,
                     box=il_version_1.Box(
                         x=layout.box.x,
                         y=layout.box.y2,

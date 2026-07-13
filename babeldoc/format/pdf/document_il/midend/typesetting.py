@@ -25,6 +25,10 @@ from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
 from babeldoc.format.pdf.document_il.utils.formular_helper import update_formula_data
 from babeldoc.format.pdf.document_il.midend.line_break_optimizer import optimal_line_break
 from babeldoc.format.pdf.document_il.utils.layout_helper import box_to_tuple
+from babeldoc.format.pdf.document_il.utils.cjk_dict import (
+    is_cjk_three_char_word,
+    is_cjk_two_char_word,
+)
 from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.format.pdf.translation_config import WatermarkOutputMode
 
@@ -96,6 +100,105 @@ class RetypesetResult:
     success: bool  # whether retypesetting succeeded
     best_scale: float | None = None  # the scale that was applied
     reason: str = ""  # failure reason or notes
+
+
+# CJK 禁则字符集
+_CJK_LINE_END_FORBIDDEN = frozenset("（【《「『〖〈〔")  # 行尾禁用
+_CJK_LINE_START_FORBIDDEN = frozenset("。？！；：，、）】》」』〗〉〕")  # 行首禁用
+
+
+def merge_cjk_units(units: list['TypesettingUnit']) -> list['TypesettingUnit']:
+    """标记 CJK 词组边界，使 DP 和贪心断行不会在词组内部断开。
+
+    策略：
+    1. 提取 CJK 字符序列及其在 units 中的位置
+    2. 使用内置词典识别词组边界
+    3. 标记词组内部字符为 can_break_line=False
+    4. 处理禁则：行首/行尾标点保护
+
+    Args:
+        units: 原始 TypesettingUnit 列表（每个 unit 对应一个字符）
+
+    Returns:
+        修改后的列表（原地修改 can_break_line 属性，返回同一列表）
+    """
+    if not units:
+        return units
+
+    n = len(units)
+
+    # 收集 CJK 字符的位置和 unicode
+    cjk_positions = []  # (index, unicode_char)
+    for i, unit in enumerate(units):
+        if unit.is_cjk_char:
+            unicode = unit.try_get_unicode()
+            if unicode:
+                cjk_positions.append((i, unicode))
+
+    if len(cjk_positions) < 2:
+        return units
+
+    # 构建 CJK 文本序列
+    cjk_text = ''.join(ch for _, ch in cjk_positions)
+    cjk_indices = [idx for idx, _ in cjk_positions]
+
+    # 标记词组内部字符为不可断行
+    # 使用二字词/三字词词典判断每个位置是否为词组边界
+    # 边界：可以在该位置断行（即该位置之前的字符是词组末尾）
+    # 注意：只在原始 units 中相邻的 CJK 字符之间检查词边界，
+    #       避免因剥离非 CJK 字符导致的误匹配
+    word_internal = set()  # 词组内部字符的 unit index
+
+    for cjk_pos in range(1, len(cjk_text)):
+        unit_idx = cjk_indices[cjk_pos]
+
+        # 检查是否在词组内部（当前位置不是词组边界）
+        # 只在原始 units 中相邻的 CJK 字符之间检查词边界，
+        # 避免因剥离非 CJK 字符导致的误匹配
+        if cjk_indices[cjk_pos] - cjk_indices[cjk_pos - 1] != 1:
+            continue  # 原始序列中不相邻，跳过
+
+        # 检查二字词：cjk_text[pos-1:pos+1]
+        word2 = cjk_text[cjk_pos - 1 : cjk_pos + 1]
+        if is_cjk_two_char_word(word2):
+            word_internal.add(unit_idx)
+            continue
+
+        # 检查三字词：cjk_text[pos-2:pos+1]，需要 pos-2 也相邻
+        if (
+            cjk_pos >= 2
+            and cjk_indices[cjk_pos - 1] - cjk_indices[cjk_pos - 2] == 1
+        ):
+            word3 = cjk_text[cjk_pos - 2 : cjk_pos + 1]
+            if is_cjk_three_char_word(word3):
+                word_internal.add(unit_idx)
+                # 也标记中间字符
+                word_internal.add(cjk_indices[cjk_pos - 1])
+
+    # 应用标记
+    for i, unit in enumerate(units):
+        if i in word_internal:
+            unit.can_break_line_cache = False
+
+    # 处理禁则
+    for i, unit in enumerate(units):
+        unicode = unit.try_get_unicode()
+        if not unicode:
+            continue
+
+        # 行首禁用标点：标点前的 CJK 字符不可断行（避免标点出现在行首）
+        # 仅当前置字符是 CJK 时才抑制断行；空格/英文后的标点可以正常断行
+        if (
+            unicode in _CJK_LINE_START_FORBIDDEN
+            and i > 0
+            and units[i - 1].is_cjk_char
+        ):
+            units[i - 1].can_break_line_cache = False
+
+        # 行尾禁用标点：标点本身不可断行（避免标点出现在行尾后孤零零）
+        # 这个已有 is_cannot_appear_in_line_end_punctuation 处理
+
+    return units
 
 
 class TypesettingUnit:
@@ -1676,7 +1779,7 @@ class Typesetting:
             text += "\n 当前为 DEBUG 模式，将显示更多辅助信息。请注意，部分框的位置对应原文，但在译文中可能不正确。"
         page.pdf_paragraph.append(
             il_version_1.PdfParagraph(
-                first_line_indent=False,
+                first_line_indent=0.0,
                 box=il_version_1.Box(
                     x=page.cropbox.box.x + page_width * 0.05,
                     y=page.cropbox.box.y,
@@ -1944,9 +2047,9 @@ class Typesetting:
         all_units_fit = True
         last_unit: TypesettingUnit | None = None
         line_ys = [current_y]
-        if paragraph.first_line_indent:
+        if paragraph.first_line_indent and paragraph.first_line_indent > 0:
             # 缩进相对于 box.x 而非 available_x，避免 zone 偏移叠加
-            indented_x = box.x + space_width * 4
+            indented_x = box.x + paragraph.first_line_indent * scale
             current_x = max(current_x, min(indented_x, available_x2))
         # 遍历所有排版单元
         # Decorative tracking: extra spacing between characters for art text
@@ -2010,7 +2113,7 @@ class Typesetting:
                 and i in break_points
                 and not unit.is_hung_punctuation
             )
-            if dp_break or (
+            need_break = dp_break or (
                 not unit.is_hung_punctuation and (
                     (current_x + effective_width > available_x2)
                     or (
@@ -2022,7 +2125,33 @@ class Typesetting:
                         and current_x + effective_width * 2 > available_x2
                     )
                 )
-            ):
+            )
+            # 行尾禁则：DP 断行不应将行尾禁用字符（如（【《）置于行末
+            if dp_break and need_break and i > 0:
+                prev_unicode = typesetting_units[i - 1].try_get_unicode()
+                if prev_unicode and prev_unicode in _CJK_LINE_END_FORBIDDEN:
+                    need_break = False
+            # CJK 词组保护：如果当前字符在 CJK 词组内部（can_break_line=False），
+            # 尝试将整个词组放在当前行。如果放不下，回退到词组起始位置换行。
+            if (need_break and not dp_break and unit.is_cjk_char
+                    and last_unit and last_unit.is_cjk_char
+                    and not unit.can_break_line):
+                # 在词组内部，尝试将剩余词组字符放在当前行
+                word_end = i
+                word_width = unit_width
+                for k in range(i + 1, len(typesetting_units)):
+                    w = typesetting_units[k]
+                    if not w.is_cjk_char or w.can_break_line:
+                        break
+                    word_width += w.width * scale
+                    word_end = k
+                # 如果整个词组能放在当前行，不换行
+                if current_x + word_width <= available_x2:
+                    need_break = False
+            # CJK 孤行保护：如果当前行只有 ≤2 个字符就要换行，
+            # 标记为需要特殊处理（由 DP 在后续优化中处理）
+            # 注意：不在贪心循环中强制溢出，避免布局问题
+            if need_break:
                 # 换行
                 if not current_line_heights:
                     return [], False
@@ -2197,6 +2326,11 @@ class Typesetting:
 
         if any(x.width < 0 for x in result):
             logger.warning("有排版单元宽度小于 0，请检查字体映射是否正确。")
+
+        # CJK 词组合并：标记词组内部字符为不可断行
+        if self.is_cjk:
+            result = merge_cjk_units(result)
+
         return result
 
     def create_passthrough_composition(

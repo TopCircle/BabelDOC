@@ -26,6 +26,7 @@ def optimal_line_break(
     space_width: float,
     decorative_tracking: float = 0.0,
     widow_penalty: float = DEFAULT_WIDOW_PENALTY,
+    cjk_mode: bool | None = None,
 ) -> list[int] | None:
     """前向 DP 断行优化。
 
@@ -39,6 +40,7 @@ def optimal_line_break(
         space_width: 空格宽度（用于 CJK-英文边界间距）
         decorative_tracking: 装饰字距（每字符额外间距）
         widow_penalty: 孤行惩罚（最后一行 ≤3 个非空格单元时）
+        cjk_mode: CJK 模式。None 时自动检测（>50% 非空格 unit 为 CJK）。
 
     Returns:
         断行位置列表（unit 索引），例如 [5, 12, 20] 表示在 unit 5, 12, 20 后换行。
@@ -46,6 +48,12 @@ def optimal_line_break(
     """
     if not units or not line_widths:
         return None
+
+    # 自动检测 CJK 模式
+    if cjk_mode is None:
+        cjk_count = sum(1 for u in units if u.is_cjk_char and not u.is_space)
+        non_space_count = sum(1 for u in units if not u.is_space)
+        cjk_mode = non_space_count > 0 and cjk_count / non_space_count > 0.5
 
     n = len(units)
 
@@ -88,7 +96,7 @@ def optimal_line_break(
             if not has_content and unit.is_space:
                 # 空格仍是可断行点，更新 DP（宽度为 0）
                 if unit.can_break_line:
-                    raggedness = _line_cost(0.0, available, 0, j == n, widow_penalty)
+                    raggedness = _line_cost(0.0, available, 0, j == n, widow_penalty, cjk_mode)
                     new_cost = cost[i] + raggedness
                     if new_cost < cost[j]:
                         cost[j] = new_cost
@@ -143,7 +151,7 @@ def optimal_line_break(
             # hung punctuation 不能作为断行点（与 typesetter 保持一致）
             if (unit.can_break_line and not unit.is_hung_punctuation) or j == n:
                 raggedness = _line_cost(
-                    line_width, available, non_space_count, j == n, widow_penalty
+                    line_width, available, non_space_count, j == n, widow_penalty, cjk_mode
                 )
                 new_cost = cost[i] + raggedness
                 if new_cost < cost[j]:
@@ -157,7 +165,7 @@ def optimal_line_break(
             for k in range(i + 1, n + 1):
                 if not units[k - 1].is_space:
                     w = units[k - 1].width * scale
-                    raggedness = _line_cost(w, available, 1, k == n, widow_penalty)
+                    raggedness = _line_cost(w, available, 1, k == n, widow_penalty, cjk_mode)
                     new_cost = cost[i] + raggedness
                     if new_cost < cost[k]:
                         cost[k] = new_cost
@@ -243,14 +251,25 @@ def _line_cost(
     num_units: int,
     is_last_line: bool,
     widow_penalty: float,
+    cjk_mode: bool = False,
 ) -> float:
     """计算一行的代价。
 
     Raggedness = (available - line_width)²，加孤行惩罚。
+    CJK 模式：强烈惩罚非满行，最后一行温和处理。
     """
     if line_width > available_width:
         # 超宽（不应该发生，hung punctuation 除外）
         return (line_width - available_width) ** 2 * DEFAULT_OVERFLOW_PENALTY
+
+    if cjk_mode:
+        # CJK 模式：保留二次惩罚（与原始版本一致），增加全行孤行保护
+        raggedness = (available_width - line_width) ** 2
+        # 孤行保护：任何行（包括中间行）≤2 个字都严厉惩罚
+        # 原始版本只保护最后一行，这里保护所有行
+        if num_units <= 2:
+            raggedness += widow_penalty * 2
+        return raggedness
 
     raggedness = (available_width - line_width) ** 2
 
