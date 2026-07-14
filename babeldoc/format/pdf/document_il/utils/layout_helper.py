@@ -1286,17 +1286,17 @@ def detect_paragraph_alignment(
       3. Line centers cluster AND short lines are inset on both sides → center
 
     Single-line / fallback:
-      - layout_label == "title" → center
       - page-centered short line → center
       - default → left
+
+    Note: layout_label == "title" is NOT forced to center. Many ebooks use
+    left-aligned section headings that DocLayout still labels "title"; forcing
+    center made those headings (and short labels like "IMPORTANT NOTE:") float
+    to the middle of their original wide box after translation.
 
     Returns:
         One of "left", "center", "right".
     """
-    label = getattr(para, "layout_label", None) or ""
-    if label == "title":
-        return "center"
-
     line_ranges = _line_x_ranges_from_para(para)
     if not line_ranges:
         return "left"

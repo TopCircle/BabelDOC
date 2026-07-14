@@ -112,10 +112,17 @@ class TestDetectParagraphAlignment:
         para = _line_para(lines)
         assert detect_paragraph_alignment(para, _page(612)) == "left"
 
-    def test_title_label_forces_center(self):
-        # Single short line, not page-centered, but layout_label=title
-        para = _line_para([(50.0, 200.0)], label="title")
-        assert detect_paragraph_alignment(para, _page()) == "center"
+    def test_title_label_does_not_force_center(self):
+        # Ebook section headings are often left-aligned but labeled "title"
+        # by DocLayout — must stay left, not float to center of wide box.
+        para = _line_para([(56.0, 490.0)], label="title")
+        assert detect_paragraph_alignment(para, _page(612)) == "left"
+
+    def test_left_aligned_section_heading_stays_left(self):
+        # Short Chinese heading after translation of a left-aligned EN heading
+        # with a wide original box: geometry is left-edge at page margin.
+        para = _line_para([(56.0, 490.3)], label="title")  # Working Out... style
+        assert detect_paragraph_alignment(para, _page(612)) == "left"
 
     def test_single_line_page_centered(self):
         # Single title line centered on page (L≈R page margins)

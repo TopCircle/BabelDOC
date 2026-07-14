@@ -32,6 +32,7 @@ from babeldoc.format.pdf.document_il.utils.layout_helper import (
     is_character_in_formula_layout,
 )
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_text_layout
+from babeldoc.format.pdf.document_il.utils.layout_helper import _cluster_chars_by_line
 from babeldoc.format.pdf.document_il.utils.paragraph_helper import is_cid_paragraph
 from babeldoc.format.pdf.document_il.utils.style_helper import INDIGO
 from babeldoc.format.pdf.document_il.utils.style_helper import WHITE
@@ -41,6 +42,8 @@ logger = logging.getLogger(__name__)
 
 # 默认缩进量：当旧 XML 中 FirstLineIndent="true" 时使用
 _DEFAULT_INDENT = 12.0
+# Cap first-line indent so a bad detection cannot shove text far right
+_MAX_FIRST_LINE_INDENT = 48.0
 
 
 def _normalize_first_line_indent(paragraph):
@@ -62,6 +65,61 @@ def _normalize_first_line_indent(paragraph):
                 paragraph.first_line_indent = float(val)
             except (ValueError, TypeError):
                 paragraph.first_line_indent = 0.0
+    # Clamp after normalize
+    try:
+        fi = float(paragraph.first_line_indent or 0.0)
+        if fi < 0:
+            fi = 0.0
+        if fi > _MAX_FIRST_LINE_INDENT:
+            fi = _MAX_FIRST_LINE_INDENT
+        paragraph.first_line_indent = fi
+    except (TypeError, ValueError):
+        paragraph.first_line_indent = 0.0
+
+
+def _compute_visual_first_line_indent(paragraph: PdfParagraph) -> float:
+    """Compute first-line indent by comparing visual line left edges.
+
+    Returns how much further right the first visual line starts relative to the
+    median left edge of subsequent lines. Returns 0 when there is no indent,
+    only one line, or the first line is flush/left of the body (hanging indent).
+    """
+    try:
+        clusters = _cluster_chars_by_line(paragraph)
+    except Exception:
+        return 0.0
+    if not clusters or len(clusters) < 2:
+        return 0.0
+
+    def _line_left(cluster) -> float | None:
+        xs = []
+        for c in cluster:
+            box = None
+            if getattr(c, "visual_bbox", None) and c.visual_bbox.box:
+                box = c.visual_bbox.box
+            elif getattr(c, "box", None):
+                box = c.box
+            if box and box.x is not None:
+                xs.append(box.x)
+        return min(xs) if xs else None
+
+    first_x = _line_left(clusters[0])
+    rest = []
+    for cl in clusters[1:]:
+        lx = _line_left(cl)
+        if lx is not None:
+            rest.append(lx)
+    if first_x is None or not rest:
+        return 0.0
+
+    # Median body left edge (robust to one outlier wrap line)
+    rest_sorted = sorted(rest)
+    body_x = rest_sorted[len(rest_sorted) // 2]
+    indent = first_x - body_x
+    # Only classic first-line indent (first line further right than body)
+    if indent <= 1.0:
+        return 0.0
+    return min(indent, _MAX_FIRST_LINE_INDENT)
 
 
 # Base58 alphabet (Bitcoin style, without numbers 0, O, I, l)
@@ -196,21 +254,11 @@ class ParagraphFinder:
         paragraph.vertical = chars[0].vertical
         paragraph.xobj_id = chars[0].xobj_id
 
-        paragraph.first_line_indent = 0.0
-        if (
-            paragraph.pdf_paragraph_composition
-            and paragraph.pdf_paragraph_composition[0].pdf_line
-            and paragraph.pdf_paragraph_composition[0]
-            .pdf_line.pdf_character
-        ):
-            first_char_x = (
-                paragraph.pdf_paragraph_composition[0]
-                .pdf_line.pdf_character[0]
-                .visual_bbox.box.x
-            )
-            indent = first_char_x - paragraph.box.x
-            if indent > 1:
-                paragraph.first_line_indent = indent
+        # Detect first-line indent from *visual* lines, not composition order.
+        # Comparing first composition char to box.x is unreliable: stream order
+        # may not match visual order, and short labels ("IMPORTANT NOTE:") in a
+        # wide box can produce huge false indents after translation.
+        paragraph.first_line_indent = _compute_visual_first_line_indent(paragraph)
 
     def update_line_data(self, line: PdfLine):
         min_x = min(char.visual_bbox.box.x for char in line.pdf_character)
