@@ -1265,6 +1265,9 @@ class PdfParagraph:
             "type": "Attribute",
         },
     )
+    # Runtime-only horizontal alignment: "left" | "center" | "right" | "justify"
+    # Captured from original geometry before translation; not serialized to XML.
+    alignment: str | None = field(default=None)
     reference_metrics: ReferenceMetrics | None = field(default=None)
 
 

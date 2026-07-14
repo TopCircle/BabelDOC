@@ -984,7 +984,7 @@ def _do_translate_single(
     if compute_reference_metrics is not None:
         for page in docs.page:
             for para in page.pdf_paragraph:
-                compute_reference_metrics(para)
+                compute_reference_metrics(para, page)
     if translation_config.debug:
         xml_converter.write_json(
             docs,

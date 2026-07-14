@@ -1235,11 +1235,141 @@ def compute_per_line_widths(para: PdfParagraph) -> list[float]:
     return widths
 
 
-def compute_reference_metrics(para: PdfParagraph):
+def _line_x_ranges_from_para(para: PdfParagraph) -> list[tuple[float, float]]:
+    """Return (x_min, x_max) for each visual line in the paragraph."""
+    ranges: list[tuple[float, float]] = []
+
+    # Prefer PdfLine boxes when available and pure-line
+    pdf_line_ranges = []
+    has_non_line = False
+    for comp in para.pdf_paragraph_composition or []:
+        if comp.pdf_line and comp.pdf_line.box:
+            b = comp.pdf_line.box
+            pdf_line_ranges.append((b.x, b.x2))
+        elif comp.pdf_character or comp.pdf_same_style_characters or comp.pdf_formula:
+            has_non_line = True
+
+    if pdf_line_ranges and not has_non_line:
+        return pdf_line_ranges
+
+    clusters = _cluster_chars_by_line(para)
+    for cluster in clusters:
+        valid = [
+            c
+            for c in cluster
+            if c.box and c.box.x is not None and c.box.x2 is not None
+        ]
+        if not valid:
+            continue
+        ranges.append(
+            (min(c.box.x for c in valid), max(c.box.x2 for c in valid))
+        )
+    return ranges
+
+
+def detect_paragraph_alignment(
+    para: PdfParagraph,
+    page=None,
+    *,
+    margin_tolerance: float = 8.0,
+    width_variation_threshold: float = 15.0,
+    page_center_tolerance: float = 20.0,
+) -> str:
+    """Detect horizontal alignment from original paragraph geometry.
+
+    Strategy:
+    1. Multi-line with varying widths and L≈R margins within the para bbox → center
+    2. Multi-line with fixed left edge and varying right → left
+    3. Multi-line with fixed right edge and varying left → right
+    4. Single line (or ambiguous): page-centered geometry → center
+    5. layout_label == "title" → center
+    6. Default → left
+
+    Returns:
+        One of "left", "center", "right", "justify".
+    """
+    label = getattr(para, "layout_label", None) or ""
+    if label == "title":
+        return "center"
+
+    line_ranges = _line_x_ranges_from_para(para)
+    if not line_ranges:
+        return "left"
+
+    para_left = min(x for x, _ in line_ranges)
+    para_right = max(x2 for _, x2 in line_ranges)
+    para_width = para_right - para_left
+    if para_width <= 1:
+        return "left"
+
+    tol = max(margin_tolerance, para_width * 0.03)
+    widths = [x2 - x for x, x2 in line_ranges]
+    n = len(line_ranges)
+
+    center_votes = 0
+    left_votes = 0
+    right_votes = 0
+    for x, x2 in line_ranges:
+        lm = x - para_left
+        rm = para_right - x2
+        if abs(lm - rm) <= tol:
+            center_votes += 1
+        if lm <= tol and rm > tol * 2:
+            left_votes += 1
+        if rm <= tol and lm > tol * 2:
+            right_votes += 1
+
+    majority = max(1, int(n * 0.7))
+
+    if n >= 2 and center_votes >= majority:
+        # Full-width body lines all have lm≈rm≈0 with similar widths → not center
+        if max(widths) - min(widths) > width_variation_threshold:
+            return "center"
+        # Equal-width multi-line that fills the bbox is left/justify, not center
+    elif n >= 2 and right_votes >= majority:
+        return "right"
+    elif n >= 2 and left_votes >= majority:
+        return "left"
+
+    # Single-line or ambiguous multi-line: use page geometry
+    if page is not None:
+        page_box = None
+        if getattr(page, "cropbox", None) and page.cropbox.box:
+            page_box = page.cropbox.box
+        elif getattr(page, "mediabox", None) and page.mediabox.box:
+            page_box = page.mediabox.box
+        if page_box and page_box.x2 > page_box.x:
+            page_center = (page_box.x + page_box.x2) / 2.0
+            page_width = page_box.x2 - page_box.x
+            # All lines near page center, and not a full-width column line
+            all_centered = True
+            for x, x2 in line_ranges:
+                line_center = (x + x2) / 2.0
+                line_width = x2 - x
+                if abs(line_center - page_center) > page_center_tolerance:
+                    all_centered = False
+                    break
+                # Full-width lines (~page) are body text, not "centered titles"
+                if line_width > page_width * 0.85:
+                    all_centered = False
+                    break
+            if all_centered:
+                return "center"
+
+    # Nearly full para width → justify/left
+    if n == 1 and widths[0] >= para_width * 0.95:
+        return "left"
+
+    return "left"
+
+
+def compute_reference_metrics(para: PdfParagraph, page=None):
     """Compute and attach ReferenceMetrics to a paragraph.
 
     Call this AFTER ParagraphFinder, BEFORE ILTranslator.
     Requires para.box and para.pdf_paragraph_composition to be set.
+
+    Also detects and stores para.alignment from original geometry.
     """
     from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
 
@@ -1288,6 +1418,12 @@ def compute_reference_metrics(para: PdfParagraph):
         font_size=font_size,
         per_line_widths=per_line_widths,
     )
+
+    # Capture alignment from original geometry (before translation)
+    try:
+        para.alignment = detect_paragraph_alignment(para, page)
+    except Exception:
+        para.alignment = "left"
 
 
 def is_quote_block(

@@ -601,6 +601,48 @@ class TypesettingUnit:
         box = self.box
         return box.y2 - box.y
 
+    def shift_x(self, dx: float) -> None:
+        """Shift this unit horizontally in place (after relocate)."""
+        if abs(dx) < 1e-6:
+            return
+        if self.char and self.char.box:
+            self.char.box.x += dx
+            self.char.box.x2 += dx
+            if self.char.visual_bbox and self.char.visual_bbox.box:
+                self.char.visual_bbox.box.x += dx
+                self.char.visual_bbox.box.x2 += dx
+        elif self.formular:
+            if self.formular.box:
+                self.formular.box.x += dx
+                self.formular.box.x2 += dx
+            for char in self.formular.pdf_character or []:
+                if char.box:
+                    char.box.x += dx
+                    char.box.x2 += dx
+                if char.visual_bbox and char.visual_bbox.box:
+                    char.visual_bbox.box.x += dx
+                    char.visual_bbox.box.x2 += dx
+            for curve in self.formular.pdf_curve or []:
+                if curve.box:
+                    curve.box.x += dx
+                    curve.box.x2 += dx
+                if curve.relocation_transform and len(curve.relocation_transform) >= 6:
+                    # CTM translation component e (index 4)
+                    rt = list(curve.relocation_transform)
+                    rt[4] += dx
+                    curve.relocation_transform = rt
+            for form in self.formular.pdf_form or []:
+                if form.box:
+                    form.box.x += dx
+                    form.box.x2 += dx
+                if form.relocation_transform and len(form.relocation_transform) >= 6:
+                    rt = list(form.relocation_transform)
+                    rt[4] += dx
+                    form.relocation_transform = rt
+        elif self.unicode is not None and self.x is not None:
+            self.x += dx
+        self.box_cache = None
+
     def relocate(
         self,
         x: float,
@@ -2119,10 +2161,20 @@ class Typesetting:
         dp_break_mismatch = False  # DP 断行与实际行宽不匹配时置 True
         last_unit: TypesettingUnit | None = None
         line_ys = [current_y]
+        # Horizontal alignment (captured from original geometry before translation)
+        alignment = getattr(paragraph, "alignment", None) or "left"
+        # Index into typeset_units where the current line starts; used to shift
+        # completed lines for center/right alignment after left-to-right placement.
+        line_start_idx = 0
+        # Track available x range for the line being built (for alignment finalize)
+        line_available_x = available_x
+        line_available_x2 = available_x2
         if paragraph.first_line_indent and paragraph.first_line_indent > 0:
             # 缩进相对于 box.x 而非 available_x，避免 zone 偏移叠加
-            indented_x = box.x + paragraph.first_line_indent * scale
-            current_x = max(current_x, min(indented_x, available_x2))
+            # Center/right aligned paragraphs should not apply first-line indent
+            if alignment == "left":
+                indented_x = box.x + paragraph.first_line_indent * scale
+                current_x = max(current_x, min(indented_x, available_x2))
         # 遍历所有排版单元
         # Decorative tracking: extra spacing between characters for art text
         # (e.g. "G e n t l y" → "轻 轻 地").  Scaled by the same factor as
@@ -2236,6 +2288,17 @@ class Typesetting:
                 except statistics.StatisticsError:
                     mode_height = sum(current_line_heights) / len(current_line_heights)
 
+                # Finalize horizontal alignment for the completed line
+                self._apply_line_horizontal_alignment(
+                    typeset_units,
+                    line_start_idx,
+                    len(typeset_units),
+                    line_available_x,
+                    line_available_x2,
+                    alignment,
+                )
+                line_start_idx = len(typeset_units)
+
                 current_y -= max(mode_height * line_skip, max_height * 1.05)
                 line_ys.append(current_y)
                 line_height = 0.0
@@ -2273,6 +2336,8 @@ class Typesetting:
                         )
                 # === END DIAGNOSTIC ===
                 current_x = available_x
+                line_available_x = available_x
+                line_available_x2 = available_x2
 
                 # 检查是否超出底部边界
                 # if current_y - unit_height < box.y:
@@ -2306,6 +2371,17 @@ class Typesetting:
 
             last_unit = relocated_unit
 
+        # Finalize alignment for the last line
+        if typeset_units and line_start_idx < len(typeset_units):
+            self._apply_line_horizontal_alignment(
+                typeset_units,
+                line_start_idx,
+                len(typeset_units),
+                line_available_x,
+                line_available_x2,
+                alignment,
+            )
+
         # DP 模式下如果贪心插入了额外断行，说明 DP 的行宽估算与实际不匹配，
         # 返回 all_units_fit=False 以触发回退到纯贪心布局。
         if dp_break_mismatch:
@@ -2316,6 +2392,58 @@ class Typesetting:
             return typeset_units, False
 
         return typeset_units, all_units_fit
+
+    @staticmethod
+    def _apply_line_horizontal_alignment(
+        typeset_units: list[TypesettingUnit],
+        start: int,
+        end: int,
+        available_x: float,
+        available_x2: float,
+        alignment: str,
+    ) -> None:
+        """Shift a completed line for center/right alignment.
+
+        Units are first placed left-to-right starting at available_x.
+        For center/right, compute the offset so the line sits correctly
+        within [available_x, available_x2].
+        """
+        if alignment not in ("center", "right") or start >= end:
+            return
+
+        line_units = typeset_units[start:end]
+        if not line_units:
+            return
+
+        xs = []
+        x2s = []
+        for u in line_units:
+            b = u.box
+            if b is None:
+                continue
+            xs.append(b.x)
+            x2s.append(b.x2)
+        if not xs:
+            return
+
+        line_left = min(xs)
+        line_right = max(x2s)
+        line_width = line_right - line_left
+        avail_width = available_x2 - available_x
+        if avail_width <= 0 or line_width >= avail_width - 0.5:
+            return
+
+        if alignment == "center":
+            target_left = available_x + (avail_width - line_width) / 2.0
+        else:  # right
+            target_left = available_x2 - line_width
+
+        offset = target_left - line_left
+        if abs(offset) < 0.5:
+            return
+
+        for u in line_units:
+            u.shift_x(offset)
 
     def create_typesetting_units(
         self,
