@@ -1169,6 +1169,14 @@ class Typesetting:
         expand_space_flag = 0
         final_typeset_units = None
 
+        # Pre-expand narrow boxes before scale search when translated content is
+        # clearly wider than the original tight box (e.g. EN "Edging" → ZH
+        # "边缘控制（Edging）"). Without this, scale is crushed to ~0.5 first
+        # and expansion only runs after scale < 0.7.
+        box = self._pre_expand_narrow_box(
+            box, paragraph, page, typesetting_units, apply_layout=apply_layout
+        )
+
         while scale >= min_scale:
             try:
                 # 尝试布局排版单元
@@ -1297,58 +1305,86 @@ class Typesetting:
                 if not apply_layout or final_typeset_units is not None:
                     return scale, final_typeset_units
 
-            # 减小缩放因子
-            if scale > 0.6:
-                scale -= 0.05
-            else:
-                scale -= 0.1
-
-            if scale < 0.7:
-                space_expanded = False  # 标记是否成功扩展了空间
+            # Prefer expanding the box before crushing font size.
+            # Order: right first (short EN titles → longer CJK), then down.
+            # Trigger expansion as soon as scale drops below ~full size, not
+            # only after scale < 0.7 (that was too late for "Edging"-class titles).
+            if expand_space_flag < 2 and scale >= 0.85:
+                space_expanded = False
 
                 if expand_space_flag == 0:
-                    # 尝试向下扩展
+                    # Expand right first
+                    try:
+                        max_x = self.get_max_right_space(box, page) - 5
+                        if max_x > box.x2 + 1:
+                            expanded_box = Box(x=box.x, y=box.y, x2=max_x, y2=box.y2)
+                            box = expanded_box
+                            if apply_layout:
+                                paragraph.box = expanded_box
+                            space_expanded = True
+                    except Exception:
+                        pass
+                    expand_space_flag = 1
+                    if space_expanded:
+                        scale = initial_scale  # retry at full size with wider box
+                        continue
+
+                elif expand_space_flag == 1:
+                    # Then expand downward
                     try:
                         min_y = self.get_max_bottom_space(box, page) + 2
                         if min_y < box.y:
                             expanded_box = Box(x=box.x, y=min_y, x2=box.x2, y2=box.y2)
                             box = expanded_box
                             if apply_layout:
-                                # 更新段落的边界框
-                                paragraph.box = expanded_box
-                            space_expanded = True
-                    except Exception:
-                        pass
-                    expand_space_flag = 1
-
-                    # 只有成功扩展空间时才 continue，否则继续减小 scale
-                    if space_expanded:
-                        continue
-
-                elif expand_space_flag == 1:
-                    # 尝试向右扩展
-                    try:
-                        max_x = self.get_max_right_space(box, page) - 5
-                        if max_x > box.x2:
-                            expanded_box = Box(x=box.x, y=box.y, x2=max_x, y2=box.y2)
-                            box = expanded_box
-                            if apply_layout:
-                                # 更新段落的边界框
                                 paragraph.box = expanded_box
                             space_expanded = True
                     except Exception:
                         pass
                     expand_space_flag = 2
-
-                    # 只有成功扩展空间时才 continue，否则继续减小 scale
                     if space_expanded:
+                        scale = initial_scale
                         continue
 
-                # 只有在扩展尝试阶段 (expand_space_flag < 2) 且扩展失败时才重置 scale
-                # 当 expand_space_flag >= 2 时，说明已经尝试过所有扩展，应该继续正常的 scale 减小
-                if expand_space_flag < 2:
-                    # 如果无法扩展空间，重置 scale 并继续循环
-                    scale = 1.0
+            # 减小缩放因子
+            if scale > 0.6:
+                scale -= 0.05
+            else:
+                scale -= 0.1
+
+            # Late expansion fallback (legacy path) if early expand was skipped
+            if scale < 0.7 and expand_space_flag < 2:
+                space_expanded = False
+                if expand_space_flag == 0:
+                    try:
+                        max_x = self.get_max_right_space(box, page) - 5
+                        if max_x > box.x2 + 1:
+                            expanded_box = Box(x=box.x, y=box.y, x2=max_x, y2=box.y2)
+                            box = expanded_box
+                            if apply_layout:
+                                paragraph.box = expanded_box
+                            space_expanded = True
+                    except Exception:
+                        pass
+                    expand_space_flag = 1
+                    if space_expanded:
+                        scale = initial_scale
+                        continue
+                elif expand_space_flag == 1:
+                    try:
+                        min_y = self.get_max_bottom_space(box, page) + 2
+                        if min_y < box.y:
+                            expanded_box = Box(x=box.x, y=min_y, x2=box.x2, y2=box.y2)
+                            box = expanded_box
+                            if apply_layout:
+                                paragraph.box = expanded_box
+                            space_expanded = True
+                    except Exception:
+                        pass
+                    expand_space_flag = 2
+                    if space_expanded:
+                        scale = initial_scale
+                        continue
 
         # 如果仍然放不下，尝试去除英文换行限制
         if use_english_line_break:
@@ -1364,6 +1400,60 @@ class Typesetting:
 
         # 最后返回最小缩放因子
         return min_scale, final_typeset_units
+
+    def _pre_expand_narrow_box(
+        self,
+        box: Box,
+        paragraph: il_version_1.PdfParagraph,
+        page: il_version_1.Page,
+        typesetting_units: list[TypesettingUnit],
+        apply_layout: bool,
+    ) -> Box:
+        """Widen a tight original box when translated content is much longer.
+
+        Classic case: English section heading "Edging" (~50pt wide) translates
+        to "边缘控制（Edging）" which needs ~120pt+ at full size. Fitting the
+        original box forces scale ~0.5 and ugly mid-word line breaks.
+        """
+        if not box or not typesetting_units:
+            return box
+
+        box_w = (box.x2 - box.x) if box.x2 is not None and box.x is not None else 0
+        if box_w <= 0:
+            return box
+
+        # Estimate total content width at scale=1.0 (no wrapping)
+        content_w = 0.0
+        for u in typesetting_units:
+            try:
+                content_w += float(u.width or 0)
+            except Exception:
+                pass
+
+        # Only act when content is clearly wider than the original box
+        # (need room to grow; 1.5x avoids expanding normal body lines)
+        if content_w < box_w * 1.5:
+            return box
+
+        try:
+            max_x = self.get_max_right_space(box, page) - 5
+        except Exception:
+            return box
+
+        if max_x <= box.x2 + 1:
+            return box
+
+        expanded = Box(x=box.x, y=box.y, x2=max_x, y2=box.y2)
+        logger.debug(
+            "Pre-expanded narrow paragraph box: width %.1f → %.1f (content≈%.1f) text=%r",
+            box_w,
+            max_x - box.x,
+            content_w,
+            (paragraph.unicode or "")[:40],
+        )
+        if apply_layout:
+            paragraph.box = expanded
+        return expanded
 
     def _get_optimal_scale(
         self,
