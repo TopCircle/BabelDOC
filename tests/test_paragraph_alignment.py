@@ -89,6 +89,29 @@ class TestDetectParagraphAlignment:
         para = _line_para(lines)
         assert detect_paragraph_alignment(para) == "left"
 
+    def test_left_aligned_body_with_short_last_line(self):
+        """Regression: full lines have lm≈rm≈0; short last line must NOT
+        flip the paragraph to center (the Orgasms ebook false positive)."""
+        lines = [
+            (56.0, 560.0),  # full
+            (56.0, 558.0),  # full
+            (56.0, 555.0),  # full
+            (56.0, 200.0),  # short last line, flush left
+        ]
+        para = _line_para(lines)
+        assert detect_paragraph_alignment(para) == "left"
+
+    def test_left_aligned_body_near_full_page(self):
+        # Near-full-width left body as on the dual PDF English side
+        lines = [
+            (56.0, 560.0),
+            (56.0, 550.0),
+            (56.0, 555.0),
+            (56.0, 400.0),
+        ]
+        para = _line_para(lines)
+        assert detect_paragraph_alignment(para, _page(612)) == "left"
+
     def test_title_label_forces_center(self):
         # Single short line, not page-centered, but layout_label=title
         para = _line_para([(50.0, 200.0)], label="title")
