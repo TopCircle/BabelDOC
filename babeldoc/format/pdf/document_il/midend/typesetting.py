@@ -1197,6 +1197,20 @@ class Typesetting:
                             # DP 优化失败，使用贪心结果
                             logger.warning(f"DP line break optimization failed: {e}")
 
+                        # === DIAGNOSTIC: DP 是否被采用 ===
+                        if "在这些" in (paragraph.unicode or ""):
+                            import os as _os
+                            _diag_path = _os.environ.get("BABELDOC_DIAG_LOG", "/tmp/babeldoc_diag.log")
+                            with open(_diag_path, "a", encoding="utf-8") as _f:
+                                _f.write("=== DIAG DP adoption ===\n")
+                                _f.write(f"  debug_id={getattr(paragraph, 'debug_id', None)}\n")
+                                _f.write(f"  opt_breaks={opt_breaks}\n")
+                                _f.write(f"  opt_fit={'N/A' if not opt_breaks else opt_fit}\n")
+                                _f.write(f"  optimized_typeset_units={'yes' if optimized_typeset_units else 'no'}\n")
+                                _f.write(f"  using={'DP' if optimized_typeset_units else 'GREEDY'}\n")
+                                _f.write("=== END DIAG ===\n\n")
+                        # === END DIAGNOSTIC ===
+
                         if optimized_typeset_units:
                             typeset_units = optimized_typeset_units
 
@@ -1987,8 +2001,8 @@ class Typesetting:
             break_points = set(break_points)
 
         # === DIAGNOSTIC: 写入独立 log 文件 ===
-        _diag_text = (paragraph.unicode or "")[:80]
-        if "在" in _diag_text and "这些" in _diag_text:
+        _diag_text = paragraph.unicode or ""
+        if "在这些" in _diag_text:
             import os as _os
             _diag_path = _os.environ.get("BABELDOC_DIAG_LOG", "/tmp/babeldoc_diag.log")
             with open(_diag_path, "a", encoding="utf-8") as _f:
