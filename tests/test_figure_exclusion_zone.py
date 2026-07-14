@@ -359,6 +359,64 @@ class TestCollectFigureZones:
 
 
 # ---------------------------------------------------------------------------
+# filter_for_paragraph — drop false-positive figure zones over body text
+# ---------------------------------------------------------------------------
+
+
+class TestFilterForParagraph:
+    """Figure zones that spill over body paragraphs must not crush scale."""
+
+    def test_drops_figure_covering_body(self):
+        """Orgasms p.7-style: left mid-page figure over full-width body."""
+        # Body BC muscle-like box
+        body = Box(x=56, y=320, x2=554, y2=430)
+        # False-positive figure spilling into body (caption/bubble bbox)
+        fig_zone = ExclusionZone(
+            box=Box(x=43, y=212, x2=374, y2=396),
+            kind=ZONE_FIGURE,
+        )
+        index = ExclusionZoneIndex([fig_zone])
+        filtered = index.filter_for_paragraph(body)
+        assert len(filtered.zones) == 0
+        # Without filter, mid-body line is forced to the right strip
+        x1, x2 = index.get_available_x_range(350, 370, body.x, body.x2)
+        assert x1 > 300  # right-only residual
+        # With filter, full width remains
+        x1f, x2f = filtered.get_available_x_range(350, 370, body.x, body.x2)
+        assert x1f == body.x and x2f == body.x2
+
+    def test_keeps_side_figure_beside_body(self):
+        """Real float: figure on the right, body column on the left — keep zone."""
+        body = Box(x=56, y=300, x2=300, y2=500)
+        fig_zone = ExclusionZone(
+            box=Box(x=320, y=300, x2=560, y2=500),
+            kind=ZONE_FIGURE,
+        )
+        index = ExclusionZoneIndex([fig_zone])
+        filtered = index.filter_for_paragraph(body)
+        assert len(filtered.zones) == 1
+
+    def test_always_keeps_quote_zones(self):
+        """Pull-quote zones are kept even when overlapping a wide box."""
+        from babeldoc.format.pdf.document_il.midend.exclusion_zone import ZONE_QUOTE
+
+        body = Box(x=56, y=300, x2=564, y2=500)
+        quote_zone = ExclusionZone(
+            box=Box(x=340, y=320, x2=560, y2=450),
+            kind=ZONE_QUOTE,
+        )
+        index = ExclusionZoneIndex([quote_zone])
+        filtered = index.filter_for_paragraph(body)
+        assert len(filtered.zones) == 1
+        assert filtered.zones[0].kind == ZONE_QUOTE
+
+    def test_no_zones_returns_self(self):
+        index = ExclusionZoneIndex([])
+        body = Box(x=56, y=300, x2=564, y2=500)
+        assert index.filter_for_paragraph(body) is index
+
+
+# ---------------------------------------------------------------------------
 # ExclusionZoneBuilder integration
 # ---------------------------------------------------------------------------
 

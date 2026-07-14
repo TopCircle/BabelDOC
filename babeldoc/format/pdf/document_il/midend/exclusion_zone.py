@@ -344,6 +344,19 @@ def _merge_blocked_intervals(intervals: list[BlockedInterval]) -> list[BlockedIn
     return merged
 
 
+def _box_intersection_area(a: Box, b: Box) -> float:
+    """Axis-aligned box intersection area; 0 if no overlap."""
+    if a is None or b is None:
+        return 0.0
+    x1 = max(a.x, b.x)
+    y1 = max(a.y, b.y)
+    x2 = min(a.x2, b.x2)
+    y2 = min(a.y2, b.y2)
+    if x2 <= x1 or y2 <= y1:
+        return 0.0
+    return (x2 - x1) * (y2 - y1)
+
+
 class ExclusionZoneIndex:
     """基于 R-tree 的排除区域空间索引。
 
@@ -357,6 +370,59 @@ class ExclusionZoneIndex:
             self._rtree = rtree_index.Index()
             for i, zone in enumerate(zones):
                 self._rtree.insert(i, box_to_tuple(zone.box))
+
+    def filter_for_paragraph(
+        self,
+        para_box: Box,
+        *,
+        max_coverage: float = 0.35,
+    ) -> ExclusionZoneIndex:
+        """Drop figure zones that cover too much of this paragraph's box.
+
+        DocLayout often labels caption bubbles or mid-page decorations as
+        figures whose boxes spill into full-width body text. Applying those
+        zones forces the body into a thin residual strip and crushes scale
+        (e.g. Orgasms p.7 Bulbocavernosus paragraph → ~5.6pt).
+
+        Real floats (side images, pull-quotes) sit *beside* body columns, so
+        their zones barely overlap the body paragraph box and are kept.
+        Quote zones are always kept — they come from paragraph heuristics,
+        not DocLayout, and are needed for wrap-around.
+        """
+        if not self.zones or para_box is None:
+            return self
+
+        para_w = para_box.x2 - para_box.x
+        para_h = para_box.y2 - para_box.y
+        para_area = para_w * para_h
+        if para_area <= 1.0:
+            return self
+
+        kept: list[ExclusionZone] = []
+        dropped = 0
+        for zone in self.zones:
+            if zone.kind != ZONE_FIGURE:
+                kept.append(zone)
+                continue
+            coverage = _box_intersection_area(para_box, zone.box) / para_area
+            if coverage > max_coverage:
+                dropped += 1
+                logger.debug(
+                    "Dropping figure zone covering %.0f%% of paragraph box "
+                    "(threshold %.0f%%): zone=(%.0f,%.0f)-(%.0f,%.0f)",
+                    coverage * 100,
+                    max_coverage * 100,
+                    zone.box.x,
+                    zone.box.y,
+                    zone.box.x2,
+                    zone.box.y2,
+                )
+                continue
+            kept.append(zone)
+
+        if dropped == 0:
+            return self
+        return ExclusionZoneIndex(kept)
 
     def get_available_x_range(
         self,

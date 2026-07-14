@@ -1153,6 +1153,38 @@ class Typesetting:
         if not paragraph.box:
             return initial_scale, None
 
+        # Ignore DocLayout figure zones that spill over this paragraph's own
+        # box (false positives crush body text to unreadable scale).
+        page_zones = getattr(self, "_current_zone_index", None)
+        filtered_zones = page_zones
+        if page_zones is not None and paragraph.box is not None:
+            filtered_zones = page_zones.filter_for_paragraph(paragraph.box)
+        prev_zones = page_zones
+        self._current_zone_index = filtered_zones
+        try:
+            return self._find_optimal_scale_and_layout_inner(
+                paragraph,
+                page,
+                typesetting_units,
+                initial_scale,
+                use_english_line_break,
+                apply_layout,
+                line_skip,
+            )
+        finally:
+            self._current_zone_index = prev_zones
+
+    def _find_optimal_scale_and_layout_inner(
+        self,
+        paragraph: il_version_1.PdfParagraph,
+        page: il_version_1.Page,
+        typesetting_units: list[TypesettingUnit],
+        initial_scale: float = 1.0,
+        use_english_line_break: bool = True,
+        apply_layout: bool = False,
+        line_skip: float | None = None,
+    ) -> tuple[float, list[TypesettingUnit] | None]:
+        """Core scale search + layout (zone index already filtered)."""
         box = paragraph.box
         scale = initial_scale
         if line_skip is None:
@@ -1388,7 +1420,7 @@ class Typesetting:
 
         # 如果仍然放不下，尝试去除英文换行限制
         if use_english_line_break:
-            return self._find_optimal_scale_and_layout(
+            return self._find_optimal_scale_and_layout_inner(
                 paragraph,
                 page,
                 typesetting_units,
