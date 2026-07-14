@@ -44,6 +44,23 @@ ZONE_SIDEBAR = "sidebar"
 
 ZoneKind = Literal["quote", "figure", "table", "formula", "sidebar"]
 
+# Minimum continuous horizontal strip (pt) that may host body text.
+# Narrower residuals force ~1–4pt scale crush (Orgasms p.10/19/20).
+# ~4 CJK chars at ~7pt ≈ 28pt; also used as floor vs 15% of paragraph width.
+MIN_USABLE_LINE_WIDTH_PT = 28.0
+
+
+def min_usable_line_width(para_width: float | None = None) -> float:
+    """Minimum usable line width for wrap / residual-strip decisions.
+
+    Uses the larger of an absolute floor and a fraction of the paragraph
+    width so very wide pages still reject needle-thin strips.
+    """
+    floor = MIN_USABLE_LINE_WIDTH_PT
+    if para_width is not None and para_width > 0:
+        return max(floor, para_width * 0.15)
+    return floor
+
 
 @dataclass(frozen=True, slots=True)
 class ExclusionZone:
@@ -376,18 +393,25 @@ class ExclusionZoneIndex:
         para_box: Box,
         *,
         max_coverage: float = 0.35,
+        min_residual_width: float | None = None,
+        drop_all_figures: bool = False,
     ) -> ExclusionZoneIndex:
-        """Drop figure zones that cover too much of this paragraph's box.
+        """Drop figure zones that would crush body text for this paragraph.
 
-        DocLayout often labels caption bubbles or mid-page decorations as
-        figures whose boxes spill into full-width body text. Applying those
-        zones forces the body into a thin residual strip and crushes scale
-        (e.g. Orgasms p.7 Bulbocavernosus paragraph → ~5.6pt).
+        Rules (figures only; quotes always kept for wrap-around):
+        1. ``drop_all_figures`` — remove every figure zone (scale-floor retry).
+        2. Coverage > ``max_coverage`` of the paragraph box (Orgasms p.7).
+        3. After carving the figure out of the paragraph, the widest remaining
+           horizontal strip is narrower than ``min_residual_width`` (Orgasms
+           p.10/19/20 needle strips). Real side floats leave a wide residual
+           (e.g. ~200pt body column on p.21) and are kept.
 
-        Real floats (side images, pull-quotes) sit *beside* body columns, so
-        their zones barely overlap the body paragraph box and are kept.
-        Quote zones are always kept — they come from paragraph heuristics,
-        not DocLayout, and are needed for wrap-around.
+        Args:
+            para_box: Paragraph layout box.
+            max_coverage: Drop if intersection / para area exceeds this.
+            min_residual_width: Min pt width of the better side strip; default
+                from :func:`min_usable_line_width`.
+            drop_all_figures: If True, drop all figure zones regardless.
         """
         if not self.zones or para_box is None:
             return self
@@ -398,11 +422,17 @@ class ExclusionZoneIndex:
         if para_area <= 1.0:
             return self
 
+        if min_residual_width is None:
+            min_residual_width = min_usable_line_width(para_w)
+
         kept: list[ExclusionZone] = []
         dropped = 0
         for zone in self.zones:
             if zone.kind != ZONE_FIGURE:
                 kept.append(zone)
+                continue
+            if drop_all_figures:
+                dropped += 1
                 continue
             coverage = _box_intersection_area(para_box, zone.box) / para_area
             if coverage > max_coverage:
@@ -412,6 +442,26 @@ class ExclusionZoneIndex:
                     "(threshold %.0f%%): zone=(%.0f,%.0f)-(%.0f,%.0f)",
                     coverage * 100,
                     max_coverage * 100,
+                    zone.box.x,
+                    zone.box.y,
+                    zone.box.x2,
+                    zone.box.y2,
+                )
+                continue
+            residual = _max_horizontal_residual(para_box, zone.box)
+            # Only apply residual rule when the zone actually bites the para
+            # horizontally (residual is for split columns, not disjoint floats).
+            if (
+                coverage > 1e-6
+                and residual < min_residual_width
+            ):
+                dropped += 1
+                logger.debug(
+                    "Dropping figure zone: max residual strip %.1fpt < %.1fpt "
+                    "(coverage %.0f%%): zone=(%.0f,%.0f)-(%.0f,%.0f)",
+                    residual,
+                    min_residual_width,
+                    coverage * 100,
                     zone.box.x,
                     zone.box.y,
                     zone.box.x2,
@@ -430,6 +480,7 @@ class ExclusionZoneIndex:
         y_top: float,
         default_x: float,
         default_x2: float,
+        min_width: float | None = None,
     ) -> tuple[float, float]:
         """给定行的 y 范围，返回该行可用的 x 范围。
 
@@ -438,17 +489,24 @@ class ExclusionZoneIndex:
         - 如果区域在文本左侧 → 收窄 available_x
         - 如果区域有多边形 → 使用 scanline 计算精确 blocked 区间
 
+        若收窄后宽度 < ``min_width``（默认 :data:`MIN_USABLE_LINE_WIDTH_PT`），
+        回退到 ``(default_x, default_x2)``，避免在针尖缝里排正文。
+
         Args:
             y_bottom: 行底部 y 坐标
             y_top: 行顶部 y 坐标
             default_x: 默认左边界（通常是 paragraph.box.x）
             default_x2: 默认右边界（通常是 paragraph.box.x2）
+            min_width: 最小可用宽度；None 时用绝对地板
 
         Returns:
             (available_x, available_x2) 可用的左右边界
         """
         if not self.zones:
             return (default_x, default_x2)
+
+        if min_width is None:
+            min_width = min_usable_line_width(default_x2 - default_x)
 
         available_x = default_x
         available_x2 = default_x2
@@ -517,6 +575,21 @@ class ExclusionZoneIndex:
             )
             available_x, available_x2 = result
 
+        # Zero / inverted / needle-thin → fall back to full paragraph width
+        usable = available_x2 - available_x
+        if usable < min_width:
+            logger.debug(
+                "Zone strip too narrow (%.1fpt < %.1fpt) at y=[%.1f,%.1f]; "
+                "using full paragraph width [%.1f,%.1f]",
+                usable,
+                min_width,
+                y_bottom,
+                y_top,
+                default_x,
+                default_x2,
+            )
+            return (default_x, default_x2)
+
         # 诊断日志：记录 zone 对可用宽度的影响
         if available_x != default_x or available_x2 != default_x2:
             logger.debug(
@@ -527,6 +600,24 @@ class ExclusionZoneIndex:
             )
 
         return (available_x, available_x2)
+
+
+def _max_horizontal_residual(para_box: Box, zone_box: Box) -> float:
+    """Widest horizontal strip of ``para_box`` left after removing ``zone_box``.
+
+    Returns 0 if the zone fully covers the paragraph horizontally.
+    Returns a large value if they do not horizontally intersect (caller should
+    usually skip residual logic in that case via coverage).
+    """
+    if para_box is None or zone_box is None:
+        return float("inf")
+    # No horizontal overlap → residual is full para width
+    if zone_box.x2 <= para_box.x or zone_box.x >= para_box.x2:
+        return para_box.x2 - para_box.x
+
+    left = max(0.0, zone_box.x - para_box.x)
+    right = max(0.0, para_box.x2 - zone_box.x2)
+    return max(left, right)
 
 
 def _subtract_blocked_from_range(

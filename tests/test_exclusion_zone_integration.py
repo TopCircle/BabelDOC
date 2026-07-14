@@ -166,12 +166,16 @@ class TestExclusionZoneIndex:
         assert x2 == 400  # 右侧 zone 收窄
 
     def test_zone_fully_covers_text_area(self):
-        """zone 完全覆盖文本区域时，可用宽度为零。"""
+        """Full cover would be zero-width; fall back to full default width.
+
+        Needle/zero strips must not be used for body layout (scale crush).
+        Callers that need "blocked" semantics should inspect zones separately.
+        """
         zone = self._make_zone(0, 100, 612, 300)
         index = ExclusionZoneIndex([zone])
 
         x1, x2 = index.get_available_x_range(150, 250, 0, 612)
-        assert x1 == x2  # 零宽度
+        assert x1 == 0 and x2 == 612
 
 
 class TestQuoteZoneInTypesetting:

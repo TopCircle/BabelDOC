@@ -1003,6 +1003,9 @@ class Typesetting:
     stage_name = "Typesetting"
     _DEFAULT_LINE_SKIP_CJK = 1.50
     _DEFAULT_LINE_SKIP_NON_CJK = 1.3
+    # Floor for scale search. 0.1 produced unreadable 1–4pt text when
+    # exclusion zones left only a needle strip (Orgasms p.10/19/20).
+    MIN_READABLE_SCALE = 0.55
 
     def __init__(self, translation_config: TranslationConfig):
         self.font_mapper = FontMapper(translation_config)
@@ -1019,6 +1022,7 @@ class Typesetting:
             or ("HK" in self.lang_code)
             or ("TW" in self.lang_code)
         )
+        self._drop_all_figures_for_paragraph = False
 
     def preprocess_document(
         self,
@@ -1158,7 +1162,12 @@ class Typesetting:
         page_zones = getattr(self, "_current_zone_index", None)
         filtered_zones = page_zones
         if page_zones is not None and paragraph.box is not None:
-            filtered_zones = page_zones.filter_for_paragraph(paragraph.box)
+            filtered_zones = page_zones.filter_for_paragraph(
+                paragraph.box,
+                drop_all_figures=getattr(
+                    self, "_drop_all_figures_for_paragraph", False
+                ),
+            )
         prev_zones = page_zones
         self._current_zone_index = filtered_zones
         try:
@@ -1197,9 +1206,14 @@ class Typesetting:
                 f"Reference layout: {len(reference_widths)} original lines, "
                 f"widths={[f'{w:.1f}' for w in reference_widths]}"
             )
-        min_scale = 0.1
+        min_scale = getattr(
+            self.translation_config, "min_readable_scale", None
+        )
+        if min_scale is None:
+            min_scale = self.MIN_READABLE_SCALE
         expand_space_flag = 0
         final_typeset_units = None
+        last_typeset_units = None  # last layout attempt (may overflow box)
 
         # Pre-expand narrow boxes before scale search when translated content is
         # clearly wider than the original tight box (e.g. EN "Edging" → ZH
@@ -1220,6 +1234,8 @@ class Typesetting:
                     paragraph,
                     use_english_line_break,
                 )
+                if typeset_units:
+                    last_typeset_units = typeset_units
 
                 # 如果所有单元都放得下
                 if all_units_fit:
@@ -1430,7 +1446,70 @@ class Typesetting:
                 line_skip=line_skip,
             )
 
-        # 最后返回最小缩放因子
+        # One more try: drop all figure exclusion zones and re-search.
+        # Needle-thin residual strips (or false figures) can still leave text
+        # unfittable at MIN_READABLE_SCALE; full width is better than empty.
+        if (
+            not getattr(self, "_drop_all_figures_for_paragraph", False)
+            and getattr(self, "_current_zone_index", None) is not None
+            and any(
+                z.kind == "figure"
+                for z in (self._current_zone_index.zones or [])
+            )
+        ):
+            logger.debug(
+                "Scale floor reached with figure zones still active; "
+                "retrying without figure exclusion for this paragraph"
+            )
+            self._drop_all_figures_for_paragraph = True
+            try:
+                # Re-enter outer wrapper so filter_for_paragraph runs again
+                return self._find_optimal_scale_and_layout(
+                    paragraph,
+                    page,
+                    typesetting_units,
+                    initial_scale,
+                    use_english_line_break=True,
+                    apply_layout=apply_layout,
+                    line_skip=line_skip,
+                )
+            finally:
+                self._drop_all_figures_for_paragraph = False
+
+        # Force-apply at readable floor even if text overflows the box.
+        # Never leave composition empty after apply_layout cleared it.
+        if apply_layout and final_typeset_units is None:
+            force_units = last_typeset_units
+            if not force_units:
+                force_units, _ = self._layout_typesetting_units(
+                    typesetting_units,
+                    box,
+                    min_scale,
+                    line_skip,
+                    paragraph,
+                    use_english_line_break=False,
+                )
+            if force_units:
+                paragraph.scale = min_scale
+                paragraph.pdf_paragraph_composition = []
+                for unit in force_units:
+                    chars, curves, forms = unit.render()
+                    for char in chars:
+                        paragraph.pdf_paragraph_composition.append(
+                            PdfParagraphComposition(pdf_character=char),
+                        )
+                    for curve in curves:
+                        page.pdf_curve.append(curve)
+                    for form in forms:
+                        page.pdf_form.append(form)
+                final_typeset_units = force_units
+                logger.warning(
+                    "Applied layout at min readable scale %.2f with possible "
+                    "overflow (paragraph debug_id=%s)",
+                    min_scale,
+                    getattr(paragraph, "debug_id", None),
+                )
+
         return min_scale, final_typeset_units
 
     def _pre_expand_narrow_box(
@@ -1635,7 +1714,7 @@ class Typesetting:
         self,
         paragraph: il_version_1.PdfParagraph,
         page: il_version_1.Page,
-        min_scale: float = 0.1,
+        min_scale: float | None = None,
         max_scale: float = 1.0,
         line_skip: float | None = None,
     ) -> RetypesetResult:
@@ -1653,6 +1732,9 @@ class Typesetting:
         """
         if not paragraph.box:
             return RetypesetResult(success=False, reason="no box")
+
+        if min_scale is None:
+            min_scale = self.MIN_READABLE_SCALE
 
         old_compositions = paragraph.pdf_paragraph_composition[:]
         old_scale = getattr(paragraph, 'scale', None)

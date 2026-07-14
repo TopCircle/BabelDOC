@@ -1,4 +1,6 @@
-"""Tests for pre-expanding narrow title boxes (Edging-class short headings)."""
+"""Tests for pre-expanding narrow title boxes (Edging-class short headings)
+and readable scale floor.
+"""
 
 from __future__ import annotations
 
@@ -22,6 +24,12 @@ def _page():
         pdf_character=[],
         pdf_figure=[],
     )
+
+
+class TestReadableScaleFloor:
+    def test_min_readable_scale_constant(self):
+        assert Typesetting.MIN_READABLE_SCALE >= 0.5
+        assert Typesetting.MIN_READABLE_SCALE < 1.0
 
 
 class TestPreExpandNarrowBox:

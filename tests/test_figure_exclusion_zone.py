@@ -17,11 +17,14 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfFormSubtype
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import ExclusionZone
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import ExclusionZoneBuilder
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import ExclusionZoneIndex
+from babeldoc.format.pdf.document_il.midend.exclusion_zone import MIN_USABLE_LINE_WIDTH_PT
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import ZONE_FIGURE
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import _collect_figure_zones
+from babeldoc.format.pdf.document_il.midend.exclusion_zone import _max_horizontal_residual
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
     _subtract_blocked_from_range,
 )
+from babeldoc.format.pdf.document_il.midend.exclusion_zone import min_usable_line_width
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
     polygon_scanline_blocked_intervals,
 )
@@ -414,6 +417,91 @@ class TestFilterForParagraph:
         index = ExclusionZoneIndex([])
         body = Box(x=56, y=300, x2=564, y2=500)
         assert index.filter_for_paragraph(body) is index
+
+    def test_drops_figure_leaving_needle_residual(self):
+        """Orgasms p.10-style: figure leaves only ~25pt strip on the right."""
+        body = Box(x=56, y=100, x2=560, y2=200)
+        # Almost full-width figure inside body y-range, residual right ~20pt
+        fig_zone = ExclusionZone(
+            box=Box(x=56, y=100, x2=540, y2=200),
+            kind=ZONE_FIGURE,
+        )
+        residual = _max_horizontal_residual(body, fig_zone.box)
+        assert residual < MIN_USABLE_LINE_WIDTH_PT
+
+        index = ExclusionZoneIndex([fig_zone])
+        # Without residual rule this would force a ~20pt column
+        x1, x2 = index.get_available_x_range(120, 140, body.x, body.x2)
+        # Line-level fallback OR residual filter must yield usable width
+        filtered = index.filter_for_paragraph(body)
+        assert len(filtered.zones) == 0
+        x1f, x2f = filtered.get_available_x_range(120, 140, body.x, body.x2)
+        assert x1f == body.x and x2f == body.x2
+        assert (x2f - x1f) > 400
+
+    def test_keeps_side_column_residual_wide_enough(self):
+        """p.21-style: full-height side figure, body column ~200pt — keep zone."""
+        # Body is already the left column next to a right image
+        body = Box(x=56, y=100, x2=330, y2=700)
+        fig_zone = ExclusionZone(
+            box=Box(x=340, y=100, x2=600, y2=700),
+            kind=ZONE_FIGURE,
+        )
+        # No horizontal overlap with body → residual = full body width
+        residual = _max_horizontal_residual(body, fig_zone.box)
+        assert residual > 200
+
+        index = ExclusionZoneIndex([fig_zone])
+        filtered = index.filter_for_paragraph(body)
+        assert len(filtered.zones) == 1
+
+    def test_keeps_right_float_beside_body_column(self):
+        """Real wrap: body column left, figure right — little/no box overlap.
+
+        Full-width body + large right figure would exceed max_coverage (p7 rule);
+        production body boxes for wrap sit *beside* the float, not under it.
+        """
+        body = Box(x=56, y=300, x2=300, y2=500)
+        fig_zone = ExclusionZone(
+            box=Box(x=320, y=300, x2=560, y2=500),
+            kind=ZONE_FIGURE,
+        )
+        residual = _max_horizontal_residual(body, fig_zone.box)
+        assert residual >= 200
+
+        index = ExclusionZoneIndex([fig_zone])
+        filtered = index.filter_for_paragraph(body)
+        assert len(filtered.zones) == 1
+
+    def test_get_available_falls_back_when_strip_too_narrow(self):
+        """Line-level safety net: narrow residual returns full default width."""
+        body_x, body_x2 = 56.0, 560.0
+        fig_zone = ExclusionZone(
+            box=Box(x=56, y=100, x2=540, y2=200),
+            kind=ZONE_FIGURE,
+        )
+        index = ExclusionZoneIndex([fig_zone])
+        x1, x2 = index.get_available_x_range(
+            120, 140, body_x, body_x2, min_width=MIN_USABLE_LINE_WIDTH_PT
+        )
+        assert x1 == body_x and x2 == body_x2
+
+    def test_drop_all_figures_flag(self):
+        body = Box(x=56, y=300, x2=560, y2=500)
+        fig_zone = ExclusionZone(
+            box=Box(x=400, y=300, x2=550, y2=450),
+            kind=ZONE_FIGURE,
+        )
+        index = ExclusionZoneIndex([fig_zone])
+        filtered = index.filter_for_paragraph(body, drop_all_figures=True)
+        assert len(filtered.zones) == 0
+
+    def test_min_usable_line_width_scales_with_para(self):
+        assert min_usable_line_width(None) == MIN_USABLE_LINE_WIDTH_PT
+        # 15% of 500 = 75 > 28
+        assert min_usable_line_width(500) == 75.0
+        # 15% of 100 = 15 < 28 → floor
+        assert min_usable_line_width(100) == MIN_USABLE_LINE_WIDTH_PT
 
 
 # ---------------------------------------------------------------------------
