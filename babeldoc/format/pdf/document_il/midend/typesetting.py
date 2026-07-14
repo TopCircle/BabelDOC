@@ -2101,6 +2101,7 @@ class Typesetting:
         # 存储已排版的单元
         typeset_units = []
         all_units_fit = True
+        dp_break_mismatch = False  # DP 断行与实际行宽不匹配时置 True
         last_unit: TypesettingUnit | None = None
         line_ys = [current_y]
         if paragraph.first_line_indent and paragraph.first_line_indent > 0:
@@ -2208,6 +2209,9 @@ class Typesetting:
             # 标记为需要特殊处理（由 DP 在后续优化中处理）
             # 注意：不在贪心循环中强制溢出，避免布局问题
             if need_break:
+                # 检测 DP 模式下贪心是否插入了额外断行
+                if not dp_break and break_points is not None:
+                    dp_break_mismatch = True
                 # 换行
                 if not current_line_heights:
                     return [], False
@@ -2286,6 +2290,15 @@ class Typesetting:
                 logger.warning(f"坐标回绕！！！TypesettingUnit: {unit.box}, ")
 
             last_unit = relocated_unit
+
+        # DP 模式下如果贪心插入了额外断行，说明 DP 的行宽估算与实际不匹配，
+        # 返回 all_units_fit=False 以触发回退到纯贪心布局。
+        if dp_break_mismatch:
+            logger.debug(
+                "DP break mismatch: greedy inserted extra breaks, "
+                "falling back to greedy layout."
+            )
+            return typeset_units, False
 
         return typeset_units, all_units_fit
 
