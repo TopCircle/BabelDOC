@@ -1228,6 +1228,21 @@ class Typesetting:
                             for form in forms:
                                 page.pdf_form.append(form)
                         final_typeset_units = typeset_units
+
+                        # 收缩段落 box 底部：译文可能比原文短，
+                        # box.y 需要匹配实际渲染字符的底部，避免多余空白。
+                        rendered_chars = [
+                            c.pdf_character
+                            for c in paragraph.pdf_paragraph_composition
+                            if c.pdf_character
+                            and c.pdf_character.box
+                            and c.pdf_character.box.y is not None
+                        ]
+                        if rendered_chars:
+                            actual_bottom = min(c.box.y for c in rendered_chars)
+                            if actual_bottom > paragraph.box.y:
+                                paragraph.box.y = actual_bottom
+
                     return scale, final_typeset_units
             except Exception:
                 # 如果布局检查出错，继续尝试下一个缩放因子
