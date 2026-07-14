@@ -93,7 +93,8 @@ class ExclusionZoneBuilder:
 class QuoteZoneConfig:
     """Quote 区域检测参数。"""
     narrow_threshold: float = 0.8
-    indent_threshold: float = 0.05
+    # Must exceed typical body page margin (~5–12%); see is_quote_block.
+    indent_threshold: float = 0.15
     right_margin_threshold: float = 0.05
     left_margin: float = 0.02
     top_margin: float = 0.01

@@ -223,7 +223,7 @@ class TranslationConfig:
         footer_height: float = 40,
         enable_post_layout_optimization: bool = False,
         quote_narrow_threshold: float = 0.8,
-        quote_indent_threshold: float = 0.05,
+        quote_indent_threshold: float = 0.15,
         quote_right_margin_threshold: float = 0.05,
     ):
         self.translator = translator
@@ -400,7 +400,7 @@ class TranslationConfig:
             0.1,
         )
         self.quote_indent_threshold = max(
-            min(float(quote_indent_threshold if quote_indent_threshold is not None else 0.05), 0.5),
+            min(float(quote_indent_threshold if quote_indent_threshold is not None else 0.15), 0.5),
             0.0,
         )
         self.quote_right_margin_threshold = max(

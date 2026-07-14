@@ -1452,22 +1452,28 @@ def is_quote_block(
     page_width: float,
     *,
     narrow_threshold: float = 0.8,
-    indent_threshold: float = 0.05,
+    indent_threshold: float = 0.15,
     right_margin_threshold: float = 0.05,
 ) -> bool:
-    """启发式判断段落是否为 Quote（引文框）块。
+    """启发式判断段落是否为 Quote（引文框 / pull-quote）块。
 
     Quote 块的典型特征：
     1. 段落宽度明显窄于页面宽度（两侧有留白）
-    2. 左侧有明显缩进
+    2. 左侧有明显缩进（显著大于正文页边距）
     3. 右侧有明显留白
-    4. 文本内容可能以引号开头/结尾（辅助判断）
+    4. 不是「左侧绕排正文」：与浮动块并排的左栏正文虽窄，但左缘贴正文页边
+
+    错误地把左栏绕排正文当成 Quote 会导致 ExclusionZone 把可用宽度推到
+    右侧，上一整段溢出时出现「半行在左、半行跳到右」的旁绕排崩坏
+    （见 Longer Stronger Orgasms p.5）。
 
     Args:
         para: 要判断的段落
         page_width: 页面宽度（cropbox.x2 - cropbox.x）
         narrow_threshold: 段落宽度 / 页面宽度 < 此值视为窄段落
-        indent_threshold: 左侧缩进 / 页面宽度 > 此值视为有缩进
+        indent_threshold: 左侧缩进 / 页面宽度 > 此值视为有缩进。
+            默认 0.15：过滤 ~5–12% 的正文页边距，保留真正的 pull-quote
+            （通常 indent ≳ 0.25–0.5）。
         right_margin_threshold: 右侧留白 / 页面宽度 > 此值视为有留白
 
     Returns:
@@ -1489,7 +1495,7 @@ def is_quote_block(
     if width_ratio >= narrow_threshold:
         return False
 
-    # 规则 2: 左侧有明显缩进
+    # 规则 2: 左侧有明显缩进（须显著大于正文页边距）
     left_indent = box.x
     indent_ratio = left_indent / page_width
     if indent_ratio < indent_threshold:
@@ -1519,7 +1525,8 @@ def is_quote_block(
     except (UnicodeDecodeError, AttributeError, IndexError):
         pass
 
-    # 如果满足几何规则（窄 + 缩进 + 留白），认为是 Quote 块
+    # 如果满足几何规则（窄 + 深缩进 + 留白），认为是 Quote 块。
+    # indent_threshold 默认 0.15 已过滤「贴正文页边的左栏绕排」假阳性。
     # 引号标记只是辅助，不作为必要条件
     return True
 

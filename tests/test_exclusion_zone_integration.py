@@ -30,9 +30,25 @@ class TestIsQuoteBlock:
     def test_typical_quote_detected(self):
         """典型的 Quote 段落应该被检测到。"""
         # 页面宽度 612（标准 Letter）
-        # Quote 段落：宽度约 60% 页面宽度，左侧缩进 15%，右侧留白 25%
-        para = self._make_para(92, 400, 462, 500)
+        # Quote 段落：宽度约 49% 页面宽度，左侧缩进 16%，右侧留白 35%
+        para = self._make_para(100, 400, 400, 500)
         assert is_quote_block(para, page_width=612) is True
+
+    def test_right_pull_quote_detected(self):
+        """右侧 pull-quote（Orgasms p.5）应被检测到。"""
+        # x=361..552 on letter page
+        para = self._make_para(361, 360, 552, 440)
+        assert is_quote_block(para, page_width=612) is True
+
+    def test_left_wrap_body_not_quote(self):
+        """左侧绕排正文不是 Quote（避免把旁绕排正文当 exclusion zone）。
+
+        Orgasms p.5: body column x≈56..302 beside a right pull-quote.
+        If mis-detected as quote, the previous full-width paragraph reflows
+        onto the right column above the real quote.
+        """
+        para = self._make_para(56, 300, 302, 480)
+        assert is_quote_block(para, page_width=612) is False
 
     def test_full_width_not_quote(self):
         """全宽段落不是 Quote。"""
@@ -49,6 +65,12 @@ class TestIsQuoteBlock:
         """窄但没有缩进的段落不是 Quote。"""
         # 左侧无缩进
         para = self._make_para(0, 400, 400, 500)
+        assert is_quote_block(para, page_width=612) is False
+
+    def test_body_margin_indent_not_quote(self):
+        """仅有正文页边距级别的左缩进不应判为 Quote。"""
+        # indent ≈ 9% page width — typical body left margin, not pull-quote
+        para = self._make_para(56, 400, 400, 500)
         assert is_quote_block(para, page_width=612) is False
 
     def test_narrow_but_no_right_margin_not_quote(self):

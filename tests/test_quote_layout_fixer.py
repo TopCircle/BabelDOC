@@ -90,11 +90,28 @@ class TestIsQuoteBlock:
         """典型的 Quote 块应该被检测到。"""
         # Quote 块: x=100..400, y=100..200 (宽度=300, 页面宽度=612)
         # 宽度比例 = 300/612 ≈ 0.49 < 0.8 ✓
-        # 左侧缩进 = 100/612 ≈ 0.16 > 0.05 ✓
+        # 左侧缩进 = 100/612 ≈ 0.16 > 0.15 ✓
         # 右侧留白 = (612-400)/612 ≈ 0.35 > 0.05 ✓
         para = _make_paragraph(
             chars=[_make_char(100, 100, 400, 200)],
             layout_box=Box(x=100, y=100, x2=400, y2=200),
+        )
+        assert is_quote_block(para, 612.0) is True
+
+    def test_left_wrap_body_not_detected(self):
+        """左侧绕排正文（贴正文页边）不应被当成 Quote。"""
+        # Orgasms p.5 left column beside pull-quote: x=56..302
+        para = _make_paragraph(
+            chars=[_make_char(56, 300, 302, 480)],
+            layout_box=Box(x=56, y=300, x2=302, y2=480),
+        )
+        assert is_quote_block(para, 612.0) is False
+
+    def test_right_pull_quote_detected(self):
+        """右侧 pull-quote 应被检测到。"""
+        para = _make_paragraph(
+            chars=[_make_char(361, 360, 552, 440)],
+            layout_box=Box(x=361, y=360, x2=552, y2=440),
         )
         assert is_quote_block(para, 612.0) is True
 
@@ -111,7 +128,7 @@ class TestIsQuoteBlock:
     def test_no_indent_not_detected(self):
         """没有缩进的窄段落不应该被检测为 Quote。"""
         # 窄段落但无缩进: x=0..400, y=100..200
-        # 左侧缩进 = 0/612 = 0 < 0.05 ✗
+        # 左侧缩进 = 0/612 = 0 < 0.15 ✗
         para = _make_paragraph(
             chars=[_make_char(0, 100, 400, 200)],
             layout_box=Box(x=0, y=100, x2=400, y2=200),
