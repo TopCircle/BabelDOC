@@ -1986,6 +1986,30 @@ class Typesetting:
         if break_points is not None and not isinstance(break_points, set):
             break_points = set(break_points)
 
+        # === DIAGNOSTIC: 写入独立 log 文件 ===
+        _diag_text = (paragraph.unicode or "")[:80]
+        if "在" in _diag_text and "这些" in _diag_text:
+            import os as _os
+            _diag_path = _os.environ.get("BABELDOC_DIAG_LOG", "/tmp/babeldoc_diag.log")
+            with open(_diag_path, "a", encoding="utf-8") as _f:
+                _f.write("=== DIAG typesetting_units ===\n")
+                _f.write(f"  debug_id={getattr(paragraph, 'debug_id', None)}\n")
+                _f.write(f"  unicode={_diag_text!r}\n")
+                _f.write(f"  box=[{box.x:.1f},{box.y:.1f}]-[{box.x2:.1f},{box.y2:.1f}]\n")
+                _f.write(f"  scale={scale}\n")
+                _f.write(f"  break_points={break_points}\n")
+                for _di, _du in enumerate(typesetting_units):
+                    _du_unicode = _du.try_get_unicode() or "?"
+                    _f.write(
+                        f"  Unit[{_di}]: unicode={_du_unicode!r}, "
+                        f"width={_du.width:.2f}, "
+                        f"is_cjk={_du.is_cjk_char}, "
+                        f"can_break={_du.can_break_line}, "
+                        f"is_space={_du.is_space}\n"
+                    )
+                _f.write("=== END DIAG ===\n\n")
+        # === END DIAGNOSTIC ===
+
         # 计算字号众数
         font_sizes = []
         for unit in typesetting_units:

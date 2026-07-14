@@ -196,6 +196,43 @@ def optimal_line_break(
             # DP 产生了不可断行的位置（非段落末尾），回退
             return None
 
+    # === DIAGNOSTIC: 写入独立 log 文件 ===
+    _has_diag_char = any(
+        u.try_get_unicode() == "这" for u in units
+    )
+    if _has_diag_char:
+        import os as _os
+        _diag_path = _os.environ.get("BABELDOC_DIAG_LOG", "/tmp/babeldoc_diag.log")
+        with open(_diag_path, "a", encoding="utf-8") as _f:
+            _f.write("=== DIAG optimal_line_break ===\n")
+            _f.write(f"  cjk_mode={cjk_mode}\n")
+            _f.write(f"  n={n}, line_widths={[f'{w:.1f}' for w in line_widths]}\n")
+            _f.write(f"  breaks={breaks}\n")
+            all_breaks = [0] + breaks + [n]
+            for li in range(len(all_breaks) - 1):
+                line_start = all_breaks[li]
+                line_end = all_breaks[li + 1]
+                line_chars = "".join(
+                    (u.try_get_unicode() or "?") for u in units[line_start:line_end]
+                )
+                line_w = _compute_line_width(
+                    units, line_start, line_end, scale, space_width, decorative_tracking
+                )
+                avail = line_widths[min(li, len(line_widths) - 1)]
+                _f.write(
+                    f"  Line {li}: [{line_start}:{line_end}] "
+                    f"chars={line_chars!r} "
+                    f"width={line_w:.1f} "
+                    f"available={avail:.1f} "
+                    f"remaining={avail - line_w:.1f}\n"
+                )
+            _f.write("  can_break_line per unit:\n")
+            for ui, u in enumerate(units):
+                _uch = u.try_get_unicode() or "?"
+                _f.write(f"    [{ui}] {_uch!r} can_break={u.can_break_line} is_cjk={u.is_cjk_char}\n")
+            _f.write("=== END DIAG ===\n\n")
+    # === END DIAGNOSTIC ===
+
     return breaks
 
 
