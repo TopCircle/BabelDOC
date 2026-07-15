@@ -474,11 +474,22 @@ def parse_tounicode_cmap(data):
 
 
 def parse_truetype_data(data):
+    """Return glyph IDs that must stay in the rebuilt ToUnicode CMap.
+
+    Historically only glyphs with outlines were kept. That drops blank
+    spacing glyphs (e.g. Source Han glyph 1 = space: advance>0, no
+    contours). Under Identity-H, extractors then treat bare CID 1 as
+    U+0001 SOH — visible as ``\\x01`` glue in dual-PDF text extraction
+    (Orgasms: 59 hits, all space-width ~3.5pt).
+    """
     glyph_in_use = []
     face = freetype.Face(io.BytesIO(data))
     for i in range(face.num_glyphs):
         face.load_glyph(i)
-        if face.glyph.outline.contours:
+        has_outline = bool(face.glyph.outline.contours)
+        # Blank spacing glyphs (space/nbsp): no outline, non-zero advance
+        has_advance = face.glyph.metrics.horiAdvance > 0
+        if has_outline or has_advance:
             glyph_in_use.append(i)
     return glyph_in_use
 
@@ -501,10 +512,19 @@ end"""
 
 
 def make_tounicode(cmap, used):
+    # Ensure space (glyph 1 on most CJK OTFs) maps to U+0020 even if the
+    # original ToUnicode stream omitted or corrupted it.
+    if isinstance(cmap, dict) and 1 not in cmap:
+        cmap = dict(cmap)
+        cmap[1] = 0x0020
     short = []
     for x in used:
         if x in cmap:
             short.append((x, cmap[x]))
+    # If glyph 1 is used but still missing (empty used filter), force it
+    used_set = set(used)
+    if 1 in used_set and not any(g == 1 for g, _ in short):
+        short.append((1, cmap.get(1, 0x0020)))
     line = [TOUNICODE_HEAD]
     for block in batched(short, 100):
         line.append(f"{len(block)} beginbfchar")
