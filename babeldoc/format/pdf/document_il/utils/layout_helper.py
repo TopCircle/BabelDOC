@@ -1322,9 +1322,11 @@ def detect_paragraph_alignment(
 
     if n >= 2:
         # 1) Shared left edge → left-aligned body (most common)
-        # Use the leftmost edge as reference (flush-left column)
+        # Use the leftmost edge as reference (flush-left column).
+        # Slightly lenient (0.65): InDesign ebooks often have one wrap line
+        # inset by a few points without being true center text.
         left_ratio = _cluster_ratio(lefts, para_left)
-        if left_ratio >= 0.7:
+        if left_ratio >= 0.65:
             return "left"
 
         # 2) Shared right edge → right-aligned
@@ -1337,12 +1339,10 @@ def detect_paragraph_alignment(
         sorted_centers = sorted(centers)
         mid_c = sorted_centers[len(sorted_centers) // 2]
         center_ratio = _cluster_ratio(centers, mid_c)
-        if center_ratio >= 0.7:
-            # If the longest line spans ~the whole paragraph box AND a
-            # majority of lines share the left edge, this is left body text
-            # whose line centers happen to cluster (short last line etc.),
-            # not a centered display block.
-            if max_w >= para_width * 0.92 and left_ratio >= 0.5:
+        if center_ratio >= 0.75:
+            # Longest line nearly fills the paragraph span → body, not
+            # a centered pull-quote/title block (Orgasms p.11 step body).
+            if max_w >= para_width * 0.85 and left_ratio >= 0.4:
                 return "left"
 
             # Require at least one clearly short line that is inset on BOTH
@@ -1359,7 +1359,8 @@ def detect_paragraph_alignment(
                 rm = para_right - x2
                 if lm > tol and rm > tol and abs(lm - rm) <= tol * 2:
                     short_both_inset += 1
-            if short_total > 0 and short_both_inset >= max(1, int(short_total * 0.5)):
+            # Need a clear majority of short lines inset both sides
+            if short_total >= 2 and short_both_inset >= max(2, int(short_total * 0.6)):
                 return "center"
             # Centers align but short lines flush-left → still left
             return "left"

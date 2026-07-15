@@ -1512,6 +1512,76 @@ class Typesetting:
 
         return min_scale, final_typeset_units
 
+    @staticmethod
+    def _resolve_effective_alignment(
+        paragraph: il_version_1.PdfParagraph,
+        typesetting_units: list[TypesettingUnit] | None = None,
+    ) -> str:
+        """Return alignment to use for layout; never center long body text.
+
+        Detection can mis-label multi-line body as center when InDesign
+        geometry is noisy (Orgasms p.11 step-one body). Long translated
+        paragraphs and near-full original line widths are forced left.
+        """
+        alignment = getattr(paragraph, "alignment", None) or "left"
+        if alignment != "center":
+            return alignment
+
+        text = paragraph.unicode or ""
+        # Substantial prose → body, not a centered title/quote
+        if len(text.strip()) >= 36:
+            return "left"
+
+        rm = getattr(paragraph, "reference_metrics", None)
+        box = paragraph.box
+        if rm and box and getattr(rm, "avg_line_width", None):
+            box_w = (box.x2 - box.x) if box.x2 is not None and box.x is not None else 0
+            if box_w > 0 and rm.avg_line_width >= box_w * 0.7:
+                return "left"
+
+        if typesetting_units and len(typesetting_units) >= 36:
+            return "left"
+
+        return alignment
+
+    @staticmethod
+    def _effective_first_line_indent(
+        paragraph: il_version_1.PdfParagraph,
+        box: Box,
+        available_x: float,
+        available_x2: float,
+        scale: float,
+        typesetting_units: list[TypesettingUnit],
+    ) -> float:
+        """First-line indent in user space, capped so the first line stays usable.
+
+        Prevents pathological indents (or indent + zone) from leaving only one
+        CJK glyph on the first line (Orgasms p.12 title-style breaks).
+        """
+        raw = float(paragraph.first_line_indent or 0.0)
+        if raw <= 0:
+            return 0.0
+
+        indent = raw * scale
+        line_left = max(available_x, box.x + indent)
+        remain = available_x2 - line_left
+        # Target: room for at least ~4 glyphs at current scale
+        unit_ws = [
+            float(u.width or 0) * scale
+            for u in (typesetting_units or [])[:8]
+            if not getattr(u, "is_space", False)
+        ]
+        glyph = statistics.median(unit_ws) if unit_ws else 12.0 * scale
+        min_remain = max(28.0 * scale, glyph * 4.0)
+        if remain >= min_remain:
+            return indent
+
+        # Shrink or drop indent to keep a usable first line
+        max_indent = available_x2 - available_x - min_remain
+        if max_indent <= 0:
+            return 0.0
+        return max(0.0, min(indent, max_indent))
+
     def _pre_expand_narrow_box(
         self,
         box: Box,
@@ -1541,9 +1611,15 @@ class Typesetting:
             except Exception:
                 pass
 
-        # Only act when content is clearly wider than the original box
-        # (need room to grow; 1.5x avoids expanding normal body lines)
-        if content_w < box_w * 1.5:
+        text = (paragraph.unicode or "").strip()
+        label = (getattr(paragraph, "layout_label", None) or "").lower()
+        # Short headings: expand sooner (1.15x). Body needs clearer overflow
+        # (1.5x) so normal paragraphs are not stretched.
+        is_short_heading = len(text) <= 40 or (
+            label in ("title", "section_header") and len(text) <= 48
+        )
+        ratio_need = 1.15 if is_short_heading else 1.5
+        if content_w < box_w * ratio_need:
             return box
 
         try:
@@ -2198,7 +2274,12 @@ class Typesetting:
             # 如果有参考宽度，使用参考宽度（但不超过 zone 约束）
             if reference_widths and line_idx < len(reference_widths):
                 ref_w = reference_widths[line_idx]
-                width = min(ref_w, zone_width)
+                # Ignore pathological short reference lines that would force
+                # single-glyph CJK lines (noisy InDesign line metrics).
+                if ref_w < zone_width * 0.35 and zone_width >= 40:
+                    width = zone_width
+                else:
+                    width = min(ref_w, zone_width)
             else:
                 width = zone_width
 
@@ -2366,7 +2447,7 @@ class Typesetting:
         last_unit: TypesettingUnit | None = None
         line_ys = [current_y]
         # Horizontal alignment (captured from original geometry before translation)
-        alignment = getattr(paragraph, "alignment", None) or "left"
+        alignment = self._resolve_effective_alignment(paragraph, typesetting_units)
         # Index into typeset_units where the current line starts; used to shift
         # completed lines for center/right alignment after left-to-right placement.
         line_start_idx = 0
@@ -2377,8 +2458,17 @@ class Typesetting:
             # 缩进相对于 box.x 而非 available_x，避免 zone 偏移叠加
             # Center/right aligned paragraphs should not apply first-line indent
             if alignment == "left":
-                indented_x = box.x + paragraph.first_line_indent * scale
-                current_x = max(current_x, min(indented_x, available_x2))
+                indent = self._effective_first_line_indent(
+                    paragraph,
+                    box,
+                    available_x,
+                    available_x2,
+                    scale,
+                    typesetting_units,
+                )
+                if indent > 0:
+                    indented_x = box.x + indent
+                    current_x = max(current_x, min(indented_x, available_x2))
         # 遍历所有排版单元
         # Decorative tracking: extra spacing between characters for art text
         # (e.g. "G e n t l y" → "轻 轻 地").  Scaled by the same factor as

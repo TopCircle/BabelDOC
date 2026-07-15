@@ -156,6 +156,84 @@ class TestDetectParagraphAlignment:
         assert detect_paragraph_alignment(para) == "right"
 
 
+class TestResolveEffectiveAlignment:
+    def test_long_body_never_center(self):
+        para = PdfParagraph(
+            box=Box(x=56, y=100, x2=540, y2=200),
+            pdf_style=PdfStyle(font_id="base", font_size=14.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="前三个星期，请仅在阴茎松弛状态下进行凯格尔训练。" * 2,
+        )
+        para.alignment = "center"
+        assert Typesetting._resolve_effective_alignment(para) == "left"
+
+    def test_short_centered_title_kept(self):
+        para = PdfParagraph(
+            box=Box(x=200, y=100, x2=400, y2=120),
+            pdf_style=PdfStyle(font_id="base", font_size=14.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="操作指南",
+        )
+        para.alignment = "center"
+        assert Typesetting._resolve_effective_alignment(para) == "center"
+
+    def test_avg_line_width_body_forced_left(self):
+        from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
+
+        para = PdfParagraph(
+            box=Box(x=56, y=100, x2=540, y2=200),
+            pdf_style=PdfStyle(font_id="base", font_size=14.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="Short",
+        )
+        para.alignment = "center"
+        para.reference_metrics = ReferenceMetrics(
+            line_count=4,
+            avg_line_width=450.0,
+            last_line_width=200.0,
+            last_line_ratio=0.4,
+            font_size=14.0,
+            per_line_widths=[450, 440, 445, 200],
+        )
+        assert Typesetting._resolve_effective_alignment(para) == "left"
+
+
+class TestEffectiveFirstLineIndent:
+    def test_caps_indent_when_first_line_would_be_one_glyph(self):
+        para = PdfParagraph(
+            box=Box(x=56, y=100, x2=160, y2=120),
+            pdf_style=PdfStyle(font_id="base", font_size=14.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="如何在性爱中进行凯格尔运动",
+            first_line_indent=80.0,  # would leave ~24pt
+        )
+        units = [SimpleNamespace(width=14.0, is_space=False) for _ in range(10)]
+        indent = Typesetting._effective_first_line_indent(
+            para,
+            para.box,
+            available_x=56.0,
+            available_x2=160.0,
+            scale=1.0,
+            typesetting_units=units,
+        )
+        # Must leave ~4 glyphs * 14 ≈ 56pt
+        assert (160.0 - (56.0 + indent)) >= 50.0
+
+    def test_keeps_normal_indent(self):
+        para = PdfParagraph(
+            box=Box(x=56, y=100, x2=500, y2=200),
+            pdf_style=PdfStyle(font_id="base", font_size=14.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="正文",
+            first_line_indent=12.0,
+        )
+        units = [SimpleNamespace(width=14.0, is_space=False) for _ in range(20)]
+        indent = Typesetting._effective_first_line_indent(
+            para, para.box, 56.0, 500.0, 1.0, units
+        )
+        assert indent == pytest.approx(12.0)
+
+
 class TestApplyLineHorizontalAlignment:
     def _unit_at(self, x: float, width: float = 10.0) -> TypesettingUnit:
         ch = _char(x, x + width)
