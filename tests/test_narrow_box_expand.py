@@ -70,6 +70,20 @@ class TestReferenceWidthCap:
         assert ax2b < 350.0
         assert ax2b == pytest.approx(73.8 + statistics.median(refs), abs=1.0)
 
+    def test_snaps_back_when_zone_pushed_start_right_of_box(self):
+        """Orgasms p.21: available_x≈330 mid-photo while box.x≈110 (EN column).
+
+        Old cap used box.x+ref_w which fell left of available_x and fell back
+        to the full mid-photo residual. Must snap to box.x and rebuild EN column.
+        """
+        box = Box(x=110.0, y=100.0, x2=550.0, y2=700.0)
+        refs = [200.0, 210.0, 190.0]
+        ax, ax2 = Typesetting._cap_available_with_reference(
+            box, 330.0, 520.0, refs, 0, alignment="left"
+        )
+        assert ax == pytest.approx(110.0)
+        assert ax2 == pytest.approx(310.0)
+
 
 class TestPreExpandNarrowBox:
     def test_expands_when_content_much_wider_than_box(self):

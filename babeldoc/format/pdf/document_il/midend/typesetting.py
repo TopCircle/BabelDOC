@@ -2348,11 +2348,20 @@ class Typesetting:
         available_x2: float,
         reference_widths: list[float] | None,
         line_idx: int,
+        *,
+        alignment: str | None = None,
     ) -> tuple[float, float]:
         """Cap line right edge using original EN line widths (artistic taper).
 
         Extra lines past the EN count reuse the median reference width so CJK
         does not spill a full rectangular column into a photo.
+
+        Important: cap width from the **actual line start** (``available_x``),
+        not only ``box.x``.  If an exclusion zone pushed ``available_x`` to the
+        right of ``box.x``, using ``box.x + ref_w`` can make the cap fall
+        *left* of the start and the old code fell back to the full residual —
+        that put Orgasms p.21 Chinese mid-photo (x≈330) instead of the EN
+        freeform column (x≈110).
         """
         if not reference_widths:
             return available_x, available_x2
@@ -2364,18 +2373,36 @@ class Typesetting:
         if ref_w is None or ref_w < 12.0:
             return available_x, available_x2
 
-        # Always prefer EN line width when it is a usable column. Do NOT skip
-        # when ref_w << zone_w — after dropping artistic figure zones the
-        # "zone" is often the full page width while EN lines stay ~150–220pt.
-        cap_x2 = min(available_x2, box.x + ref_w)
-        # Hard ceiling: never wider than the longest original line (+slack)
         max_ref = max(w for w in reference_widths if w >= 12.0) if any(
             w >= 12.0 for w in reference_widths
         ) else max(reference_widths)
-        cap_x2 = min(cap_x2, box.x + max_ref * 1.15)
 
-        if cap_x2 >= available_x + 8:
-            return available_x, cap_x2
+        # Left-aligned freeform body: if a zone shoved the start right of the
+        # original paragraph left edge, snap back so we rebuild the EN column
+        # at box.x rather than a mid-photo strip (Orgasms p.21).
+        align = (alignment or "left").lower()
+        line_start = available_x
+        if (
+            align == "left"
+            and box.x is not None
+            and available_x > box.x + 8.0
+            and (box.x2 - box.x) >= ref_w * 0.8
+        ):
+            # Only snap when the original box can host the EN column
+            line_start = box.x
+
+        # Cap from the line start (after optional snap), and never past the
+        # longest original EN line measured from the original box left.
+        cap_x2 = min(available_x2, line_start + ref_w)
+        if box.x is not None:
+            cap_x2 = min(cap_x2, box.x + max_ref * 1.15)
+
+        if cap_x2 >= line_start + 8:
+            return line_start, cap_x2
+        # Last resort: keep zone range but still try EN width from available_x
+        cap2 = min(available_x2, available_x + ref_w)
+        if cap2 >= available_x + 8:
+            return available_x, cap2
         return available_x, available_x2
 
     def _layout_typesetting_units(
@@ -2502,8 +2529,15 @@ class Typesetting:
                 available_x, available_x2 = box.x, box.x2
         else:
             available_x, available_x2 = box.x, box.x2
+        # Horizontal alignment first — cap needs it to snap freeform columns
+        alignment = self._resolve_effective_alignment(paragraph, typesetting_units)
         available_x, available_x2 = self._cap_available_with_reference(
-            box, available_x, available_x2, reference_widths, layout_line_idx
+            box,
+            available_x,
+            available_x2,
+            reference_widths,
+            layout_line_idx,
+            alignment=alignment,
         )
         current_x = available_x
         # box.y -= avg_height * (line_spacing - 1.01) # line_spacing 已被替换为 line_skip
@@ -2516,8 +2550,6 @@ class Typesetting:
         dp_break_mismatch = False  # DP 断行与实际行宽不匹配时置 True
         last_unit: TypesettingUnit | None = None
         line_ys = [current_y]
-        # Horizontal alignment (captured from original geometry before translation)
-        alignment = self._resolve_effective_alignment(paragraph, typesetting_units)
         # Index into typeset_units where the current line starts; used to shift
         # completed lines for center/right alignment after left-to-right placement.
         line_start_idx = 0
@@ -2681,7 +2713,12 @@ class Typesetting:
                     available_x, available_x2 = box.x, box.x2
                 layout_line_idx += 1
                 available_x, available_x2 = self._cap_available_with_reference(
-                    box, available_x, available_x2, reference_widths, layout_line_idx
+                    box,
+                    available_x,
+                    available_x2,
+                    reference_widths,
+                    layout_line_idx,
+                    alignment=alignment,
                 )
                 # === DIAGNOSTIC: 每次换行时记录 available 范围 ===
                 if "在这些" in (paragraph.unicode or ""):

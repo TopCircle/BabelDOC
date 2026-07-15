@@ -570,14 +570,21 @@ class ExclusionZoneIndex:
                 available_x = available_x2  # 降级为零宽度
                 break
 
-            # Zone 完全包含在文本区域内 → 选择更宽的一侧
+            # Zone 完全包含在文本区域内 → 选择可用残条
+            # Prefer the LEFT residual when it is usable: side-photo ebooks
+            # (Orgasms p.21) put the figure on the right; picking the thinner
+            # right strip centers body text mid-photo.
             if z.x > available_x and z.x2 < available_x2:
                 left_gap = z.x - available_x
                 right_gap = available_x2 - z.x2
-                if left_gap >= right_gap:
-                    available_x2 = z.x  # 保留左侧
+                if left_gap >= min_width:
+                    available_x2 = z.x  # keep left (normal side-photo wrap)
+                elif right_gap >= min_width:
+                    available_x = z.x2  # only right strip is usable
+                elif left_gap >= right_gap:
+                    available_x2 = z.x
                 else:
-                    available_x = z.x2  # 保留右侧
+                    available_x = z.x2
             elif z.x > available_x:
                 # Zone 从右侧收窄
                 available_x2 = min(available_x2, z.x)
