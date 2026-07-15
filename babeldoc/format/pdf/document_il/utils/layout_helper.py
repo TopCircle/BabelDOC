@@ -223,6 +223,29 @@ def get_paragraph_unicode(paragraph: PdfParagraph) -> str:
 SPACE_REGEX = regex.compile(r"\s+", regex.UNICODE)
 
 
+def strip_ascii_controls(text: str | None) -> str:
+    """Remove C0/C1 control characters that leak into dual-PDF text as SOH spans.
+
+    Observed in production (Orgasms dual): standalone U+0001 spans between
+    bold lead-ins and dashes (``气味\\x01‑\\x01点燃``), around numbers
+    (``从\\x015\\x01组``), and in sticky names (``GABRIELLE\\x01MOORE``).
+
+    Keeps newline / carriage return / tab. Safe on ``None`` / empty.
+    """
+    if not text:
+        return "" if text is None else text
+    out: list[str] = []
+    for ch in text:
+        o = ord(ch)
+        if ch in "\n\r\t":
+            out.append(ch)
+        elif o < 32 or o == 127 or 0x80 <= o <= 0x9F:
+            continue
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
 def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
     """
     将字符列表转换为 Unicode 字符串，根据字符间距自动插入空格。

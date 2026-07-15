@@ -26,6 +26,7 @@ from babeldoc.format.pdf.document_il import PdfStyle
 from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode_string
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_paragraph_unicode
+from babeldoc.format.pdf.document_il.utils.layout_helper import strip_ascii_controls
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_same_style
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     is_same_style_except_font,
@@ -1348,6 +1349,9 @@ class ILTranslator:
             if llm_translate_tracker := tracker.last_llm_translate_tracker():
                 llm_translate_tracker.set_placeholder_full_match()
             return False
+        # Drop C0 SOH etc. before parse — DeepLX/style boundaries sometimes
+        # leave U+0001 which becomes standalone invisible spans in dual PDFs.
+        translated_text = strip_ascii_controls(translated_text)
         paragraph.unicode = translated_text
         paragraph.pdf_paragraph_composition = self.parse_translate_output(
             translate_input,
@@ -1358,10 +1362,11 @@ class ILTranslator:
         # Clean residual markers from paragraph.unicode — downstream code
         # (e.g. get_paragraph_unicode, pdf_creater) may read this field
         # directly instead of going through compositions.
-        if "〖B" in paragraph.unicode:
+        if paragraph.unicode and "〖B" in paragraph.unicode:
             paragraph.unicode = ILTranslator._strip_style_markers(
                 paragraph.unicode
             )
+        paragraph.unicode = strip_ascii_controls(paragraph.unicode)
 
         # Heading punctuation localization for CJK targets.
         # English headings use "." as separator (e.g. "LESSON 6. Things..."),
@@ -1375,13 +1380,14 @@ class ILTranslator:
                 paragraph.unicode
             )
         for composition in paragraph.pdf_paragraph_composition:
-            if (
-                composition.pdf_same_style_unicode_characters
-                and composition.pdf_same_style_unicode_characters.pdf_style is None
-            ):
-                composition.pdf_same_style_unicode_characters.pdf_style = (
-                    paragraph.pdf_style
-                )
+            ssu = composition.pdf_same_style_unicode_characters
+            if ssu is None:
+                continue
+            if ssu.pdf_style is None:
+                ssu.pdf_style = paragraph.pdf_style
+            # Final per-composition scrub (parse paths / residual markers)
+            if ssu.unicode:
+                ssu.unicode = strip_ascii_controls(ssu.unicode)
         return True
 
     def _build_role_block(self) -> str:

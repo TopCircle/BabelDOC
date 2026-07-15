@@ -2926,6 +2926,16 @@ class Typesetting:
                         (composition.pdf_same_style_unicode_characters.unicode or "")[:40],
                     )
                 if composition.pdf_same_style_unicode_characters.unicode:
+                    # Skip C0 controls (esp. U+0001 SOH) — they render as
+                    # empty standalone spans in dual PDFs (Orgasms ~63 hits).
+                    def _keep_glyph(ch: str) -> bool:
+                        if ch in ("\n", "\r"):
+                            return False
+                        if ch == "\t":
+                            return True
+                        o = ord(ch)
+                        return not (o < 32 or o == 127 or 0x80 <= o <= 0x9F)
+
                     result.extend(
                         [
                             TypesettingUnit(
@@ -2942,7 +2952,7 @@ class Typesetting:
                                 or False,
                             )
                             for char_unicode in composition.pdf_same_style_unicode_characters.unicode
-                            if char_unicode not in ("\n",)
+                            if _keep_glyph(char_unicode)
                         ],
                     )
             elif composition.pdf_formula:
