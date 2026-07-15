@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
 
@@ -30,6 +32,24 @@ class TestReadableScaleFloor:
     def test_min_readable_scale_constant(self):
         assert Typesetting.MIN_READABLE_SCALE >= 0.5
         assert Typesetting.MIN_READABLE_SCALE < 1.0
+
+
+class TestReferenceWidthCap:
+    def test_caps_to_en_line_width(self):
+        box = Box(x=56.0, y=100.0, x2=500.0, y2=200.0)
+        ax, ax2 = Typesetting._cap_available_with_reference(
+            box, 56.0, 500.0, [300.0, 280.0, 260.0], 0
+        )
+        assert ax == 56.0
+        assert ax2 == pytest.approx(56.0 + 300.0)
+
+    def test_extra_lines_use_median(self):
+        box = Box(x=56.0, y=100.0, x2=500.0, y2=200.0)
+        refs = [300.0, 280.0, 260.0]
+        ax, ax2 = Typesetting._cap_available_with_reference(
+            box, 56.0, 500.0, refs, line_idx=10
+        )
+        assert ax2 == pytest.approx(56.0 + 280.0)  # median
 
 
 class TestPreExpandNarrowBox:

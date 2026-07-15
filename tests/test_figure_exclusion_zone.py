@@ -383,23 +383,24 @@ class TestFilterForParagraph:
         x1f, x2f = filtered.get_available_x_range(350, 370, body.x, body.x2)
         assert x1f == body.x and x2f == body.x2
 
-    def test_keeps_side_image_despite_high_coverage(self):
-        """Orgasms p.3: tall right image overlaps full-width para box a lot,
-        but left residual is wide enough to wrap — must KEEP the zone."""
-        body = Box(x=56, y=600, x2=560, y2=700)
+    def test_drops_artistic_side_image_when_para_extends_into_figure(self):
+        """Orgasms p.3/8/13: EN lines run past figure.x into the photo bbox.
+
+        Hard-keeping the zone forces a uniform rectangular strip; drop so
+        original reference_widths can recreate the freeform taper.
+        """
+        # Para AABB reaches ~x=560 while figure starts ~231 (EN lines ~250-400 wide)
+        body = Box(x=56, y=100, x2=420, y2=700)
         fig_zone = ExclusionZone(
             box=Box(x=231, y=98.9, x2=613.1, y2=793.0),
             kind=ZONE_FIGURE,
         )
-        residual = _max_horizontal_residual(body, fig_zone.box)
-        assert residual >= 150  # left column next to image
+        assert body.x2 > fig_zone.box.x
         index = ExclusionZoneIndex([fig_zone])
         filtered = index.filter_for_paragraph(body)
-        assert len(filtered.zones) == 1
-        # Mid-line should be narrowed to left of figure, not full width
-        x1, x2 = filtered.get_available_x_range(620, 640, body.x, body.x2)
-        assert x2 <= fig_zone.box.x + 1
-        assert (x2 - x1) >= 100
+        assert len(filtered.zones) == 0
+        x1, x2 = filtered.get_available_x_range(200, 220, body.x, body.x2)
+        assert x1 == body.x and x2 == body.x2
 
     def test_keeps_side_figure_beside_body(self):
         """Real float: figure on the right, body column on the left — keep zone."""

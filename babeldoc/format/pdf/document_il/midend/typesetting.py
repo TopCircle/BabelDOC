@@ -1233,6 +1233,7 @@ class Typesetting:
                     line_skip,
                     paragraph,
                     use_english_line_break,
+                    reference_widths=reference_widths,
                 )
                 if typeset_units:
                     last_typeset_units = typeset_units
@@ -1288,6 +1289,7 @@ class Typesetting:
                                         typesetting_units, box, scale, line_skip,
                                         paragraph, use_english_line_break,
                                         break_points=opt_breaks,
+                                        reference_widths=reference_widths,
                                     )
                                     if opt_fit and opt_units:
                                         optimized_typeset_units = opt_units
@@ -1488,6 +1490,7 @@ class Typesetting:
                     line_skip,
                     paragraph,
                     use_english_line_break=False,
+                    reference_widths=self._extract_original_line_widths(paragraph),
                 )
             if force_units:
                 paragraph.scale = min_scale
@@ -2271,9 +2274,14 @@ class Typesetting:
                 x1, x2 = box.x, box.x2
             zone_width = x2 - x1
 
-            # 如果有参考宽度，使用参考宽度（但不超过 zone 约束）
-            if reference_widths and line_idx < len(reference_widths):
-                ref_w = reference_widths[line_idx]
+            # Prefer original line widths (artistic taper around photos).
+            # Extra CJK lines beyond the EN line count reuse the median ref
+            # width so we do not spill full-box rectangular lines into images.
+            if reference_widths:
+                if line_idx < len(reference_widths):
+                    ref_w = reference_widths[line_idx]
+                else:
+                    ref_w = statistics.median(reference_widths)
                 # Ignore pathological short reference lines that would force
                 # single-glyph CJK lines (noisy InDesign line metrics).
                 if ref_w < zone_width * 0.35 and zone_width >= 40:
@@ -2316,6 +2324,37 @@ class Typesetting:
             decorative_tracking=decorative_tracking,
         )
 
+    @staticmethod
+    def _cap_available_with_reference(
+        box: Box,
+        available_x: float,
+        available_x2: float,
+        reference_widths: list[float] | None,
+        line_idx: int,
+    ) -> tuple[float, float]:
+        """Cap line right edge using original EN line widths (artistic taper).
+
+        Extra lines past the EN count reuse the median reference width so CJK
+        does not spill a full rectangular column into a photo.
+        """
+        if not reference_widths:
+            return available_x, available_x2
+        if line_idx < len(reference_widths):
+            ref_w = reference_widths[line_idx]
+        else:
+            ref_w = statistics.median(reference_widths)
+        zone_w = available_x2 - available_x
+        if zone_w <= 0:
+            return available_x, available_x2
+        # Skip pathological short refs (same threshold as estimate)
+        if ref_w < zone_w * 0.35 and zone_w >= 40:
+            return available_x, available_x2
+        # EN lines are left-aligned from box.x with length ≈ ref_w
+        cap_x2 = min(available_x2, box.x + ref_w)
+        if cap_x2 >= available_x + 8:
+            return available_x, cap_x2
+        return available_x, available_x2
+
     def _layout_typesetting_units(
         self,
         typesetting_units: list[TypesettingUnit],
@@ -2325,6 +2364,7 @@ class Typesetting:
         paragraph: il_version_1.PdfParagraph,
         use_english_line_break: bool = True,
         break_points: list[int] | None = None,
+        reference_widths: list[float] | None = None,
     ) -> tuple[list[TypesettingUnit], bool]:
         """布局排版单元。
 
@@ -2334,6 +2374,7 @@ class Typesetting:
             scale: 缩放因子
             break_points: 可选的预计算断行位置列表（DP 优化结果）。
                          提供时在指定位置强制断行，否则使用贪心断行。
+            reference_widths: 原版每行宽度；用于复现绕图的变宽行形。
 
         Returns:
             tuple[list[TypesettingUnit], bool]: (已布局的排版单元列表，是否所有单元都放得下)
@@ -2341,6 +2382,9 @@ class Typesetting:
         # 预处理 break_points：转为 set 以加速 O(1) 查找
         if break_points is not None and not isinstance(break_points, set):
             break_points = set(break_points)
+        if reference_widths is None:
+            reference_widths = self._extract_original_line_widths(paragraph)
+        layout_line_idx = 0
 
         # === DIAGNOSTIC: 写入独立 log 文件 ===
         _diag_text = paragraph.unicode or ""
@@ -2435,6 +2479,9 @@ class Typesetting:
                 available_x, available_x2 = box.x, box.x2
         else:
             available_x, available_x2 = box.x, box.x2
+        available_x, available_x2 = self._cap_available_with_reference(
+            box, available_x, available_x2, reference_widths, layout_line_idx
+        )
         current_x = available_x
         # box.y -= avg_height * (line_spacing - 1.01) # line_spacing 已被替换为 line_skip
         line_height = 0
@@ -2609,6 +2656,10 @@ class Typesetting:
                         available_x, available_x2 = box.x, box.x2
                 else:
                     available_x, available_x2 = box.x, box.x2
+                layout_line_idx += 1
+                available_x, available_x2 = self._cap_available_with_reference(
+                    box, available_x, available_x2, reference_widths, layout_line_idx
+                )
                 # === DIAGNOSTIC: 每次换行时记录 available 范围 ===
                 if "在这些" in (paragraph.unicode or ""):
                     _prev_chars = "".join(

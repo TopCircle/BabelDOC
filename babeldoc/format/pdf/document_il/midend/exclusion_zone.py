@@ -396,29 +396,32 @@ class ExclusionZoneIndex:
         min_residual_width: float | None = None,
         drop_all_figures: bool = False,
     ) -> ExclusionZoneIndex:
-        """Drop figure zones that would crush body text for this paragraph.
+        """Filter figure zones for one paragraph (quotes always kept).
 
-        Rules (figures only; quotes always kept for wrap-around):
+        Side-image ebooks (Orgasms p.3/8/13) often place a **full-height photo
+        bbox** on the right while English line lengths **vary** and intentionally
+        run into that bbox (artistic wrap, not a hard rectangular column).
+        Applying those figures as exclusion zones forces a uniform ~150pt strip
+        — worse than following original ``reference_widths``.
 
-        1. ``drop_all_figures`` — remove every figure zone (scale-floor retry).
-        2. **Residual first**: if the widest strip of the paragraph left after
-           carving out the figure is still ≥ ``min_residual_width``, **keep**
-           the zone so text can wrap (side images, Orgasms p.3 last para).
-           High area-coverage alone must NOT drop these — that regression
-           forced full-width text through the image.
-        3. If residual is unusable (needle strip / full cover) **and** the
-           figure actually overlaps the paragraph, **drop** the zone so layout
-           uses full paragraph width instead of 1–4pt scale crush
-           (Orgasms p.10/19/20). ``max_coverage`` is retained as a secondary
-           signal for logging / future tuning but residual decides keep/drop.
+        Rules (figures only):
+
+        1. ``drop_all_figures`` — strip every figure (scale-floor retry).
+        2. **Artistic overlay**: if the original paragraph box already extends
+           past the figure's left edge (text was designed into the photo bbox),
+           **drop** the zone and let original line metrics drive shape.
+        3. **Needle residual**: residual strip after carving the figure is
+           narrower than ``min_residual_width`` and the figure actually bites
+           the para → **drop** (avoids 1–4pt scale crush).
+        4. **Clean side float**: body sits fully left of the figure
+           (``para.x2 <= zone.x``) with usable residual → **keep** for hard
+           rectangular wrap.
 
         Args:
-            para_box: Paragraph layout box.
-            max_coverage: Legacy coverage threshold (documented; residual
-                decides). Kept for API compatibility with callers/tests.
-            min_residual_width: Min pt width of the better side strip; default
-                from :func:`min_usable_line_width`.
-            drop_all_figures: If True, drop all figure zones regardless.
+            para_box: Paragraph layout box (original EN geometry).
+            max_coverage: Legacy API; residual/overlay rules decide.
+            min_residual_width: Floor for a usable wrap strip.
+            drop_all_figures: Drop all figures regardless.
         """
         if not self.zones or para_box is None:
             return self
@@ -444,32 +447,45 @@ class ExclusionZoneIndex:
 
             coverage = _box_intersection_area(para_box, zone.box) / para_area
             residual = _max_horizontal_residual(para_box, zone.box)
+            z = zone.box
 
-            # Usable wrap strip → always keep (even if coverage is high).
-            if residual >= min_residual_width:
-                kept.append(zone)
-                continue
-
-            # No real horizontal bite → keep (disjoint float).
+            # No real horizontal bite → keep (disjoint / no effect on x range)
             if coverage <= 1e-6:
                 kept.append(zone)
                 continue
 
-            # Unusable residual (needle / full cover) → drop figure zone.
-            dropped += 1
-            logger.debug(
-                "Dropping figure zone: residual %.1fpt < %.1fpt "
-                "(coverage %.0f%%, max_coverage param %.0f%%): "
-                "zone=(%.0f,%.0f)-(%.0f,%.0f)",
-                residual,
-                min_residual_width,
-                coverage * 100,
-                max_coverage * 100,
-                zone.box.x,
-                zone.box.y,
-                zone.box.x2,
-                zone.box.y2,
-            )
+            # Original text already runs into the figure bbox → freeform/artistic
+            # wrap encoded in line widths. Hard clip → ugly equal-width column.
+            # (EN lines on Orgasms p.3 end near x=400 while figure starts ~231.)
+            if para_box.x2 > z.x + 8.0:
+                dropped += 1
+                logger.debug(
+                    "Dropping figure zone: paragraph extends into figure "
+                    "(para.x2=%.0f > zone.x=%.0f); use original line metrics "
+                    "instead of rectangular clip",
+                    para_box.x2,
+                    z.x,
+                )
+                continue
+
+            # Needle / full cover with no usable strip → drop to avoid crush
+            if residual < min_residual_width:
+                dropped += 1
+                logger.debug(
+                    "Dropping figure zone: residual %.1fpt < %.1fpt "
+                    "(coverage %.0f%%): zone=(%.0f,%.0f)-(%.0f,%.0f)",
+                    residual,
+                    min_residual_width,
+                    coverage * 100,
+                    z.x,
+                    z.y,
+                    z.x2,
+                    z.y2,
+                )
+                continue
+
+            # Clean side-by-side: body left of figure with room to wrap
+            kept.append(zone)
 
         if dropped == 0:
             return self
