@@ -5,6 +5,7 @@ and readable scale floor.
 from __future__ import annotations
 
 from types import SimpleNamespace
+import statistics
 
 import pytest
 
@@ -50,6 +51,24 @@ class TestReferenceWidthCap:
             box, 56.0, 500.0, refs, line_idx=10
         )
         assert ax2 == pytest.approx(56.0 + 280.0)  # median
+
+    def test_narrow_ref_not_skipped_when_box_is_page_wide(self):
+        """Orgasms p.8: EN wrap column ~150–220pt but box ~480pt after
+        dropping artistic figure zone. Must still cap to EN width."""
+        box = Box(x=73.8, y=100.0, x2=556.0, y2=700.0)
+        refs = [222.0, 177.0, 191.0, 224.0, 153.0, 160.0]
+        # Mid-column EN width
+        ax, ax2 = Typesetting._cap_available_with_reference(
+            box, 73.8, 556.0, refs, line_idx=4
+        )
+        assert ax2 <= 73.8 + 160.0 + 1.0
+        assert ax2 < 350.0  # must not spill across photo (~x=195+)
+        # Extra CJK lines
+        ax2b = Typesetting._cap_available_with_reference(
+            box, 73.8, 556.0, refs, line_idx=50
+        )[1]
+        assert ax2b < 350.0
+        assert ax2b == pytest.approx(73.8 + statistics.median(refs), abs=1.0)
 
 
 class TestPreExpandNarrowBox:

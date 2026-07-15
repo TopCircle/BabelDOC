@@ -2275,19 +2275,16 @@ class Typesetting:
             zone_width = x2 - x1
 
             # Prefer original line widths (artistic taper around photos).
-            # Extra CJK lines beyond the EN line count reuse the median ref
-            # width so we do not spill full-box rectangular lines into images.
+            # Extra CJK lines reuse median EN width — never fall back to full
+            # page width when refs exist (that spilled text across p.8 photo).
             if reference_widths:
-                if line_idx < len(reference_widths):
-                    ref_w = reference_widths[line_idx]
-                else:
-                    ref_w = statistics.median(reference_widths)
-                # Ignore pathological short reference lines that would force
-                # single-glyph CJK lines (noisy InDesign line metrics).
-                if ref_w < zone_width * 0.35 and zone_width >= 40:
-                    width = zone_width
-                else:
+                ref_w = Typesetting._pick_reference_width(
+                    reference_widths, line_idx
+                )
+                if ref_w is not None and ref_w >= 12.0:
                     width = min(ref_w, zone_width)
+                else:
+                    width = zone_width
             else:
                 width = zone_width
 
@@ -2325,6 +2322,26 @@ class Typesetting:
         )
 
     @staticmethod
+    def _pick_reference_width(
+        reference_widths: list[float], line_idx: int
+    ) -> float | None:
+        """Pick EN line width for this layout line; median for overflow lines.
+
+        Ignores only *absolutely* tiny refs (< 12pt), which are usually
+        decorative digits — never treat a real wrap column (~120–220pt) as
+        pathological just because the available box is page-wide (that bug
+        made Orgasms p.8 Chinese lines spill across the side photo).
+        """
+        if not reference_widths:
+            return None
+        usable = [w for w in reference_widths if w >= 12.0]
+        if not usable:
+            usable = list(reference_widths)
+        if line_idx < len(reference_widths) and reference_widths[line_idx] >= 12.0:
+            return reference_widths[line_idx]
+        return float(statistics.median(usable))
+
+    @staticmethod
     def _cap_available_with_reference(
         box: Box,
         available_x: float,
@@ -2339,18 +2356,24 @@ class Typesetting:
         """
         if not reference_widths:
             return available_x, available_x2
-        if line_idx < len(reference_widths):
-            ref_w = reference_widths[line_idx]
-        else:
-            ref_w = statistics.median(reference_widths)
         zone_w = available_x2 - available_x
         if zone_w <= 0:
             return available_x, available_x2
-        # Skip pathological short refs (same threshold as estimate)
-        if ref_w < zone_w * 0.35 and zone_w >= 40:
+
+        ref_w = Typesetting._pick_reference_width(reference_widths, line_idx)
+        if ref_w is None or ref_w < 12.0:
             return available_x, available_x2
-        # EN lines are left-aligned from box.x with length ≈ ref_w
+
+        # Always prefer EN line width when it is a usable column. Do NOT skip
+        # when ref_w << zone_w — after dropping artistic figure zones the
+        # "zone" is often the full page width while EN lines stay ~150–220pt.
         cap_x2 = min(available_x2, box.x + ref_w)
+        # Hard ceiling: never wider than the longest original line (+slack)
+        max_ref = max(w for w in reference_widths if w >= 12.0) if any(
+            w >= 12.0 for w in reference_widths
+        ) else max(reference_widths)
+        cap_x2 = min(cap_x2, box.x + max_ref * 1.15)
+
         if cap_x2 >= available_x + 8:
             return available_x, cap_x2
         return available_x, available_x2
