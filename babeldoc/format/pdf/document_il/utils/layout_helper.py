@@ -1338,6 +1338,13 @@ def detect_paragraph_alignment(
         mid_c = sorted_centers[len(sorted_centers) // 2]
         center_ratio = _cluster_ratio(centers, mid_c)
         if center_ratio >= 0.7:
+            # If the longest line spans ~the whole paragraph box AND a
+            # majority of lines share the left edge, this is left body text
+            # whose line centers happen to cluster (short last line etc.),
+            # not a centered display block.
+            if max_w >= para_width * 0.92 and left_ratio >= 0.5:
+                return "left"
+
             # Require at least one clearly short line that is inset on BOTH
             # sides. Full lines always have lm≈rm≈0 and must not alone prove
             # center (that was the body-text false positive).

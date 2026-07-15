@@ -370,23 +370,36 @@ class TestFilterForParagraph:
     """Figure zones that spill over body paragraphs must not crush scale."""
 
     def test_drops_figure_covering_body(self):
-        """Orgasms p.7-style: left mid-page figure over full-width body."""
-        # Body BC muscle-like box
+        """Needle residual under body → drop so layout uses full width."""
+        # Body with a figure that leaves only a ~20pt strip (scale-crush case)
         body = Box(x=56, y=320, x2=554, y2=430)
-        # False-positive figure spilling into body (caption/bubble bbox)
         fig_zone = ExclusionZone(
-            box=Box(x=43, y=212, x2=374, y2=396),
+            box=Box(x=56, y=320, x2=530, y2=430),
             kind=ZONE_FIGURE,
         )
         index = ExclusionZoneIndex([fig_zone])
         filtered = index.filter_for_paragraph(body)
         assert len(filtered.zones) == 0
-        # Without filter, mid-body line is forced to the right strip
-        x1, x2 = index.get_available_x_range(350, 370, body.x, body.x2)
-        assert x1 > 300  # right-only residual
-        # With filter, full width remains
         x1f, x2f = filtered.get_available_x_range(350, 370, body.x, body.x2)
         assert x1f == body.x and x2f == body.x2
+
+    def test_keeps_side_image_despite_high_coverage(self):
+        """Orgasms p.3: tall right image overlaps full-width para box a lot,
+        but left residual is wide enough to wrap — must KEEP the zone."""
+        body = Box(x=56, y=600, x2=560, y2=700)
+        fig_zone = ExclusionZone(
+            box=Box(x=231, y=98.9, x2=613.1, y2=793.0),
+            kind=ZONE_FIGURE,
+        )
+        residual = _max_horizontal_residual(body, fig_zone.box)
+        assert residual >= 150  # left column next to image
+        index = ExclusionZoneIndex([fig_zone])
+        filtered = index.filter_for_paragraph(body)
+        assert len(filtered.zones) == 1
+        # Mid-line should be narrowed to left of figure, not full width
+        x1, x2 = filtered.get_available_x_range(620, 640, body.x, body.x2)
+        assert x2 <= fig_zone.box.x + 1
+        assert (x2 - x1) >= 100
 
     def test_keeps_side_figure_beside_body(self):
         """Real float: figure on the right, body column on the left — keep zone."""

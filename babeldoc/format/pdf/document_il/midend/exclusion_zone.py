@@ -399,16 +399,23 @@ class ExclusionZoneIndex:
         """Drop figure zones that would crush body text for this paragraph.
 
         Rules (figures only; quotes always kept for wrap-around):
+
         1. ``drop_all_figures`` — remove every figure zone (scale-floor retry).
-        2. Coverage > ``max_coverage`` of the paragraph box (Orgasms p.7).
-        3. After carving the figure out of the paragraph, the widest remaining
-           horizontal strip is narrower than ``min_residual_width`` (Orgasms
-           p.10/19/20 needle strips). Real side floats leave a wide residual
-           (e.g. ~200pt body column on p.21) and are kept.
+        2. **Residual first**: if the widest strip of the paragraph left after
+           carving out the figure is still ≥ ``min_residual_width``, **keep**
+           the zone so text can wrap (side images, Orgasms p.3 last para).
+           High area-coverage alone must NOT drop these — that regression
+           forced full-width text through the image.
+        3. If residual is unusable (needle strip / full cover) **and** the
+           figure actually overlaps the paragraph, **drop** the zone so layout
+           uses full paragraph width instead of 1–4pt scale crush
+           (Orgasms p.10/19/20). ``max_coverage`` is retained as a secondary
+           signal for logging / future tuning but residual decides keep/drop.
 
         Args:
             para_box: Paragraph layout box.
-            max_coverage: Drop if intersection / para area exceeds this.
+            max_coverage: Legacy coverage threshold (documented; residual
+                decides). Kept for API compatibility with callers/tests.
             min_residual_width: Min pt width of the better side strip; default
                 from :func:`min_usable_line_width`.
             drop_all_figures: If True, drop all figure zones regardless.
@@ -434,41 +441,35 @@ class ExclusionZoneIndex:
             if drop_all_figures:
                 dropped += 1
                 continue
+
             coverage = _box_intersection_area(para_box, zone.box) / para_area
-            if coverage > max_coverage:
-                dropped += 1
-                logger.debug(
-                    "Dropping figure zone covering %.0f%% of paragraph box "
-                    "(threshold %.0f%%): zone=(%.0f,%.0f)-(%.0f,%.0f)",
-                    coverage * 100,
-                    max_coverage * 100,
-                    zone.box.x,
-                    zone.box.y,
-                    zone.box.x2,
-                    zone.box.y2,
-                )
-                continue
             residual = _max_horizontal_residual(para_box, zone.box)
-            # Only apply residual rule when the zone actually bites the para
-            # horizontally (residual is for split columns, not disjoint floats).
-            if (
-                coverage > 1e-6
-                and residual < min_residual_width
-            ):
-                dropped += 1
-                logger.debug(
-                    "Dropping figure zone: max residual strip %.1fpt < %.1fpt "
-                    "(coverage %.0f%%): zone=(%.0f,%.0f)-(%.0f,%.0f)",
-                    residual,
-                    min_residual_width,
-                    coverage * 100,
-                    zone.box.x,
-                    zone.box.y,
-                    zone.box.x2,
-                    zone.box.y2,
-                )
+
+            # Usable wrap strip → always keep (even if coverage is high).
+            if residual >= min_residual_width:
+                kept.append(zone)
                 continue
-            kept.append(zone)
+
+            # No real horizontal bite → keep (disjoint float).
+            if coverage <= 1e-6:
+                kept.append(zone)
+                continue
+
+            # Unusable residual (needle / full cover) → drop figure zone.
+            dropped += 1
+            logger.debug(
+                "Dropping figure zone: residual %.1fpt < %.1fpt "
+                "(coverage %.0f%%, max_coverage param %.0f%%): "
+                "zone=(%.0f,%.0f)-(%.0f,%.0f)",
+                residual,
+                min_residual_width,
+                coverage * 100,
+                max_coverage * 100,
+                zone.box.x,
+                zone.box.y,
+                zone.box.x2,
+                zone.box.y2,
+            )
 
         if dropped == 0:
             return self

@@ -89,6 +89,18 @@ class TestDetectParagraphAlignment:
         para = _line_para(lines)
         assert detect_paragraph_alignment(para) == "left"
 
+    def test_near_full_width_lines_never_center(self):
+        """Even if line centers cluster, near-full-width body stays left."""
+        # Centers near 300, widths still ~75%+ of para span
+        lines = [
+            (86.0, 520.0),
+            (90.0, 510.0),
+            (95.0, 505.0),
+            (100.0, 490.0),
+        ]
+        para = _line_para(lines)
+        assert detect_paragraph_alignment(para) == "left"
+
     def test_left_aligned_body_with_short_last_line(self):
         """Regression: full lines have lm≈rm≈0; short last line must NOT
         flip the paragraph to center (the Orgasms ebook false positive)."""
