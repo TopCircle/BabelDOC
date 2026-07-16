@@ -222,13 +222,39 @@ class TestKinsoku:
         assert is_cjk_line_start_forbidden("。")
         assert is_cjk_line_start_forbidden("，")
         assert is_cjk_line_start_forbidden("）")
+        assert is_cjk_line_start_forbidden("％")  # fullwidth percent OK
         assert not is_cjk_line_start_forbidden("中")
+        # Half-width must NOT glue CJK+Latin mixed runs (约 50% / 见 3.2)
+        assert not is_cjk_line_start_forbidden(".")
+        assert not is_cjk_line_start_forbidden("%")
+        assert not is_cjk_line_start_forbidden("/")
+        assert not is_cjk_line_start_forbidden(",")
 
     def test_line_end_forbidden_chars(self):
         assert is_cjk_line_end_forbidden("（")
         assert is_cjk_line_end_forbidden("【")
         assert is_cjk_line_end_forbidden("“")
+        assert is_cjk_line_end_forbidden("(")  # mixed-script open paren
         assert not is_cjk_line_end_forbidden("。")
+
+    def test_halfwidth_period_does_not_block_break_after_cjk(self):
+        """「见3.」式混排：半角点不应禁止在「3」前断（点不在行首禁则里）。"""
+
+        class _U(MockUnit):
+            def __init__(self, **kw):
+                super().__init__(**kw)
+                self.can_break_line_cache = None
+
+        units = [
+            _U(unicode="见", is_cjk_char=True),
+            _U(unicode="3", is_cjk_char=False),
+            _U(unicode=".", is_cjk_char=False),
+            _U(unicode="2", is_cjk_char=False),
+        ]
+        merge_cjk_units(units)
+        # 半角 '.' 不得把「3」标成不可断
+        assert units[1].can_break_line_cache is not False
+
 
     def test_merge_cjk_marks_kinsoku_and_words(self):
         """开括号不可断；词组内部不可断；句号前不可断。"""

@@ -51,7 +51,8 @@ Local checklist for Orgasms-class dual PDFs. **Not required for CI green.**
 After rebuild with BabelDOC main ≥ PR-04:
 
 - Prefer **fuller intermediate Chinese lines** (DP `cjk_mode` + fill weight).
-- **Kinsoku**: `。，）」` not at line start; `（【「` not at line end (via `merge_cjk_units`).
+- **Kinsoku**: fullwidth `。，）」` not at line start; `（【「` not at line end.
+  Half-width `.,%/` are **not** line-start forbidden (mixed CJK+Latin glue risk).
 - zh/ja/ko typesetting forces `cjk_mode=True` even for mixed Latin titles.
 - Still score real dual pages by eye; no CI pixmap gate for Orgasms.
 
