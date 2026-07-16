@@ -1024,6 +1024,32 @@ class Typesetting:
         )
         self._drop_all_figures_for_paragraph = False
 
+    def _quote_zone_config(self):
+        """Build QuoteZoneConfig from TranslationConfig (main-path + retypeset).
+
+        PostLayout already receives quote_* thresholds; typesetting previously
+        called ExclusionZoneBuilder.build(page) with defaults only.
+        Margin fields stay at QuoteZoneConfig defaults (not on TranslationConfig).
+        """
+        from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
+            QuoteZoneConfig,
+        )
+
+        tc = self.translation_config
+        return QuoteZoneConfig(
+            narrow_threshold=tc.quote_narrow_threshold,
+            indent_threshold=tc.quote_indent_threshold,
+            right_margin_threshold=tc.quote_right_margin_threshold,
+        )
+
+    def _build_page_exclusion_zones(self, page: il_version_1.Page):
+        """Build exclusion zones for a page using config quote thresholds."""
+        from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
+            ExclusionZoneBuilder,
+        )
+
+        return ExclusionZoneBuilder.build(page, self._quote_zone_config())
+
     def preprocess_document(
         self,
         document: il_version_1.Document,
@@ -1038,7 +1064,6 @@ class Typesetting:
             build_zone_index: 是否为每页构建排除区域索引（影响 scale 计算）
         """
         from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
-            ExclusionZoneBuilder,
             ExclusionZoneIndex,
         )
 
@@ -1055,7 +1080,7 @@ class Typesetting:
                 if cache and id(page) in cache:
                     self._current_zone_index = cache[id(page)]
                 else:
-                    zones = ExclusionZoneBuilder.build(page)
+                    zones = self._build_page_exclusion_zones(page)
                     self._current_zone_index = (
                         ExclusionZoneIndex(zones) if zones else None
                     )
@@ -1691,14 +1716,13 @@ class Typesetting:
 
     def typesetting_document(self, document: il_version_1.Document):
         from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
-            ExclusionZoneBuilder,
             ExclusionZoneIndex,
         )
 
         # 预先构建每页的排除区域缓存，避免重复构建
         self._page_zone_cache: dict[int, ExclusionZoneIndex | None] = {}
         for page in document.page:
-            zones = ExclusionZoneBuilder.build(page)
+            zones = self._build_page_exclusion_zones(page)
             self._page_zone_cache[id(page)] = (
                 ExclusionZoneIndex(zones) if zones else None
             )
@@ -1762,10 +1786,9 @@ class Typesetting:
         old_zone_index = getattr(self, "_current_zone_index", None)
         try:
             from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
-                ExclusionZoneBuilder,
                 ExclusionZoneIndex,
             )
-            zones = ExclusionZoneBuilder.build(page)
+            zones = self._build_page_exclusion_zones(page)
             self._current_zone_index = (
                 ExclusionZoneIndex(zones) if zones else None
             )
