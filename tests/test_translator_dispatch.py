@@ -109,7 +109,7 @@ class TestWatermarkTypesettingMethodName:
         """Regression: typsetting_document typo must not return."""
         called: list = []
 
-        def _capture(self, document):
+        def _capture(_self, document):
             called.append(document)
 
         monkeypatch.setattr(Typesetting, "typesetting_document", _capture)
@@ -120,10 +120,10 @@ class TestWatermarkTypesettingMethodName:
 
         # Avoid full PDFCreater/write path
         class _FakeCreater:
-            def __init__(self, *a, **k):
+            def __init__(self, *_a, **_k):
                 pass
 
-            def write(self, config):
+            def write(self, _config):
                 r = MagicMock()
                 r.mono_pdf_path = None
                 r.dual_pdf_path = None
@@ -135,7 +135,7 @@ class TestWatermarkTypesettingMethodName:
         )
         monkeypatch.setattr(
             "babeldoc.format.pdf.high_level.safe_save",
-            lambda *a, **k: None,
+            lambda *_a, **_k: None,
         )
 
         import pymupdf
