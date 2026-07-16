@@ -40,11 +40,20 @@ Local checklist for Orgasms-class dual PDFs. **Not required for CI green.**
 ## Defect classes
 
 - `figure_wrap` — body collides with photo / wrong residual strip
-- `cjk_ragged` — poor CJK line breaks / scale crushed
+- `cjk_ragged` — poor CJK line breaks / scale crushed / 词组断开 / 标点行首行尾
 - `quote` — quote column vs body collision
 - `style` — bold markers lost / B0B1 debris
 - `soh` — U+0001 spaces in extractable dual text
 - `missing` — paragraph empty or merged wrong
+
+## PR-04 CJK notes (local check)
+
+After rebuild with BabelDOC main ≥ PR-04:
+
+- Prefer **fuller intermediate Chinese lines** (DP `cjk_mode` + fill weight).
+- **Kinsoku**: `。，）」` not at line start; `（【「` not at line end (via `merge_cjk_units`).
+- zh/ja/ko typesetting forces `cjk_mode=True` even for mixed Latin titles.
+- Still score real dual pages by eye; no CI pixmap gate for Orgasms.
 
 ## CI vs local
 

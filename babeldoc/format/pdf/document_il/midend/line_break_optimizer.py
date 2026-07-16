@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 # 代价常量
 DEFAULT_WIDOW_PENALTY = 500.0  # 孤行惩罚（最后一行 ≤3 个字）
 DEFAULT_OVERFLOW_PENALTY = 10000.0  # 超宽惩罚（不应该发生，但作为安全兜底）
+# Intermediate CJK lines: multiply residual² so DP prefers fuller lines
+# (方块感) more than English raggedness alone.
+CJK_INTERIOR_FILL_WEIGHT = 2.5
 
 
 def optimal_line_break(
@@ -293,22 +296,26 @@ def _line_cost(
     """计算一行的代价。
 
     Raggedness = (available - line_width)²，加孤行惩罚。
-    CJK 模式：强烈惩罚非满行，最后一行温和处理。
+    CJK 模式：中间行额外加重未填满惩罚（方块感）；最后一行仍用二次惩罚；
+    任何 ≤2 字行严厉加 orphan 惩罚。
     """
     if line_width > available_width:
         # 超宽（不应该发生，hung punctuation 除外）
         return (line_width - available_width) ** 2 * DEFAULT_OVERFLOW_PENALTY
 
+    remaining = available_width - line_width
+
     if cjk_mode:
-        # CJK 模式：保留二次惩罚（与原始版本一致），增加全行孤行保护
-        raggedness = (available_width - line_width) ** 2
-        # 孤行保护：任何行（包括中间行）≤2 个字都严厉惩罚
-        # 原始版本只保护最后一行，这里保护所有行
+        if is_last_line:
+            raggedness = remaining ** 2
+        else:
+            # Prefer fuller intermediate lines (reduces 短长交错 raggedness)
+            raggedness = (remaining ** 2) * CJK_INTERIOR_FILL_WEIGHT
         if num_units <= 2:
             raggedness += widow_penalty * 2
         return raggedness
 
-    raggedness = (available_width - line_width) ** 2
+    raggedness = remaining ** 2
 
     # 孤行惩罚：最后一行只有 ≤3 个非空格单元
     if is_last_line and num_units <= 3:

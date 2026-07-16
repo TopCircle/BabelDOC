@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-import pytest
-
 from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
-    _line_cost,
+    CJK_INTERIOR_FILL_WEIGHT,
+)
+from babeldoc.format.pdf.document_il.midend.line_break_optimizer import _line_cost
+from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
     optimal_line_break,
 )
-from babeldoc.format.pdf.document_il.utils.cjk_dict import (
-    is_cjk_two_char_word,
-    is_cjk_word_boundary,
+from babeldoc.format.pdf.document_il.midend.typesetting import merge_cjk_units
+from babeldoc.format.pdf.document_il.utils.cjk_dict import is_cjk_two_char_word
+from babeldoc.format.pdf.document_il.utils.cjk_dict import is_cjk_word_boundary
+from babeldoc.format.pdf.document_il.utils.cjk_kinsoku import is_cjk_line_end_forbidden
+from babeldoc.format.pdf.document_il.utils.cjk_kinsoku import (
+    is_cjk_line_start_forbidden,
 )
-
 
 # ──────────────────────────────────────────────────────────────
 # Mock TypesettingUnit
@@ -182,30 +185,72 @@ class TestCJKDP:
 class TestCJKCost:
     def test_cjk_interior_line_penalty(self):
         """CJK 内部行应强烈惩罚非满行。"""
-        # 满行 vs 半行
         full_cost = _line_cost(100, 100, 10, False, 500, cjk_mode=True)
         half_cost = _line_cost(50, 100, 5, False, 500, cjk_mode=True)
         assert full_cost < half_cost
-        # 半行的惩罚应该很重
+        # 半行：(50)² * FILL_WEIGHT
+        assert half_cost == (50**2) * CJK_INTERIOR_FILL_WEIGHT
         assert half_cost > 1000
+
+    def test_cjk_interior_heavier_than_last_line_same_gap(self):
+        """中间行未填满应比最后一行同 residual 更重。"""
+        interior = _line_cost(50, 100, 5, False, 500, cjk_mode=True)
+        last = _line_cost(50, 100, 5, True, 500, cjk_mode=True)
+        assert interior > last
+        assert interior == last * CJK_INTERIOR_FILL_WEIGHT
 
     def test_cjk_last_line_widow(self):
         """CJK 最后一行孤行应被严厉惩罚。"""
-        # 2 字孤行 vs 3 字正常
         widow_cost = _line_cost(20, 100, 2, True, 500, cjk_mode=True)
         normal_cost = _line_cost(30, 100, 3, True, 500, cjk_mode=True)
         assert widow_cost > normal_cost
-        # 孤行惩罚应该触发
         assert widow_cost >= 500
 
     def test_cjk_last_line_normal(self):
         """CJK 最后一行正常长度应有二次惩罚（与原始版本一致）。"""
         cost = _line_cost(30, 100, 3, True, 500, cjk_mode=True)
-        # 二次惩罚：(100-30)² = 4900
         assert cost == (100 - 30) ** 2
 
     def test_english_mode_unchanged(self):
         """英文模式不应受影响。"""
-        # 英文 raggedness = (available - line_width)^2
         cost = _line_cost(80, 100, 5, False, 500, cjk_mode=False)
         assert cost == (100 - 80) ** 2  # = 400
+
+
+class TestKinsoku:
+    def test_line_start_forbidden_chars(self):
+        assert is_cjk_line_start_forbidden("。")
+        assert is_cjk_line_start_forbidden("，")
+        assert is_cjk_line_start_forbidden("）")
+        assert not is_cjk_line_start_forbidden("中")
+
+    def test_line_end_forbidden_chars(self):
+        assert is_cjk_line_end_forbidden("（")
+        assert is_cjk_line_end_forbidden("【")
+        assert is_cjk_line_end_forbidden("“")
+        assert not is_cjk_line_end_forbidden("。")
+
+    def test_merge_cjk_marks_kinsoku_and_words(self):
+        """开括号不可断；词组内部不可断；句号前不可断。"""
+
+        class _U(MockUnit):
+            def __init__(self, **kw):
+                super().__init__(**kw)
+                self.can_break_line_cache = None
+
+        units = [
+            _U(unicode="保"),
+            _U(unicode="持"),
+            _U(unicode="（"),
+            _U(unicode="测"),
+            _U(unicode="试"),
+            _U(unicode="）"),
+            _U(unicode="。"),
+        ]
+        merge_cjk_units(units)
+        # 「持」在「保持」内部 → 不可断
+        assert units[1].can_break_line_cache is False
+        # 开括号行尾禁则
+        assert units[2].can_break_line_cache is False
+        # 句号行首禁则 → 前一字符「）」不可断
+        assert units[5].can_break_line_cache is False
