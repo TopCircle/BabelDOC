@@ -56,6 +56,18 @@ After rebuild with BabelDOC main ≥ PR-04:
 - zh/ja/ko typesetting forces `cjk_mode=True` even for mixed Latin titles.
 - Still score real dual pages by eye; no CI pixmap gate for Orgasms.
 
+## PR-06 multi-interval wrap (local check)
+
+After rebuild with BabelDOC main ≥ PR-06:
+
+- **Synth:** mid-figure should place body on **both** residual pockets (unit test
+  `test_multi_interval_layout.py`); left-only figure still starts at figure right edge.
+- **Orgasms photo taper:** pages with EN `reference_widths` must not spill full
+  rectangular columns into side photos — DP still uses `min(ref, sum(intervals))`,
+  placement caps the **leftmost** pocket only.
+- **Mid-figure without EN taper:** text may continue into the right pocket on the
+  same line (intentional multi-interval wrap). Score `figure_wrap` pages by eye.
+
 ## CI vs local
 
 | Gate | CI | Local |

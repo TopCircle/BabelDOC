@@ -2214,6 +2214,96 @@ class Typesetting:
                     widths.append(w)
         return widths
 
+    def _query_line_intervals(
+        self,
+        y_bottom: float,
+        y_top: float,
+        box: Box,
+    ) -> list[tuple[float, float]]:
+        """Residual x intervals for a horizontal band (multi-interval wrap).
+
+        Empty ``get_intervals_at`` (all pockets thinner than min_width) falls
+        back to the full paragraph box — same spirit as single-interval
+        needle-strip fallback.
+        """
+        zone_index = getattr(self, "_current_zone_index", None)
+        if zone_index and zone_index.zones and y_top > y_bottom:
+            intervals = zone_index.get_intervals_at(
+                y_bottom, y_top, box.x, box.x2
+            )
+            if intervals:
+                return list(intervals)
+        return [(box.x, box.x2)]
+
+    @staticmethod
+    def _cap_leftmost_interval_with_reference(
+        box: Box,
+        intervals: list[tuple[float, float]],
+        reference_widths: list[float] | None,
+        line_idx: int,
+        *,
+        alignment: str | None = None,
+    ) -> list[tuple[float, float]]:
+        """Apply EN reference-width cap only on the leftmost residual pocket.
+
+        Spec (PR-06): do not sum ref caps across intervals; taper applies to
+        the primary (left) column that still starts near the body edge.
+        """
+        if not intervals:
+            return [(box.x, box.x2)]
+        if not reference_widths:
+            return intervals
+        ix1, ix2 = intervals[0]
+        cx1, cx2 = Typesetting._cap_available_with_reference(
+            box,
+            ix1,
+            ix2,
+            reference_widths,
+            line_idx,
+            alignment=alignment,
+        )
+        if (cx1, cx2) == (ix1, ix2):
+            return intervals
+        return [(cx1, cx2), *intervals[1:]]
+
+    @staticmethod
+    def _remaining_capacity_on_line(
+        current_x: float,
+        intervals: list[tuple[float, float]],
+        interval_idx: int,
+    ) -> float:
+        """Horizontal capacity left on this layout line across remaining pockets."""
+        if interval_idx < 0 or interval_idx >= len(intervals):
+            return 0.0
+        rem = 0.0
+        for j in range(interval_idx, len(intervals)):
+            jx1, jx2 = intervals[j]
+            if j == interval_idx:
+                rem += max(0.0, jx2 - max(current_x, jx1))
+            else:
+                rem += max(0.0, jx2 - jx1)
+        return rem
+
+    @staticmethod
+    def _try_advance_interval_for_unit(
+        unit_width: float,
+        intervals: list[tuple[float, float]],
+        interval_idx: int,
+        current_x: float,
+        available_x2: float,
+    ) -> tuple[int, float, float, float] | None:
+        """If unit does not fit the current pocket, jump to the next that fits.
+
+        Returns ``(new_idx, available_x, available_x2, current_x)`` or None.
+        """
+        if current_x + unit_width <= available_x2:
+            return None  # already fits — caller should not advance
+        for next_i in range(interval_idx + 1, len(intervals)):
+            nix1, nix2 = intervals[next_i]
+            if unit_width <= (nix2 - nix1) + 1e-6:
+                return next_i, nix1, nix2, nix1
+        return None
+
     def _estimate_line_widths(
         self,
         typesetting_units: list[TypesettingUnit],
@@ -2225,12 +2315,15 @@ class Typesetting:
     ) -> list[float]:
         """估算每行的可用宽度（用于 DP 断行优化的近似值）。
 
+        Multi-interval (PR-06): zone width is the **sum** of residual pockets
+        from ``get_intervals_at`` so DP capacity matches mid-figure wrap.
+        Placement still jumps pocket-to-pocket on the same y band.
+
         如果提供 reference_widths（原版行宽），则优先使用原版行宽作为目标，
         同时尊重 ExclusionZone 约束（取两者中较小值）。
 
         否则用 avg_height 步进 Y 位置，查询 ExclusionZone 得到每行可用宽度。
         """
-        zone_index = getattr(self, "_current_zone_index", None)
         widths = []
 
         # 用段落中最高的 unit 修正查询高度
@@ -2244,16 +2337,9 @@ class Typesetting:
         y = box.y2 - avg_height
         line_idx = 0
         while y > box.y:
-            # 获取 zone 约束的宽度
-            if zone_index and query_h > 0:
-                x1, x2 = zone_index.get_available_x_range(
-                    y, y + query_h, box.x, box.x2
-                )
-                if x1 >= x2:
-                    x1, x2 = box.x, box.x2
-            else:
-                x1, x2 = box.x, box.x2
-            zone_width = x2 - x1
+            # Step A: sum of all residual pockets (not left-prefer single strip)
+            intervals = self._query_line_intervals(y, y + query_h, box)
+            zone_width = sum(ix2 - ix1 for ix1, ix2 in intervals)
 
             # Prefer original line widths (artistic taper around photos).
             # Extra CJK lines reuse median EN width — never fall back to full
@@ -2498,31 +2584,24 @@ class Typesetting:
         current_y = box.y2 - avg_height
         box = copy.deepcopy(box)
 
-        # 动态行宽：查询排除区域，计算当前行的可用 x 范围
+        # Multi-interval pockets for this y-band (PR-06)
         zone_index = getattr(self, "_current_zone_index", None)
         if zone_index and zone_index.zones:
             logger.debug(
                 f"Laying out paragraph with {len(zone_index.zones)} exclusion zones"
             )
-        if zone_index and avg_height > 0:
-            available_x, available_x2 = zone_index.get_available_x_range(
-                current_y, current_y + avg_height, box.x, box.x2
-            )
-            # 防止反转区间（exclusion zones 从两侧收窄导致 available_x >= available_x2）
-            if available_x >= available_x2:
-                available_x, available_x2 = box.x, box.x2
-        else:
-            available_x, available_x2 = box.x, box.x2
-        # Horizontal alignment first — cap needs it to snap freeform columns
         alignment = self._resolve_effective_alignment(paragraph, typesetting_units)
-        available_x, available_x2 = self._cap_available_with_reference(
+        query_h0 = avg_height if avg_height > 0 else 1.0
+        intervals = self._query_line_intervals(current_y, current_y + query_h0, box)
+        intervals = self._cap_leftmost_interval_with_reference(
             box,
-            available_x,
-            available_x2,
+            intervals,
             reference_widths,
             layout_line_idx,
             alignment=alignment,
         )
+        interval_idx = 0
+        available_x, available_x2 = intervals[0]
         current_x = available_x
         # box.y -= avg_height * (line_spacing - 1.01) # line_spacing 已被替换为 line_skip
         line_height = 0
@@ -2537,9 +2616,10 @@ class Typesetting:
         # Index into typeset_units where the current line starts; used to shift
         # completed lines for center/right alignment after left-to-right placement.
         line_start_idx = 0
-        # Track available x range for the line being built (for alignment finalize)
-        line_available_x = available_x
-        line_available_x2 = available_x2
+        # Alignment uses the primary (leftmost) pocket only — spanning figure
+        # gap would shift center/right lines into the hole (PR-06 review).
+        line_available_x = intervals[0][0]
+        line_available_x2 = intervals[0][1]
         if paragraph.first_line_indent and paragraph.first_line_indent > 0:
             # 缩进相对于 box.x 而非 available_x，避免 zone 偏移叠加
             # Center/right aligned paragraphs should not apply first-line indent
@@ -2570,7 +2650,7 @@ class Typesetting:
             unit_width = unit.width * scale
             unit_height = unit.height * scale
 
-            # 跳过行首的空格
+            # 跳过行首 / 区间首的空格
             if current_x == available_x and unit.is_space:
                 continue
 
@@ -2610,6 +2690,20 @@ class Typesetting:
             # 如果当前行放不下这个元素，换行
             # Include tracking in width calculation for accurate line breaks
             effective_width = unit_width + (decorative_tracking if not unit.is_space else 0)
+            # Multi-interval: try next pocket on the same y before wrapping
+            advanced = self._try_advance_interval_for_unit(
+                effective_width,
+                intervals,
+                interval_idx,
+                current_x,
+                available_x2,
+            )
+            if advanced is not None:
+                interval_idx, available_x, available_x2, current_x = advanced
+            fits_current = current_x + effective_width <= available_x2 + 1e-6
+            remaining = self._remaining_capacity_on_line(
+                current_x, intervals, interval_idx
+            )
             # DP 断行：在指定位置强制断行；否则使用贪心判断
             # DP 断行仍需检查 hung punctuation 守卫
             dp_break = (
@@ -2617,16 +2711,20 @@ class Typesetting:
                 and i in break_points
                 and not unit.is_hung_punctuation
             )
+            # Greedy wrap only when the unit cannot sit in the current pocket
+            # (after interval advance). Remaining-sum alone is insufficient:
+            # two thin pockets cannot host one wide unit.
             need_break = dp_break or (
                 not unit.is_hung_punctuation and (
-                    (current_x + effective_width > available_x2)
+                    (not fits_current)
                     or (
                         use_english_line_break
-                        and current_x + effective_width + width_before_next_break_point > available_x2
+                        and remaining
+                        < effective_width + width_before_next_break_point - 1e-6
                     )
                     or (
                         unit.is_cannot_appear_in_line_end_punctuation
-                        and current_x + effective_width * 2 > available_x2
+                        and remaining < effective_width * 2 - 1e-6
                     )
                 )
             )
@@ -2641,102 +2739,153 @@ class Typesetting:
                     and last_unit and last_unit.is_cjk_char
                     and not unit.can_break_line):
                 # 在词组内部，尝试将剩余词组字符放在当前行
-                word_end = i
                 word_width = unit_width
                 for k in range(i + 1, len(typesetting_units)):
                     w = typesetting_units[k]
                     if not w.is_cjk_char or w.can_break_line:
                         break
                     word_width += w.width * scale
-                    word_end = k
-                # 如果整个词组能放在当前行，不换行
-                if current_x + word_width <= available_x2:
+                # Whole word fits in the current pocket (no cross-figure glue)
+                if current_x + word_width <= available_x2 + 1e-6:
                     need_break = False
             # CJK 孤行保护：如果当前行只有 ≤2 个字符就要换行，
             # 标记为需要特殊处理（由 DP 在后续优化中处理）
             # 注意：不在贪心循环中强制溢出，避免布局问题
             if need_break:
-                # 检测 DP 模式下贪心是否插入了额外断行
-                if not dp_break and break_points is not None:
-                    dp_break_mismatch = True
                 # 换行
                 if not current_line_heights:
-                    return [], False
-                max_height = max(current_line_heights)
-                try:
-                    mode_height = statistics.mode(current_line_heights)
-                except statistics.StatisticsError:
-                    mode_height = sum(current_line_heights) / len(current_line_heights)
-
-                # Finalize horizontal alignment for the completed line
-                self._apply_line_horizontal_alignment(
-                    typeset_units,
-                    line_start_idx,
-                    len(typeset_units),
-                    line_available_x,
-                    line_available_x2,
-                    alignment,
-                )
-                line_start_idx = len(typeset_units)
-
-                current_y -= max(mode_height * line_skip, max_height * 1.05)
-                line_ys.append(current_y)
-                line_height = 0.0
-                current_line_heights = []  # 清空当前行高度列表
-
-                # 动态行宽：为新行计算可用 x 范围
-                # 使用上一行的实际行高（max_height）而非 avg_height，避免高行遗漏 zone
-                zone_query_height = max(max_height, avg_height) if max_height > 0 else avg_height
-                if zone_index and zone_query_height > 0:
-                    available_x, available_x2 = zone_index.get_available_x_range(
-                        current_y, current_y + zone_query_height, box.x, box.x2
-                    )
-                    if available_x >= available_x2:
-                        available_x, available_x2 = box.x, box.x2
+                    # Nothing on this line yet — cannot wrap. English lookahead
+                    # may set need_break while the unit still fits the current
+                    # pocket; keep left residual in that case (do not snap to
+                    # the rightmost pocket under the figure).
+                    if fits_current:
+                        pass  # fall through and place on current pocket
+                    else:
+                        # Find any pocket that can host this single unit
+                        placed_in_pocket = False
+                        for j, (jx1, jx2) in enumerate(intervals):
+                            if effective_width <= (jx2 - jx1) + 1e-6:
+                                interval_idx = j
+                                available_x, available_x2 = jx1, jx2
+                                current_x = jx1
+                                placed_in_pocket = True
+                                break
+                        if not placed_in_pocket:
+                            if not intervals:
+                                return [], False
+                            # Force-overflow on last pocket; mark scale retry
+                            available_x, available_x2 = intervals[-1]
+                            interval_idx = len(intervals) - 1
+                            current_x = available_x
+                            all_units_fit = False
                 else:
-                    available_x, available_x2 = box.x, box.x2
-                layout_line_idx += 1
-                available_x, available_x2 = self._cap_available_with_reference(
-                    box,
-                    available_x,
-                    available_x2,
-                    reference_widths,
-                    layout_line_idx,
-                    alignment=alignment,
-                )
-                # === DIAGNOSTIC: 每次换行时记录 available 范围 ===
-                if "在这些" in (paragraph.unicode or ""):
-                    _prev_chars = "".join(
-                        (typesetting_units[k].try_get_unicode() or "?")
-                        for k in range(max(0, i - 3), i)
-                    )
-                    _next_chars = "".join(
-                        (typesetting_units[k].try_get_unicode() or "?")
-                        for k in range(i, min(len(typesetting_units), i + 3))
-                    )
-                    import os as _os
-                    _diag_path = _os.environ.get("BABELDOC_DIAG_LOG", "/tmp/babeldoc_diag.log")
-                    with open(_diag_path, "a", encoding="utf-8") as _f:
-                        _f.write(
-                            f"  LINE_BREAK y={current_y:.1f} "
-                            f"avail=[{available_x:.1f},{available_x2:.1f}] "
-                            f"width={available_x2 - available_x:.1f} "
-                            f"prev={_prev_chars!r} next={_next_chars!r}\n"
+                    # 检测 DP 模式下贪心是否插入了额外断行
+                    if not dp_break and break_points is not None:
+                        dp_break_mismatch = True
+                    max_height = max(current_line_heights)
+                    try:
+                        mode_height = statistics.mode(current_line_heights)
+                    except statistics.StatisticsError:
+                        mode_height = sum(current_line_heights) / len(
+                            current_line_heights
                         )
-                # === END DIAGNOSTIC ===
-                current_x = available_x
-                line_available_x = available_x
-                line_available_x2 = available_x2
 
-                # 检查是否超出底部边界
-                # if current_y - unit_height < box.y:
-                if current_y < box.y:
-                    all_units_fit = False
-                    # 这里不要 break，继续排版剩余内容
+                    # Finalize horizontal alignment for the completed line
+                    self._apply_line_horizontal_alignment(
+                        typeset_units,
+                        line_start_idx,
+                        len(typeset_units),
+                        line_available_x,
+                        line_available_x2,
+                        alignment,
+                    )
+                    line_start_idx = len(typeset_units)
 
-                if unit.is_space:
-                    line_height = max(line_height, unit_height)
-                    continue
+                    current_y -= max(mode_height * line_skip, max_height * 1.05)
+                    line_ys.append(current_y)
+                    line_height = 0.0
+                    current_line_heights = []  # 清空当前行高度列表
+
+                    # 动态行宽：多区间 residual + 左口袋 reference cap
+                    zone_query_height = (
+                        max(max_height, avg_height) if max_height > 0 else avg_height
+                    )
+                    if zone_query_height <= 0:
+                        zone_query_height = 1.0
+                    layout_line_idx += 1
+                    intervals = self._query_line_intervals(
+                        current_y, current_y + zone_query_height, box
+                    )
+                    intervals = self._cap_leftmost_interval_with_reference(
+                        box,
+                        intervals,
+                        reference_widths,
+                        layout_line_idx,
+                        alignment=alignment,
+                    )
+                    interval_idx = 0
+                    available_x, available_x2 = intervals[0]
+                    # === DIAGNOSTIC: 每次换行时记录 available 范围 ===
+                    if "在这些" in (paragraph.unicode or ""):
+                        _prev_chars = "".join(
+                            (typesetting_units[k].try_get_unicode() or "?")
+                            for k in range(max(0, i - 3), i)
+                        )
+                        _next_chars = "".join(
+                            (typesetting_units[k].try_get_unicode() or "?")
+                            for k in range(i, min(len(typesetting_units), i + 3))
+                        )
+                        import os as _os
+                        _diag_path = _os.environ.get(
+                            "BABELDOC_DIAG_LOG", "/tmp/babeldoc_diag.log"
+                        )
+                        with open(_diag_path, "a", encoding="utf-8") as _f:
+                            _f.write(
+                                f"  LINE_BREAK y={current_y:.1f} "
+                                f"intervals={[(round(a,1), round(b,1)) for a, b in intervals]} "
+                                f"prev={_prev_chars!r} next={_next_chars!r}\n"
+                            )
+                    # === END DIAGNOSTIC ===
+                    current_x = available_x
+                    line_available_x = intervals[0][0]
+                    line_available_x2 = intervals[0][1]
+
+                    # 检查是否超出底部边界
+                    # if current_y - unit_height < box.y:
+                    if current_y < box.y:
+                        all_units_fit = False
+                        # 这里不要 break，继续排版剩余内容
+
+                    if unit.is_space:
+                        line_height = max(line_height, unit_height)
+                        continue
+
+                    # After wrap, try advance again on the new line's pockets
+                    advanced = self._try_advance_interval_for_unit(
+                        effective_width,
+                        intervals,
+                        interval_idx,
+                        current_x,
+                        available_x2,
+                    )
+                    if advanced is not None:
+                        interval_idx, available_x, available_x2, current_x = advanced
+                    elif current_x + effective_width > available_x2 + 1e-6:
+                        # Still no pocket: prefer any later pocket that fits,
+                        # else force-overflow on last.
+                        forced = False
+                        for j, (jx1, jx2) in enumerate(intervals):
+                            if effective_width <= (jx2 - jx1) + 1e-6:
+                                interval_idx = j
+                                available_x, available_x2 = jx1, jx2
+                                current_x = jx1
+                                forced = True
+                                break
+                        if not forced:
+                            available_x, available_x2 = intervals[-1]
+                            interval_idx = len(intervals) - 1
+                            current_x = available_x
+                            all_units_fit = False
 
             # 放置当前单元
             relocated_unit = unit.relocate(current_x, current_y, scale)
