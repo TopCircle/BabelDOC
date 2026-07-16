@@ -1142,7 +1142,7 @@ def generate_first_page_with_watermark(
         )
         safe_save(first_page_doc, watermarked_temp_pdf_path)
 
-        Typesetting(watermarked_config).typsetting_document(il_only_first_page_doc)
+        Typesetting(watermarked_config).typesetting_document(il_only_first_page_doc)
         pdf_creater = PDFCreater(
             watermarked_temp_pdf_path.as_posix(),
             il_only_first_page_doc,
