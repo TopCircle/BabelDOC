@@ -16,7 +16,7 @@ from babeldoc.format.pdf.document_il.utils.il_layout_fingerprint import (
     il_layout_fingerprint,
 )
 from babeldoc.tools.dual_quality_check import main as dual_quality_main
-from babeldoc.tools.fixed_map_translator import FixedMapTranslator
+from babeldoc.translator.fixed_map_translator import FixedMapTranslator
 
 
 def _style() -> PdfStyle:
@@ -67,13 +67,11 @@ class TestFixedMapTranslator:
         with pytest.raises(NotImplementedError):
             t.do_llm_translate(None)
 
-    def test_duck_typed_surface_for_dispatch(self):
+    def test_il_translator_placeholder_surface(self):
         t = FixedMapTranslator()
-        assert hasattr(t, "lang_in")
-        assert hasattr(t, "lang_out")
-        assert hasattr(t, "ignore_cache")
-        assert callable(t.translate)
-        assert callable(t.do_llm_translate)
+        assert t.get_formular_placeholder(3) == "<b3>"
+        assert t.get_rich_text_left_placeholder(1) == "<b1>"
+        assert t.get_rich_text_right_placeholder(1) == "</b1>"
 
 
 class TestIlLayoutFingerprint:
@@ -94,10 +92,17 @@ class TestIlLayoutFingerprint:
             Document(page=[p2])
         )
 
+    def test_ignores_character_unicode_for_geometry_gate(self):
+        """Geometry-only: same boxes, different glyphs → same fingerprint."""
+        p1 = _page_with_chars(0, "p1", [(10.0, 20.0, "A")])
+        p2 = _page_with_chars(0, "p1", [(10.0, 20.0, "中")])
+        assert il_layout_fingerprint(Document(page=[p1])) == il_layout_fingerprint(
+            Document(page=[p2])
+        )
+
     def test_rounding_to_3dp_collapses_noise(self):
         p1 = _page_with_chars(0, "p1", [(10.0001, 20.0, "A")])
         p2 = _page_with_chars(0, "p1", [(10.0004, 20.0, "A")])
-        # both round to 10.0 at 3dp
         assert il_layout_fingerprint(Document(page=[p1])) == il_layout_fingerprint(
             Document(page=[p2])
         )
@@ -105,7 +110,6 @@ class TestIlLayoutFingerprint:
     def test_sorted_by_debug_id_not_append_order(self):
         pa = _page_with_chars(0, "a", [(0.0, 0.0, "X")])
         pb = _page_with_chars(0, "b", [(0.0, 0.0, "Y")])
-        # two paragraphs on one page: order of list should not matter
         doc_ab = Document(
             page=[
                 Page(
@@ -142,4 +146,9 @@ class TestDualQualityCli:
         )
         assert code == 1
         err = capsys.readouterr().err
-        assert "mismatch" in err.lower() or "FAIL" in err
+        assert "FAIL" in err or "mismatch" in err.lower()
+
+    def test_mode_il_without_self_check_errors(self, capsys):
+        code = dual_quality_main(["--mode", "il"])
+        assert code == 2
+        assert "self-check" in capsys.readouterr().err.lower()

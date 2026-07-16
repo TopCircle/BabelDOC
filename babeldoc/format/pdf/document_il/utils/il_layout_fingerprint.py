@@ -1,14 +1,17 @@
-"""Stable geometry fingerprint of a post-typeset Document IL.
+"""Stable **geometry** fingerprint of a post-typeset Document IL.
 
-Used as a **refactor gate**: behavior-preserving moves (extract modules,
-rename, reorder pure helpers) must keep the same fingerprint. Quality PRs
-that intentionally change layout update golden fingerprints deliberately.
+Refactor gate (architecture K14): behavior-preserving moves must keep the
+same fingerprint. Intentionally **does not** hash character unicode — so
+FixedMap / DeepLX text changes do not invalidate a geometry-only gate.
 
-Rules (architecture plan K14 / Phase 0b):
-- Only **positioned** composition characters with a valid box
+Coverage: positioned chars under ``pdf_character`` / ``pdf_same_style_characters``
+/ ``pdf_line`` only. Formula-only and unicode-only runs without boxes are
+skipped (document if expanding later).
+
+Rules:
+- Only characters with a valid box
 - Boxes rounded to **3 decimal places**
-- Paragraphs sorted by ``debug_id`` then geometry
-- Do **not** hash full paragraph unicode or runtime-only fields
+- Pages / paragraphs sorted by page_number, debug_id, then geometry
 """
 
 from __future__ import annotations
@@ -26,12 +29,12 @@ if TYPE_CHECKING:
 def _box_valid(box) -> bool:
     if box is None:
         return False
-    try:
-        return all(
-            getattr(box, attr) is not None for attr in ("x", "y", "x2", "y2")
-        )
-    except Exception:
-        return False
+    return (
+        getattr(box, "x", None) is not None
+        and getattr(box, "y", None) is not None
+        and getattr(box, "x2", None) is not None
+        and getattr(box, "y2", None) is not None
+    )
 
 
 def _iter_positioned_chars(
@@ -56,11 +59,9 @@ def _iter_positioned_chars(
                 yield ch
         return
 
-    # Formulas / unicode-only style runs: no stable box → skip for fingerprint
-
 
 def il_layout_fingerprint(doc: Document) -> str:
-    """Return sha256 hex digest of sorted post-typeset char geometry."""
+    """Return sha256 hex digest of sorted post-typeset **geometry** only."""
     rows: list[str] = []
     pages = sorted(doc.page or [], key=lambda p: p.page_number or 0)
     for page in pages:
@@ -78,12 +79,12 @@ def il_layout_fingerprint(doc: Document) -> str:
             for comp in para.pdf_paragraph_composition or []:
                 for ch in _iter_positioned_chars(comp):
                     b = ch.box
-                    assert b is not None
+                    if not _box_valid(b):
+                        continue
                     rows.append(
                         f"{page_no}|{debug_id}|"
                         f"{round(b.x, 3)},{round(b.y, 3)},"
-                        f"{round(b.x2, 3)},{round(b.y2, 3)}|"
-                        f"{ch.char_unicode or ''}"
+                        f"{round(b.x2, 3)},{round(b.y2, 3)}"
                     )
     payload = "\n".join(rows).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
