@@ -1037,18 +1037,51 @@ class ParagraphFinder:
                     break
 
                 # 如果前一行宽度小于中位数的一半，将当前行及后续行分割成新段落
-                if (
+                current_comp = paragraph.pdf_paragraph_composition[j]
+                current_line = current_comp.pdf_line if current_comp else None
+                split_here = (
                     self.translation_config.split_short_lines
                     and prev_width
                     < median_width * self.translation_config.short_line_split_factor
                 ) or (
-                    paragraph.pdf_paragraph_composition
-                    and (current_line := paragraph.pdf_paragraph_composition[j])
-                    and (line := current_line.pdf_line)
-                    and (chars := line.pdf_character)
-                    and (char := chars[0])
-                    and is_bullet_point(char)
+                    current_line
+                    and current_line.pdf_character
+                    and is_bullet_point(current_line.pdf_character[0])
+                )
+
+                # arXiv-style short centered tail: "(Dated: …)" / "（日期：…）"
+                # must be its own paragraph so ZH keeps a separate centered line
+                # instead of gluing the date onto the last affiliation line.
+                if (
+                    not split_here
+                    and current_line
+                    and current_line.box
+                    and prev_line.box
                 ):
+                    curr_w = current_line.box.x2 - current_line.box.x
+                    curr_text = "".join(
+                        c.char_unicode or "" for c in (current_line.pdf_character or [])
+                    ).strip()
+                    short_tail = curr_w < prev_width * 0.45 and (
+                        median_width <= 0 or curr_w < median_width * 0.55
+                    )
+                    both_inset = (
+                        current_line.box.x > prev_line.box.x + 8.0
+                        and current_line.box.x2 < prev_line.box.x2 - 8.0
+                    )
+                    date_like = bool(
+                        re.search(
+                            r"(\(\s*Dated\b|Dated\s*:|日期\s*[:：]|\(\s*日期)",
+                            curr_text,
+                            re.IGNORECASE,
+                        )
+                    )
+                    if short_tail and both_inset and (
+                        date_like or curr_w < 120.0
+                    ):
+                        split_here = True
+
+                if split_here:
                     # 创建新的段落
                     new_paragraph = PdfParagraph(
                         box=Box(0, 0, 0, 0),  # 临时边界框

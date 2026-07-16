@@ -1343,7 +1343,51 @@ def detect_paragraph_alignment(
             return 0.0
         return sum(1 for v in values if abs(v - ref) <= tol) / len(values)
 
+    page_box = None
+    if page is not None:
+        if getattr(page, "cropbox", None) and page.cropbox.box:
+            page_box = page.cropbox.box
+        elif getattr(page, "mediabox", None) and page.mediabox.box:
+            page_box = page.mediabox.box
+
+    def _page_symmetric_centered() -> bool:
+        """True when every line is roughly page-centered with symmetric margins.
+
+        Catches arXiv-style multi-line headers (title/author/affil/date) where
+        successive lines share a similar left edge *relative to the para bbox*
+        (so left_ratio is high) but each line is still centered on the page.
+        Must not match left-column body (asymmetric page margins) or near-full
+        justified body lines.
+        """
+        if page_box is None or page_box.x2 <= page_box.x:
+            return False
+        page_center = (page_box.x + page_box.x2) / 2.0
+        page_width = page_box.x2 - page_box.x
+        for x, x2 in line_ranges:
+            w = x2 - x
+            if w > page_width * 0.85:
+                return False
+            line_center = (x + x2) / 2.0
+            if abs(line_center - page_center) > page_center_tolerance:
+                return False
+            lm = x - page_box.x
+            rm = page_box.x2 - x2
+            # Require both margins and near-symmetry (page-centered, not column)
+            if lm < 40.0 or rm < 40.0:
+                return False
+            if abs(lm - rm) > max(page_center_tolerance * 2, page_width * 0.06):
+                return False
+        return True
+
+    page_sym = _page_symmetric_centered()
+
     if n >= 2:
+        # 0) Page-symmetric multi-line header (arXiv affil+date, author block)
+        # before left-edge clustering — those lines share a para-left edge
+        # but are still page-centered.
+        if page_sym:
+            return "center"
+
         # 1) Shared left edge → left-aligned body (most common)
         # Use the leftmost edge as reference (flush-left column).
         # Slightly lenient (0.65): InDesign ebooks often have one wrap line
@@ -1389,28 +1433,22 @@ def detect_paragraph_alignment(
             return "left"
 
     # Single-line or ambiguous multi-line: use page geometry
-    if page is not None:
-        page_box = None
-        if getattr(page, "cropbox", None) and page.cropbox.box:
-            page_box = page.cropbox.box
-        elif getattr(page, "mediabox", None) and page.mediabox.box:
-            page_box = page.mediabox.box
-        if page_box and page_box.x2 > page_box.x:
-            page_center = (page_box.x + page_box.x2) / 2.0
-            page_width = page_box.x2 - page_box.x
-            all_centered = True
-            for x, x2 in line_ranges:
-                line_center = (x + x2) / 2.0
-                line_width = x2 - x
-                if abs(line_center - page_center) > page_center_tolerance:
-                    all_centered = False
-                    break
-                # Near-full-page lines are body text, not centered titles
-                if line_width > page_width * 0.85:
-                    all_centered = False
-                    break
-            if all_centered:
-                return "center"
+    if page_box is not None and page_box.x2 > page_box.x:
+        page_center = (page_box.x + page_box.x2) / 2.0
+        page_width = page_box.x2 - page_box.x
+        all_centered = True
+        for x, x2 in line_ranges:
+            line_center = (x + x2) / 2.0
+            line_width = x2 - x
+            if abs(line_center - page_center) > page_center_tolerance:
+                all_centered = False
+                break
+            # Near-full-page lines are body text, not centered titles
+            if line_width > page_width * 0.85:
+                all_centered = False
+                break
+        if all_centered:
+            return "center"
 
     return "left"
 

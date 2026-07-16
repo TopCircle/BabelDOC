@@ -1,5 +1,24 @@
 # Golden / dual-quality fixtures
 
+## Baseline source PDFs (operator regression set)
+
+These three inputs under `tests/golden/` are the **canonical visual/layout
+baseline documents** for dual quality (local scorecard + future E2E):
+
+| File | Role |
+|------|------|
+| `translate.cli.plain.text.pdf` | Plain text layout |
+| `translate.cli.font.unknown.pdf` | Unknown / odd fonts |
+| `translate.cli.text.with.figure.pdf` | arXiv-style page: centered header + figure |
+
+Regenerate duals after typesetting changes (example name):
+
+`translate.cli.text.with.figure.no_watermark.zh-CN.dual.pdf`
+
+**Header checklist** (figure PDF): ZH title/author/affil/date should each be
+**page-centered** on the mono half; `(Dated: …)` must be its **own** short
+centered line, not glued onto the last affiliation line.
+
 ## What exists (PR-01)
 
 | Piece | Role |
@@ -11,7 +30,7 @@
 
 ## What is **not** here yet
 
-- PDF → translate → dual E2E golden
+- Full PDF → translate → dual E2E golden in CI
 - Loading `typsetting.json` / debug IL dumps (write-only JSON today)
 - Orgasms/Module-1 CI pixel gates (local scorecard only — see `SCORECARD.md`)
 

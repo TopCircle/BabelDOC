@@ -76,7 +76,24 @@ class TestDetectParagraphAlignment:
             (260.2, 351.8),  # width 91.6, center 306
         ]
         para = _line_para(lines)
-        assert detect_paragraph_alignment(para) == "center"
+        assert detect_paragraph_alignment(para, _page(612)) == "center"
+
+    def test_arxiv_affil_date_page_symmetric_center(self):
+        """Affiliation lines share a near-left edge but each is page-centered.
+
+        Without page geometry this used to return left (left_ratio ≥ 0.65),
+        so ZH lines 3–4 of translate.cli.text.with.figure sat left of mid.
+        """
+        lines = [
+            (125.3, 487.0),  # center 306.15
+            (132.7, 479.6),  # center 306.15
+            (260.2, 352.1),  # date, center 306.15
+        ]
+        para = _line_para(lines)
+        assert detect_paragraph_alignment(para, _page(612)) == "center"
+        # affil only (no date) must also stay center
+        para2 = _line_para(lines[:2])
+        assert detect_paragraph_alignment(para2, _page(612)) == "center"
 
     def test_multiline_left_aligned_body(self):
         # Two-column body: same left edge, full-ish equal widths
