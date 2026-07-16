@@ -157,7 +157,8 @@ class TestDetectParagraphAlignment:
 
 
 class TestResolveEffectiveAlignment:
-    def test_long_body_never_center(self):
+    def test_long_body_without_metrics_never_center(self):
+        """Legacy path (no reference_metrics): length gate still demotes."""
         para = PdfParagraph(
             box=Box(x=56, y=100, x2=540, y2=200),
             pdf_style=PdfStyle(font_id="base", font_size=14.0, graphic_state=None),
@@ -177,7 +178,57 @@ class TestResolveEffectiveAlignment:
         para.alignment = "center"
         assert Typesetting._resolve_effective_alignment(para) == "center"
 
-    def test_avg_line_width_body_forced_left(self):
+    def test_single_line_title_kept_despite_full_box_metrics(self):
+        """arXiv title: one centered line fills its own box; must stay center."""
+        from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
+
+        para = PdfParagraph(
+            box=Box(x=63.9, y=700, x2=548.3, y2=720),
+            pdf_style=PdfStyle(font_id="base", font_size=14.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="超导量子比特读出的基准测试：针对重复测量",
+        )
+        para.alignment = "center"
+        para.reference_metrics = ReferenceMetrics(
+            line_count=1,
+            avg_line_width=484.4,
+            last_line_width=484.4,
+            last_line_ratio=1.0,
+            font_size=12.0,
+            per_line_widths=[484.4],
+        )
+        assert Typesetting._resolve_effective_alignment(para) == "center"
+        # Many CJK units must not demote either
+        units = [SimpleNamespace(width=12.0) for _ in range(40)]
+        assert Typesetting._resolve_effective_alignment(para, units) == "center"
+
+    def test_long_translated_author_block_stays_center(self):
+        """arXiv author/affil: multi-line page-centered; ZH long but still center."""
+        from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
+
+        para = PdfParagraph(
+            box=Box(x=78.6, y=650, x2=533.1, y2=700),
+            pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode=(
+                "1美国康涅狄格州纽黑文市06520 耶鲁大学应用物理系，"
+                "以及美国康涅狄格州纽黑文市06520 耶鲁大学耶鲁量子研究所"
+                "（日期：2024 年7 月16 日）"
+            ),
+        )
+        para.alignment = "center"
+        # Varying inset line widths like the golden paper header
+        para.reference_metrics = ReferenceMetrics(
+            line_count=4,
+            avg_line_width=313.0,
+            last_line_width=91.9,
+            last_line_ratio=0.29,
+            font_size=10.0,
+            per_line_widths=[454.4, 361.7, 346.9, 91.9],
+        )
+        assert Typesetting._resolve_effective_alignment(para) == "center"
+
+    def test_body_like_multiline_forced_left(self):
         from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
 
         para = PdfParagraph(
@@ -385,6 +436,47 @@ class TestLayoutStyleConsistency:
         )
         assert placed
         assert placed[0].box.x == pytest.approx(190.0, abs=1.0)
+
+    def test_layout_center_long_zh_title_with_metrics(self):
+        """Long ZH title still centers when original single-line was page-centered."""
+        from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
+
+        ts = self._typesetting()
+        box = Box(x=63.9, y=100, x2=548.3, y2=130)
+        para = PdfParagraph(
+            box=box,
+            pdf_style=PdfStyle(font_id="base", font_size=12.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="超导量子比特读出的基准测试：针对重复测量",
+            first_line_indent=0.0,
+            alignment="center",
+        )
+        para.reference_metrics = ReferenceMetrics(
+            line_count=1,
+            avg_line_width=484.4,
+            last_line_width=484.4,
+            last_line_ratio=1.0,
+            font_size=12.0,
+            per_line_widths=[484.4],
+        )
+        units = [
+            self._unit(ch=c, width=12.0)
+            for c in "超导量子比特读出的基准测试：针对重复测量"
+        ]
+        placed, _ = ts._layout_typesetting_units(
+            units,
+            box,
+            scale=1.0,
+            line_skip=1.05,
+            paragraph=para,
+            use_english_line_break=False,
+        )
+        assert placed
+        # Must not sit at box.x (left); should be shifted toward page center
+        assert placed[0].box.x > 100.0
+        line_w = placed[-1].box.x2 - placed[0].box.x
+        expected_start = box.x + (box.x2 - box.x - line_w) / 2.0
+        assert placed[0].box.x == pytest.approx(expected_start, abs=2.0)
 
     def test_center_ignores_first_line_indent(self):
         ts = self._typesetting()

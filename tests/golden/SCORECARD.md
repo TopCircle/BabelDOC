@@ -74,10 +74,13 @@ After rebuild with BabelDOC main ≥ PR-07:
 
 - **First-line indent:** body paragraphs keep EN visual indent (absolute pt, not
   shrunk by glyph scale). Flush-left EN must not gain a random indent after ZH.
-- **Center/right:** short titles/author lines still shift; long body forced left
-  even if detector said center.
+- **Center/right:** page-centered EN headers (arXiv title/author) stay centered
+  after long ZH translation; left-aligned section titles stay left; body-like
+  multi-line false centers still forced left (majority near-full original lines).
 - **DP consistency:** first estimated line width subtracts indent so DP breaks
   match placement.
+- **Golden:** `translate.cli.text.with.figure` — ZH title/author mid near page
+  center of the mono/left half, not flush to original left edge.
 
 ## CI vs local
 

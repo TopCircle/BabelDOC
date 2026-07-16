@@ -1504,31 +1504,60 @@ class Typesetting:
         paragraph: il_version_1.PdfParagraph,
         typesetting_units: list[TypesettingUnit] | None = None,
     ) -> str:
-        """Return alignment to use for layout; never center long body text.
+        """Return alignment for layout; keep geometric center when it is real.
 
-        Detection can mis-label multi-line body as center when InDesign
-        geometry is noisy (Orgasms p.11 step-one body). Long translated
-        paragraphs and near-full original line widths are forced left.
+        ``detect_paragraph_alignment`` already set ``paragraph.alignment`` from
+        **original** geometry. We only demote center→left when original lines
+        look like a filled body column (Orgasms false center), not merely
+        because the Chinese translation is long.
+
+        Why not demote on text/unit length alone:
+        arXiv-style page-centered author/affiliation blocks translate to long
+        ZH strings but must stay centered in the original box (see golden
+        ``translate.cli.text.with.figure`` header). Length gates were killing
+        those while left-aligned section titles stay left via detection.
         """
         alignment = getattr(paragraph, "alignment", None) or "left"
         if alignment != "center":
             return alignment
 
-        text = paragraph.unicode or ""
-        # Substantial prose → body, not a centered title/quote
-        if len(text.strip()) >= 36:
-            return "left"
-
         rm = getattr(paragraph, "reference_metrics", None)
         box = paragraph.box
-        if rm and box and getattr(rm, "avg_line_width", None):
-            box_w = (box.x2 - box.x) if box.x2 is not None and box.x is not None else 0
-            if box_w > 0 and rm.avg_line_width >= box_w * 0.7:
+        box_w = 0.0
+        if box is not None and box.x2 is not None and box.x is not None:
+            box_w = float(box.x2 - box.x)
+
+        if rm is not None and box_w > 1.0:
+            line_count = int(getattr(rm, "line_count", 0) or 0)
+            avg = getattr(rm, "avg_line_width", None)
+            widths = getattr(rm, "per_line_widths", None) or []
+
+            # Single-line page-centered title/date: avg≈box always; trust
+            # detection (it already rejected near-full-page body lines).
+            if line_count <= 1:
+                return alignment
+
+            # Multi-line: demote only when original lines fill the para span
+            # like body (majority nearly full-width). Centered author blocks
+            # have short inset lines → fullish ratio stays low.
+            if widths:
+                fullish = sum(
+                    1 for w in widths if float(w) >= box_w * 0.85
+                ) / len(widths)
+                if fullish >= 0.5:
+                    return "left"
+            elif avg is not None and float(avg) >= box_w * 0.85:
                 return "left"
 
-        if typesetting_units and len(typesetting_units) >= 36:
-            return "left"
+            return alignment
 
+        # No reference metrics (legacy / skipped capture): weak length fallback
+        # only — prefer keeping short centers; long unknown text → left.
+        text = (paragraph.unicode or "").strip()
+        if len(text) >= 36:
+            return "left"
+        if typesetting_units is not None and len(typesetting_units) >= 36:
+            return "left"
         return alignment
 
     @staticmethod
