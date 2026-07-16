@@ -257,6 +257,22 @@ def translator_supports_llm(translator) -> bool:
         return False
 
 
+def create_paragraph_translator(
+    translate_engine,
+    translation_config: TranslationConfig,
+    tokenizer=None,
+):
+    """Pick ILTranslator vs ILTranslatorLLMOnly from the LLM probe.
+
+    Single dispatch site for paragraph translation (DeepLX / FixedMap → non-LLM).
+    """
+    if translator_supports_llm(translate_engine):
+        return ILTranslatorLLMOnly(
+            translate_engine, translation_config, tokenizer=tokenizer
+        )
+    return ILTranslator(translate_engine, translation_config, tokenizer=tokenizer)
+
+
 def translate(translation_config: TranslationConfig) -> TranslateResult:
     with ProgressMonitor(get_translation_stage(translation_config)) as pm:
         return do_translate(pm, translation_config)
@@ -1018,11 +1034,9 @@ def _do_translate_single(
         )
 
     if not translation_config.skip_translation:
-        if support_llm_translate:
-            il_translator = ILTranslatorLLMOnly(translate_engine, translation_config)
-        else:
-            il_translator = ILTranslator(translate_engine, translation_config)
-
+        il_translator = create_paragraph_translator(
+            translate_engine, translation_config
+        )
         il_translator.translate(docs)
         del il_translator
         logger.debug(f"finish ILTranslator from {temp_pdf_path}")
