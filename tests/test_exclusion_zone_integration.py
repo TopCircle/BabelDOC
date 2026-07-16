@@ -139,6 +139,21 @@ class TestExclusionZoneIndex:
         assert x1 == 0
         assert x2 == 200  # keep left residual
 
+    def test_mid_figure_prefers_left_even_when_right_wider(self):
+        """Orgasms p.21 regression: usable left residual wins over wider right.
+
+        Figure sits mid/right so left gap is narrower than right but still
+        ≥ min_width → single-interval API must keep left, not max(width).
+        """
+        # [0, 612]: figure 150–350 → left=150, right=262 (right wider)
+        zone = self._make_zone(150, 100, 350, 300, kind=ZONE_FIGURE)
+        index = ExclusionZoneIndex([zone])
+
+        x1, x2 = index.get_available_x_range(150, 250, 0, 612)
+        assert x1 == 0
+        assert x2 == 150
+        assert (x2 - x1) < (612 - 350)  # left narrower than right
+
     def test_zone_outside_y_range_no_effect(self):
         """zone 在行的 y 范围外不影响宽度。"""
         zone = self._make_zone(200, 500, 400, 700)  # y 很高
@@ -215,3 +230,66 @@ class TestQuoteZoneInTypesetting:
 
         x1, x2 = index.get_available_x_range(150, 250, 0, 612)
         assert x2 == 390  # 被 zone 的左边界（含 margin）收窄
+
+
+class TestGetIntervalsAt:
+    """Multi-interval residual API (PR-05); production place is PR-06."""
+
+    def _make_zone(self, x, y, x2, y2, kind=ZONE_FIGURE):
+        return ExclusionZone(
+            box=il_version_1.Box(x=x, y=y, x2=x2, y2=y2),
+            kind=kind,
+            priority=10,
+        )
+
+    def test_no_zones_returns_full_range(self):
+        index = ExclusionZoneIndex([])
+        assert index.get_intervals_at(100, 200, 0, 612) == [(0, 612)]
+
+    def test_mid_figure_returns_both_residuals_ltr(self):
+        """Mid figure splits the band into left + right pockets L→R."""
+        # left 150, right 262 — both ≥ default min_width (~91.8)
+        zone = self._make_zone(150, 100, 350, 300)
+        index = ExclusionZoneIndex([zone])
+
+        intervals = index.get_intervals_at(150, 250, 0, 612)
+        assert intervals == [(0, 150), (350, 612)]
+
+    def test_available_keeps_left_while_intervals_list_both(self):
+        """get_intervals_at is multi-pocket; get_available_x_range stays left-prefer."""
+        zone = self._make_zone(150, 100, 350, 300)
+        index = ExclusionZoneIndex([zone])
+
+        intervals = index.get_intervals_at(150, 250, 0, 612)
+        available = index.get_available_x_range(150, 250, 0, 612)
+
+        assert intervals == [(0, 150), (350, 612)]
+        assert available == (0, 150)
+
+    def test_right_only_zone_single_interval(self):
+        zone = self._make_zone(400, 100, 550, 300, kind=ZONE_QUOTE)
+        index = ExclusionZoneIndex([zone])
+
+        assert index.get_intervals_at(150, 250, 0, 612) == [(0, 400)]
+
+    def test_thin_residuals_return_empty(self):
+        """Needle residuals filtered out; empty list for caller fallback."""
+        # Full-cover zone → no residual ≥ min_width
+        zone = self._make_zone(0, 100, 612, 300)
+        index = ExclusionZoneIndex([zone])
+
+        assert index.get_intervals_at(150, 250, 0, 612) == []
+
+    def test_min_width_filters_narrow_side(self):
+        """Only residuals ≥ min_width are kept."""
+        # left=40 (drop), right=372 (keep) when min_width=50
+        zone = self._make_zone(40, 100, 240, 300)
+        index = ExclusionZoneIndex([zone])
+
+        intervals = index.get_intervals_at(150, 250, 0, 612, min_width=50)
+        assert intervals == [(240, 612)]
+
+    def test_y_miss_returns_full(self):
+        zone = self._make_zone(150, 500, 350, 700)
+        index = ExclusionZoneIndex([zone])
+        assert index.get_intervals_at(100, 200, 0, 612) == [(0, 612)]

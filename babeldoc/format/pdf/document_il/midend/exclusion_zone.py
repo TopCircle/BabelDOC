@@ -13,6 +13,8 @@ Quote、Figure、Table 等浮动对象区域。
     zones = ExclusionZoneBuilder.build(page)
     index = ExclusionZoneIndex(zones)
     left, right = index.get_available_x_range(y_bottom, y_top, page_left, page_right)
+    # Multi-interval (PR-06 layout): all residual pockets L→R
+    intervals = index.get_intervals_at(y_bottom, y_top, page_left, page_right)
 """
 
 from __future__ import annotations
@@ -491,6 +493,99 @@ class ExclusionZoneIndex:
             return self
         return ExclusionZoneIndex(kept)
 
+    def _candidate_zone_indices(
+        self,
+        y_bottom: float,
+        y_top: float,
+        default_x: float,
+        default_x2: float,
+    ) -> list[int]:
+        """R-tree candidates that may intersect the horizontal text band."""
+        if not self.zones or self._rtree is None:
+            return []
+        return list(
+            self._rtree.intersection(
+                (default_x - 1000, y_bottom, default_x2 + 1000, y_top)
+            )
+        )
+
+    def _collect_blocked_intervals(
+        self,
+        y_bottom: float,
+        y_top: float,
+        default_x: float,
+        default_x2: float,
+    ) -> list[BlockedInterval]:
+        """Blocked x intervals from all zones intersecting the line y-band.
+
+        Rectangular zones contribute their clipped box span. Polygon zones use
+        a mid-band scanline (same as single-interval path). Used by
+        :meth:`get_intervals_at`; ``get_available_x_range`` keeps its own
+        left-prefer rectangular selection for behavior compatibility (K20).
+        """
+        all_blocked: list[BlockedInterval] = []
+        for zone_idx in self._candidate_zone_indices(
+            y_bottom, y_top, default_x, default_x2
+        ):
+            zone = self.zones[zone_idx]
+            z = zone.box
+
+            if z.y >= y_top or z.y2 <= y_bottom:
+                continue
+            if z.x2 <= default_x or z.x >= default_x2:
+                continue
+
+            if zone.polygon is not None:
+                all_blocked.extend(
+                    _polygon_blocked_in_band(
+                        zone, y_bottom, y_top, default_x, default_x2
+                    )
+                )
+                continue
+
+            lo = max(z.x, default_x)
+            hi = min(z.x2, default_x2)
+            if hi > lo:
+                all_blocked.append((lo, hi))
+        return all_blocked
+
+    def get_intervals_at(
+        self,
+        y_bottom: float,
+        y_top: float,
+        default_x: float,
+        default_x2: float,
+        min_width: float | None = None,
+    ) -> list[tuple[float, float]]:
+        """All residual x intervals on this line band, left-to-right.
+
+        Subtracts every intersecting exclusion zone from
+        ``[default_x, default_x2]`` and returns free pockets whose width is at
+        least ``min_width``. Empty list means every residual is thinner than
+        the floor — caller applies its own fallback (do not auto-return full
+        width here; that is single-interval policy only).
+
+        Multi-interval layout (PR-06) uses this API. Single-interval callers
+        should keep :meth:`get_available_x_range`, which is **not** pure
+        ``max(width)`` over these intervals (left-prefer + full-para fallback).
+        """
+        if min_width is None:
+            min_width = min_usable_line_width(default_x2 - default_x)
+
+        if not self.zones:
+            full = default_x2 - default_x
+            return [(default_x, default_x2)] if full >= min_width else []
+
+        blocked = self._collect_blocked_intervals(
+            y_bottom, y_top, default_x, default_x2
+        )
+        residuals = _all_residual_intervals(default_x, default_x2, blocked)
+        return [
+            (x1, x2)
+            for x1, x2 in residuals
+            if (x2 - x1) >= min_width
+        ]
+
     def get_available_x_range(
         self,
         y_bottom: float,
@@ -508,6 +603,10 @@ class ExclusionZoneIndex:
 
         若收窄后宽度 < ``min_width``（默认 :data:`MIN_USABLE_LINE_WIDTH_PT`），
         回退到 ``(default_x, default_x2)``，避免在针尖缝里排正文。
+
+        **Policy (K20):** rectangular mid-figure prefers the **left** residual
+        when usable, even if the right residual is wider. Not pure
+        ``max(width)`` over :meth:`get_intervals_at`.
 
         Args:
             y_bottom: 行底部 y 坐标
@@ -532,11 +631,9 @@ class ExclusionZoneIndex:
         all_blocked: list[BlockedInterval] = []
 
         # 查询与行 y 范围有交集的 zones
-        # R-tree 查询使用 (x_min, y_min, x_max, y_max)
-        # 用 default_x/default_x2 作为 x 范围的宽松边界
-        candidates = list(self._rtree.intersection(
-            (default_x - 1000, y_bottom, default_x2 + 1000, y_top)
-        ))
+        candidates = self._candidate_zone_indices(
+            y_bottom, y_top, default_x, default_x2
+        )
 
         for zone_idx in candidates:
             zone = self.zones[zone_idx]
@@ -553,15 +650,11 @@ class ExclusionZoneIndex:
 
             # 多边形 zone：使用 scanline 计算精确 blocked 区间
             if zone.polygon is not None:
-                scan_y = (y_bottom + y_top) / 2.0
-                blocked = polygon_scanline_blocked_intervals(scan_y, zone.polygon)
-                # 只保留与文本区域有交集的 blocked 区间
-                for bx_start, bx_end in blocked:
-                    if bx_end > default_x and bx_start < default_x2:
-                        all_blocked.append((
-                            max(bx_start, default_x),
-                            min(bx_end, default_x2),
-                        ))
+                all_blocked.extend(
+                    _polygon_blocked_in_band(
+                        zone, y_bottom, y_top, default_x, default_x2
+                    )
+                )
                 continue
 
             # 矩形 zone：原有逻辑
@@ -644,6 +737,70 @@ def _max_horizontal_residual(para_box: Box, zone_box: Box) -> float:
     return max(left, right)
 
 
+def _polygon_blocked_in_band(
+    zone: ExclusionZone,
+    y_bottom: float,
+    y_top: float,
+    default_x: float,
+    default_x2: float,
+) -> list[BlockedInterval]:
+    """Scanline-blocked x intervals for a polygon zone, clipped to text band."""
+    if zone.polygon is None:
+        return []
+    scan_y = (y_bottom + y_top) / 2.0
+    clipped: list[BlockedInterval] = []
+    for bx_start, bx_end in polygon_scanline_blocked_intervals(scan_y, zone.polygon):
+        if bx_end > default_x and bx_start < default_x2:
+            lo = max(bx_start, default_x)
+            hi = min(bx_end, default_x2)
+            if hi > lo:
+                clipped.append((lo, hi))
+    return clipped
+
+
+def _all_residual_intervals(
+    range_start: float,
+    range_end: float,
+    blocked: list[BlockedInterval],
+) -> list[tuple[float, float]]:
+    """Subtract blocked intervals from ``[range_start, range_end]``.
+
+    Returns residual free intervals left-to-right. Empty when the range is
+    fully blocked or inverted. Blocked segments should already be clipped into
+    the range (call sites do this); unclipped segments are still merged safely
+    by capping residual ends at ``range_end``.
+    """
+    if range_end <= range_start:
+        return []
+    if not blocked:
+        return [(range_start, range_end)]
+
+    # Clip blocked into the query range so stray segments cannot leak residuals
+    # past range_end or emit inverted pockets.
+    clipped: list[BlockedInterval] = []
+    for bx_start, bx_end in blocked:
+        lo = max(bx_start, range_start)
+        hi = min(bx_end, range_end)
+        if hi > lo:
+            clipped.append((lo, hi))
+    if not clipped:
+        return [(range_start, range_end)]
+
+    merged = _merge_blocked_intervals(clipped)
+    available: list[tuple[float, float]] = []
+    cursor = range_start
+
+    for bx_start, bx_end in merged:
+        if bx_start > cursor:
+            available.append((cursor, bx_start))
+        cursor = max(cursor, bx_end)
+
+    if cursor < range_end:
+        available.append((cursor, range_end))
+
+    return available
+
+
 def _subtract_blocked_from_range(
     range_start: float,
     range_end: float,
@@ -656,23 +813,7 @@ def _subtract_blocked_from_range(
     注意：对于倾斜多边形，随着扫描线 y 变化，最宽子区间可能在左右两侧之间切换，
     导致文本位置跳跃。这是单区间返回值的固有限制。
     """
-    if not blocked:
-        return (range_start, range_end)
-
-    merged = _merge_blocked_intervals(blocked)
-
-    # 计算所有可用子区间
-    available: list[tuple[float, float]] = []
-    cursor = range_start
-
-    for bx_start, bx_end in merged:
-        if bx_start > cursor:
-            available.append((cursor, bx_start))
-        cursor = max(cursor, bx_end)
-
-    if cursor < range_end:
-        available.append((cursor, range_end))
-
+    available = _all_residual_intervals(range_start, range_end, blocked)
     if not available:
         return (range_start, range_start)  # 完全 blocked
 

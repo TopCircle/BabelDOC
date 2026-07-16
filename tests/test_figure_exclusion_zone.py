@@ -22,6 +22,9 @@ from babeldoc.format.pdf.document_il.midend.exclusion_zone import ZONE_FIGURE
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import _collect_figure_zones
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import _max_horizontal_residual
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
+    _all_residual_intervals,
+)
+from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
     _subtract_blocked_from_range,
 )
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import min_usable_line_width
@@ -218,6 +221,13 @@ class TestSubtractBlocked:
         result = _subtract_blocked_from_range(0, 100, [(20, 50), (40, 70)])
         assert result == (70, 100)
 
+    def test_all_residual_intervals_ltr(self):
+        """Multi-interval residual helper lists pockets L→R."""
+        residuals = _all_residual_intervals(0, 100, [(30, 50)])
+        assert residuals == [(0, 30), (50, 100)]
+        # Widest with left-tiebreak still matches subtract helper
+        assert _subtract_blocked_from_range(0, 100, [(30, 50)]) == (50, 100)
+
 
 # ---------------------------------------------------------------------------
 # ExclusionZoneIndex with polygon zones
@@ -235,7 +245,7 @@ class TestPolygonExclusionZoneIndex:
         )
         index = ExclusionZoneIndex([zone])
         x, x2 = index.get_available_x_range(0, 20, 0, 612)
-        # Should keep left side (0, 300) since it's wider than right (400, 612)
+        # Left residual preferred when usable (K20); here left is also wider
         assert abs(x - 0) < 0.01
         assert abs(x2 - 300) < 0.01
 
@@ -291,6 +301,37 @@ class TestPolygonExclusionZoneIndex:
         x, x2 = index.get_available_x_range(100, 120, 0, 612)
         assert abs(x - 100) < 0.01
         assert abs(x2 - 300) < 0.01
+
+    def test_get_intervals_at_mid_rect(self):
+        """get_intervals_at lists every residual pocket for multi-interval layout."""
+        zone = ExclusionZone(
+            box=Box(x=150, y=0, x2=350, y2=400),
+            kind=ZONE_FIGURE,
+        )
+        index = ExclusionZoneIndex([zone])
+        intervals = index.get_intervals_at(100, 120, 0, 612)
+        assert intervals == [(0, 150), (350, 612)]
+
+        # Single-interval policy still prefers left residual (narrower than right)
+        x, x2 = index.get_available_x_range(100, 120, 0, 612)
+        assert (x, x2) == (0, 150)
+
+    def test_get_intervals_at_polygon_mid_band(self):
+        """Polygon mid-band residuals L→R for multi-interval callers."""
+        # Axis-aligned rect as polygon: same geometry as a mid figure box
+        polygon = ((150, 0), (350, 0), (350, 400), (150, 400))
+        zone = ExclusionZone(
+            box=Box(x=150, y=0, x2=350, y2=400),
+            kind=ZONE_FIGURE,
+            polygon=polygon,
+        )
+        index = ExclusionZoneIndex([zone])
+        intervals = index.get_intervals_at(100, 120, 0, 612)
+        assert len(intervals) == 2
+        assert abs(intervals[0][0] - 0) < 0.01
+        assert abs(intervals[0][1] - 150) < 0.01
+        assert abs(intervals[1][0] - 350) < 0.01
+        assert abs(intervals[1][1] - 612) < 0.01
 
 
 # ---------------------------------------------------------------------------
