@@ -44,6 +44,16 @@ jobs:
         run: |
           uv run python -m compileall babeldoc
           uv run babeldoc --help
+          uv run python -m babeldoc.tools.dual_quality_check --self-check
+
+      # Unit tests only — no Orgasms dual pixmap / large-fixture gates (PR-01).
+      # Fonts may be absent on fresh runners; tests that need them skip via skipif.
+      - name: Unit tests
+        run: |
+          uv run pytest tests/ -q \
+            --ignore=tests/Longer\ Stronger\ Orgasms\ For\ Him.pdf \
+            --ignore=tests/Module\ 1.pdf \
+            --tb=short
 
       - name: Lightweight no-secret PDF E2E
         run: |

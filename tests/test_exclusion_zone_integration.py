@@ -125,16 +125,19 @@ class TestExclusionZoneIndex:
         assert x1 == 200  # 被 zone 的右边界收窄
         assert x2 == 612
 
-    def test_zone_inside_text_chooses_wider_side(self):
-        """zone 在文本区域内时，选择更宽的一侧。"""
-        # zone 在中间 (200-400)
+    def test_zone_inside_text_prefers_left_when_usable(self):
+        """zone 在文本区域内：左侧残条够宽时保留左侧（side-photo wrap）。
+
+        Production policy is left-prefer when ``left_gap >= min_width``, not
+        pure widest-side (architecture K20 / Orgasms p.21 mid-photo fix).
+        """
+        # zone 在中间 (200-400); default span [0, 612] → left 200, right 212
         zone = self._make_zone(200, 100, 400, 300)
         index = ExclusionZoneIndex([zone])
 
-        # 左侧 200，右侧 212，右侧更宽
         x1, x2 = index.get_available_x_range(150, 250, 0, 612)
-        assert x1 == 400  # 保留右侧
-        assert x2 == 612
+        assert x1 == 0
+        assert x2 == 200  # keep left residual
 
     def test_zone_outside_y_range_no_effect(self):
         """zone 在行的 y 范围外不影响宽度。"""
