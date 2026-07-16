@@ -1266,6 +1266,7 @@ class Typesetting:
                                     typesetting_units, box, scale, opt_avg_height,
                                     line_skip, opt_space_width, opt_tracking,
                                     reference_widths=reference_widths,
+                                    paragraph=paragraph,
                                 )
                                 if opt_breaks:
                                     opt_units, opt_fit = self._layout_typesetting_units(
@@ -1531,6 +1532,34 @@ class Typesetting:
         return alignment
 
     @staticmethod
+    def _parse_first_line_indent(paragraph: il_version_1.PdfParagraph) -> float:
+        """Normalize paragraph.first_line_indent to a non-negative float.
+
+        Accepts float/int, bool (legacy), and XML strings ("true"/"12.0").
+        """
+        val = getattr(paragraph, "first_line_indent", None)
+        if val is None:
+            return 0.0
+        if isinstance(val, bool):
+            return 12.0 if val else 0.0
+        if isinstance(val, (int, float)):
+            return max(0.0, float(val))
+        if isinstance(val, str):
+            low = val.strip().lower()
+            if low in ("", "false", "none", "null"):
+                return 0.0
+            if low == "true":
+                return 12.0
+            try:
+                return max(0.0, float(low))
+            except ValueError:
+                return 0.0
+        try:
+            return max(0.0, float(val))
+        except (TypeError, ValueError):
+            return 0.0
+
+    @staticmethod
     def _effective_first_line_indent(
         paragraph: il_version_1.PdfParagraph,
         box: Box,
@@ -1539,16 +1568,20 @@ class Typesetting:
         scale: float,
         typesetting_units: list[TypesettingUnit],
     ) -> float:
-        """First-line indent in user space, capped so the first line stays usable.
+        """First-line indent in **absolute user space**, capped for usability.
 
-        Prevents pathological indents (or indent + zone) from leaving only one
-        CJK glyph on the first line (Orgasms p.12 title-style breaks).
+        Indent is measured from original EN geometry (pt) and must not shrink
+        with glyph ``scale`` — box coordinates are unscaled. Cap still uses
+        scaled glyph size so a tight first line keeps ~4 CJK characters
+        (Orgasms p.12 title-style breaks).
         """
-        raw = float(paragraph.first_line_indent or 0.0)
+        raw = Typesetting._parse_first_line_indent(paragraph)
         if raw <= 0:
             return 0.0
 
-        indent = raw * scale
+        # Absolute indent (same space as box.x / available_x). Placement uses
+        # current_x = max(available_x, box.x + indent).
+        indent = raw
         line_left = max(available_x, box.x + indent)
         remain = available_x2 - line_left
         # Target: room for at least ~4 glyphs at current scale
@@ -1562,8 +1595,12 @@ class Typesetting:
         if remain >= min_remain:
             return indent
 
-        # Shrink or drop indent to keep a usable first line
-        max_indent = available_x2 - available_x - min_remain
+        # Residual too tight even without indent → drop
+        if available_x2 - available_x < min_remain:
+            return 0.0
+        # Cap so box.x + indent leaves min_remain (indent is from box.x, not
+        # from available_x — important when a zone already pushed available_x).
+        max_indent = available_x2 - min_remain - box.x
         if max_indent <= 0:
             return 0.0
         return max(0.0, min(indent, max_indent))
@@ -2312,6 +2349,7 @@ class Typesetting:
         avg_height: float,
         line_skip: float,
         reference_widths: list[float] | None = None,
+        paragraph: il_version_1.PdfParagraph | None = None,
     ) -> list[float]:
         """估算每行的可用宽度（用于 DP 断行优化的近似值）。
 
@@ -2321,6 +2359,9 @@ class Typesetting:
 
         如果提供 reference_widths（原版行宽），则优先使用原版行宽作为目标，
         同时尊重 ExclusionZone 约束（取两者中较小值）。
+
+        First line (PR-07): when left-aligned with a first-line indent, reduce
+        the first estimated width so DP capacity matches placement.
 
         否则用 avg_height 步进 Y 位置，查询 ExclusionZone 得到每行可用宽度。
         """
@@ -2336,6 +2377,11 @@ class Typesetting:
 
         y = box.y2 - avg_height
         line_idx = 0
+        align = (
+            self._resolve_effective_alignment(paragraph, typesetting_units)
+            if paragraph is not None
+            else "left"
+        )
         while y > box.y:
             # Step A: sum of all residual pockets (not left-prefer single strip)
             intervals = self._query_line_intervals(y, y + query_h, box)
@@ -2355,6 +2401,35 @@ class Typesetting:
             else:
                 width = zone_width
 
+            # Match placement geometry for first-line indent (PR-07):
+            # place uses max(primary_left, box.x+indent) after zone + left ref-cap.
+            if (
+                line_idx == 0
+                and paragraph is not None
+                and align == "left"
+                and self._parse_first_line_indent(paragraph) > 0
+            ):
+                capped = self._cap_leftmost_interval_with_reference(
+                    box,
+                    intervals,
+                    reference_widths,
+                    line_idx,
+                    alignment=align,
+                )
+                ix1, ix2 = capped[0]
+                indent = self._effective_first_line_indent(
+                    paragraph,
+                    box,
+                    ix1,
+                    ix2,
+                    scale,
+                    typesetting_units,
+                )
+                if indent > 0:
+                    line_start = max(ix1, box.x + indent)
+                    lost = max(0.0, line_start - ix1)
+                    width = max(0.0, width - lost)
+
             widths.append(width)
             y -= max(avg_height * line_skip, max_unit_height * 1.05)
             line_idx += 1
@@ -2371,11 +2446,13 @@ class Typesetting:
         space_width: float,
         decorative_tracking: float,
         reference_widths: list[float] | None = None,
+        paragraph: il_version_1.PdfParagraph | None = None,
     ) -> list[int] | None:
         """计算 DP 优化的断行位置。失败时返回 None。"""
         line_widths = self._estimate_line_widths(
             typesetting_units, box, scale, avg_height, line_skip,
             reference_widths=reference_widths,
+            paragraph=paragraph,
         )
         if not line_widths:
             return None
@@ -2620,21 +2697,20 @@ class Typesetting:
         # gap would shift center/right lines into the hole (PR-06 review).
         line_available_x = intervals[0][0]
         line_available_x2 = intervals[0][1]
-        if paragraph.first_line_indent and paragraph.first_line_indent > 0:
-            # 缩进相对于 box.x 而非 available_x，避免 zone 偏移叠加
-            # Center/right aligned paragraphs should not apply first-line indent
-            if alignment == "left":
-                indent = self._effective_first_line_indent(
-                    paragraph,
-                    box,
-                    available_x,
-                    available_x2,
-                    scale,
-                    typesetting_units,
-                )
-                if indent > 0:
-                    indented_x = box.x + indent
-                    current_x = max(current_x, min(indented_x, available_x2))
+        # First-line indent: absolute user-space from box.x (PR-07).
+        # Center/right skip indent; left body matches EN visual indent.
+        if alignment == "left" and self._parse_first_line_indent(paragraph) > 0:
+            indent = self._effective_first_line_indent(
+                paragraph,
+                box,
+                available_x,
+                available_x2,
+                scale,
+                typesetting_units,
+            )
+            if indent > 0:
+                indented_x = box.x + indent
+                current_x = max(current_x, min(indented_x, available_x2))
         # 遍历所有排版单元
         # Decorative tracking: extra spacing between characters for art text
         # (e.g. "G e n t l y" → "轻 轻 地").  Scaled by the same factor as

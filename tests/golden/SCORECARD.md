@@ -68,6 +68,17 @@ After rebuild with BabelDOC main ≥ PR-06:
 - **Mid-figure without EN taper:** text may continue into the right pocket on the
   same line (intentional multi-interval wrap). Score `figure_wrap` pages by eye.
 
+## PR-07 paragraph style (local check)
+
+After rebuild with BabelDOC main ≥ PR-07:
+
+- **First-line indent:** body paragraphs keep EN visual indent (absolute pt, not
+  shrunk by glyph scale). Flush-left EN must not gain a random indent after ZH.
+- **Center/right:** short titles/author lines still shift; long body forced left
+  even if detector said center.
+- **DP consistency:** first estimated line width subtracts indent so DP breaks
+  match placement.
+
 ## CI vs local
 
 | Gate | CI | Local |

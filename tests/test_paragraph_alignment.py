@@ -233,6 +233,39 @@ class TestEffectiveFirstLineIndent:
         )
         assert indent == pytest.approx(12.0)
 
+    def test_indent_is_absolute_not_scaled(self):
+        """EN visual indent is in user space; glyph scale must not shrink it."""
+        para = PdfParagraph(
+            box=Box(x=56, y=100, x2=500, y2=200),
+            pdf_style=PdfStyle(font_id="base", font_size=14.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="正文",
+            first_line_indent=20.0,
+        )
+        units = [SimpleNamespace(width=14.0, is_space=False) for _ in range(20)]
+        at_half = Typesetting._effective_first_line_indent(
+            para, para.box, 56.0, 500.0, 0.5, units
+        )
+        at_full = Typesetting._effective_first_line_indent(
+            para, para.box, 56.0, 500.0, 1.0, units
+        )
+        assert at_half == pytest.approx(20.0)
+        assert at_full == pytest.approx(20.0)
+
+    def test_parse_legacy_string_indent(self):
+        para = PdfParagraph(
+            box=Box(x=0, y=0, x2=100, y2=20),
+            pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="x",
+            first_line_indent="18.5",
+        )
+        assert Typesetting._parse_first_line_indent(para) == pytest.approx(18.5)
+        para.first_line_indent = "true"
+        assert Typesetting._parse_first_line_indent(para) == pytest.approx(12.0)
+        para.first_line_indent = False
+        assert Typesetting._parse_first_line_indent(para) == 0.0
+
 
 class TestApplyLineHorizontalAlignment:
     def _unit_at(self, x: float, width: float = 10.0) -> TypesettingUnit:
@@ -272,3 +305,179 @@ class TestApplyLineHorizontalAlignment:
             units, 0, 1, available_x=50.0, available_x2=250.0, alignment="center"
         )
         assert units[0].box.x == pytest.approx(50.0)
+
+
+class TestLayoutStyleConsistency:
+    """End-to-end style: indent + center in production layout path (PR-07)."""
+
+    def _unit(self, ch: str = "中", width: float = 10.0, height: float = 12.0):
+        box = Box(x=0, y=0, x2=width, y2=height)
+        char = PdfCharacter(
+            char_unicode=ch,
+            box=box,
+            visual_bbox=VisualBbox(box=Box(x=0, y=0, x2=width, y2=height)),
+            pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+        )
+        return TypesettingUnit(char=char)
+
+    def _typesetting(self):
+        from unittest.mock import MagicMock
+
+        from babeldoc.format.pdf.translation_config import TranslationConfig
+        from babeldoc.translator.fixed_map_translator import FixedMapTranslator
+
+        cfg = TranslationConfig(
+            translator=FixedMapTranslator(),
+            input_file="style.pdf",
+            lang_in="en",
+            lang_out="zh-CN",
+            doc_layout_model=MagicMock(),
+            auto_extract_glossary=False,
+        )
+        return Typesetting(cfg)
+
+    def test_layout_applies_first_line_indent(self):
+        ts = self._typesetting()
+        box = Box(x=50, y=100, x2=350, y2=400)
+        para = PdfParagraph(
+            box=box,
+            pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="测试段落",
+            first_line_indent=24.0,
+            alignment="left",
+        )
+        units = [self._unit(width=10.0) for _ in range(8)]
+        placed, _ = ts._layout_typesetting_units(
+            units,
+            box,
+            scale=1.0,
+            line_skip=1.05,
+            paragraph=para,
+            use_english_line_break=False,
+            break_points=None,
+            reference_widths=None,
+        )
+        assert placed
+        assert placed[0].box.x == pytest.approx(74.0, abs=0.5)  # 50 + 24
+
+    def test_layout_center_short_title(self):
+        ts = self._typesetting()
+        box = Box(x=50, y=100, x2=350, y2=150)
+        para = PdfParagraph(
+            box=box,
+            pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="标题",
+            first_line_indent=0.0,
+            alignment="center",
+        )
+        # Two 10pt glyphs → line width 20; available 300 → start at 50+(300-20)/2=190
+        units = [self._unit(ch="标", width=10.0), self._unit(ch="题", width=10.0)]
+        placed, _ = ts._layout_typesetting_units(
+            units,
+            box,
+            scale=1.0,
+            line_skip=1.05,
+            paragraph=para,
+            use_english_line_break=False,
+            break_points=None,
+        )
+        assert placed
+        assert placed[0].box.x == pytest.approx(190.0, abs=1.0)
+
+    def test_center_ignores_first_line_indent(self):
+        ts = self._typesetting()
+        box = Box(x=50, y=100, x2=350, y2=150)
+        para = PdfParagraph(
+            box=box,
+            pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="标题",
+            first_line_indent=40.0,
+            alignment="center",
+        )
+        units = [self._unit(ch="标", width=10.0), self._unit(ch="题", width=10.0)]
+        placed, _ = ts._layout_typesetting_units(
+            units,
+            box,
+            scale=1.0,
+            line_skip=1.05,
+            paragraph=para,
+            use_english_line_break=False,
+        )
+        assert placed
+        # Still centered as if no indent (not left+40)
+        assert placed[0].box.x == pytest.approx(190.0, abs=1.0)
+
+    def test_estimate_first_line_width_subtracts_indent(self):
+        ts = self._typesetting()
+        box = Box(x=0, y=100, x2=200, y2=400)
+        para = PdfParagraph(
+            box=box,
+            pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="正文" * 20,
+            first_line_indent=30.0,
+            alignment="left",
+        )
+        units = [self._unit() for _ in range(12)]
+        widths = ts._estimate_line_widths(
+            units,
+            box,
+            scale=1.0,
+            avg_height=12.0,
+            line_skip=1.05,
+            paragraph=para,
+        )
+        assert widths
+        assert widths[0] == pytest.approx(170.0)  # 200 - 30
+        if len(widths) > 1:
+            assert widths[1] == pytest.approx(200.0)
+
+    def test_indent_noop_when_zone_already_past_indent(self):
+        """Left figure residual starts past box.x+indent → no extra indent shift."""
+        from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
+            ExclusionZone,
+            ExclusionZoneIndex,
+            ZONE_FIGURE,
+        )
+
+        ts = self._typesetting()
+        # Figure covers [0, 200]; body residual starts at 200
+        ts._current_zone_index = ExclusionZoneIndex(
+            [
+                ExclusionZone(
+                    box=Box(x=0, y=100, x2=200, y2=400),
+                    kind=ZONE_FIGURE,
+                    priority=20,
+                )
+            ]
+        )
+        box = Box(x=0, y=100, x2=500, y2=400)
+        para = PdfParagraph(
+            box=box,
+            pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="正文",
+            first_line_indent=24.0,
+            alignment="left",
+        )
+        units = [self._unit(width=10.0) for _ in range(5)]
+        placed, _ = ts._layout_typesetting_units(
+            units,
+            box,
+            scale=1.0,
+            line_skip=1.05,
+            paragraph=para,
+            use_english_line_break=False,
+        )
+        assert placed
+        # Start at residual left (200), not 0+24
+        assert placed[0].box.x == pytest.approx(200.0, abs=0.5)
+
+        widths = ts._estimate_line_widths(
+            units, box, 1.0, 12.0, 1.05, paragraph=para
+        )
+        # Full residual 300; indent adds no lost capacity (line_start==ix1)
+        assert widths[0] == pytest.approx(300.0)
