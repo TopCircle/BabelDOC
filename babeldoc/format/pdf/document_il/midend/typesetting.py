@@ -1531,22 +1531,33 @@ class Typesetting:
             line_count = int(getattr(rm, "line_count", 0) or 0)
             avg = getattr(rm, "avg_line_width", None)
             widths = getattr(rm, "per_line_widths", None) or []
+            last_ratio = float(getattr(rm, "last_line_ratio", 1.0) or 1.0)
 
             # Single-line page-centered title/date: avg≈box always; trust
             # detection (it already rejected near-full-page body lines).
             if line_count <= 1:
                 return alignment
 
-            # Multi-line: demote only when original lines fill the para span
-            # like body (majority nearly full-width). Centered author blocks
-            # have short inset lines → fullish ratio stays low.
+            # Multi-line demotion (Orgasms false-center body):
+            # majority of lines fill the para span AND there is a clearly
+            # short last line. Do NOT demote 2-line arXiv affiliation blocks:
+            # after date split their tight bbox makes fullish≈1.0 even though
+            # every original line is page-centered (golden figure PDF header
+            # lines 3–4 were forced left by the old fullish-only rule).
             if widths:
                 fullish = sum(
                     1 for w in widths if float(w) >= box_w * 0.85
                 ) / len(widths)
-                if fullish >= 0.5:
-                    return "left"
-            elif avg is not None and float(avg) >= box_w * 0.85:
+            elif avg is not None:
+                fullish = 1.0 if float(avg) >= box_w * 0.85 else 0.0
+            else:
+                fullish = 0.0
+
+            if (
+                fullish >= 0.5
+                and line_count >= 3
+                and last_ratio < 0.65
+            ):
                 return "left"
 
             return alignment

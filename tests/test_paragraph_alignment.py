@@ -265,6 +265,33 @@ class TestResolveEffectiveAlignment:
         )
         assert Typesetting._resolve_effective_alignment(para) == "left"
 
+    def test_two_line_affil_after_date_split_stays_center(self):
+        """Regression: date split leaves a 2-line affil with fullish≈1 vs tight box.
+
+        Must NOT demote to left — dual header lines 3–4 were page-left by ~47pt.
+        """
+        from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
+
+        para = PdfParagraph(
+            box=Box(x=125.3, y=90, x2=487.0, y2=113),
+            pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode=(
+                "鲁大学应用物理系，美国康涅狄格州纽黑文市06520，"
+                "以及耶鲁大学耶鲁量子研究所，美国康涅狄格州纽黑文市06520"
+            ),
+        )
+        para.alignment = "center"
+        para.reference_metrics = ReferenceMetrics(
+            line_count=2,
+            avg_line_width=354.3,
+            last_line_width=346.9,
+            last_line_ratio=346.9 / 354.3,
+            font_size=10.0,
+            per_line_widths=[361.7, 346.9],
+        )
+        assert Typesetting._resolve_effective_alignment(para) == "center"
+
 
 class TestEffectiveFirstLineIndent:
     def test_caps_indent_when_first_line_would_be_one_glyph(self):
