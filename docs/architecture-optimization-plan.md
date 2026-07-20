@@ -257,10 +257,12 @@ queue: multi-PDF, architecture-shaped, independent of F1–F4.
 |------:|----|------|------------------------|
 | 1 | **S1** | CI `pytest` + FixedMap + IL fingerprint | ✅ done |
 | 1b | **S1.1** | Dual text-layer metrics (`--dual`); shared crush/gap helpers | ✅ done (ruler for later layout PRs) |
-| 2 | **S2** | Wire `QuoteZoneConfig` into **main** typesetting; fix `typsetting_document` watermark typo | Quote/wrap + correctness |
+| 2 | **S2** | Wire `QuoteZoneConfig` into **main** typesetting; fix `typsetting_document` watermark typo | ✅ done (`3b50f52`, `80ec6cf`) |
 | 3 | **S3** | Multi-interval: **identical** capacity for estimate → DP → place; `DP_REJECT` logs | ✅ done (`_line_capacity_like_place`) |
 
-Map onto MVP slice: S1≈M1/P0a fingerprint; S1.1 = dual PDF metrics (not full P0b ONNX E2E — that remains non-goal); S2≈M2+M3; S3 closed-loop capacity (PR-06 follow-up).
+**S1 / S1.1 / S2 / S3 complete.** Next system layout items: **L3** (align/indent), **L4** (header skip vs reflow), then optional S1.2 metrics.
+
+Map onto MVP slice: S1≈M1/P0a fingerprint; S1.1 = dual PDF metrics (not full P0b ONNX E2E — that remains non-goal); S2 quote wire; S3 closed-loop capacity.
 
 #### Full ID table
 

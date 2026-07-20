@@ -229,8 +229,37 @@ Resume only with a **new plan** (not more one-off glue / dict / pull-back patche
 |---|------|----------------------|------|
 | **S1** | CI `pytest` + FixedMap + IL fingerprint + CLI self-check | Safety net for refactors | ✅ **done** (`checks.yml`, `test_dual_golden_synth`) |
 | **S1.1** | Dual **text-layer** metrics (`dual_quality_check --dual`) | Multi-page crush/SOH/font/vgap ruler without translate | ✅ **done** (`dual_layout_metrics`, `test_dual_layout_metrics`) |
-| **S2** | Wire `QuoteZoneConfig` into **main** typesetting + fix `typsetting_document` watermark typo | Quote/body collision; Both-watermark hard bug | unit + optional quote synth; figure probe green |
+| **S2** | Wire `QuoteZoneConfig` into **main** typesetting + fix `typsetting_document` watermark typo | Quote/body collision; Both-watermark hard bug | ✅ **done** (`3b50f52` quote wire, `80ec6cf` watermark typo, `test_typesetting_quote_config`) |
 | **S3** | Multi-interval: **same** intervals for estimate → DP → place; log DP reject | Figure wrap + stops silent bad-greedy | ✅ **done** (`_line_capacity_like_place`, `DP_REJECT` logs, `test_multi_interval_layout`) |
+
+**Post-freeze “next three” (S1 / S1.1 / S2 / S3) = complete.** Next layout work is **L3+** (style / align / CJK break), not another S-number unless reopened.
+
+### Operator sample: All Tied Up (record only — 2026-07-20)
+
+| Field | Value |
+|-------|--------|
+| Source | `…/Gabrielle Moore/All Tied Up/All Tied Up.pdf` |
+| Dual (local) | `All Tied Up.no_watermark.zh-CN.dual.pdf` (latest ~18:07) |
+| Scope | Translate pages **4–26** only (1–3, 27 intentional skip) |
+| S1.1 hard gates (4–26 left) | **PASS** — crush=0, min≥10.5pt, soh=0 |
+| S1.1 soft | vgap warnings on illustrated pages (p5/7/10/20) — usually figure bands |
+| Previews | `dual_quality_out/atu_s3_review/p*_left.png` (gitignored local) |
+
+#### ATU open issues (do **not** reopen F1–F4 patching)
+
+| Pri | Class | Symptom | Pages (1-based) | Likely track |
+|----:|-------|---------|-----------------|--------------|
+| **P0** | `align_center_false` | Body/warning blocks look **center** or short last line centered; left edge x scatters (std ≫ 20) | p5 top, p14 warnings | **L3** paragraph alignment |
+| **P0** | `list_indent` | Numbered steps: `1.` / body / step 2 block use **different** left x | p14 (and similar list pages) | **L3** first-line / list indent |
+| **P1** | `cjk_ragged_break` | Mid-phrase / orphan lines: 「这个」「理智和」「在这」; high line-length stdev | p5, p6, p8, p18, p20 | **L3** + CJK break (not dict F1) |
+| **P1** | `wrap_column` | Figure-side narrow column: acceptable wrap but uneven fill | p6, p7, p10, p20 | S3 done; residual is style/break |
+| **P2** | `title_half_en` | e.g. `technique 2: 床上捆绑` | p17 | glossary / span (DeepLX), not layout |
+| **P2** | `vgap_soft` | Large vertical gap with figure | p5, p7, p10, p20 | expect figure; human-check lost text |
+| — | crush / SOH / open-paren EOL | Not material on this dual | — | no action |
+
+**Not bugs for this dual:** pages 1–3 / 27 untranslated (operator page range); Shinju/RACK bare EN if proper_nouns; footer URL.
+
+**Suggested next code track after S1–S3:** **L3** (alignment + indent contract), validated on ATU p5 + p14 with S1.1 before/after JSON.
 
 #### S1.1 operator quick check
 
@@ -295,7 +324,7 @@ Figure golden hard gate remains: `python -m babeldoc.tools.figure_baseline_probe
 - Mixing figure golden re-baseline into dual-layer PRs  
 - Mega OCR-only if-ladders without a single strategy replacement  
 
-**Operator rule:** pick from **S1 → S2 → S3** unless a hard crash (C1) blocks shipping.
+**Operator rule:** S1→S3 complete; pick **L3** for ATU-class align/break, or **C1** only if watermark-Both still broken on a build.
 
 ## Rating scale
 
