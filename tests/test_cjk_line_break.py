@@ -274,8 +274,8 @@ class TestKinsoku:
             _U(unicode="。"),
         ]
         merge_cjk_units(units)
-        # 「持」在「保持」内部 → 不可断
-        assert units[1].can_break_line_cache is False
+        # 「保持」：不可在首字「保」之后断（can_break = break AFTER unit）
+        assert units[0].can_break_line_cache is False
         # 开括号行尾禁则
         assert units[2].can_break_line_cache is False
         # 句号行首禁则 → 前一字符「）」不可断

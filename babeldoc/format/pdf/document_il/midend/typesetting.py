@@ -159,13 +159,14 @@ def merge_cjk_units(units: list['TypesettingUnit']) -> list['TypesettingUnit']:
         cjk_indices = [idx for idx, _ in cjk_positions]
 
         for cjk_pos in range(1, len(cjk_text)):
-            unit_idx = cjk_indices[cjk_pos]
             if cjk_indices[cjk_pos] - cjk_indices[cjk_pos - 1] != 1:
                 continue
 
+            # can_break_line = "may break AFTER this unit". Mark the *first*
+            # char of a multi-char word so we never break 感|情 / 社会|主义.
             word2 = cjk_text[cjk_pos - 1 : cjk_pos + 1]
             if is_cjk_two_char_word(word2):
-                word_internal.add(unit_idx)
+                word_internal.add(cjk_indices[cjk_pos - 1])
                 continue
 
             if (
@@ -174,7 +175,7 @@ def merge_cjk_units(units: list['TypesettingUnit']) -> list['TypesettingUnit']:
             ):
                 word3 = cjk_text[cjk_pos - 2 : cjk_pos + 1]
                 if is_cjk_three_char_word(word3):
-                    word_internal.add(unit_idx)
+                    word_internal.add(cjk_indices[cjk_pos - 2])
                     word_internal.add(cjk_indices[cjk_pos - 1])
 
     for i, unit in enumerate(units):
@@ -3155,26 +3156,41 @@ class Typesetting:
                     )
                 )
             )
-            # 行尾禁则：DP 断行不应将行尾禁用字符（如（【《）置于行末
-            if dp_break and need_break and i > 0:
+            # 行尾禁则：不可将（【「 等置于行末（贪心 + DP）
+            if need_break and i > 0:
                 prev_unicode = typesetting_units[i - 1].try_get_unicode()
-                if prev_unicode and prev_unicode in _CJK_LINE_END_FORBIDDEN:
+                if prev_unicode and is_cjk_line_end_forbidden(prev_unicode):
                     need_break = False
-            # CJK 词组保护：如果当前字符在 CJK 词组内部（can_break_line=False），
-            # 尝试将整个词组放在当前行。如果放不下，回退到词组起始位置换行。
-            if (need_break and not dp_break and unit.is_cjk_char
-                    and last_unit and last_unit.is_cjk_char
-                    and not unit.can_break_line):
-                # 在词组内部，尝试将剩余词组字符放在当前行
-                word_width = unit_width
-                for k in range(i + 1, len(typesetting_units)):
-                    w = typesetting_units[k]
-                    if not w.is_cjk_char or w.can_break_line:
-                        break
-                    word_width += w.width * scale
-                # Whole word fits in the current pocket (no cross-figure glue)
-                if current_x + word_width <= available_x2 + 1e-6:
+            # CJK 词组保护：上一字 can_break_line=False 表示不可在其后断开
+            # （二字词标在首字上：感 can_break=False → 不在 感|情 断开）
+            if (
+                need_break
+                and not dp_break
+                and last_unit is not None
+                and not last_unit.can_break_line
+            ):
+                # 尝试把词组剩余放在当前行；放不下则取消断行并允许轻微溢出，
+                # 由外层 scale 搜索消化（避免 感|情、卷（|1989）
+                if unit.is_cjk_char and last_unit.is_cjk_char:
+                    word_width = unit_width
+                    for k in range(i + 1, len(typesetting_units)):
+                        w = typesetting_units[k]
+                        if not w.is_cjk_char or (
+                            k > i and typesetting_units[k - 1].can_break_line
+                        ):
+                            break
+                        word_width += w.width * scale
+                    if current_x + word_width <= available_x2 + 1e-6:
+                        need_break = False
+                    else:
+                        # 词组放不下：不在词中断开，强制留在本行（overflow）
+                        need_break = False
+                        all_units_fit = False
+                else:
+                    # 数字/空格 + 年 等非纯 CJK 粘连
                     need_break = False
+                    if not fits_current:
+                        all_units_fit = False
             # CJK 孤行保护：如果当前行只有 ≤2 个字符就要换行，
             # 标记为需要特殊处理（由 DP 在后续优化中处理）
             # 注意：不在贪心循环中强制溢出，避免布局问题
