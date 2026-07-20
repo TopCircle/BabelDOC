@@ -2917,7 +2917,13 @@ class Typesetting:
                     )
                     line_start_idx = len(typeset_units)
 
-                    current_y -= max(mode_height * line_skip, max_height * 1.05)
+                    # Upstream v0.6.4: floor advance with dominant em (font_size)
+                    # so all-Latin glyph boxes do not shrink CJK line skip.
+                    current_y -= max(
+                        font_size * scale * line_skip,
+                        mode_height * line_skip,
+                        max_height * 1.05,
+                    )
                     line_ys.append(current_y)
                     line_height = 0.0
                     current_line_heights = []  # 清空当前行高度列表

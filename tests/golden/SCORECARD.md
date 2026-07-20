@@ -4,8 +4,9 @@ Local checklist for Orgasms-class dual PDFs. **Not required for CI green.**
 
 ## Current operator baseline (2026-07-20) — freeze here
 
-**Code:** `main` / `origin/main` @ **`7e9a984`**
-`fix(typesetting): keep 2-line centered affil after date split`
+**Code baseline (layout intent):** fork tip on **`7e9a984` figure golden quality**, plus
+merged upstream **v0.6.4** (raster pixel budget + Latin/CJK line-advance floor).
+Re-check figure dual after the 0.6.4 line-spacing change if vertical layout shifts.
 
 **Figure golden (vector arXiv) — primary layout baseline**
 
