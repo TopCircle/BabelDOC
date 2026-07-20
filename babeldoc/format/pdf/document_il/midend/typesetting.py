@@ -44,6 +44,27 @@ from babeldoc.format.pdf.translation_config import WatermarkOutputMode
 
 logger = logging.getLogger(__name__)
 
+
+def line_advance_distance(
+    font_size: float,
+    scale: float,
+    line_skip: float,
+    mode_height: float,
+    max_height: float,
+) -> float:
+    """How far to step ``current_y`` down after finishing a typeset line.
+
+    Floors the advance with the paragraph's dominant em (``font_size * scale``)
+    so an all-Latin line with short glyph boxes cannot shrink the skip and let
+    the next CJK line overlap (upstream v0.6.4).
+    """
+    return max(
+        font_size * scale * line_skip,
+        mode_height * line_skip,
+        max_height * 1.05,
+    )
+
+
 LINE_BREAK_REGEX = regex.compile(
     r"^["
     r"a-z"
@@ -2917,12 +2938,8 @@ class Typesetting:
                     )
                     line_start_idx = len(typeset_units)
 
-                    # Upstream v0.6.4: floor advance with dominant em (font_size)
-                    # so all-Latin glyph boxes do not shrink CJK line skip.
-                    current_y -= max(
-                        font_size * scale * line_skip,
-                        mode_height * line_skip,
-                        max_height * 1.05,
+                    current_y -= line_advance_distance(
+                        font_size, scale, line_skip, mode_height, max_height
                     )
                     line_ys.append(current_y)
                     line_height = 0.0

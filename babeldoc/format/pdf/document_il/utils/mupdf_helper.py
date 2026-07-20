@@ -4,29 +4,51 @@ import pymupdf
 from babeldoc.const import get_process_pool
 from babeldoc.format.pdf.document_il.utils.raster_geometry import DEFAULT_MAX_PIXELS
 from babeldoc.format.pdf.document_il.utils.raster_geometry import RasterGeometry
+from babeldoc.format.pdf.document_il.utils.raster_geometry import (
+    max_dpi_within_pixel_budget,
+)
 from babeldoc.format.pdf.document_il.utils.raster_geometry import with_pixel_budget
 
 
 def get_no_rotation_img(page: pymupdf.Page, dpi: int = 72) -> pymupdf.Pixmap:
-    # return page.get_pixmap(dpi=72)
+    """Legacy pixmap helper; DPI is capped to ``DEFAULT_MAX_PIXELS``.
+
+    Prefer ``with_pixel_budget`` / ``with_target_long_edge`` for new code.
+    """
     original_rotation = page.rotation
     page.set_rotation(0)
-    pix = page.get_pixmap(dpi=dpi)
-    page.set_rotation(original_rotation)
-    return pix
+    try:
+        rect = page.rect
+        safe_dpi = max_dpi_within_pixel_budget(
+            float(rect.width),
+            float(rect.height),
+            max(1, int(dpi)),
+            DEFAULT_MAX_PIXELS,
+        )
+        return page.get_pixmap(dpi=safe_dpi)
+    finally:
+        page.set_rotation(original_rotation)
 
 
 def get_no_rotation_img_multiprocess_internal(
     pdf_bytes: str, pagenum: int, dpi: int = 72
 ) -> np.ndarray:
-    # return page.get_pixmap(dpi=72)
     doc = pymupdf.open(pdf_bytes)
     try:
         page = doc[pagenum]
         original_rotation = page.rotation
         page.set_rotation(0)
-        pix = page.get_pixmap(dpi=dpi)
-        page.set_rotation(original_rotation)
+        try:
+            rect = page.rect
+            safe_dpi = max_dpi_within_pixel_budget(
+                float(rect.width),
+                float(rect.height),
+                max(1, int(dpi)),
+                DEFAULT_MAX_PIXELS,
+            )
+            pix = page.get_pixmap(dpi=safe_dpi)
+        finally:
+            page.set_rotation(original_rotation)
         return np.frombuffer(pix.samples, np.uint8).reshape(
             pix.height,
             pix.width,
