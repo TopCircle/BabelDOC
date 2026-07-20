@@ -79,7 +79,7 @@ cherry-pick `7e9a984..004ba7b`. **Never** mix PR-08 package extract into this tr
 | **0** | Probe + this checklist (no behavior change) | ✅ unit + `--self-check` green (`f713179`) |
 | **A** | Detect searchable image → auto `ocr_workaround` only | ✅ figure not dual-layer; enable flags; figure dual probe still green |
 | **B** | Font split policy: hard on born-digital; soft only if `ocr_workaround` | ✅ unit + policy; figure dual probe still green |
-| **C** | OCR typesetting (scale/box/ref_width) **gated** on `ocr_workaround` | figure probe **unchanged**; font.unknown size/span improved |
+| **C** | OCR typesetting (scale/box/ref_width) **gated** on `ocr_workaround` | ✅ OCR unit tests; figure dual probe still green |
 | **D** | Optional OCR reflow / single face / glyph hygiene | figure still green; backlog items one PR each |
 
 #### Phase A status
@@ -107,6 +107,19 @@ cherry-pick `7e9a984..004ba7b`. **Never** mix PR-08 package extract into this tr
     sentence-final (keep mid-clause Times→Courier for MT).
 - **Out:** OCR scale / box / `reference_widths` (Phase C).
 - **Tests:** `tests/test_font_switch_paragraph.py`.
+
+#### Phase C status
+
+- **In (all `if ocr_workaround`):** no mode-scale demotion; CJK leading
+  `_OCR_LINE_SKIP_CJK=1.30`; ignore EN `reference_widths`; min scale
+  `_OCR_MIN_SCALE=0.88`; search from 1.0; pre-expand box (down-first expand
+  order); `_ocr_normalize_unit_font_sizes` lifts ~7.5pt Courier runs; white-fill
+  aligns `paragraph.box` to layout rect (`add_text_fill_background`).
+- **Out:** mega-paragraph vertical reflow / single face / OCR glyph hygiene
+  (Phase D backlog).
+- **Tests:** `tests/test_ocr_layout_scale.py`.
+- **Operator:** regenerate **font.unknown** dual to judge size/span; **do not**
+  require figure dual regen for merge (born-digital path unchanged).
 
 **Red decision tree:** fix or `git revert` **current Phase PR only** — no `reset --hard` of the whole branch.
 

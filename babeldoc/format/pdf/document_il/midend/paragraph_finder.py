@@ -194,6 +194,12 @@ class ParagraphFinder:
             if layout_box.y2 > y2:
                 y2 = layout_box.y2
             assert x2 > x1 and y2 > y1
+            # Align typesetting box with the white fill. Dual-layer OCR pages
+            # often have a tight char-bbox para.box while the layout/white
+            # cover is taller; without this ZH is crushed into the top band
+            # and the rest of the white fill stays empty.
+            # (add_text_fill_background is only called when ocr_workaround.)
+            paragraph.box = Box(x1, y1, x2, y2)
             page.pdf_rectangle.append(
                 PdfRectangle(
                     box=Box(x1, y1, x2, y2),

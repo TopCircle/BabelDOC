@@ -985,6 +985,15 @@ class Typesetting:
     # Floor for scale search. 0.1 produced unreadable 1–4pt text when
     # exclusion zones left only a needle strip (Orgasms p.10/19/20).
     MIN_READABLE_SCALE = 0.55
+    # OCR dual-layer: slightly tighter than default CJK leading so long ZH
+    # body can keep a larger scale inside the original/white-fill box.
+    _OCR_LINE_SKIP_CJK = 1.30
+    # Floor scale under OCR — prefer expanding the white-fill box over
+    # unreadable ~0.55–0.7 crushing (font.unknown body → 7.5pt strip).
+    _OCR_MIN_SCALE = 0.88
+    # Body text smaller than this (pt) is treated as OCR noise (e.g. Courier
+    # 7.5) and lifted toward the paragraph median when ocr_workaround is on.
+    _OCR_MIN_BODY_FONT_PT = 10.0
 
     def __init__(self, translation_config: TranslationConfig):
         self.font_mapper = FontMapper(translation_config)
@@ -1113,8 +1122,15 @@ class Typesetting:
                 if paragraph.optimal_scale is not None:
                     all_scales.extend([paragraph.optimal_scale] * unit_count)
 
-        # 获取缩放因子的众数
-        if all_scales:
+        # Cap all paragraphs to the mode scale so a page stays visually uniform.
+        # OCR / searchable-image dual-layer is an exception: long body runs often
+        # need a lower scale than titles, and demoting titles/body to that mode
+        # leaves body text tiny inside a tall white fill (empty band under ZH).
+        if getattr(self.translation_config, "ocr_workaround", False):
+            logger.debug(
+                "ocr_workaround: keep per-paragraph optimal_scale (no mode demotion)"
+            )
+        elif all_scales:
             try:
                 modes = statistics.multimode(all_scales)
                 mode_scale = min(modes)
@@ -1200,11 +1216,27 @@ class Typesetting:
         """Core scale search + layout (zone index already filtered)."""
         box = paragraph.box
         scale = initial_scale
+        ocr_mode = bool(
+            getattr(self.translation_config, "ocr_workaround", False)
+        )
         if line_skip is None:
-            line_skip = self._DEFAULT_LINE_SKIP_CJK if self.is_cjk else self._DEFAULT_LINE_SKIP_NON_CJK
+            if self.is_cjk:
+                # Slightly tighter leading under OCR so more lines fit at a
+                # larger scale inside the white-fill box (dual-layer PDFs).
+                line_skip = (
+                    self._OCR_LINE_SKIP_CJK if ocr_mode else self._DEFAULT_LINE_SKIP_CJK
+                )
+            else:
+                line_skip = self._DEFAULT_LINE_SKIP_NON_CJK
 
-        # 提取原版行宽，用于参考布局
-        reference_widths = self._extract_original_line_widths(paragraph)
+        # 提取原版行宽，用于参考布局.
+        # OCR dual-layer: ignore EN line-width taper. OCR "lines" are noisy and
+        # often include short Courier runs; capping to those widths forces many
+        # wraps and crushes scale into a tiny top strip over empty white fill.
+        if ocr_mode:
+            reference_widths = None
+        else:
+            reference_widths = self._extract_original_line_widths(paragraph)
         if reference_widths:
             logger.debug(
                 f"Reference layout: {len(reference_widths)} original lines, "
@@ -1215,6 +1247,9 @@ class Typesetting:
         )
         if min_scale is None:
             min_scale = self.MIN_READABLE_SCALE
+        # OCR: do not crush below this for body readability; prefer expand box.
+        if ocr_mode:
+            min_scale = max(min_scale, self._OCR_MIN_SCALE)
         expand_space_flag = 0
         final_typeset_units = None
         last_typeset_units = None  # last layout attempt (may overflow box)
@@ -1226,6 +1261,19 @@ class Typesetting:
         box = self._pre_expand_narrow_box(
             box, paragraph, page, typesetting_units, apply_layout=apply_layout
         )
+
+        # OCR dual-layer: claim free width/height before crushing scale so ZH
+        # can use the white-fill region instead of shrinking into the top band.
+        if ocr_mode and box is not None:
+            box = self._ocr_pre_expand_box(box, paragraph, page, apply_layout)
+            typesetting_units = self._ocr_normalize_unit_font_sizes(
+                typesetting_units
+            )
+
+        # OCR: always search from full size so expand-before-shrink runs; a low
+        # precomputed_scale would otherwise accept tiny type immediately.
+        if ocr_mode and apply_layout and scale < 1.0:
+            scale = 1.0
 
         while scale >= min_scale:
             try:
@@ -1362,43 +1410,77 @@ class Typesetting:
 
             # Prefer expanding the box before crushing font size.
             # Order: right first (short EN titles → longer CJK), then down.
+            # OCR dual-layer: expand down first so body can use the white-fill
+            # height instead of only growing sideways.
             # Trigger expansion as soon as scale drops below ~full size, not
             # only after scale < 0.7 (that was too late for "Edging"-class titles).
             if expand_space_flag < 2 and scale >= 0.85:
                 space_expanded = False
+                expand_down_first = ocr_mode
+                retry_scale = 1.0 if ocr_mode else initial_scale
 
                 if expand_space_flag == 0:
-                    # Expand right first
-                    try:
-                        max_x = self.get_max_right_space(box, page) - 5
-                        if max_x > box.x2 + 1:
-                            expanded_box = Box(x=box.x, y=box.y, x2=max_x, y2=box.y2)
-                            box = expanded_box
-                            if apply_layout:
-                                paragraph.box = expanded_box
-                            space_expanded = True
-                    except Exception:
-                        pass
+                    if expand_down_first:
+                        try:
+                            min_y = self.get_max_bottom_space(box, page) + 2
+                            if min_y < box.y:
+                                expanded_box = Box(
+                                    x=box.x, y=min_y, x2=box.x2, y2=box.y2
+                                )
+                                box = expanded_box
+                                if apply_layout:
+                                    paragraph.box = expanded_box
+                                space_expanded = True
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            max_x = self.get_max_right_space(box, page) - 5
+                            if max_x > box.x2 + 1:
+                                expanded_box = Box(
+                                    x=box.x, y=box.y, x2=max_x, y2=box.y2
+                                )
+                                box = expanded_box
+                                if apply_layout:
+                                    paragraph.box = expanded_box
+                                space_expanded = True
+                        except Exception:
+                            pass
                     expand_space_flag = 1
                     if space_expanded:
-                        scale = initial_scale  # retry at full size with wider box
+                        scale = retry_scale
                         continue
 
                 elif expand_space_flag == 1:
-                    # Then expand downward
-                    try:
-                        min_y = self.get_max_bottom_space(box, page) + 2
-                        if min_y < box.y:
-                            expanded_box = Box(x=box.x, y=min_y, x2=box.x2, y2=box.y2)
-                            box = expanded_box
-                            if apply_layout:
-                                paragraph.box = expanded_box
-                            space_expanded = True
-                    except Exception:
-                        pass
+                    if expand_down_first:
+                        try:
+                            max_x = self.get_max_right_space(box, page) - 5
+                            if max_x > box.x2 + 1:
+                                expanded_box = Box(
+                                    x=box.x, y=box.y, x2=max_x, y2=box.y2
+                                )
+                                box = expanded_box
+                                if apply_layout:
+                                    paragraph.box = expanded_box
+                                space_expanded = True
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            min_y = self.get_max_bottom_space(box, page) + 2
+                            if min_y < box.y:
+                                expanded_box = Box(
+                                    x=box.x, y=min_y, x2=box.x2, y2=box.y2
+                                )
+                                box = expanded_box
+                                if apply_layout:
+                                    paragraph.box = expanded_box
+                                space_expanded = True
+                        except Exception:
+                            pass
                     expand_space_flag = 2
                     if space_expanded:
-                        scale = initial_scale
+                        scale = retry_scale
                         continue
 
             # 减小缩放因子
@@ -1410,35 +1492,69 @@ class Typesetting:
             # Late expansion fallback (legacy path) if early expand was skipped
             if scale < 0.7 and expand_space_flag < 2:
                 space_expanded = False
+                expand_down_first = ocr_mode
+                retry_scale = 1.0 if ocr_mode else initial_scale
                 if expand_space_flag == 0:
-                    try:
-                        max_x = self.get_max_right_space(box, page) - 5
-                        if max_x > box.x2 + 1:
-                            expanded_box = Box(x=box.x, y=box.y, x2=max_x, y2=box.y2)
-                            box = expanded_box
-                            if apply_layout:
-                                paragraph.box = expanded_box
-                            space_expanded = True
-                    except Exception:
-                        pass
+                    if expand_down_first:
+                        try:
+                            min_y = self.get_max_bottom_space(box, page) + 2
+                            if min_y < box.y:
+                                expanded_box = Box(
+                                    x=box.x, y=min_y, x2=box.x2, y2=box.y2
+                                )
+                                box = expanded_box
+                                if apply_layout:
+                                    paragraph.box = expanded_box
+                                space_expanded = True
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            max_x = self.get_max_right_space(box, page) - 5
+                            if max_x > box.x2 + 1:
+                                expanded_box = Box(
+                                    x=box.x, y=box.y, x2=max_x, y2=box.y2
+                                )
+                                box = expanded_box
+                                if apply_layout:
+                                    paragraph.box = expanded_box
+                                space_expanded = True
+                        except Exception:
+                            pass
                     expand_space_flag = 1
                     if space_expanded:
-                        scale = initial_scale
+                        scale = retry_scale
                         continue
                 elif expand_space_flag == 1:
-                    try:
-                        min_y = self.get_max_bottom_space(box, page) + 2
-                        if min_y < box.y:
-                            expanded_box = Box(x=box.x, y=min_y, x2=box.x2, y2=box.y2)
-                            box = expanded_box
-                            if apply_layout:
-                                paragraph.box = expanded_box
-                            space_expanded = True
-                    except Exception:
-                        pass
+                    if expand_down_first:
+                        try:
+                            max_x = self.get_max_right_space(box, page) - 5
+                            if max_x > box.x2 + 1:
+                                expanded_box = Box(
+                                    x=box.x, y=box.y, x2=max_x, y2=box.y2
+                                )
+                                box = expanded_box
+                                if apply_layout:
+                                    paragraph.box = expanded_box
+                                space_expanded = True
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            min_y = self.get_max_bottom_space(box, page) + 2
+                            if min_y < box.y:
+                                expanded_box = Box(
+                                    x=box.x, y=min_y, x2=box.x2, y2=box.y2
+                                )
+                                box = expanded_box
+                                if apply_layout:
+                                    paragraph.box = expanded_box
+                                space_expanded = True
+                        except Exception:
+                            pass
                     expand_space_flag = 2
                     if space_expanded:
-                        scale = initial_scale
+                        scale = retry_scale
                         continue
 
         # 如果仍然放不下，尝试去除英文换行限制
@@ -1725,6 +1841,90 @@ class Typesetting:
         if apply_layout:
             paragraph.box = expanded
         return expanded
+
+    def _ocr_pre_expand_box(
+        self,
+        box: Box,
+        paragraph: il_version_1.PdfParagraph,
+        page: il_version_1.Page,
+        apply_layout: bool,
+    ) -> Box:
+        """Widen/deepen the layout box before OCR scale search.
+
+        Searchable dual-layer pages keep a tall white fill over the EN image.
+        Claiming free right/bottom space up front lets ZH keep a larger scale
+        and fill more of that band instead of shrinking into the top edge.
+        """
+        if not box:
+            return box
+        x, y, x2, y2 = box.x, box.y, box.x2, box.y2
+        changed = False
+        try:
+            max_x = self.get_max_right_space(box, page) - 5
+            if max_x > x2 + 1:
+                x2 = max_x
+                changed = True
+        except Exception:
+            pass
+        try:
+            min_y = self.get_max_bottom_space(box, page) + 2
+            if min_y < y - 1:
+                y = min_y
+                changed = True
+        except Exception:
+            pass
+        if not changed:
+            return box
+        expanded = Box(x=x, y=y, x2=x2, y2=y2)
+        if apply_layout:
+            paragraph.box = expanded
+        return expanded
+
+    def _ocr_normalize_unit_font_sizes(
+        self,
+        typesetting_units: list[TypesettingUnit],
+    ) -> list[TypesettingUnit]:
+        """Lift undersized OCR runs (Courier 7.5) toward body size.
+
+        Dual-layer PDFs often mix ~11pt body with ~7.5pt mono. After translate
+        that small size either becomes the whole para style or drags mixed
+        runs down; floor them so scale=1 yields readable ZH.
+        """
+        if not typesetting_units:
+            return typesetting_units
+        sizes: list[float] = []
+        for u in typesetting_units:
+            fs = getattr(u, "font_size", None)
+            if fs is None and getattr(u, "char", None) is not None:
+                style = getattr(u.char, "pdf_style", None)
+                fs = getattr(style, "font_size", None) if style else None
+            if fs is not None and fs > 0:
+                sizes.append(float(fs))
+        if not sizes:
+            return typesetting_units
+        try:
+            med = float(statistics.median(sizes))
+        except statistics.StatisticsError:
+            med = max(sizes)
+        target = max(med, self._OCR_MIN_BODY_FONT_PT)
+        # Don't inflate true small print (footnotes) that dominate the para.
+        if med < self._OCR_MIN_BODY_FONT_PT * 0.85 and max(sizes) < self._OCR_MIN_BODY_FONT_PT:
+            target = max(med, 9.0)
+        for u in typesetting_units:
+            if getattr(u, "formular", None):
+                continue
+            fs = getattr(u, "font_size", None)
+            if fs is not None and 0 < fs < target * 0.92:
+                u.font_size = target
+            if getattr(u, "char", None) is not None and u.char.pdf_style is not None:
+                cfs = u.char.pdf_style.font_size
+                if cfs is not None and 0 < cfs < target * 0.92:
+                    u.char.pdf_style.font_size = target
+            if getattr(u, "style", None) is not None:
+                sfs = u.style.font_size
+                if sfs is not None and 0 < sfs < target * 0.92:
+                    u.style.font_size = target
+        return typesetting_units
 
     def _get_optimal_scale(
         self,
