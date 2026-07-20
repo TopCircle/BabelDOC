@@ -133,13 +133,28 @@ class RetypesetResult:
     reason: str = ""  # failure reason or notes
 
 
+# 序数/量词：与数字粘连成「第11卷」「1989年」等不可拆片段
+_CJK_MEASURE_AFTER_DIGIT = frozenset("卷章节页条款项年月日时分秒")
+_CJK_ORDINAL_BEFORE_DIGIT = frozenset("第")
+
+
+def _unit_char(unit: 'TypesettingUnit') -> str:
+    return unit.try_get_unicode() or ""
+
+
+def _is_digit_unit(unit: 'TypesettingUnit') -> bool:
+    ch = _unit_char(unit)
+    return len(ch) == 1 and ch.isdigit()
+
+
 def merge_cjk_units(units: list['TypesettingUnit']) -> list['TypesettingUnit']:
-    """标记 CJK 词组边界 + 禁则，使 DP/贪心不在词组内/非法位置断开。
+    """标记 CJK 词组边界 + 禁则 + 数字量词粘连，使 DP/贪心不在非法位置断开。
 
     策略：
-    1. 二字/三字词典：词组内部 ``can_break_line=False``
+    1. 二字/三字词典：词组内部 ``can_break_line=False``（标在首字上）
     2. 行首禁则：。，）」等前的字符不可断（避免标点落行首）
     3. 行尾禁则：（【「等本身不可断（避免开括号落行尾）
+    4. 数字粘连：连续数字不拆；「第」+ 数字 +「卷/年…」整段不拆
     """
     if not units:
         return units
@@ -199,6 +214,51 @@ def merge_cjk_units(units: list['TypesettingUnit']) -> list['TypesettingUnit']:
         # 行尾禁则：开括号/开引号本身不可作为断行点
         if is_cjk_line_end_forbidden(unicode):
             unit.can_break_line_cache = False
+
+    # 数字 / 序数 / 量词粘连：第11卷、1989年、第 11 卷（含空格）
+    n = len(units)
+    i = 0
+    while i < n:
+        ch = _unit_char(units[i])
+        # 「第」+ 可选空格 + 数字… + 可选空格 + 量词
+        if ch in _CJK_ORDINAL_BEFORE_DIGIT:
+            j = i + 1
+            while j < n and getattr(units[j], "is_space", False):
+                units[i].can_break_line_cache = False
+                units[j].can_break_line_cache = False
+                j += 1
+            if j < n and _is_digit_unit(units[j]):
+                units[i].can_break_line_cache = False
+                while j < n and _is_digit_unit(units[j]):
+                    units[j].can_break_line_cache = False
+                    j += 1
+                    # trailing spaces inside the run stay glued
+                    while j < n and getattr(units[j], "is_space", False):
+                        units[j].can_break_line_cache = False
+                        j += 1
+                if j < n and _unit_char(units[j]) in _CJK_MEASURE_AFTER_DIGIT:
+                    # measure may end the atomic run (break after measure OK)
+                    j += 1
+                i = j
+                continue
+        # 连续数字（含中间空格）+ 可选量词
+        if _is_digit_unit(units[i]):
+            j = i
+            while j < n and (
+                _is_digit_unit(units[j]) or getattr(units[j], "is_space", False)
+            ):
+                if j + 1 < n and (
+                    _is_digit_unit(units[j + 1])
+                    or getattr(units[j + 1], "is_space", False)
+                    or _unit_char(units[j + 1]) in _CJK_MEASURE_AFTER_DIGIT
+                ):
+                    units[j].can_break_line_cache = False
+                j += 1
+            if j < n and _unit_char(units[j]) in _CJK_MEASURE_AFTER_DIGIT:
+                j += 1
+            i = max(j, i + 1)
+            continue
+        i += 1
 
     return units
 
@@ -623,6 +683,47 @@ class TypesettingUnit:
                     form.relocation_transform = rt
         elif self.unicode is not None and self.x is not None:
             self.x += dx
+        self.box_cache = None
+
+    def shift_y(self, dy: float) -> None:
+        """Shift this unit vertically in place (after relocate)."""
+        if abs(dy) < 1e-6:
+            return
+        if self.char and self.char.box:
+            self.char.box.y += dy
+            self.char.box.y2 += dy
+            if self.char.visual_bbox and self.char.visual_bbox.box:
+                self.char.visual_bbox.box.y += dy
+                self.char.visual_bbox.box.y2 += dy
+        elif self.formular:
+            if self.formular.box:
+                self.formular.box.y += dy
+                self.formular.box.y2 += dy
+            for char in self.formular.pdf_character or []:
+                if char.box:
+                    char.box.y += dy
+                    char.box.y2 += dy
+                if char.visual_bbox and char.visual_bbox.box:
+                    char.visual_bbox.box.y += dy
+                    char.visual_bbox.box.y2 += dy
+            for curve in self.formular.pdf_curve or []:
+                if curve.box:
+                    curve.box.y += dy
+                    curve.box.y2 += dy
+                if curve.relocation_transform and len(curve.relocation_transform) >= 6:
+                    rt = list(curve.relocation_transform)
+                    rt[5] += dy  # CTM translation f
+                    curve.relocation_transform = rt
+            for form in self.formular.pdf_form or []:
+                if form.box:
+                    form.box.y += dy
+                    form.box.y2 += dy
+                if form.relocation_transform and len(form.relocation_transform) >= 6:
+                    rt = list(form.relocation_transform)
+                    rt[5] += dy
+                    form.relocation_transform = rt
+        elif self.unicode is not None and self.y is not None:
+            self.y += dy
         self.box_cache = None
 
     def relocate(
@@ -3108,7 +3209,19 @@ class Typesetting:
                 ]
             ):
                 current_x += space_width * 0.5
-            if use_english_line_break:
+            # English lookahead packs "don't break mid-word" runs. On CJK / OCR
+            # dual-layer it is harmful: kinsoku glues long unbreakable spans
+            # (e.g. （1989年）) so remaining < unit+lookahead forces *early*
+            # wraps → short tails like 「第11卷（」/「里），」 mid-sentence.
+            ocr_mode = bool(
+                getattr(self.translation_config, "ocr_workaround", False)
+            )
+            use_lookahead = (
+                use_english_line_break
+                and not ocr_mode
+                and not self.is_cjk
+            )
+            if use_lookahead:
                 width_before_next_break_point = self._get_width_before_next_break_point(
                     typesetting_units[i:], scale
                 )
@@ -3139,58 +3252,64 @@ class Typesetting:
                 and i in break_points
                 and not unit.is_hung_punctuation
             )
-            # Greedy wrap only when the unit cannot sit in the current pocket
-            # (after interval advance). Remaining-sum alone is insufficient:
-            # two thin pockets cannot host one wide unit.
+            # Greedy wrap only when the unit cannot sit in the current pocket.
+            # Skip English "2× open-paren" early wrap on CJK/OCR — that left
+            # 「第11卷（」 alone on a line before 1989.
             need_break = dp_break or (
                 not unit.is_hung_punctuation and (
                     (not fits_current)
                     or (
-                        use_english_line_break
+                        use_lookahead
                         and remaining
                         < effective_width + width_before_next_break_point - 1e-6
                     )
                     or (
-                        unit.is_cannot_appear_in_line_end_punctuation
+                        (not ocr_mode)
+                        and (not self.is_cjk)
+                        and unit.is_cannot_appear_in_line_end_punctuation
                         and remaining < effective_width * 2 - 1e-6
                     )
                 )
             )
-            # 行尾禁则：不可将（【「 等置于行末（贪心 + DP）
-            if need_break and i > 0:
-                prev_unicode = typesetting_units[i - 1].try_get_unicode()
-                if prev_unicode and is_cjk_line_end_forbidden(prev_unicode):
-                    need_break = False
-            # CJK 词组保护：上一字 can_break_line=False 表示不可在其后断开
-            # （二字词标在首字上：感 can_break=False → 不在 感|情 断开）
-            if (
-                need_break
-                and not dp_break
-                and last_unit is not None
-                and not last_unit.can_break_line
-            ):
-                # 尝试把词组剩余放在当前行；放不下则取消断行并允许轻微溢出，
-                # 由外层 scale 搜索消化（避免 感|情、卷（|1989）
-                if unit.is_cjk_char and last_unit.is_cjk_char:
-                    word_width = unit_width
-                    for k in range(i + 1, len(typesetting_units)):
-                        w = typesetting_units[k]
-                        if not w.is_cjk_char or (
-                            k > i and typesetting_units[k - 1].can_break_line
-                        ):
-                            break
-                        word_width += w.width * scale
-                    if current_x + word_width <= available_x2 + 1e-6:
+            # Units re-emitted on the next line when we pull illegal EOL tails
+            # (open paren / mid-word / mid-number) back off the finished line.
+            pull_to_next: list[TypesettingUnit] = []
+            if need_break and current_line_heights:
+                # If breaking here would end the line after a non-breakable unit
+                # (感|情, 第11卷（|1989), pull that tail onto the new line.
+                while len(typeset_units) > line_start_idx:
+                    tail = typeset_units[-1]
+                    tail_ch = tail.try_get_unicode() or ""
+                    illegal_eol = (not tail.can_break_line) or is_cjk_line_end_forbidden(
+                        tail_ch
+                    )
+                    if not illegal_eol:
+                        break
+                    pull_to_next.append(typeset_units.pop())
+                pull_to_next.reverse()
+                if pull_to_next:
+                    # Rebuild line height state after pull-back
+                    current_line_heights = [
+                        u.height
+                        for u in typeset_units[line_start_idx:]
+                        if not u.is_space
+                    ]
+                    if not current_line_heights:
+                        # Whole line was an unbreakable run — put back and overflow
+                        typeset_units.extend(pull_to_next)
+                        pull_to_next = []
+                        current_line_heights = [
+                            u.height
+                            for u in typeset_units[line_start_idx:]
+                            if not u.is_space
+                        ]
                         need_break = False
+                        all_units_fit = False
                     else:
-                        # 词组放不下：不在词中断开，强制留在本行（overflow）
-                        need_break = False
-                        all_units_fit = False
-                else:
-                    # 数字/空格 + 年 等非纯 CJK 粘连
-                    need_break = False
-                    if not fits_current:
-                        all_units_fit = False
+                        last_kept = typeset_units[-1]
+                        current_x = last_kept.box.x2 if last_kept.box else available_x
+                        last_unit = last_kept
+                        line_height = max(current_line_heights)
             # CJK 孤行保护：如果当前行只有 ≤2 个字符就要换行，
             # 标记为需要特殊处理（由 DP 在后续优化中处理）
             # 注意：不在贪心循环中强制溢出，避免布局问题
@@ -3300,6 +3419,32 @@ class Typesetting:
                     if current_y < box.y:
                         all_units_fit = False
                         # 这里不要 break，继续排版剩余内容
+
+                    # Re-place units pulled off the previous line (e.g. 「（」 before 1989).
+                    # Already relocated once — only shift geometry, never re-scale.
+                    for pu in pull_to_next:
+                        pu_w = pu.width  # already scaled by prior relocate
+                        pu_h = pu.height
+                        advanced_p = self._try_advance_interval_for_unit(
+                            pu_w,
+                            intervals,
+                            interval_idx,
+                            current_x,
+                            available_x2,
+                        )
+                        if advanced_p is not None:
+                            interval_idx, available_x, available_x2, current_x = advanced_p
+                        old_x = pu.box.x if pu.box else current_x
+                        old_y = pu.box.y if pu.box else current_y
+                        pu.shift_x(current_x - old_x)
+                        pu.shift_y(current_y - old_y)
+                        typeset_units.append(pu)
+                        if not pu.is_space:
+                            current_line_heights.append(pu_h)
+                        line_height = max(line_height, pu_h)
+                        current_x = pu.box.x2 if pu.box else current_x + pu_w
+                        last_unit = pu
+                    pull_to_next = []
 
                     if unit.is_space:
                         line_height = max(line_height, unit_height)

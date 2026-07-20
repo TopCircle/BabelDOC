@@ -280,3 +280,95 @@ class TestKinsoku:
         assert units[2].can_break_line_cache is False
         # 句号行首禁则 → 前一字符「）」不可断
         assert units[5].can_break_line_cache is False
+
+    def test_merge_glues_ganqing_and_volume_year(self):
+        """感情 / 第11卷 / 1989年 must not break mid-token."""
+
+        class _U(MockUnit):
+            def __init__(self, **kw):
+                super().__init__(**kw)
+                self.can_break_line_cache = None
+
+        # 感情用事
+        units = [_U(unicode=ch) for ch in "感情用事"]
+        merge_cjk_units(units)
+        assert units[0].can_break_line_cache is False  # 感|情
+        assert units[2].can_break_line_cache is False  # 用|事
+
+        # 第11卷（1989年）
+        text = "第11卷（1989年）"
+        units = []
+        for ch in text:
+            is_cjk = not ch.isdigit()
+            units.append(_U(unicode=ch, is_cjk_char=is_cjk))
+        merge_cjk_units(units)
+        # 第 + digits + 卷
+        assert units[0].can_break_line_cache is False  # 第|
+        assert units[1].can_break_line_cache is False  # 1|
+        assert units[2].can_break_line_cache is False  # 1|卷
+        # open paren
+        assert units[4].can_break_line_cache is False  # （|
+        # 1989年
+        assert units[5].can_break_line_cache is False  # 1|
+        assert units[6].can_break_line_cache is False
+        assert units[7].can_break_line_cache is False
+        assert units[8].can_break_line_cache is False  # 9|年
+
+    def test_dp_never_breaks_ganqing_or_open_paren(self):
+        """DP break points must respect can_break after merge."""
+
+        class _U(MockUnit):
+            def __init__(self, **kw):
+                super().__init__(**kw)
+                self.can_break_line_cache = None
+
+            @property
+            def can_break_line(self):
+                if self.can_break_line_cache is not None:
+                    return self.can_break_line_cache
+                return self._can_break_line
+
+        text = "偶尔会有感情用事，偶尔会有不准确的地方"
+        units = [_U(unicode=ch, width=10.0) for ch in text]
+        merge_cjk_units(units)
+        # Force a width that would greedily hit 感|情 without protection
+        # 偶尔会有感 = 5 chars = 50; line width 55 → would want break after 感
+        breaks = optimal_line_break(
+            units, [55.0, 55.0, 55.0], scale=1.0, space_width=5.0, cjk_mode=True
+        )
+        assert breaks is not None
+        for bp in breaks:
+            prev = units[bp - 1]
+            assert prev.can_break_line, (
+                f"illegal break after {prev.try_get_unicode()!r} at {bp}"
+            )
+            # never 感|情
+            if prev.try_get_unicode() == "感":
+                raise AssertionError("broke 感|情")
+
+        # Footer-like citation
+        text2 = "新德里），第11卷（1989年），263-282页"
+        units2 = []
+        for ch in text2:
+            is_cjk = not (ch.isdigit() or ch in "-")
+            units2.append(
+                _U(
+                    unicode=ch,
+                    width=10.0 if is_cjk else 6.0,
+                    is_cjk_char=is_cjk and ch not in "），，",
+                )
+            )
+        # Fix punctuation is_cjk
+        for u in units2:
+            if u.try_get_unicode() in "），，（":
+                u._is_cjk_char = True
+        merge_cjk_units(units2)
+        breaks2 = optimal_line_break(
+            units2, [80.0, 80.0, 80.0], scale=1.0, space_width=5.0, cjk_mode=True
+        )
+        if breaks2:
+            for bp in breaks2:
+                prev_ch = units2[bp - 1].try_get_unicode()
+                assert units2[bp - 1].can_break_line, f"illegal after {prev_ch!r}"
+                assert prev_ch not in "（(", f"open paren at EOL before index {bp}"
+                assert not (prev_ch == "德" and units2[bp].try_get_unicode() == "里")
