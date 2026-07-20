@@ -137,7 +137,15 @@ class FontMapper:
         if font_type == "script" and not italic:
             return None
         current_char = ord(char_unicode)
-        for font in self.type2font[font_type]:
+        candidates = list(self.type2font[font_type])
+        # Prefer real monospaced faces when the original run is mono.
+        if monospaced:
+            mono_first = [f for f in candidates if getattr(f, "is_monospaced", False)]
+            if mono_first:
+                candidates = mono_first + [
+                    f for f in candidates if f not in mono_first
+                ]
+        for font in candidates:
             if not font.has_glyph(current_char):
                 continue
             if bool(bold) != bool(font.is_bold):
@@ -211,6 +219,34 @@ class FontMapper:
             )
             return None
 
+        # Infer monospaced from font name when metadata is missing (subset
+        # Courier often has no reliable is_monospaced bit).
+        font_name_for_mono = (
+            getattr(original_font, "name", None)
+            or getattr(original_font, "font_id", None)
+            or ""
+        )
+        if not monospaced and font_name_for_mono:
+            name_lower = font_name_for_mono.lower()
+            if "+" in name_lower:
+                name_lower = name_lower.split("+", 1)[1]
+            if any(
+                kw in name_lower
+                for kw in (
+                    "courier",
+                    "mono",
+                    "consolas",
+                    "menlo",
+                    "monaco",
+                    "inconsolata",
+                    "sourcecode",
+                    "jetbrains",
+                    "fira code",
+                    "firacode",
+                )
+            ):
+                monospaced = True
+
         # Log bold detection
         if bold:
             logger.warning(
@@ -227,6 +263,11 @@ class FontMapper:
         elif self.primary_font_family == PrimaryFontFamily.SCRIPT:
             serif = False
             italic = True
+
+        # No true CJK mono in the bundled family: use sans as a visual stand-in
+        # so Courier/emphasis blocks stay distinct from serif body (font.unknown).
+        if monospaced:
+            serif = False
 
         script_font_map_result = self.map_in_type(
             bold, italic, monospaced, serif, char_unicode, "script"

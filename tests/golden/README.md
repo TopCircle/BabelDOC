@@ -40,8 +40,8 @@ centered line, not glued onto the last affiliation line.
 - Full PDF → translate → dual E2E golden in CI
 - Loading `typsetting.json` / debug IL dumps (write-only JSON today)
 - Orgasms/Module-1 CI pixel gates (local scorecard only — see `SCORECARD.md`)
-- Dual-layer Phase B+ (font-split policy, OCR-gated typesetting scale) — **not started**
-  (Phase A: searchable-image detect → auto `ocr_workaround` is on main)
+- Dual-layer Phase C+ (OCR-gated typesetting scale/box) — **not started**
+  (Phase A detect + Phase B font-split policy are on main)
 
 ## Commands
 

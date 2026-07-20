@@ -78,7 +78,7 @@ cherry-pick `7e9a984..004ba7b`. **Never** mix PR-08 package extract into this tr
 |-------|--------|----------------|
 | **0** | Probe + this checklist (no behavior change) | ✅ unit + `--self-check` green (`f713179`) |
 | **A** | Detect searchable image → auto `ocr_workaround` only | ✅ figure not dual-layer; enable flags; figure dual probe still green |
-| **B** | Font split policy: hard on born-digital; soft only if `ocr_workaround` | figure probe green; no body←fig-label 混段 |
+| **B** | Font split policy: hard on born-digital; soft only if `ocr_workaround` | ✅ unit + policy; figure dual probe still green |
 | **C** | OCR typesetting (scale/box/ref_width) **gated** on `ocr_workaround` | figure probe **unchanged**; font.unknown size/span improved |
 | **D** | Optional OCR reflow / single face / glyph hygiene | figure still green; backlog items one PR each |
 
@@ -94,6 +94,19 @@ cherry-pick `7e9a984..004ba7b`. **Never** mix PR-08 package extract into this tr
 - **Operator note:** figure dual PDF need **not** be regenerated for Phase A
   (born-digital path unchanged). font.unknown dual may gain white-fill earlier
   in the pipeline; body scale still Phase C.
+
+#### Phase B status
+
+- **In:** `paragraph_split_policy` (TOC / short-line / bullet / **font face** /
+  date-tail); `ParagraphFinder` wires `soft_mid_sentence_font_split =
+  ocr_workaround`; Courier-name → mono → CJK **sans** stand-in in `FontMapper`.
+- **Semantics:**
+  - `ocr_workaround=False`: any dominant `font_id` change splits (arXiv Arial
+    labels vs body).
+  - `ocr_workaround=True`: face change splits only if previous line is
+    sentence-final (keep mid-clause Times→Courier for MT).
+- **Out:** OCR scale / box / `reference_widths` (Phase C).
+- **Tests:** `tests/test_font_switch_paragraph.py`.
 
 **Red decision tree:** fix or `git revert` **current Phase PR only** — no `reset --hard` of the whole branch.
 

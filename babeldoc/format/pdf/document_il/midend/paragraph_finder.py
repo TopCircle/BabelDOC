@@ -991,6 +991,17 @@ class ParagraphFinder:
         paragraphs: list[PdfParagraph],
         median_width: float,
     ):
+        from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+            should_split_line_pair,
+            split_paragraph_at,
+        )
+
+        # OCR dual-layer: soft mid-sentence face keep (font.unknown).
+        # Born-digital (arXiv figure labels vs body): hard face split.
+        soft_font = bool(
+            getattr(self.translation_config, "ocr_workaround", False)
+        )
+
         i = 0
         while i < len(paragraphs):
             paragraph = paragraphs[i]
@@ -1006,103 +1017,26 @@ class ParagraphFinder:
                     continue
 
                 prev_line = prev_composition.pdf_line
-                prev_width = prev_line.box.x2 - prev_line.box.x
-                prev_text = "".join([c.char_unicode for c in prev_line.pdf_character])
-
-                # 检查是否包含连续的点（至少 20 个）
-                # 如果有至少连续 20 个点，则代表这是目录条目
-                if re.search(r"\.{20,}", prev_text):
-                    # 创建新的段落
-                    new_paragraph = PdfParagraph(
-                        box=Box(0, 0, 0, 0),  # 临时边界框
-                        pdf_paragraph_composition=(
-                            paragraph.pdf_paragraph_composition[j:]
-                        ),
-                        unicode="",
-                        debug_id=generate_base58_id(),
-                        layout_label=paragraph.layout_label,
-                        layout_id=paragraph.layout_id,
-                    )
-                    # 更新原段落
-                    paragraph.pdf_paragraph_composition = (
-                        paragraph.pdf_paragraph_composition[:j]
-                    )
-
-                    # 更新两个段落的数据
-                    self.update_paragraph_data(paragraph)
-                    self.update_paragraph_data(new_paragraph)
-
-                    # 在原段落后插入新段落
-                    paragraphs.insert(i + 1, new_paragraph)
-                    break
-
-                # 如果前一行宽度小于中位数的一半，将当前行及后续行分割成新段落
                 current_comp = paragraph.pdf_paragraph_composition[j]
                 current_line = current_comp.pdf_line if current_comp else None
-                split_here = (
-                    self.translation_config.split_short_lines
-                    and prev_width
-                    < median_width * self.translation_config.short_line_split_factor
-                ) or (
-                    current_line
-                    and current_line.pdf_character
-                    and is_bullet_point(current_line.pdf_character[0])
-                )
 
-                # arXiv-style short centered tail: "(Dated: …)" / "（日期：…）"
-                # must be its own paragraph so ZH keeps a separate centered line
-                # instead of gluing the date onto the last affiliation line.
-                if (
-                    not split_here
-                    and current_line
-                    and current_line.box
-                    and prev_line.box
+                if should_split_line_pair(
+                    prev_line,
+                    current_line,
+                    median_width=median_width,
+                    split_short_lines=self.translation_config.split_short_lines,
+                    short_line_split_factor=(
+                        self.translation_config.short_line_split_factor
+                    ),
+                    soft_mid_sentence_font_split=soft_font,
                 ):
-                    curr_w = current_line.box.x2 - current_line.box.x
-                    curr_text = "".join(
-                        c.char_unicode or "" for c in (current_line.pdf_character or [])
-                    ).strip()
-                    short_tail = curr_w < prev_width * 0.45 and (
-                        median_width <= 0 or curr_w < median_width * 0.55
+                    new_paragraph = split_paragraph_at(
+                        paragraph,
+                        j,
+                        new_debug_id=generate_base58_id(),
                     )
-                    both_inset = (
-                        current_line.box.x > prev_line.box.x + 8.0
-                        and current_line.box.x2 < prev_line.box.x2 - 8.0
-                    )
-                    date_like = bool(
-                        re.search(
-                            r"(\(\s*Dated\b|Dated\s*:|日期\s*[:：]|\(\s*日期)",
-                            curr_text,
-                            re.IGNORECASE,
-                        )
-                    )
-                    if short_tail and both_inset and (
-                        date_like or curr_w < 120.0
-                    ):
-                        split_here = True
-
-                if split_here:
-                    # 创建新的段落
-                    new_paragraph = PdfParagraph(
-                        box=Box(0, 0, 0, 0),  # 临时边界框
-                        pdf_paragraph_composition=(
-                            paragraph.pdf_paragraph_composition[j:]
-                        ),
-                        unicode="",
-                        debug_id=generate_base58_id(),
-                        layout_label=paragraph.layout_label,
-                        layout_id=paragraph.layout_id,
-                    )
-                    # 更新原段落
-                    paragraph.pdf_paragraph_composition = (
-                        paragraph.pdf_paragraph_composition[:j]
-                    )
-
-                    # 更新两个段落的数据
                     self.update_paragraph_data(paragraph)
                     self.update_paragraph_data(new_paragraph)
-
-                    # 在原段落后插入新段落
                     paragraphs.insert(i + 1, new_paragraph)
                     break
                 j += 1
