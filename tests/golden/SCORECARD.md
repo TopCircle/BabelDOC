@@ -261,6 +261,18 @@ Resume only with a **new plan** (not more one-off glue / dict / pull-back patche
 
 **Suggested next code track after S1–S3:** **L3** (alignment + indent contract), validated on ATU p5 + p14 with S1.1 before/after JSON.
 
+#### L3 status (2026-07-20)
+
+| Item | Status |
+|------|--------|
+| CJK long body demote center→left (keep arXiv tapering/tight headers) | ✅ `_resolve_effective_alignment(..., is_cjk=)` |
+| Numbered list items drop first-line indent | ✅ `_looks_like_numbered_list_item` |
+| Extreme indent (&gt;18% box) dropped | ✅ `_effective_first_line_indent` |
+| Tests | `test_paragraph_alignment` ATU + list + extreme indent |
+| Still open on ATU after L3 (need re-translate) | mid-phrase CJK orphans (「在这」「理智和」) — break quality, not align |
+
+**Operator rule:** S1→S3 complete; **L3 shipped** for align/indent; remaining ATU ragged *breaks* need re-translate then optional CJK break pass.
+
 #### S1.1 operator quick check
 
 ```bash

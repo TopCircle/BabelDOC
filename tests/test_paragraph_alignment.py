@@ -290,7 +290,60 @@ class TestResolveEffectiveAlignment:
             font_size=10.0,
             per_line_widths=[361.7, 346.9],
         )
-        assert Typesetting._resolve_effective_alignment(para) == "center"
+        assert Typesetting._resolve_effective_alignment(para, is_cjk=True) == "center"
+
+    def test_atu_long_cjk_centered_en_block_demotes_left(self):
+        """All Tied Up p5-style: short centered EN lines → long ZH must flush-left."""
+        from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
+
+        para = PdfParagraph(
+            box=Box(x=80, y=100, x2=530, y2=280),
+            pdf_style=PdfStyle(font_id="base", font_size=11.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode=(
+                "最近的一项全国性调查清楚地表明，与伴侣一起参加各种性活动的女性"
+                "更有可能经历和享受高潮体验。在这个世界上，有近三分之二的女性"
+                "在来访时感到困难重重，这应该足以成为您尝试新事物的理由！"
+            ),
+        )
+        para.alignment = "center"
+        # EN lines short/centered — fullish low vs wide box
+        para.reference_metrics = ReferenceMetrics(
+            line_count=4,
+            avg_line_width=220.0,
+            last_line_width=140.0,
+            last_line_ratio=0.55,
+            font_size=11.0,
+            per_line_widths=[280.0, 240.0, 260.0, 140.0],
+        )
+        assert (
+            Typesetting._resolve_effective_alignment(para, is_cjk=True) == "left"
+        )
+        # Non-CJK keeps geometric center for same metrics
+        assert (
+            Typesetting._resolve_effective_alignment(para, is_cjk=False) == "center"
+        )
+
+
+class TestLooksLikeListItem:
+    def test_numbered_forms(self):
+        for text in ("1. 第一步", "2、第二步", "3) 第三", "(4) 第四", "① 圆圈"):
+            para = PdfParagraph(
+                box=Box(x=0, y=0, x2=100, y2=20),
+                pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+                pdf_paragraph_composition=[],
+                unicode=text,
+            )
+            assert Typesetting._looks_like_numbered_list_item(para), text
+
+    def test_body_not_list(self):
+        para = PdfParagraph(
+            box=Box(x=0, y=0, x2=100, y2=20),
+            pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="在这个世界上，有近三分之二的女性",
+        )
+        assert not Typesetting._looks_like_numbered_list_item(para)
 
 
 class TestEffectiveFirstLineIndent:
@@ -313,6 +366,35 @@ class TestEffectiveFirstLineIndent:
         )
         # Must leave ~4 glyphs * 14 ≈ 56pt
         assert (160.0 - (56.0 + indent)) >= 50.0
+
+    def test_list_item_drops_indent(self):
+        para = PdfParagraph(
+            box=Box(x=56, y=100, x2=500, y2=200),
+            pdf_style=PdfStyle(font_id="base", font_size=14.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="1. 让她把双臂或双腿放在您的腿上",
+            first_line_indent=40.0,
+        )
+        units = [SimpleNamespace(width=14.0, is_space=False) for _ in range(20)]
+        indent = Typesetting._effective_first_line_indent(
+            para, para.box, 56.0, 500.0, 1.0, units
+        )
+        assert indent == 0.0
+
+    def test_extreme_indent_dropped(self):
+        """Centered short first line often becomes huge first_line_indent."""
+        para = PdfParagraph(
+            box=Box(x=56, y=100, x2=500, y2=200),
+            pdf_style=PdfStyle(font_id="base", font_size=14.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="正文段落",
+            first_line_indent=120.0,  # > 18% of box width
+        )
+        units = [SimpleNamespace(width=14.0, is_space=False) for _ in range(20)]
+        indent = Typesetting._effective_first_line_indent(
+            para, para.box, 56.0, 500.0, 1.0, units
+        )
+        assert indent == 0.0
 
     def test_keeps_normal_indent(self):
         para = PdfParagraph(

@@ -260,7 +260,7 @@ queue: multi-PDF, architecture-shaped, independent of F1–F4.
 | 2 | **S2** | Wire `QuoteZoneConfig` into **main** typesetting; fix `typsetting_document` watermark typo | ✅ done (`3b50f52`, `80ec6cf`) |
 | 3 | **S3** | Multi-interval: **identical** capacity for estimate → DP → place; `DP_REJECT` logs | ✅ done (`_line_capacity_like_place`) |
 
-**S1 / S1.1 / S2 / S3 complete.** Next system layout items: **L3** (align/indent), **L4** (header skip vs reflow), then optional S1.2 metrics.
+**S1 / S1.1 / S2 / S3 complete.** **L3** (CJK center demotion + list/extreme indent) shipped. Next: **L4** (header skip vs reflow), optional CJK break quality, S1.2 metrics.
 
 Map onto MVP slice: S1≈M1/P0a fingerprint; S1.1 = dual PDF metrics (not full P0b ONNX E2E — that remains non-goal); S2 quote wire; S3 closed-loop capacity.
 

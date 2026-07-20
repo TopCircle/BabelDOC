@@ -1767,25 +1767,39 @@ class Typesetting:
         return min_scale, final_typeset_units
 
     @staticmethod
+    def _looks_like_numbered_list_item(paragraph: il_version_1.PdfParagraph) -> bool:
+        """True when translated/source text starts like ``1.`` / ``1、`` / ``(1)``."""
+        text = (getattr(paragraph, "unicode", None) or "").strip()
+        if not text:
+            return False
+        return bool(
+            re.match(
+                r"^(?:"
+                r"\d{1,3}\s*[\.．、\)]\s*"  # 1.  1、  1)
+                r"|\(\s*\d{1,3}\s*\)\s*"  # (1)
+                r"|[①-⑳]\s*"
+                r")",
+                text,
+            )
+        )
+
     @staticmethod
     def _resolve_effective_alignment(
         paragraph: il_version_1.PdfParagraph,
         typesetting_units: list[TypesettingUnit] | None = None,
         *,
         ocr_workaround: bool = False,
+        is_cjk: bool = False,
     ) -> str:
         """Return alignment for layout; keep geometric center when it is real.
 
         ``detect_paragraph_alignment`` already set ``paragraph.alignment`` from
-        **original** geometry. We only demote center→left when original lines
-        look like a filled body column (Orgasms false center), not merely
-        because the Chinese translation is long.
+        **original** geometry. We demote center→left when:
 
-        Why not demote on text/unit length alone:
-        arXiv-style page-centered author/affiliation blocks translate to long
-        ZH strings but must stay centered in the original box (see golden
-        ``translate.cli.text.with.figure`` header). Length gates were killing
-        those while left-aligned section titles stay left via detection.
+        * original lines look like a filled body column (Orgasms false center), or
+        * **CJK long body** from a short centered EN block (All Tied Up p5/p14) —
+          reflow flush-left; keep center for short titles and arXiv-style headers
+          (few original lines that do **not** fill the para span).
         """
         # OCR: geometry is too noisy; multi-line body false-centers short tails.
         if ocr_workaround:
@@ -1799,12 +1813,24 @@ class Typesetting:
         if alignment != "center":
             return alignment
 
+        label = (getattr(paragraph, "layout_label", None) or "").lower()
+        text = (paragraph.unicode or "").strip()
+        text_len = len(text)
+        unit_n = len(typesetting_units) if typesetting_units is not None else 0
+
+        # Short title/heading may stay centered.
+        if label == "title" and text_len <= 48 and unit_n <= 48:
+            return alignment
+
         rm = getattr(paragraph, "reference_metrics", None)
         box = paragraph.box
         box_w = 0.0
         if box is not None and box.x2 is not None and box.x is not None:
             box_w = float(box.x2 - box.x)
 
+        line_count = 0
+        fullish = 0.0
+        last_ratio = 1.0
         if rm is not None and box_w > 1.0:
             line_count = int(getattr(rm, "line_count", 0) or 0)
             avg = getattr(rm, "avg_line_width", None)
@@ -1838,14 +1864,30 @@ class Typesetting:
             ):
                 return "left"
 
+            # L3 / All Tied Up: long CJK from short *centered* EN marketing
+            # blocks reflow flush-left. Keep arXiv-style multi-line headers:
+            #   - tapering widths ending short (title/author/date), or
+            #   - few lines that fill a *tight* para bbox (affil after split).
+            if is_cjk and text_len >= 48:
+                tapering_header = (
+                    line_count <= 4
+                    and fullish < 0.5
+                    and last_ratio < 0.55
+                )
+                tight_header = (
+                    line_count <= 4
+                    and fullish >= 0.55
+                )
+                if not (tapering_header or tight_header):
+                    return "left"
+
             return alignment
 
         # No reference metrics (legacy / skipped capture): weak length fallback
         # only — prefer keeping short centers; long unknown text → left.
-        text = (paragraph.unicode or "").strip()
-        if len(text) >= 36:
+        if text_len >= 36:
             return "left"
-        if typesetting_units is not None and len(typesetting_units) >= 36:
+        if typesetting_units is not None and unit_n >= 36:
             return "left"
         return alignment
 
@@ -1925,9 +1967,23 @@ class Typesetting:
         if raw <= 0:
             return 0.0
 
+        # L3: numbered list items — source hanging/list geometry must not add
+        # a large first-line indent on top of "1. " (All Tied Up p14 steps).
+        if Typesetting._looks_like_numbered_list_item(paragraph):
+            return 0.0
+
         # Absolute indent (same space as box.x / available_x). Placement uses
         # current_x = max(available_x, box.x + indent).
         indent = raw
+
+        # L3: after center→left demotion, large "indent" is often a centered
+        # short first line, not a real body first-line indent — drop extremes.
+        box_w = max(0.0, float(box.x2 - box.x)) if box and box.x2 is not None else 0.0
+        if box_w > 1.0 and indent > max(36.0, box_w * 0.12):
+            # Keep classic ~1–2em indents only
+            if indent > box_w * 0.18:
+                return 0.0
+
         line_left = max(available_x, box.x + indent)
         remain = available_x2 - line_left
         # Target: room for at least ~4 glyphs at current scale
@@ -2885,6 +2941,7 @@ class Typesetting:
                 ocr_workaround=bool(
                     getattr(self.translation_config, "ocr_workaround", False)
                 ),
+                is_cjk=bool(self.is_cjk),
             )
             if paragraph is not None
             else "left"
@@ -3145,6 +3202,7 @@ class Typesetting:
             paragraph,
             typesetting_units,
             ocr_workaround=ocr_mode,
+            is_cjk=bool(self.is_cjk),
         )
         query_h0 = avg_height if avg_height > 0 else 1.0
         intervals = self._query_line_intervals(current_y, current_y + query_h0, box)
