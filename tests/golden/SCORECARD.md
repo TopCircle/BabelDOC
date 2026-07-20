@@ -41,7 +41,9 @@ Same source dual, frozen translation cache, compare vs `7e9a984` dual:
 | Max left-col vertical gap (body) | ~76pt | &gt; 120pt |
 | Long body block contains fig labels | no | yes (混段) |
 
-Figure labels may still translate to ZH on the baseline dual — that alone is **not** a regression signal.
+Figure labels stay in the source language by default (`translate_figure_text=False`;
+UI: **Translate figure text** off). Opt in to translate chart annotations.
+Independent of **Translate table text** (RapidOCR table path).
 
 ## Rating scale
 
