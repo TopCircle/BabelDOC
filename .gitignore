@@ -32,6 +32,7 @@ examples/
 /make_gif.py
 /dist
 .cache
+dual_quality_out/
 .cursor/rules/_*.mdc
 /.cursor
 /xnotes

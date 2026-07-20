@@ -30,9 +30,9 @@ Commits after `7e9a984` (font-face split, auto OCR, OCR scale, PR-08 package ext
 | Resume later | Bisect / re-land dual-layer fixes **without** breaking figure baseline metrics (affil center, crush ratio, left-col gap) |
 | Prior notes | font.unknown OCR backlog was documented under earlier SCORECARD revisions; re-add when that track resumes |
 
-### Regression probe (when dual-layer work resumes)
+### Regression probe (hard gate — dual-layer recover Phase 0+)
 
-Same source dual, frozen translation cache, compare vs `7e9a984` dual:
+Same source dual, frozen translation cache, compare vs accepted figure dual:
 
 | Metric (ZH half) | Baseline-ish | Flag as regression |
 |------------------|--------------|--------------------|
@@ -41,9 +41,50 @@ Same source dual, frozen translation cache, compare vs `7e9a984` dual:
 | Max left-col vertical gap (body) | ~76pt | &gt; 120pt |
 | Long body block contains fig labels | no | yes (混段) |
 
+**CLI (no pipeline side effects):**
+
+```bash
+# local operator dual (gitignored *.pdf)
+python -m babeldoc.tools.figure_baseline_probe \
+  --dual tests/golden/translate.cli.text.with.figure.no_watermark.zh-CN.dual.pdf
+
+# synthetic smoke (CI-safe)
+python -m babeldoc.tools.figure_baseline_probe --self-check
+```
+
+Exit **0** = hard gates pass; exit **1** = regression. Unit tests:
+`tests/test_figure_baseline_probe.py`.
+
+**Recorded snapshot (local dual @ Phase 0, tip after figure-text skip):**
+
+| Metric | Value (ZH left half) |
+|--------|----------------------|
+| half | left (CJK auto) |
+| crush_ratio | ~0.016 |
+| max_left_col_gap | ~32pt (threshold 120) |
+| affil_mid | ~305 (center 306) |
+| fig_label_hits | none |
+
 Figure labels stay in the source language by default (`translate_figure_text=False`;
 UI: **Translate figure text** off). Opt in to translate chart annotations.
 Independent of **Translate table text** (RapidOCR table path).
+
+### Dual-layer recover gates (do not skip)
+
+Resume dual-layer / `font.unknown` **only** with independent PRs. **Never** bulk
+cherry-pick `7e9a984..004ba7b`. **Never** mix PR-08 package extract into this track.
+
+| Phase | Scope | Merge only if |
+|-------|--------|----------------|
+| **0** | Probe + this checklist (no behavior change) | unit + `--self-check` green |
+| **A** | Detect searchable image → auto `ocr_workaround` only | figure probe green; figure PDF **not** classified dual-layer |
+| **B** | Font split policy: hard on born-digital; soft only if `ocr_workaround` | figure probe green; no body←fig-label 混段 |
+| **C** | OCR typesetting (scale/box/ref_width) **gated** on `ocr_workaround` | figure probe **unchanged**; font.unknown size/span improved |
+| **D** | Optional OCR reflow / single face / glyph hygiene | figure still green; backlog items one PR each |
+
+**Red decision tree:** fix or `git revert` **current Phase PR only** — no `reset --hard` of the whole branch.
+
+**Out of track:** PR-08 typesetting package split; drop-cap fixes (separate PR + same figure probe).
 
 ## Rating scale
 
