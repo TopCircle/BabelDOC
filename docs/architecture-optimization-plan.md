@@ -255,11 +255,12 @@ queue: multi-PDF, architecture-shaped, independent of F1–F4.
 
 | Order | ID | Work | Dual / quality impact |
 |------:|----|------|------------------------|
-| 1 | **S1** | CI `pytest` + minimal dual harness (FixedMap + IL fingerprint) | Gate for all later PRs |
-| 2 | **S2** | Wire `QuoteZoneConfig` from `TranslationConfig` into **main** typesetting; fix `typsetting_document` watermark typo | Quote/wrap + correctness |
+| 1 | **S1** | CI `pytest` + FixedMap + IL fingerprint | ✅ done |
+| 1b | **S1.1** | Dual text-layer metrics (`--dual`); shared crush/gap helpers | ✅ done (ruler for later layout PRs) |
+| 2 | **S2** | Wire `QuoteZoneConfig` into **main** typesetting; fix `typsetting_document` watermark typo | Quote/wrap + correctness |
 | 3 | **S3** | Multi-interval: **identical** intervals for estimate → DP → place; instrument DP reject | Figure wrap; stops silent bad greedy |
 
-Map onto MVP slice: S1≈M1/P0a–b, S2≈M2+M3, S3≈M5/PR-05–06 (close the loop, not greenfield).
+Map onto MVP slice: S1≈M1/P0a fingerprint; S1.1 = dual PDF metrics (not full P0b ONNX E2E — that remains non-goal); S2≈M2+M3; S3≈M5/PR-05–06.
 
 #### Full ID table
 

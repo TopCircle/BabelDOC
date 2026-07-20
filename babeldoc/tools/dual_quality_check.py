@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
-"""Thin CLI for dual-quality checks (PR-01, review-tightened).
+"""Dual-quality helpers: IL fingerprint smoke, PNG SSIM, dual text-layer metrics.
 
-What this **does**:
-- ``--self-check``: print geometry fingerprint of an empty Document
+Modes
+-----
+- ``--self-check``: empty-Document geometry fingerprint (CI smoke)
 - ``--mode ssim``: compare equal-length lists of page PNGs (OpenCV + skimage)
+- ``--dual PATH``: S1.1 multi-page text-layer metrics on an existing dual PDF
 
-What this **does not** do (later PRs):
-- PDF → translate → dual end-to-end
-- Reload of debug IL JSON (XMLConverter has write-only JSON today)
-
-Library entry points for tests / future harness code:
-- ``babeldoc.format.pdf.document_il.utils.il_layout_fingerprint.il_layout_fingerprint``
-- ``babeldoc.translator.fixed_map_translator.FixedMapTranslator``
+``--dual`` and ``--mode ssim`` are mutually exclusive.
 """
 
 from __future__ import annotations
@@ -71,7 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description=(
             "BabelDOC dual-quality helpers. "
-            "Not a full PDF dual golden runner (see tests/golden/README.md)."
+            "See tests/golden/README.md for operator workflow."
         ),
     )
     p.add_argument(
@@ -89,7 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--mode",
         choices=("il", "ssim"),
         default="il",
-        help="il = self-check fingerprint only; ssim = compare PNGs",
+        help="il = self-check fingerprint; ssim = compare PNGs (not with --dual)",
     )
     p.add_argument(
         "--actual-png",
@@ -111,18 +107,101 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("dual_quality_out"),
         help="Directory for ssim diff artifacts",
     )
+    # S1.1 metrics
+    p.add_argument(
+        "--dual",
+        type=Path,
+        default=None,
+        help="Existing dual/mono PDF for text-layer metrics (S1.1)",
+    )
+    p.add_argument(
+        "--pages",
+        type=str,
+        default=None,
+        help="1-based page ranges, e.g. 4-26 or 4-6,10 (default: all)",
+    )
+    p.add_argument(
+        "--half",
+        choices=("auto", "left", "right", "full"),
+        default="auto",
+        help="Which half to score (auto = more CJK); dual_quality --pages is 1-based",
+    )
+    p.add_argument(
+        "--profile",
+        choices=("default", "strict"),
+        default="default",
+        help="default: vgap is warning; strict: vgap hard-fails",
+    )
+    p.add_argument(
+        "--json-out",
+        type=Path,
+        default=None,
+        help="Write DualLayoutReport JSON to this path",
+    )
     return p
+
+
+def _run_dual_metrics(args: argparse.Namespace) -> int:
+    from babeldoc.tools.dual_layout_metrics import (
+        analyze_dual_pdf,
+        format_page_line,
+        parse_pages_spec,
+        write_report_json,
+    )
+
+    if args.mode == "ssim":
+        print(
+            "error: --dual is mutually exclusive with --mode ssim",
+            file=sys.stderr,
+        )
+        return 2
+
+    dual: Path = args.dual
+    if not dual.is_file():
+        print(f"error: dual PDF not found: {dual}", file=sys.stderr)
+        return 2
+
+    try:
+        pages = parse_pages_spec(args.pages)
+    except ValueError as e:
+        print(f"error: invalid --pages: {e}", file=sys.stderr)
+        return 2
+
+    try:
+        report = analyze_dual_pdf(
+            dual,
+            pages=pages,
+            half=args.half,
+            profile=args.profile,
+        )
+    except IndexError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    for pm in report.pages:
+        print(format_page_line(pm))
+
+    if args.json_out is not None:
+        write_report_json(report, args.json_out)
+        print(f"json_out={args.json_out}")
+
+    status = "PASS" if report.ok else "FAIL"
+    print(f"[{status}] {report.path} pages={len(report.pages)} profile={report.profile}")
+    return 0 if report.ok else 1
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
+    if args.dual is not None:
+        return _run_dual_metrics(args)
+
     if args.mode == "il" or args.self_check:
         if not args.self_check and args.mode == "il":
             print(
                 "error: --mode il only supports --self-check in this release.\n"
-                "Compute fingerprints in tests via il_layout_fingerprint(doc).\n"
-                "PDF/IL-JSON dual goldens are not implemented yet.",
+                "Use --dual PATH for text-layer metrics (S1.1).\n"
+                "Compute IL fingerprints in tests via il_layout_fingerprint(doc).",
                 file=sys.stderr,
             )
             return 2

@@ -38,15 +38,20 @@ from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
 
-# Letter mono width; dual side-by-side is typically 2× this.
-DEFAULT_HALF_WIDTH = 612.0
+from babeldoc.tools.dual_layout_metrics import DEFAULT_CRUSH_RATIO_MAX
+from babeldoc.tools.dual_layout_metrics import DEFAULT_HALF_WIDTH
+from babeldoc.tools.dual_layout_metrics import DEFAULT_MAX_LEFT_COL_GAP
+from babeldoc.tools.dual_layout_metrics import DEFAULT_SMALL_PT
+from babeldoc.tools.dual_layout_metrics import choose_half as _choose_half
+from babeldoc.tools.dual_layout_metrics import cjk_char_count as _cjk_char_count
+from babeldoc.tools.dual_layout_metrics import crush_ratio as _crush_ratio_fn
+from babeldoc.tools.dual_layout_metrics import max_left_col_gap as _max_left_col_gap
+from babeldoc.tools.dual_layout_metrics import spans_to_boxes
+
 DEFAULT_PAGE_CENTER = DEFAULT_HALF_WIDTH / 2.0  # 306
 
 # Fail if outside these (SCORECARD "Flag as regression").
 DEFAULT_AFFIL_CENTER_TOL = 25.0
-DEFAULT_CRUSH_RATIO_MAX = 0.10
-DEFAULT_MAX_LEFT_COL_GAP = 120.0
-DEFAULT_SMALL_PT = 7.0
 
 # Chart / figure annotation tokens that must not appear inside long body text
 # when translate_figure_text is off (混段 regression).
@@ -115,99 +120,16 @@ class ProbeResult:
         return not self.failures
 
 
-def _collect_spans(page, x_min: float, x_max: float) -> list[tuple[float, tuple, str]]:
-    """Return (size, bbox, text) for spans whose center x is in [x_min, x_max)."""
-    spans: list[tuple[float, tuple, str]] = []
-    for block in page.get_text("dict").get("blocks", []):
-        if block.get("type") != 0:
-            continue
-        for line in block.get("lines", []):
-            for sp in line.get("spans", []):
-                bb = sp.get("bbox")
-                if not bb or len(bb) < 4:
-                    continue
-                cx = (bb[0] + bb[2]) / 2.0
-                if x_min <= cx < x_max:
-                    spans.append((float(sp.get("size") or 0.0), tuple(bb), sp.get("text") or ""))
-    return spans
-
-
-def _cjk_char_count(spans: list[tuple[float, tuple, str]]) -> int:
-    n = 0
-    for _, _, t in spans:
-        for c in t:
-            if "\u4e00" <= c <= "\u9fff":
-                n += 1
-    return n
-
-
-def _choose_half(
-    page,
-    half: str,
-    half_width: float,
-) -> tuple[str, float, float, list[tuple[float, tuple, str]]]:
-    """Return (half_name, origin_x, width, spans)."""
-    w = float(page.rect.width)
-    h = float(page.rect.height)
-    # Side-by-side dual: width roughly 2× mono, or much wider than tall letter page.
-    is_dual_wide = w >= half_width * 1.8 or (w > h * 1.3 and w >= half_width * 1.5)
-
-    if half == "full" or not is_dual_wide:
-        spans = _collect_spans(page, 0.0, w)
-        return "full", 0.0, w, spans
-
-    mid = w / 2.0
-    left = _collect_spans(page, 0.0, mid)
-    right = _collect_spans(page, mid, w)
-
-    if half == "left":
-        return "left", 0.0, mid, left
-    if half == "right":
-        return "right", mid, w - mid, right
-
-    # auto: prefer the half with more CJK (ZH side of dual)
-    left_cjk = _cjk_char_count(left)
-    right_cjk = _cjk_char_count(right)
-    if right_cjk > left_cjk:
-        return "right", mid, w - mid, right
-    return "left", 0.0, mid, left
-
-
 def _analyze_spans(
     spans: list[tuple[float, tuple, str]],
     half_origin_x: float,
     half_width: float,
     thresholds: ProbeThresholds,
 ) -> dict:
-    sizes: list[float] = []
-    boxes: list[tuple[float, float, float, float, str, float]] = []
-    for size, bb, t in spans:
-        if not t.strip():
-            continue
-        x0, y0, x1, y1 = bb[0], bb[1], bb[2], bb[3]
-        rx0, rx1 = x0 - half_origin_x, x1 - half_origin_x
-        for ch in t:
-            if not ch.isspace():
-                sizes.append(size)
-        boxes.append((rx0, y0, rx1, y1, t, size))
-
+    sizes, boxes = spans_to_boxes(spans, half_origin_x)
     n = len(sizes)
-    small = sum(1 for s in sizes if s < thresholds.small_pt)
-    crush_ratio = (small / n) if n else 0.0
-
-    # Left-column body: readable size, mostly left of page midline.
-    body = [
-        b
-        for b in boxes
-        if 7.5 <= b[5] <= 12.5 and b[0] < half_width * 0.55
-    ]
-    body_sorted = sorted(body, key=lambda b: (b[1], b[0]))
-    max_gap = 0.0
-    for a, b in zip(body_sorted, body_sorted[1:]):
-        gap = b[1] - a[3]
-        # Ignore non-positive and column-jump gaps.
-        if 0 < gap < 400:
-            max_gap = max(max_gap, gap)
+    crush = _crush_ratio_fn(sizes, thresholds.small_pt)
+    max_gap = _max_left_col_gap(boxes, half_width)
 
     # Affiliation-like lines near header band.
     by_y: dict[int, list] = defaultdict(list)
@@ -236,7 +158,7 @@ def _analyze_spans(
     return {
         "n_chars": n,
         "cjk_chars": _cjk_char_count(spans),
-        "crush_ratio": crush_ratio,
+        "crush_ratio": crush,
         "max_left_col_gap": max_gap,
         "affil_mid": affil_mid,
         "fig_label_hits": fig_hits,
