@@ -241,6 +241,16 @@ def create_parser():
         help="Translate table text (experimental)",
     )
     translation_group.add_argument(
+        "--translate-figure-text",
+        action="store_true",
+        default=False,
+        help=(
+            "Translate in-figure labels (figure_text / short text overlapping a "
+            "figure box). Default off so chart annotations stay in the source "
+            "language. Independent of --translate-table-text."
+        ),
+    )
+    translation_group.add_argument(
         "--show-char-box",
         action="store_true",
         default=False,
@@ -765,6 +775,7 @@ async def main():
             remove_non_formula_lines=args.remove_non_formula_lines,
             non_formula_line_iou_threshold=args.non_formula_line_iou_threshold,
             figure_table_protection_threshold=args.figure_table_protection_threshold,
+            translate_figure_text=args.translate_figure_text,
             skip_formula_offset_calculation=args.skip_formula_offset_calculation,
             metadata_extra_data=args.metadata_extra_data,
             term_pool_max_workers=args.term_pool_max_workers,

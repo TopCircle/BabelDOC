@@ -493,6 +493,24 @@ class ILTranslator:
         page: Page,
         paragraph: PdfParagraph,
     ) -> bool:
+        # In-figure labels (default: do not translate).
+        if not getattr(self.translation_config, "translate_figure_text", False):
+            from babeldoc.format.pdf.document_il.utils.layout_helper import (
+                is_figure_text_paragraph,
+            )
+
+            thr = getattr(
+                self.translation_config, "figure_table_protection_threshold", 0.5
+            )
+            # Reuse protection thr only as an upper clamp; labels need a looser
+            # default (0.5) so partial overlap with the figure box still skips.
+            overlap = min(float(thr) if thr is not None else 0.5, 0.9)
+            overlap = max(overlap, 0.35)
+            if is_figure_text_paragraph(
+                paragraph, page, overlap_threshold=overlap
+            ):
+                return True
+
         if not (
             (self.translation_config.skip_header or self.translation_config.skip_footer)
             and page.cropbox

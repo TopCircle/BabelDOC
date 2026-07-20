@@ -1010,6 +1010,61 @@ def is_character_in_formula_layout(
     return None
 
 
+# Layout labels that are in-figure annotations (not captions).
+FIGURE_TEXT_LAYOUT_LABELS = frozenset(
+    {
+        "figure_text",
+        "figure_text_hybrid",
+    }
+)
+# Layout regions that contain figures (used for spatial fallback).
+FIGURE_CONTAINER_LAYOUT_NAMES = frozenset(
+    {
+        "figure",
+        "image",
+    }
+)
+# Short enough to treat as a chart/figure label when overlapping a figure box.
+_FIGURE_LABEL_MAX_CHARS = 64
+
+
+def is_figure_text_paragraph(
+    paragraph: PdfParagraph,
+    page: il_version_1.Page | None = None,
+    *,
+    overlap_threshold: float = 0.5,
+) -> bool:
+    """True if *paragraph* is figure-internal text that should skip MT by default.
+
+    1. ``layout_label`` is ``figure_text`` / hybrid, or
+    2. Short text whose box largely overlaps a ``figure``/``image`` layout
+       (covers mis-labels such as plain ``text`` on arXiv diagram annotations).
+
+    Captions (``figure_caption`` / ``figure_title``) are **not** matched so body
+    captions still translate when figure-text skip is on.
+    """
+    label = (getattr(paragraph, "layout_label", None) or "").strip()
+    if label in FIGURE_TEXT_LAYOUT_LABELS:
+        return True
+
+    text = (getattr(paragraph, "unicode", None) or "").strip()
+    if not text or len(text) > _FIGURE_LABEL_MAX_CHARS:
+        return False
+    if page is None or not paragraph.box:
+        return False
+
+    for layout in page.page_layout or []:
+        name = getattr(layout, "class_name", None) or getattr(layout, "name", None)
+        if name not in FIGURE_CONTAINER_LAYOUT_NAMES:
+            continue
+        layout_box = getattr(layout, "box", None)
+        if layout_box is None:
+            continue
+        if calculate_iou_for_boxes(paragraph.box, layout_box) >= overlap_threshold:
+            return True
+    return False
+
+
 def is_curve_in_figure_table_layout(
     curve, layout_index, layout_map, protection_threshold: float = 0.3
 ) -> bool:

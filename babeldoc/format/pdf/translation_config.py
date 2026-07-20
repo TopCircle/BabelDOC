@@ -212,6 +212,7 @@ class TranslationConfig:
         remove_non_formula_lines: bool = False,
         non_formula_line_iou_threshold: float = 0.9,
         figure_table_protection_threshold: float = 0.9,
+        translate_figure_text: bool = False,
         skip_formula_offset_calculation: bool = False,
         term_extraction_translator: BaseTranslator | None = None,
         metadata_extra_data: str | None = None,
@@ -373,6 +374,9 @@ class TranslationConfig:
         self.remove_non_formula_lines = remove_non_formula_lines
         self.non_formula_line_iou_threshold = non_formula_line_iou_threshold
         self.figure_table_protection_threshold = figure_table_protection_threshold
+        # When False (default), skip MT for in-figure labels (Ancilla/Data A, etc.).
+        # Independent of translate_table_text / RapidOCR table path.
+        self.translate_figure_text = translate_figure_text
         self.skip_formula_offset_calculation = skip_formula_offset_calculation
 
         self.metadata_extra_data = metadata_extra_data
