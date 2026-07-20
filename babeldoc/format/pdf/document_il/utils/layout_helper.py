@@ -1026,22 +1026,31 @@ FIGURE_CONTAINER_LAYOUT_NAMES = frozenset(
 )
 # Short enough to treat as a chart/figure label when overlapping a figure box.
 _FIGURE_LABEL_MAX_CHARS = 64
+# Spatial path: fraction of the *paragraph* box that must lie inside a figure
+# box (``calculate_iou_for_boxes`` = inter/|para|, not Jaccard IoU).
+FIGURE_TEXT_COVERAGE_THRESHOLD = 0.5
 
 
 def is_figure_text_paragraph(
     paragraph: PdfParagraph,
     page: il_version_1.Page | None = None,
     *,
-    overlap_threshold: float = 0.5,
+    coverage_threshold: float = FIGURE_TEXT_COVERAGE_THRESHOLD,
 ) -> bool:
-    """True if *paragraph* is figure-internal text that should skip MT by default.
+    """True if *paragraph* is figure-internal text (default: skip MT).
+
+    Matches when:
 
     1. ``layout_label`` is ``figure_text`` / hybrid, or
-    2. Short text whose box largely overlaps a ``figure``/``image`` layout
-       (covers mis-labels such as plain ``text`` on arXiv diagram annotations).
+    2. Short text whose box is mostly covered by a ``figure``/``image`` layout
+       (mis-labels like plain ``text`` on arXiv diagram annotations).
 
-    Captions (``figure_caption`` / ``figure_title``) are **not** matched so body
-    captions still translate when figure-text skip is on.
+    Spatial test uses **coverage of the paragraph**
+    (``inter / |paragraph.box|`` via ``calculate_iou_for_boxes(para, fig)``),
+    not classical Jaccard IoU — a tiny label fully inside a large figure
+    scores ~1.0.
+
+    Captions (``figure_caption`` / ``figure_title``) are **not** matched.
     """
     label = (getattr(paragraph, "layout_label", None) or "").strip()
     if label in FIGURE_TEXT_LAYOUT_LABELS:
@@ -1053,6 +1062,7 @@ def is_figure_text_paragraph(
     if page is None or not paragraph.box:
         return False
 
+    thr = float(coverage_threshold)
     for layout in page.page_layout or []:
         name = getattr(layout, "class_name", None) or getattr(layout, "name", None)
         if name not in FIGURE_CONTAINER_LAYOUT_NAMES:
@@ -1060,7 +1070,8 @@ def is_figure_text_paragraph(
         layout_box = getattr(layout, "box", None)
         if layout_box is None:
             continue
-        if calculate_iou_for_boxes(paragraph.box, layout_box) >= overlap_threshold:
+        # Coverage of paragraph inside figure (see calculate_iou_for_boxes).
+        if calculate_iou_for_boxes(paragraph.box, layout_box) >= thr:
             return True
     return False
 

@@ -24,8 +24,10 @@ from babeldoc.format.pdf.document_il import PdfSameStyleCharacters
 from babeldoc.format.pdf.document_il import PdfSameStyleUnicodeCharacters
 from babeldoc.format.pdf.document_il import PdfStyle
 from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
+from babeldoc.format.pdf.document_il.utils.layout_helper import FIGURE_TEXT_COVERAGE_THRESHOLD
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode_string
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_paragraph_unicode
+from babeldoc.format.pdf.document_il.utils.layout_helper import is_figure_text_paragraph
 from babeldoc.format.pdf.document_il.utils.layout_helper import strip_ascii_controls
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_same_style
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
@@ -488,29 +490,26 @@ class ILTranslator:
                 local_title_paragraph=self.translation_config.shared_context_cross_split_part.recent_title_paragraph,
             )
 
-    def should_skip_region_paragraph(
+    def should_skip_figure_text_paragraph(
         self,
         page: Page,
         paragraph: PdfParagraph,
     ) -> bool:
-        # In-figure labels (default: do not translate).
-        if not getattr(self.translation_config, "translate_figure_text", False):
-            from babeldoc.format.pdf.document_il.utils.layout_helper import (
-                is_figure_text_paragraph,
-            )
+        """Skip MT for in-figure labels when ``translate_figure_text`` is off."""
+        if self.translation_config.translate_figure_text:
+            return False
+        return is_figure_text_paragraph(
+            paragraph,
+            page,
+            coverage_threshold=FIGURE_TEXT_COVERAGE_THRESHOLD,
+        )
 
-            thr = getattr(
-                self.translation_config, "figure_table_protection_threshold", 0.5
-            )
-            # Reuse protection thr only as an upper clamp; labels need a looser
-            # default (0.5) so partial overlap with the figure box still skips.
-            overlap = min(float(thr) if thr is not None else 0.5, 0.9)
-            overlap = max(overlap, 0.35)
-            if is_figure_text_paragraph(
-                paragraph, page, overlap_threshold=overlap
-            ):
-                return True
-
+    def should_skip_header_footer_paragraph(
+        self,
+        page: Page,
+        paragraph: PdfParagraph,
+    ) -> bool:
+        """Skip paragraphs fully inside configured header/footer bands."""
         if not (
             (self.translation_config.skip_header or self.translation_config.skip_footer)
             and page.cropbox
@@ -545,6 +544,16 @@ class ILTranslator:
             return True
 
         return False
+
+    def should_skip_region_paragraph(
+        self,
+        page: Page,
+        paragraph: PdfParagraph,
+    ) -> bool:
+        """Aggregate skip policies before MT (figure labels + header/footer)."""
+        if self.should_skip_figure_text_paragraph(page, paragraph):
+            return True
+        return self.should_skip_header_footer_paragraph(page, paragraph)
 
     class TranslateInput:
         def __init__(
