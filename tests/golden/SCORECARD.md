@@ -137,6 +137,16 @@ showed through), author glued to uni (`SchudsonUNIVERSITY`), body scrambled.
 After pull: **re-translate** `translate.cli.font.unknown.pdf` (old dual is stale).
 Expect ZH title line separate from author/uni; body not mid-line scrambled.
 
+#### font.unknown red-mark follow-up (shared layout box)
+
+Updated dual still showed: EN title/author ghost; body **head/tail stacked**
+(`研究新闻…` under `哗众取宠…永远不会伪造新闻`).
+
+**Cause:** `add_text_fill_background` assigned `paragraph.box = layout∪para`
+for every para. Body paras share one tall layout band → all typeset from the
+same top edge (tail and head overlap). White fill must stay on the union rect;
+typeset boxes stay per-paragraph; vertical room via `_ocr_pre_expand_box`.
+
 **Red decision tree:** fix or `git revert` **current Phase PR only** — no `reset --hard` of the whole branch.
 
 **Out of track:** PR-08 typesetting package split; drop-cap fixes (separate PR + same figure probe).

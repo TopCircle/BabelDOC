@@ -133,15 +133,20 @@ class TestOcrLayoutScale:
         ts = Typesetting(_config(ocr=False))
         assert ts.translation_config.ocr_workaround is False
 
-    def test_white_fill_updates_paragraph_box(self):
-        """OCR white cover must enlarge typesetting box, not only paint white."""
+    def test_white_fill_does_not_steal_paragraph_box(self):
+        """White cover may use layout∪para; typeset box must stay per-para.
+
+        Assigning every para.box to a shared tall layout band stacks ZH
+        (body tail on body head). Expand room is Typesetting._ocr_pre_expand_box.
+        """
         from babeldoc.format.pdf.document_il.il_version_1 import Page
         from babeldoc.format.pdf.document_il.il_version_1 import PageLayout
 
         cfg = _config(ocr=True)
         pf = ParagraphFinder(cfg)
+        orig = Box(x=50, y=400, x2=200, y2=480)
         para = PdfParagraph(
-            box=Box(x=50, y=400, x2=200, y2=480),  # tight
+            box=Box(x=orig.x, y=orig.y, x2=orig.x2, y2=orig.y2),
             pdf_style=PdfStyle(font_id="F1", font_size=10.0, graphic_state=None),
             pdf_paragraph_composition=[],
             unicode="body",
@@ -159,22 +164,15 @@ class TestOcrLayoutScale:
                 )
             ],
         )
-        try:
-            pf.add_text_fill_background(page)
-        except TypeError:
-            page = SimpleNamespace(
-                pdf_paragraph=[para],
-                pdf_rectangle=[],
-                page_layout=[
-                    SimpleNamespace(
-                        id=1,
-                        box=Box(x=40, y=300, x2=350, y2=500),
-                        class_name="text",
-                    )
-                ],
-            )
-            pf.add_text_fill_background(page)
-        assert para.box.y <= 300 + 1e-6
-        assert para.box.y2 >= 500 - 1e-6
-        assert para.box.x2 >= 350 - 1e-6
+        pf.add_text_fill_background(page)
+        # Typesetting geometry unchanged
+        assert para.box.x == orig.x
+        assert para.box.y == orig.y
+        assert para.box.x2 == orig.x2
+        assert para.box.y2 == orig.y2
+        # White fill still covers the tall layout band
         assert len(page.pdf_rectangle) == 1
+        fill = page.pdf_rectangle[0].box
+        assert fill.y <= 300 + 1e-6
+        assert fill.y2 >= 500 - 1e-6
+        assert fill.x2 >= 350 - 1e-6
