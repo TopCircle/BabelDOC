@@ -15,6 +15,11 @@ Regenerate duals after typesetting changes (example name):
 
 `translate.cli.text.with.figure.no_watermark.zh-CN.dual.pdf`
 
+**Operator baseline (2026-07-20):** BabelDOC **`7e9a984`**. The figure dual
+regenerated on that commit is the **accepted layout baseline**. Dual-layer /
+`font.unknown` work after that tip is **paused** (incomplete; regressed figure
+when re-tested). Details and resume metrics: [`SCORECARD.md`](SCORECARD.md).
+
 **Header checklist** (figure PDF): ZH title/author/affil/date should each be
 **page-centered** on the mono half; `(Dated: …)` must be its **own** short
 centered line, not glued onto the last affiliation line.

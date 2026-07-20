@@ -2,6 +2,46 @@
 
 Local checklist for Orgasms-class dual PDFs. **Not required for CI green.**
 
+## Current operator baseline (2026-07-20) — freeze here
+
+**Code:** `main` / `origin/main` @ **`7e9a984`**
+`fix(typesetting): keep 2-line centered affil after date split`
+
+**Figure golden (vector arXiv) — primary layout baseline**
+
+| Item | Value |
+|------|--------|
+| Source | `tests/golden/translate.cli.text.with.figure.pdf` |
+| Dual (local, gitignored `*.pdf`) | `translate.cli.text.with.figure.no_watermark.zh-CN.dual.pdf` |
+| Operator status | **Normal / accepted baseline** (regenerated 2026-07-20) |
+| Expect | Header title/author/affil/date page-centered on ZH half; body ~9–10pt; left-col readable (no ~6pt crush / huge white band) |
+
+**Do not** treat later WIP commits as the bar for this PDF until re-baselined.
+
+### Paused: dual-layer / searchable-image work (font.unknown)
+
+Commits after `7e9a984` (font-face split, auto OCR, OCR scale, PR-08 package extract, …) were aimed at **searchable dual-layer PDFs** (e.g. `translate.cli.font.unknown.pdf`). That track is **not finished** and was **paused**.
+
+| Item | Notes |
+|------|--------|
+| Why paused | Incomplete quality; also regressed figure golden when re-tested (soft mid-sentence font split, etc.) |
+| `main` disposition | Force-reset to `7e9a984` (2026-07-20); tip history still in reflog (`004ba7b` …) if needed |
+| Resume later | Bisect / re-land dual-layer fixes **without** breaking figure baseline metrics (affil center, crush ratio, left-col gap) |
+| Prior notes | font.unknown OCR backlog was documented under earlier SCORECARD revisions; re-add when that track resumes |
+
+### Regression probe (when dual-layer work resumes)
+
+Same source dual, frozen translation cache, compare vs `7e9a984` dual:
+
+| Metric (ZH half) | Baseline-ish | Flag as regression |
+|------------------|--------------|--------------------|
+| Affil mid vs page center 306 | ≈306 | \|mid−306\| &gt; 25 |
+| Chars &lt; 7pt / total | ~1% | &gt; 10% |
+| Max left-col vertical gap (body) | ~76pt | &gt; 120pt |
+| Long body block contains fig labels | no | yes (混段) |
+
+Figure labels may still translate to ZH on the baseline dual — that alone is **not** a regression signal.
+
 ## Rating scale
 
 | Score | Meaning |
