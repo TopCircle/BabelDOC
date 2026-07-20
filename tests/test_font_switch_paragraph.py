@@ -17,6 +17,7 @@ from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
 from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
     line_ends_sentence,
     should_split_on_font_face_switch,
+    should_split_on_font_size_jump,
 )
 from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.translator.fixed_map_translator import FixedMapTranslator
@@ -111,22 +112,24 @@ class TestFontSwitchParagraphSplit:
         assert "Ancilla" not in _para_text(paras[0])
 
     def test_ocr_mid_sentence_times_to_courier_not_split(self):
-        """OCR dual-layer (font.unknown): mid-clause face keep for MT context."""
+        """OCR dual-layer (font.unknown): mid-clause face keep for MT context.
+
+        Same-size long body lines only — size/short-line guards must not fire.
+        """
         pf = ParagraphFinder(_config(ocr_workaround=True))
+        # Both lines long and same size so soft keep applies (not short/size hard).
+        long_a = (
+            "nothing but the facts and yes theres occasional bias occasional words"
+        )
+        long_b = (
+            "sensationalism occasional inaccuracy but a responsible journalist yes"
+        )
         para = PdfParagraph(
             box=Box(x=50, y=200, x2=340, y2=300),
             pdf_style=PdfStyle(font_id="Font1", font_size=10.0, graphic_state=None),
             pdf_paragraph_composition=[
-                _line(
-                    "nothing but the facts, and yes, there's occasional bias, occasional",
-                    280,
-                    "Font1",
-                ),
-                _line(
-                    "sensationalism, occasional inaccuracy, but a responsible journalist",
-                    265,
-                    "Font2",
-                ),
+                _line(long_a, 280, "Font1"),
+                _line(long_b, 265, "Font2"),
                 _line("never, never, never fakes the news.", 250, "Font2"),
             ],
             unicode="x",
@@ -142,6 +145,66 @@ class TestFontSwitchParagraphSplit:
             )
             is False
         )
+
+    def test_ocr_title_to_author_size_hard_splits(self):
+        """OCR soft keep must not glue title (15pt) to author (12pt)."""
+        pf = ParagraphFinder(_config(ocr_workaround=True))
+        para = PdfParagraph(
+            box=Box(x=50, y=200, x2=340, y2=400),
+            pdf_style=PdfStyle(font_id="FTitle", font_size=15.0, graphic_state=None),
+            pdf_paragraph_composition=[
+                _line("The sociology of news production", 380, "FTitle"),
+                _line("Michael Schudson", 360, "FAuthor"),
+                _line("UNIVERSITY OF CALIFORNIA, SAN DIEGO", 340, "FUni"),
+            ],
+            unicode="x",
+        )
+        # distinct sizes on title vs author (helper uses 10pt default — set via chars)
+        for comp, size in zip(
+            para.pdf_paragraph_composition, (15.0, 12.0, 9.0), strict=True
+        ):
+            for ch in comp.pdf_line.pdf_character:
+                ch.pdf_style.font_size = size
+        paras = [para]
+        pf.process_independent_paragraphs(paras, median_width=200.0)
+        assert len(paras) >= 2
+        assert "Michael" not in _para_text(paras[0])
+        assert "sociology" in _para_text(paras[0]).lower() or "The" in _para_text(
+            paras[0]
+        )
+
+    def test_same_face_size_jump_splits_title_stack(self):
+        """font.unknown: title/author/uni share Times face — only size differs."""
+        pf = ParagraphFinder(_config(ocr_workaround=True))
+        para = PdfParagraph(
+            box=Box(x=50, y=200, x2=340, y2=400),
+            pdf_style=PdfStyle(font_id="Font1", font_size=15.0, graphic_state=None),
+            pdf_paragraph_composition=[
+                _line("The sociology of news production", 380, "Font1"),
+                _line("Michael Schudson", 360, "Font1"),
+                _line("UNIVERSITY OF CALIFORNIA, SAN DIEGO", 340, "Font1"),
+            ],
+            unicode="x",
+        )
+        for comp, size in zip(
+            para.pdf_paragraph_composition, (15.3, 11.8, 9.2), strict=True
+        ):
+            for ch in comp.pdf_line.pdf_character:
+                ch.pdf_style.font_size = size
+        # Policy unit
+        assert should_split_on_font_size_jump(
+            para.pdf_paragraph_composition[0].pdf_line,
+            para.pdf_paragraph_composition[1].pdf_line,
+        )
+        assert should_split_on_font_size_jump(
+            para.pdf_paragraph_composition[1].pdf_line,
+            para.pdf_paragraph_composition[2].pdf_line,
+        )
+        paras = [para]
+        pf.process_independent_paragraphs(paras, median_width=200.0)
+        assert len(paras) == 3
+        assert "UNIVERSITY" not in _para_text(paras[1])
+        assert "Schudson" in _para_text(paras[1])
 
     def test_ocr_sentence_final_times_to_courier_splits(self):
         """OCR path: clean sentence boundary → mono block is its own paragraph."""

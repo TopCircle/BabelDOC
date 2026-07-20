@@ -46,7 +46,9 @@ class TestOcrLayoutScale:
     def test_ocr_line_skip_tighter_than_default(self):
         assert Typesetting._OCR_LINE_SKIP_CJK < Typesetting._DEFAULT_LINE_SKIP_CJK
         assert Typesetting._OCR_LINE_SKIP_CJK >= 1.2
-        assert Typesetting._OCR_MIN_SCALE >= 0.85
+        # Prefer expand-box over crushing, but leave room below 0.88 so long
+        # OCR body can still fit (0.88 caused mass overflow / messy duals).
+        assert 0.65 <= Typesetting._OCR_MIN_SCALE <= 0.80
 
     def test_ocr_normalize_lifts_courier_size(self):
         ts = Typesetting(_config(ocr=True))

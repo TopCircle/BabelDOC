@@ -121,6 +121,22 @@ cherry-pick `7e9a984..004ba7b`. **Never** mix PR-08 package extract into this tr
 - **Operator:** regenerate **font.unknown** dual to judge size/span; **do not**
   require figure dual regen for merge (born-digital path unchanged).
 
+#### Phase C follow-up (title / messy dual fix)
+
+Symptom after first Phase C land: `font.unknown` dual lost ZH title (EN image
+showed through), author glued to uni (`SchudsonUNIVERSITY`), body scrambled.
+
+| Cause | Fix |
+|-------|-----|
+| Title/author/uni share **same Times face**, only size differs → soft face keep never splits | `should_split_on_font_size_jump` (≥1.18×) always in `should_split_line_pair` |
+| Soft OCR face keep glued short header lines | Soft path still hard-splits size ratio / short lines |
+| `_OCR_MIN_SCALE=0.88` → mass overflow | Floor lowered to **0.70** |
+| Force-layout reintroduced EN `reference_widths` under OCR | Force path uses `None` when `ocr_workaround` |
+| Post-typeset overlap retypeset failed and scrambled dual-layer | **Skip** `fix_overlapping_paragraphs_post_typesetting` when `ocr_workaround` |
+
+After pull: **re-translate** `translate.cli.font.unknown.pdf` (old dual is stale).
+Expect ZH title line separate from author/uni; body not mid-line scrambled.
+
 **Red decision tree:** fix or `git revert` **current Phase PR only** — no `reset --hard` of the whole branch.
 
 **Out of track:** PR-08 typesetting package split; drop-cap fixes (separate PR + same figure probe).

@@ -48,6 +48,29 @@ def line_dominant_font_id(line: PdfLine | None) -> str | None:
     return Counter(ids).most_common(1)[0][0]
 
 
+def line_dominant_font_size(line: PdfLine | None) -> float | None:
+    """Most common non-space font_size on a line."""
+    if line is None or not line.pdf_character:
+        return None
+    sizes: list[float] = []
+    for c in line.pdf_character:
+        u = c.char_unicode
+        if not u or u.isspace():
+            continue
+        fs = c.pdf_style.font_size if c.pdf_style else None
+        if fs is not None and fs > 0:
+            sizes.append(float(fs))
+    if not sizes:
+        return None
+    return Counter(sizes).most_common(1)[0][0]
+
+
+# Soft OCR face-keep still hard-splits when sizes differ by this ratio
+# (title 15pt → body 11pt) or either line is short (heading / uni line).
+_SOFT_SIZE_RATIO_HARD_SPLIT = 1.18
+_SOFT_SHORT_LINE_CHARS = 48
+
+
 def is_toc_leader_line(prev_line: PdfLine) -> bool:
     """Directory-style leaders: many consecutive dots on the previous line."""
     return bool(_TOC_LEADER_RE.search(line_text(prev_line)))
@@ -85,6 +108,27 @@ def line_ends_sentence(line: PdfLine | None) -> bool:
     return text[-1] in ".!?。！？…:"
 
 
+def should_split_on_font_size_jump(
+    prev_line: PdfLine,
+    curr_line: PdfLine,
+    *,
+    ratio_threshold: float = _SOFT_SIZE_RATIO_HARD_SPLIT,
+) -> bool:
+    """Split when dominant font *size* jumps (title→author→affiliation).
+
+    Searchable dual-layer PDFs often use the **same** Times face for title,
+    author, and uni line — only size changes (15 → 12 → 9). Face-id switch
+    alone cannot separate them, which glued ``SchudsonUNIVERSITY`` and lost
+    independent title typesetting.
+    """
+    prev_sz = line_dominant_font_size(prev_line)
+    curr_sz = line_dominant_font_size(curr_line)
+    if not prev_sz or not curr_sz:
+        return False
+    lo, hi = (prev_sz, curr_sz) if prev_sz <= curr_sz else (curr_sz, prev_sz)
+    return hi / lo >= ratio_threshold
+
+
 def should_split_on_font_face_switch(
     prev_line: PdfLine,
     curr_line: PdfLine,
@@ -98,16 +142,29 @@ def should_split_on_font_face_switch(
     (``Arial*``) in reading order; keeping those mid-sentence glues labels
     into body paragraphs (translated chart labels mid-clause).
 
-    **OCR / searchable-image** (``soft_mid_sentence=True``): only split when
-    the previous line is sentence-final. Mid-sentence Times→Courier emphasis
-    on dual-layer scans (font.unknown) must stay one clause for MT; rich-text
-    still paints faces without a hard break.
+    **OCR / searchable-image** (``soft_mid_sentence=True``): keep mid-sentence
+    Times→Courier of **similar size** in long body for MT. Still **hard-split**
+    structural changes: large size ratio (title→author→body) or short
+    heading-like lines (avoids title disappearance / SchudsonUNIVERSITY glue).
     """
     if not is_font_face_switch(prev_line, curr_line):
         return False
-    if soft_mid_sentence:
-        return line_ends_sentence(prev_line)
-    return True
+    if not soft_mid_sentence:
+        return True
+
+    prev_sz = line_dominant_font_size(prev_line)
+    curr_sz = line_dominant_font_size(curr_line)
+    if prev_sz and curr_sz:
+        lo, hi = (prev_sz, curr_sz) if prev_sz <= curr_sz else (curr_sz, prev_sz)
+        if hi / lo >= _SOFT_SIZE_RATIO_HARD_SPLIT:
+            return True
+
+    prev_len = len(line_text(prev_line).strip())
+    curr_len = len(line_text(curr_line).strip())
+    if prev_len <= _SOFT_SHORT_LINE_CHARS or curr_len <= _SOFT_SHORT_LINE_CHARS:
+        return True
+
+    return line_ends_sentence(prev_line)
 
 
 def is_short_centered_date_tail(
@@ -161,6 +218,9 @@ def should_split_line_pair(
     ):
         return True
     if curr_line.pdf_character and is_bullet_point(curr_line.pdf_character[0]):
+        return True
+    # Size jump first: same face, different pt (font.unknown title stack).
+    if should_split_on_font_size_jump(prev_line, curr_line):
         return True
     if should_split_on_font_face_switch(
         prev_line,

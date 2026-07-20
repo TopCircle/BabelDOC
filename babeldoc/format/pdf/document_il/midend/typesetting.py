@@ -989,8 +989,9 @@ class Typesetting:
     # body can keep a larger scale inside the original/white-fill box.
     _OCR_LINE_SKIP_CJK = 1.30
     # Floor scale under OCR — prefer expanding the white-fill box over
-    # unreadable ~0.55–0.7 crushing (font.unknown body → 7.5pt strip).
-    _OCR_MIN_SCALE = 0.88
+    # unreadable ~0.55 crushing. 0.88 was too high: long body overflowed,
+    # overlap retypeset failed, and headers/body looked empty or EN-restored.
+    _OCR_MIN_SCALE = 0.70
     # Body text smaller than this (pt) is treated as OCR noise (e.g. Courier
     # 7.5) and lifted toward the paragraph median when ocr_workaround is on.
     _OCR_MIN_BODY_FONT_PT = 10.0
@@ -1604,6 +1605,13 @@ class Typesetting:
         if apply_layout and final_typeset_units is None:
             force_units = last_typeset_units
             if not force_units:
+                # OCR dual-layer: never reintroduce EN reference_widths here —
+                # same reason as the main search path (noisy short OCR lines).
+                force_ref = (
+                    None
+                    if getattr(self.translation_config, "ocr_workaround", False)
+                    else self._extract_original_line_widths(paragraph)
+                )
                 force_units, _ = self._layout_typesetting_units(
                     typesetting_units,
                     box,
@@ -1611,7 +1619,7 @@ class Typesetting:
                     line_skip,
                     paragraph,
                     use_english_line_break=False,
-                    reference_widths=self._extract_original_line_widths(paragraph),
+                    reference_widths=force_ref,
                 )
             if force_units:
                 paragraph.scale = min_scale
@@ -2303,6 +2311,15 @@ class Typesetting:
         render_order 更靠后的段落的可用高度，再用它已经算好的 optimal_scale
         重新排版一次（自动降低缩放/换行来避开冲突区域）。
         """
+        # Dual-layer / OCR white-fill path: retypeset-on-overlap often fails at
+        # the raised min scale and restores compositions while leaving layout
+        # worse (title empty, body scrambled). Prefer first-pass layout.
+        if getattr(self.translation_config, "ocr_workaround", False):
+            logger.debug(
+                "ocr_workaround: skip post-typesetting overlap retypeset"
+            )
+            return
+
         paragraphs = [p for p in page.pdf_paragraph if p.pdf_paragraph_composition]
         if len(paragraphs) < 2:
             return
