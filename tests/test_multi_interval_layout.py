@@ -86,7 +86,12 @@ class TestQueryAndEstimate:
         # First band intersects the figure
         assert widths[0] == pytest.approx(150 + 262)
 
-    def test_estimate_caps_with_reference_width(self):
+    def test_estimate_caps_left_pocket_only_like_place(self):
+        """S3: ref width caps leftmost pocket; capacity = capped_left + right.
+
+        Old bug used min(ref, sum(pockets))=140 and starved DP while place
+        could still use left-capped 140 + right 262.
+        """
         ts = _typesetting()
         ts._current_zone_index = _mid_figure_index()
         box = Box(x=0, y=100, x2=612, y2=400)
@@ -99,7 +104,32 @@ class TestQueryAndEstimate:
             line_skip=1.05,
             reference_widths=[140.0, 140.0],
         )
-        assert widths[0] == pytest.approx(140.0)  # min(ref, sum)
+        # left pocket [0,150] capped to 140; right [350,612]=262 → 402
+        assert widths[0] == pytest.approx(140.0 + 262.0)
+
+    def test_line_capacity_matches_place_intervals(self):
+        """S3 helper: same query + left-cap as placement first line."""
+        ts = _typesetting()
+        ts._current_zone_index = _mid_figure_index()
+        box = Box(x=0, y=100, x2=612, y2=400)
+        units = [_unit() for _ in range(4)]
+        para = _para(box)
+        avg_h = 12.0
+        y = box.y2 - avg_h
+        cap, intervals = ts._line_capacity_like_place(
+            box=box,
+            y_bottom=y,
+            y_top=y + avg_h,
+            line_idx=0,
+            reference_widths=[140.0],
+            alignment="left",
+            paragraph=para,
+            typesetting_units=units,
+            scale=1.0,
+        )
+        assert intervals[0][1] - intervals[0][0] == pytest.approx(140.0)
+        assert intervals[1] == (350.0, 612.0)
+        assert cap == pytest.approx(140.0 + 262.0)
 
     def test_no_zone_full_width(self):
         ts = _typesetting()

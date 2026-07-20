@@ -1401,6 +1401,7 @@ class Typesetting:
                     if apply_layout:
                         # DP 断行优化：在最终布局时尝试更优的断行方案
                         optimized_typeset_units = None
+                        opt_breaks: list[int] | None = None
                         try:
                             # 计算必要的参数
                             font_sizes = []
@@ -1452,26 +1453,42 @@ class Typesetting:
                                     )
                                     if opt_fit and opt_units:
                                         optimized_typeset_units = opt_units
+                                    else:
+                                        # S3: DP plan rejected — place used different
+                                        # capacity or inserted extra breaks.
+                                        logger.info(
+                                            "DP_REJECT reason=place_mismatch "
+                                            "debug_id=%s breaks=%s opt_fit=%s "
+                                            "n_units=%s scale=%.3f",
+                                            getattr(paragraph, "debug_id", None),
+                                            opt_breaks,
+                                            opt_fit,
+                                            len(typesetting_units),
+                                            scale,
+                                        )
+                                else:
+                                    logger.debug(
+                                        "DP_REJECT reason=no_breaks debug_id=%s "
+                                        "n_units=%s scale=%.3f",
+                                        getattr(paragraph, "debug_id", None),
+                                        len(typesetting_units),
+                                        scale,
+                                    )
                         except Exception as e:
                             # DP 优化失败，使用贪心结果
-                            logger.warning(f"DP line break optimization failed: {e}")
-
-                        # === DIAGNOSTIC: DP 是否被采用 ===
-                        if "在这些" in (paragraph.unicode or ""):
-                            import os as _os
-                            _diag_path = _os.environ.get("BABELDOC_DIAG_LOG", "/tmp/babeldoc_diag.log")
-                            with open(_diag_path, "a", encoding="utf-8") as _f:
-                                _f.write("=== DIAG DP adoption ===\n")
-                                _f.write(f"  debug_id={getattr(paragraph, 'debug_id', None)}\n")
-                                _f.write(f"  opt_breaks={opt_breaks}\n")
-                                _f.write(f"  opt_fit={'N/A' if not opt_breaks else opt_fit}\n")
-                                _f.write(f"  optimized_typeset_units={'yes' if optimized_typeset_units else 'no'}\n")
-                                _f.write(f"  using={'DP' if optimized_typeset_units else 'GREEDY'}\n")
-                                _f.write("=== END DIAG ===\n\n")
-                        # === END DIAGNOSTIC ===
+                            logger.warning(
+                                "DP_REJECT reason=exception debug_id=%s err=%s",
+                                getattr(paragraph, "debug_id", None),
+                                e,
+                            )
 
                         if optimized_typeset_units:
                             typeset_units = optimized_typeset_units
+                            logger.debug(
+                                "DP_ADOPT debug_id=%s breaks=%s",
+                                getattr(paragraph, "debug_id", None),
+                                opt_breaks,
+                            )
 
                         # 实际应用排版结果
                         paragraph.scale = scale
@@ -2773,6 +2790,66 @@ class Typesetting:
                 return next_i, nix1, nix2, nix1
         return None
 
+    def _line_capacity_like_place(
+        self,
+        *,
+        box: Box,
+        y_bottom: float,
+        y_top: float,
+        line_idx: int,
+        reference_widths: list[float] | None,
+        alignment: str,
+        paragraph: il_version_1.PdfParagraph | None,
+        typesetting_units: list[TypesettingUnit],
+        scale: float,
+    ) -> tuple[float, list[tuple[float, float]]]:
+        """S3: capacity + intervals identical to ``_layout_typesetting_units``.
+
+        1. query residual pockets for the y-band
+        2. cap **leftmost** pocket with EN reference width (not min(ref, sum))
+        3. first-line indent reduces capacity on the left pocket only
+
+        Returns ``(capacity, capped_intervals)``.
+        """
+        intervals = self._query_line_intervals(y_bottom, y_top, box)
+        intervals = self._cap_leftmost_interval_with_reference(
+            box,
+            intervals,
+            reference_widths,
+            line_idx,
+            alignment=alignment,
+        )
+        if not intervals:
+            return 0.0, [(box.x, box.x2)]
+
+        capacity = sum(max(0.0, ix2 - ix1) for ix1, ix2 in intervals)
+
+        # Match placement: first-line indent starts after max(left, box.x+indent)
+        if (
+            line_idx == 0
+            and paragraph is not None
+            and alignment == "left"
+            and self._parse_first_line_indent(paragraph) > 0
+        ):
+            ix1, ix2 = intervals[0]
+            indent = self._effective_first_line_indent(
+                paragraph,
+                box,
+                ix1,
+                ix2,
+                scale,
+                typesetting_units,
+                ocr_workaround=bool(
+                    getattr(self.translation_config, "ocr_workaround", False)
+                ),
+            )
+            if indent > 0:
+                line_start = max(ix1, box.x + indent)
+                lost = max(0.0, line_start - ix1)
+                capacity = max(0.0, capacity - lost)
+
+        return capacity, intervals
+
     def _estimate_line_widths(
         self,
         typesetting_units: list[TypesettingUnit],
@@ -2783,19 +2860,11 @@ class Typesetting:
         reference_widths: list[float] | None = None,
         paragraph: il_version_1.PdfParagraph | None = None,
     ) -> list[float]:
-        """估算每行的可用宽度（用于 DP 断行优化的近似值）。
+        """估算每行的可用宽度（用于 DP 断行优化）。
 
-        Multi-interval (PR-06): zone width is the **sum** of residual pockets
-        from ``get_intervals_at`` so DP capacity matches mid-figure wrap.
-        Placement still jumps pocket-to-pocket on the same y band.
-
-        如果提供 reference_widths（原版行宽），则优先使用原版行宽作为目标，
-        同时尊重 ExclusionZone 约束（取两者中较小值）。
-
-        First line (PR-07): when left-aligned with a first-line indent, reduce
-        the first estimated width so DP capacity matches placement.
-
-        否则用 avg_height 步进 Y 位置，查询 ExclusionZone 得到每行可用宽度。
+        S3 closed loop: each line width is the **same** multi-interval capacity
+        that placement uses (sum of pockets after left ref-cap + first indent),
+        not ``min(ref_w, sum(raw_pockets))`` which under-counted wrap-around.
         """
         widths = []
 
@@ -2821,57 +2890,18 @@ class Typesetting:
             else "left"
         )
         while y > box.y:
-            # Step A: sum of all residual pockets (not left-prefer single strip)
-            intervals = self._query_line_intervals(y, y + query_h, box)
-            zone_width = sum(ix2 - ix1 for ix1, ix2 in intervals)
-
-            # Prefer original line widths (artistic taper around photos).
-            # Extra CJK lines reuse median EN width — never fall back to full
-            # page width when refs exist (that spilled text across p.8 photo).
-            if reference_widths:
-                ref_w = Typesetting._pick_reference_width(
-                    reference_widths, line_idx
-                )
-                if ref_w is not None and ref_w >= 12.0:
-                    width = min(ref_w, zone_width)
-                else:
-                    width = zone_width
-            else:
-                width = zone_width
-
-            # Match placement geometry for first-line indent (PR-07):
-            # place uses max(primary_left, box.x+indent) after zone + left ref-cap.
-            if (
-                line_idx == 0
-                and paragraph is not None
-                and align == "left"
-                and self._parse_first_line_indent(paragraph) > 0
-            ):
-                capped = self._cap_leftmost_interval_with_reference(
-                    box,
-                    intervals,
-                    reference_widths,
-                    line_idx,
-                    alignment=align,
-                )
-                ix1, ix2 = capped[0]
-                indent = self._effective_first_line_indent(
-                    paragraph,
-                    box,
-                    ix1,
-                    ix2,
-                    scale,
-                    typesetting_units,
-                    ocr_workaround=bool(
-                        getattr(self.translation_config, "ocr_workaround", False)
-                    ),
-                )
-                if indent > 0:
-                    line_start = max(ix1, box.x + indent)
-                    lost = max(0.0, line_start - ix1)
-                    width = max(0.0, width - lost)
-
-            widths.append(width)
+            capacity, _intervals = self._line_capacity_like_place(
+                box=box,
+                y_bottom=y,
+                y_top=y + query_h,
+                line_idx=line_idx,
+                reference_widths=reference_widths,
+                alignment=align,
+                paragraph=paragraph,
+                typesetting_units=typesetting_units,
+                scale=scale,
+            )
+            widths.append(capacity)
             y -= max(avg_height * line_skip, max_unit_height * 1.05)
             line_idx += 1
 
@@ -3513,9 +3543,11 @@ class Typesetting:
         # DP 模式下如果贪心插入了额外断行，说明 DP 的行宽估算与实际不匹配，
         # 返回 all_units_fit=False 以触发回退到纯贪心布局。
         if dp_break_mismatch:
-            logger.debug(
-                "DP break mismatch: greedy inserted extra breaks, "
-                "falling back to greedy layout."
+            logger.info(
+                "DP_REJECT reason=extra_greedy_breaks "
+                "debug_id=%s n_placed=%s (S3 width loop mismatch)",
+                getattr(paragraph, "debug_id", None),
+                len(typeset_units),
             )
             return typeset_units, False
 

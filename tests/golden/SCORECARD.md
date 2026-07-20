@@ -230,7 +230,7 @@ Resume only with a **new plan** (not more one-off glue / dict / pull-back patche
 | **S1** | CI `pytest` + FixedMap + IL fingerprint + CLI self-check | Safety net for refactors | ✅ **done** (`checks.yml`, `test_dual_golden_synth`) |
 | **S1.1** | Dual **text-layer** metrics (`dual_quality_check --dual`) | Multi-page crush/SOH/font/vgap ruler without translate | ✅ **done** (`dual_layout_metrics`, `test_dual_layout_metrics`) |
 | **S2** | Wire `QuoteZoneConfig` into **main** typesetting + fix `typsetting_document` watermark typo | Quote/body collision; Both-watermark hard bug | unit + optional quote synth; figure probe green |
-| **S3** | Multi-interval: **same** intervals for estimate → DP → place; log DP reject | Figure wrap + stops silent bad-greedy | figure probe + multi-interval unit tests; use S1.1 JSON before/after |
+| **S3** | Multi-interval: **same** intervals for estimate → DP → place; log DP reject | Figure wrap + stops silent bad-greedy | ✅ **done** (`_line_capacity_like_place`, `DP_REJECT` logs, `test_multi_interval_layout`) |
 
 #### S1.1 operator quick check
 
