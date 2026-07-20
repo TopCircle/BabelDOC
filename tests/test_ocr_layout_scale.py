@@ -133,6 +133,34 @@ class TestOcrLayoutScale:
         ts = Typesetting(_config(ocr=False))
         assert ts.translation_config.ocr_workaround is False
 
+    def test_title_not_in_header_skip_band_helper(self):
+        """Title layout_label must not be treated as skip-header white-out."""
+        from babeldoc.format.pdf.document_il.il_version_1 import Page
+        from babeldoc.format.pdf.document_il.midend.paragraph_finder import (
+            ParagraphFinder,
+        )
+
+        cfg = _config(ocr=True)
+        cfg.skip_header = True
+        cfg.header_height = 80.0
+        pf = ParagraphFinder(cfg)
+        para = PdfParagraph(
+            box=Box(x=50, y=530, x2=300, y2=560),  # near page top in PDF coords
+            pdf_style=PdfStyle(font_id="F1", font_size=15.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="The sociology of news production",
+            layout_label="title",
+            layout_id=1,
+        )
+        page = Page(
+            page_number=0,
+            cropbox=type("C", (), {"box": Box(x=0, y=0, x2=396, y2=612)})(),
+            pdf_paragraph=[para],
+            pdf_rectangle=[],
+            page_layout=[],
+        )
+        assert pf._in_skip_header_footer_band(page, para) is False
+
     def test_white_fill_does_not_steal_paragraph_box(self):
         """White cover may use layout∪para; typeset box must stay per-para.
 

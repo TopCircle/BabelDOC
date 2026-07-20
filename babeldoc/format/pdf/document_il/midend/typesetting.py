@@ -2472,8 +2472,17 @@ class Typesetting:
             )
 
         typesetting_units = self.create_typesetting_units(paragraph, fonts)
-        # 如果所有单元都可以直接传递，则直接传递
-        if all(unit.can_passthrough for unit in typesetting_units):
+        # OCR dual-layer: never passthrough original (often invisible 3 Tr)
+        # units. Passthrough + white fill = blank title/author while body
+        # (retypeset ZH) looks fine. Always retypeset so glyphs are painted.
+        ocr_mode = bool(
+            getattr(self.translation_config, "ocr_workaround", False)
+        )
+        if (
+            not ocr_mode
+            and typesetting_units
+            and all(unit.can_passthrough for unit in typesetting_units)
+        ):
             paragraph.scale = 1.0
             paragraph.pdf_paragraph_composition = self.create_passthrough_composition(
                 typesetting_units,

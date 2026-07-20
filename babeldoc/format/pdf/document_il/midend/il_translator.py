@@ -509,7 +509,20 @@ class ILTranslator:
         page: Page,
         paragraph: PdfParagraph,
     ) -> bool:
-        """Skip paragraphs fully inside configured header/footer bands."""
+        """Skip paragraphs fully inside configured header/footer bands.
+
+        Never skips ``layout_label == "title"``: paper titles sit in the top
+        band but are document content, not running headers. Skipping them on
+        OCR dual-layer PDFs leaves white fill over the page image with no ZH
+        paint (blank title).
+        """
+        if getattr(paragraph, "layout_label", None) == "title":
+            return False
+        # Searchable dual-layer: top band is paper title/author, not a running
+        # header. skip_header + white fill would blank the whole top of ZH.
+        if getattr(self.translation_config, "ocr_workaround", False):
+            return False
+
         if not (
             (self.translation_config.skip_header or self.translation_config.skip_footer)
             and page.cropbox

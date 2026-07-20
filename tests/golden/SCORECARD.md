@@ -147,6 +147,17 @@ for every para. Body paras share one tall layout band → all typeset from the
 same top edge (tail and head overlap). White fill must stay on the union rect;
 typeset boxes stay per-paragraph; vertical room via `_ocr_pre_expand_box`.
 
+#### Title blank after body-stack fix
+
+Body stack fixed (tail at correct y). Title/author/uni still blank white on ZH
+half while EN residual OCR text remains extractable.
+
+| Cause | Fix |
+|-------|-----|
+| `skip_header` + 40pt band treats paper title/author as header | OCR dual-layer: **never** header/footer skip; never skip `layout_label=title` |
+| White fill still painted on skipped top paras | White fill skips header/footer skip bands |
+| Passthrough of invisible OCR units under white fill | OCR mode: **always retypeset** (no passthrough) |
+
 **Red decision tree:** fix or `git revert` **current Phase PR only** — no `reset --hard` of the whole branch.
 
 **Out of track:** PR-08 typesetting package split; drop-cap fixes (separate PR + same figure probe).

@@ -169,14 +169,55 @@ class ParagraphFinder:
             if is_isolated:
                 formula_layout.class_name = "isolate_formula"
 
+    def _in_skip_header_footer_band(self, page: Page, paragraph) -> bool:
+        """Same geometry as ILTranslator.should_skip_header_footer_paragraph.
+
+        Used so OCR white-fill is not painted over regions that will not be
+        retypeset (invisible OCR + white fill = blank hole).
+        """
+        if getattr(paragraph, "layout_label", None) == "title":
+            return False
+        cfg = self.translation_config
+        # Mirror ILTranslator: OCR dual-layer never treats top band as skip.
+        if getattr(cfg, "ocr_workaround", False):
+            return False
+        if not (
+            (cfg.skip_header or cfg.skip_footer)
+            and page.cropbox
+            and page.cropbox.box
+            and paragraph.box
+        ):
+            return False
+        page_top = page.cropbox.box.y2
+        page_bottom = page.cropbox.box.y
+        paragraph_top = paragraph.box.y2
+        paragraph_bottom = paragraph.box.y
+        if None in (page_top, page_bottom, paragraph_top, paragraph_bottom):
+            return False
+        if (
+            cfg.skip_header
+            and paragraph_bottom >= page_top - cfg.header_height
+        ):
+            return True
+        if (
+            cfg.skip_footer
+            and paragraph_top <= page_bottom + cfg.footer_height
+        ):
+            return True
+        return False
+
     def add_text_fill_background(self, page: Page):
         layout_map = {layout.id: layout for layout in page.page_layout}
         for paragraph in page.pdf_paragraph:
             layout_id = paragraph.layout_id
             if layout_id is None:
                 continue
-            layout = layout_map[layout_id]
-            if paragraph.box is None:
+            layout = layout_map.get(layout_id)
+            if layout is None or paragraph.box is None:
+                continue
+            # Do not white-out header/footer bands when skip is on — those
+            # paras stay untranslated; covering the page image leaves a blank.
+            if self._in_skip_header_footer_band(page, paragraph):
                 continue
             x1, y1, x2, y2 = (
                 paragraph.box.x,
