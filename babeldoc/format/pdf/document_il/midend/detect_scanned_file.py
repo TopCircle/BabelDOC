@@ -15,6 +15,96 @@ from babeldoc.format.pdf.translation_config import TranslationConfig
 
 logger = logging.getLogger(__name__)
 
+# Full-page (or near full-page) image used as the visible layer of a
+# "searchable image" / dual-layer PDF (scan or Readdle-style export).
+_FULLPAGE_IMAGE_AREA_RATIO = 0.85
+# Fraction of pages that must look dual-layer before we auto-enable OCR mode.
+_SEARCHABLE_IMAGE_PAGE_RATIO = 0.5
+
+
+def page_has_fullpage_image(page: pymupdf.Page) -> bool:
+    """True if any image covers most of the page media box."""
+    page_area = abs(page.rect)
+    if page_area <= 0:
+        return False
+    try:
+        infos = page.get_image_info()
+    except Exception:
+        return False
+    for info in infos:
+        try:
+            bbox = pymupdf.Rect(info["bbox"])
+        except Exception:
+            continue
+        if bbox.get_area() / page_area >= _FULLPAGE_IMAGE_AREA_RATIO:
+            return True
+    return False
+
+
+def page_has_invisible_text_layer(doc: pymupdf.Document, page: pymupdf.Page) -> bool:
+    """True if content uses render-mode-3 text or an OCR text-layer mark.
+
+    Dual-layer PDFs draw a page image for eyes and put copy/search text in an
+    invisible layer (``3 Tr``), sometimes tagged ``OCRTextLayer`` / Readdle.
+    """
+    for index in page.get_contents() or []:
+        try:
+            contents = doc.xref_stream(index) or b""
+        except Exception:
+            continue
+        if regex.search(rb"\s3\s+Tr\s", contents):
+            return True
+        if b"OCRTextLayer" in contents or b"ReaddleObject" in contents:
+            return True
+    return False
+
+
+def is_searchable_image_pdf(doc: pymupdf.Document | None) -> bool:
+    """Detect searchable dual-layer PDFs (full-page image + OCR text layer).
+
+    Born-digital vector PDFs (including arXiv pages with ordinary figure
+    XObjects) return False. Used to auto-enable ``ocr_workaround`` so mono/dual
+    paints white fills under translated text instead of leaving English
+    page-image pixels showing through.
+    """
+    if not doc or doc.page_count == 0:
+        return False
+    hits = 0
+    for page in doc:
+        if page_has_fullpage_image(page) and page_has_invisible_text_layer(doc, page):
+            hits += 1
+    # Majority of pages (ceil half); single-page dual-layer always qualifies.
+    need = max(1, (doc.page_count + 1) // 2)
+    return hits >= need and (hits / doc.page_count >= _SEARCHABLE_IMAGE_PAGE_RATIO)
+
+
+def enable_ocr_workaround_for_searchable_image(
+    translation_config: TranslationConfig,
+    doc: pymupdf.Document | None,
+) -> bool:
+    """If *doc* is dual-layer, turn on OCR white-fill mode. Returns True if enabled.
+
+    Independent of ``auto_enable_ocr_workaround`` / SSIM scanned detection.
+    Idempotent once ``ocr_workaround`` is already True.
+    """
+    if translation_config.ocr_workaround:
+        return False
+    if not is_searchable_image_pdf(doc):
+        return False
+    logger.warning(
+        "Searchable image PDF detected (full-page image + invisible OCR text "
+        "layer). Enabling OCR workaround so translated text covers the page "
+        "image background."
+    )
+    translation_config.ocr_workaround = True
+    translation_config.shared_context_cross_split_part.auto_enabled_ocr_workaround = (
+        True
+    )
+    # Match DetectScannedFile auto path: skip SSIM scan stage, keep text black.
+    translation_config.skip_scanned_detection = True
+    translation_config.disable_rich_text_translate = True
+    return True
+
 
 class DetectScannedFile:
     stage_name = "DetectScannedFile"

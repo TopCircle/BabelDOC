@@ -898,6 +898,17 @@ def _do_translate_single(
 
     doc_pdf2zh = save_pdf_with_same_path_fallback(doc_pdf2zh, temp_pdf_path)
 
+    # Dual-layer / searchable-image PDFs (full-page bitmap + invisible OCR text,
+    # e.g. Readdle font.unknown): enable OCR white-fill *before* IL parse so mono
+    # does not re-show the English page image under Chinese. Independent of
+    # skip_scanned_detection / auto_enable_ocr_workaround. Born-digital figure
+    # PDFs must not match (see tests/test_searchable_image_pdf.py).
+    from babeldoc.format.pdf.document_il.midend.detect_scanned_file import (
+        enable_ocr_workaround_for_searchable_image,
+    )
+
+    enable_ocr_workaround_for_searchable_image(translation_config, doc_pdf2zh)
+
     # if not translation_config.skip_scanned_detection and DetectScannedFile(
     #     translation_config
     # ).fast_check(doc_pdf2zh):

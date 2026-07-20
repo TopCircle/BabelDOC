@@ -76,11 +76,24 @@ cherry-pick `7e9a984..004ba7b`. **Never** mix PR-08 package extract into this tr
 
 | Phase | Scope | Merge only if |
 |-------|--------|----------------|
-| **0** | Probe + this checklist (no behavior change) | unit + `--self-check` green |
-| **A** | Detect searchable image → auto `ocr_workaround` only | figure probe green; figure PDF **not** classified dual-layer |
+| **0** | Probe + this checklist (no behavior change) | ✅ unit + `--self-check` green (`f713179`) |
+| **A** | Detect searchable image → auto `ocr_workaround` only | ✅ figure not dual-layer; enable flags; figure dual probe still green |
 | **B** | Font split policy: hard on born-digital; soft only if `ocr_workaround` | figure probe green; no body←fig-label 混段 |
 | **C** | OCR typesetting (scale/box/ref_width) **gated** on `ocr_workaround` | figure probe **unchanged**; font.unknown size/span improved |
 | **D** | Optional OCR reflow / single face / glyph hygiene | figure still green; backlog items one PR each |
+
+#### Phase A status
+
+- **In:** `page_has_fullpage_image` + `page_has_invisible_text_layer` +
+  `is_searchable_image_pdf` + `enable_ocr_workaround_for_searchable_image`
+  (`detect_scanned_file.py`); hook in `_do_translate_single` **before** IL parse.
+- **Out:** paragraph font-switch soft/hard policy; OCR scale/box typesetting.
+- **Tests:** `tests/test_searchable_image_pdf.py` — font.unknown True; plain +
+  **figure** False; enable sets `ocr_workaround` / `skip_scanned_detection` /
+  `disable_rich_text_translate` / `auto_enabled_ocr_workaround`.
+- **Operator note:** figure dual PDF need **not** be regenerated for Phase A
+  (born-digital path unchanged). font.unknown dual may gain white-fill earlier
+  in the pipeline; body scale still Phase C.
 
 **Red decision tree:** fix or `git revert` **current Phase PR only** — no `reset --hard` of the whole branch.
 
