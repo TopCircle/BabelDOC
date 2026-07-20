@@ -120,13 +120,25 @@ def should_split_on_font_size_jump(
     author, and uni line — only size changes (15 → 12 → 9). Face-id switch
     alone cannot separate them, which glued ``SchudsonUNIVERSITY`` and lost
     independent title typesetting.
+
+    Do **not** split long body lines on moderate size noise (e.g. 11pt body vs
+    7.5pt Courier mid-clause) — that orphans the courier tail and soft face
+    keep never runs. Require a short line (header stack) or title-scale size.
     """
     prev_sz = line_dominant_font_size(prev_line)
     curr_sz = line_dominant_font_size(curr_line)
     if not prev_sz or not curr_sz:
         return False
     lo, hi = (prev_sz, curr_sz) if prev_sz <= curr_sz else (curr_sz, prev_sz)
-    return hi / lo >= ratio_threshold
+    if hi / lo < ratio_threshold:
+        return False
+    # Title-scale face (either side)
+    if prev_sz >= 13.0 or curr_sz >= 13.0:
+        return True
+    prev_len = len(line_text(prev_line).strip())
+    curr_len = len(line_text(curr_line).strip())
+    # Header/affiliation lines are short; long body runs keep soft face policy
+    return prev_len <= _SOFT_SHORT_LINE_CHARS or curr_len <= _SOFT_SHORT_LINE_CHARS
 
 
 def should_split_on_font_face_switch(

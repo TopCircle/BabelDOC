@@ -24,6 +24,8 @@ CJK_LINE_START_FORBIDDEN: frozenset[str] = frozenset(
     # 全角连接 / 间隔 / 省略（行首难看）；不含半角 .,%/
     "・·‧～—–…％‰°"
     "／"  # fullwidth solidus only
+    # 量词/年份：避免「（1989 | 年）」在 dual-layer 窄行被拆开
+    "年月日时分秒"
 )
 
 # 行尾禁用：该字不能作为行末（其后不应断行）

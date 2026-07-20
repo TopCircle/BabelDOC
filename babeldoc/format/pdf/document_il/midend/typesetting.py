@@ -1215,6 +1215,7 @@ class Typesetting:
         line_skip: float | None = None,
     ) -> tuple[float, list[TypesettingUnit] | None]:
         """Core scale search + layout (zone index already filtered)."""
+        self._ocr_normalize_paragraph_geometry(paragraph)
         box = paragraph.box
         scale = initial_scale
         ocr_mode = bool(
@@ -1645,9 +1646,12 @@ class Typesetting:
         return min_scale, final_typeset_units
 
     @staticmethod
+    @staticmethod
     def _resolve_effective_alignment(
         paragraph: il_version_1.PdfParagraph,
         typesetting_units: list[TypesettingUnit] | None = None,
+        *,
+        ocr_workaround: bool = False,
     ) -> str:
         """Return alignment for layout; keep geometric center when it is real.
 
@@ -1662,6 +1666,14 @@ class Typesetting:
         ``translate.cli.text.with.figure`` header). Length gates were killing
         those while left-aligned section titles stay left via detection.
         """
+        # OCR: geometry is too noisy; multi-line body false-centers short tails.
+        if ocr_workaround:
+            label = (getattr(paragraph, "layout_label", None) or "").lower()
+            text = (paragraph.unicode or "").strip()
+            if label == "title" and len(text) <= 40:
+                return getattr(paragraph, "alignment", None) or "left"
+            return "left"
+
         alignment = getattr(paragraph, "alignment", None) or "left"
         if alignment != "center":
             return alignment
@@ -1744,6 +1756,30 @@ class Typesetting:
         except (TypeError, ValueError):
             return 0.0
 
+    def _ocr_normalize_paragraph_geometry(
+        self, paragraph: il_version_1.PdfParagraph
+    ) -> None:
+        """OCR dual-layer: drop noisy indent/center from invisible text geometry.
+
+        font.unknown-style OCR has jittery left edges → false first-line indents
+        and false center on short last lines. Paper body should stay flush-left;
+        keep center only for short single-line title labels.
+        """
+        if not getattr(self.translation_config, "ocr_workaround", False):
+            return
+        paragraph.first_line_indent = 0.0
+        label = (getattr(paragraph, "layout_label", None) or "").lower()
+        text = (paragraph.unicode or "").strip()
+        # Single-line short title may stay centered; everything else left.
+        n_lines = 0
+        for comp in paragraph.pdf_paragraph_composition or []:
+            if comp.pdf_line or comp.pdf_character or comp.pdf_same_style_unicode_characters:
+                n_lines += 1
+        if label == "title" and len(text) <= 40 and n_lines <= 1:
+            return
+        if len(text) >= 24 or n_lines >= 2:
+            paragraph.alignment = "left"
+
     @staticmethod
     def _effective_first_line_indent(
         paragraph: il_version_1.PdfParagraph,
@@ -1752,6 +1788,8 @@ class Typesetting:
         available_x2: float,
         scale: float,
         typesetting_units: list[TypesettingUnit],
+        *,
+        ocr_workaround: bool = False,
     ) -> float:
         """First-line indent in **absolute user space**, capped for usability.
 
@@ -1760,6 +1798,8 @@ class Typesetting:
         scaled glyph size so a tight first line keeps ~4 CJK characters
         (Orgasms p.12 title-style breaks).
         """
+        if ocr_workaround:
+            return 0.0
         raw = Typesetting._parse_first_line_indent(paragraph)
         if raw <= 0:
             return 0.0
@@ -2471,6 +2511,7 @@ class Typesetting:
                 f"Original paragraph: {rm.line_count} lines, no box"
             )
 
+        self._ocr_normalize_paragraph_geometry(paragraph)
         typesetting_units = self.create_typesetting_units(paragraph, fonts)
         # OCR dual-layer: never passthrough original (often invisible 3 Tr)
         # units. Passthrough + white fill = blank title/author while body
@@ -2665,7 +2706,13 @@ class Typesetting:
         y = box.y2 - avg_height
         line_idx = 0
         align = (
-            self._resolve_effective_alignment(paragraph, typesetting_units)
+            self._resolve_effective_alignment(
+                paragraph,
+                typesetting_units,
+                ocr_workaround=bool(
+                    getattr(self.translation_config, "ocr_workaround", False)
+                ),
+            )
             if paragraph is not None
             else "left"
         )
@@ -2711,6 +2758,9 @@ class Typesetting:
                     ix2,
                     scale,
                     typesetting_units,
+                    ocr_workaround=bool(
+                        getattr(self.translation_config, "ocr_workaround", False)
+                    ),
                 )
                 if indent > 0:
                     line_start = max(ix1, box.x + indent)
@@ -2954,7 +3004,14 @@ class Typesetting:
             logger.debug(
                 f"Laying out paragraph with {len(zone_index.zones)} exclusion zones"
             )
-        alignment = self._resolve_effective_alignment(paragraph, typesetting_units)
+        ocr_mode = bool(
+            getattr(self.translation_config, "ocr_workaround", False)
+        )
+        alignment = self._resolve_effective_alignment(
+            paragraph,
+            typesetting_units,
+            ocr_workaround=ocr_mode,
+        )
         query_h0 = avg_height if avg_height > 0 else 1.0
         intervals = self._query_line_intervals(current_y, current_y + query_h0, box)
         intervals = self._cap_leftmost_interval_with_reference(
@@ -2986,7 +3043,12 @@ class Typesetting:
         line_available_x2 = intervals[0][1]
         # First-line indent: absolute user-space from box.x (PR-07).
         # Center/right skip indent; left body matches EN visual indent.
-        if alignment == "left" and self._parse_first_line_indent(paragraph) > 0:
+        # OCR: skip (noisy OCR edges → false indent on every para).
+        if (
+            not ocr_mode
+            and alignment == "left"
+            and self._parse_first_line_indent(paragraph) > 0
+        ):
             indent = self._effective_first_line_indent(
                 paragraph,
                 box,

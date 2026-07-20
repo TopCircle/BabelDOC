@@ -133,6 +133,39 @@ class TestOcrLayoutScale:
         ts = Typesetting(_config(ocr=False))
         assert ts.translation_config.ocr_workaround is False
 
+    def test_ocr_forces_left_and_zero_indent(self):
+        ts = Typesetting(_config(ocr=True))
+        para = PdfParagraph(
+            box=Box(x=50, y=100, x2=300, y2=200),
+            pdf_style=PdfStyle(font_id="F1", font_size=10.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="研究新闻的社会科学家使用了一种新闻记者不信任和误解的语言。",
+            layout_label="plain text",
+            first_line_indent=14.0,
+            alignment="center",
+        )
+        ts._ocr_normalize_paragraph_geometry(para)
+        assert para.first_line_indent == 0.0
+        assert para.alignment == "left"
+        assert (
+            Typesetting._resolve_effective_alignment(
+                para, ocr_workaround=True
+            )
+            == "left"
+        )
+        assert (
+            Typesetting._effective_first_line_indent(
+                para,
+                para.box,
+                50.0,
+                300.0,
+                1.0,
+                [],
+                ocr_workaround=True,
+            )
+            == 0.0
+        )
+
     def test_title_not_in_header_skip_band_helper(self):
         """Title layout_label must not be treated as skip-header white-out."""
         from babeldoc.format.pdf.document_il.il_version_1 import Page
