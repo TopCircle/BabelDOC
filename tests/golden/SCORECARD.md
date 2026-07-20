@@ -216,6 +216,75 @@ Resume only with a **new plan** (not more one-off glue / dict / pull-back patche
 
 **Out of track:** PR-08 typesetting package split; drop-cap; figure golden re-baseline.
 
+### Post-freeze backlog (system) — 2026-07-20
+
+**Scope:** generic, multi-PDF improvements. **Not** F1–F4 glue/dict/pull-back patches
+(see freeze above). Full architecture detail:
+[`docs/architecture-optimization-plan.md`](../../docs/architecture-optimization-plan.md)
+§ *Post-freeze system backlog*.
+
+#### Next three (recommended order)
+
+| # | Work | Why (system leverage) | Gate |
+|---|------|----------------------|------|
+| **S1** | CI `pytest` + minimal dual harness (FixedMap / IL fingerprint) | Every later PR needs a safety net | unit green; no large dual binaries in CI |
+| **S2** | Wire `QuoteZoneConfig` from `TranslationConfig` into **main** typesetting + fix `typsetting_document` watermark typo | Quote/body collision is a cross-PDF defect class; Both-watermark is a hard bug | unit + optional quote synth; figure probe green |
+| **S3** | Multi-interval: **same** intervals for estimate → DP → place; log DP reject | Figure wrap + stops silent bad-greedy when DP unused | figure probe + multi-interval unit tests |
+
+#### Infrastructure
+
+| ID | Task | Notes |
+|----|------|--------|
+| I1 | Wire `pytest` into `.github/workflows/checks.yml` | No Orgasms dual in CI |
+| I2 | `dual_quality_check` / IL layout fingerprint harness | Refactor gate vs quality gate (SSIM optional) |
+| I3 | Stage observability (wall time; greedy vs DP; final scale) | Debug without guessing |
+| I4 | Consumer uses fork tip (PDFMathTranslate ↔ editable BabelDOC) | Process check, not product feature |
+
+#### Layout main path
+
+| ID | Task | Notes |
+|----|------|--------|
+| L1 | Quote thresholds on production `ExclusionZoneBuilder` | Not only `PostLayoutProcessor` |
+| L2 | Multi-interval estimate/DP/place closed loop | M5 / PR-05–06; align with S3 |
+| L3 | Paragraph style contract (align / indent / title vs body scale) | OCR vs born-digital rules explicit |
+| L4 | Header/footer: **translate skip ≠ layout exclude** | Separate semantics |
+| L5 | Optional: single layout path under `ocr_workaround` | Structural; not more if-stacks for F1–F2 |
+
+#### Correctness footguns
+
+| ID | Task | Notes |
+|----|------|--------|
+| C1 | `typsetting_document` → `typesetting_document` (Watermark Both) | AttributeError today |
+| C2 | `table_model` dead vs consumer still passes RapidOCR | Config honesty / deprecation UX |
+| C3 | DeepLX / non-LLM dispatch guard test | Keep `ILTranslator` path stable |
+
+#### Structure / maintainability (when free)
+
+| ID | Task | Notes |
+|----|------|--------|
+| T1 | Thin extract pure helpers from `typesetting.py` | M7; not blocking L\* |
+| T2 | One `TypesettingUnit` (retire composer duplicate) | Pattern path or experimental only |
+| T3 | Pattern/composer: production or `experimental/` | Kill dual-stack noise |
+| T4 | DP cost + place share width model | Future CJK rework substrate — no dict patches |
+
+#### Hygiene backlog
+
+| ID | Task |
+|----|------|
+| H1 | `TranslationConfig` grouping / views |
+| H2 | Collapse `rpc_doclayout*` + CLI flags |
+| H3 | Progress stage weights vs real pipeline (dead TableParser weight) |
+| H4 | `uv.lock` + docs path refresh |
+| H5 | Parse dual-stack boundary freeze (new_parser vs legacy) |
+
+#### Explicitly out of this backlog
+
+- font.unknown **F1–F4** mid-word / citation EOL patch churn  
+- Mixing figure golden re-baseline into dual-layer PRs  
+- Mega OCR-only if-ladders without a single strategy replacement  
+
+**Operator rule:** pick from **S1 → S2 → S3** unless a hard crash (C1) blocks shipping.
+
 ## Rating scale
 
 | Score | Meaning |

@@ -4,8 +4,8 @@
 |-------|-------|
 | **Document title** | BabelDOC Overall Architecture Optimization Plan |
 | **Author** | _TBD_ |
-| **Date** | 2026-07-16 |
-| **Status** | Draft (rev 3 — re-review: multi-interval DP integration) |
+| **Date** | 2026-07-16 (rev 4 system backlog 2026-07-20) |
+| **Status** | Draft (rev 4 — post-freeze system backlog: S1–S3 / I/L/C/T/H) |
 | **Repo** | `/Users/yun/workspace/BabelDOC` (fork TopCircle/BabelDOC) |
 | **Baseline commit** | `312c6b8` (`fix: keep space glyph in ToUnicode`) |
 | **Upstream** | funstory-ai/BabelDOC |
@@ -241,6 +241,53 @@ Ship **only** this before hygiene:
 | M7 | Optional thin extract of pure helpers / package (not blocking M4–M6) | Maintainability |
 
 **Backlog if capacity (not dual MVP):** config views, RPC profiles, legacy parse deprecate, progress weights, lockfile (lockfile is quick — may sneak in early), docs refresh, pattern flag, post-layout default-on eval, delete legacy.
+
+### Post-freeze system backlog (2026-07-20)
+
+**Context:** dual-layer `font.unknown` CJK mid-word / citation EOL work is **operator-frozen**
+(F1–F4 in [`tests/golden/SCORECARD.md`](../tests/golden/SCORECARD.md)). Do **not** schedule more
+glue/dict/pull-back patches on that track until a redesign. Below is the **system-level**
+queue: multi-PDF, architecture-shaped, independent of F1–F4.
+
+**Operator checklist mirror:** SCORECARD § *Post-freeze backlog (system)*.
+
+#### Recommended next three
+
+| Order | ID | Work | Dual / quality impact |
+|------:|----|------|------------------------|
+| 1 | **S1** | CI `pytest` + minimal dual harness (FixedMap + IL fingerprint) | Gate for all later PRs |
+| 2 | **S2** | Wire `QuoteZoneConfig` from `TranslationConfig` into **main** typesetting; fix `typsetting_document` watermark typo | Quote/wrap + correctness |
+| 3 | **S3** | Multi-interval: **identical** intervals for estimate → DP → place; instrument DP reject | Figure wrap; stops silent bad greedy |
+
+Map onto MVP slice: S1≈M1/P0a–b, S2≈M2+M3, S3≈M5/PR-05–06 (close the loop, not greenfield).
+
+#### Full ID table
+
+| ID | Area | Task | Notes |
+|----|------|------|--------|
+| I1 | Infra | Wire pytest into CI | No large dual PDFs in default CI |
+| I2 | Infra | dual harness / IL fingerprint | Refactor vs quality gates |
+| I3 | Infra | Stage observability (time, greedy/DP, scale) | Operator debug |
+| I4 | Infra | Consumer pins editable fork tip | Process |
+| L1 | Layout | Quote config on production exclusion zones | Not post-layout-only |
+| L2 | Layout | Multi-interval estimate/DP/place closed loop | = S3 |
+| L3 | Layout | Paragraph style contract (align/indent/scale) | OCR vs born-digital explicit |
+| L4 | Layout | Header/footer: translate skip ≠ layout exclude | Semantics |
+| L5 | Layout | Optional single layout path under `ocr_workaround` | Structural alternative to if-stacks |
+| C1 | Correctness | Watermark Both `typsetting_document` typo | Hard bug |
+| C2 | Correctness | Dead `table_model` vs consumer RapidOCR | Honest config |
+| C3 | Correctness | DeepLX / non-LLM dispatch guard test | ILTranslator path |
+| T1 | Structure | Thin extract helpers from typesetting god file | M7; non-blocking |
+| T2 | Structure | One TypesettingUnit type | Drop composer duplicate |
+| T3 | Structure | Pattern path: ship or experimental/ | Dual-stack cleanup |
+| T4 | Structure | DP cost + place share width model | Substrate for future CJK redesign |
+| H1–H5 | Hygiene | Config views, RPC collapse, progress weights, uv.lock, parse freeze | When free |
+
+#### Explicitly deferred
+
+- F1–F4 font.unknown mid-word / `第11卷（` patch iteration  
+- Figure golden re-baseline mixed into dual-layer PRs  
+- OCR-only mega if-ladders without replacing the layout strategy  
 
 ### Phase roadmap (revised for capacity)
 
