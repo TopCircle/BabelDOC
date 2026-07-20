@@ -185,13 +185,15 @@ def merge_cjk_units(units: list['TypesettingUnit']) -> list['TypesettingUnit']:
         if not unicode:
             continue
 
-        # 行首禁则：标点前的 CJK 不可断
-        if (
-            is_cjk_line_start_forbidden(unicode)
-            and i > 0
-            and units[i - 1].is_cjk_char
-        ):
-            units[i - 1].can_break_line_cache = False
+        # 行首禁则：禁止在「行首禁用字」前断开（含数字/空格前的 年 等）
+        # 旧逻辑只看前一 unit 是否 CJK，导致「（1989 | 年）」仍被拆开。
+        if is_cjk_line_start_forbidden(unicode) and i > 0:
+            j = i - 1
+            while j >= 0 and getattr(units[j], "is_space", False):
+                units[j].can_break_line_cache = False
+                j -= 1
+            if j >= 0:
+                units[j].can_break_line_cache = False
 
         # 行尾禁则：开括号/开引号本身不可作为断行点
         if is_cjk_line_end_forbidden(unicode):

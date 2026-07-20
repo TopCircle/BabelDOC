@@ -155,9 +155,9 @@ def should_split_on_font_face_switch(
     into body paragraphs (translated chart labels mid-clause).
 
     **OCR / searchable-image** (``soft_mid_sentence=True``): keep mid-sentence
-    Times→Courier of **similar size** in long body for MT. Still **hard-split**
-    structural changes: large size ratio (title→author→body) or short
-    heading-like lines (avoids title disappearance / SchudsonUNIVERSITY glue).
+    Times→Courier (often smaller) in **long body** for MT — size alone must
+    not hard-split those. Still **hard-split** structural cases: title-scale
+    size, or short heading-like lines (title/author/uni stack).
     """
     if not is_font_face_switch(prev_line, curr_line):
         return False
@@ -166,16 +166,29 @@ def should_split_on_font_face_switch(
 
     prev_sz = line_dominant_font_size(prev_line)
     curr_sz = line_dominant_font_size(curr_line)
-    if prev_sz and curr_sz:
-        lo, hi = (prev_sz, curr_sz) if prev_sz <= curr_sz else (curr_sz, prev_sz)
-        if hi / lo >= _SOFT_SIZE_RATIO_HARD_SPLIT:
-            return True
-
     prev_len = len(line_text(prev_line).strip())
     curr_len = len(line_text(curr_line).strip())
-    if prev_len <= _SOFT_SHORT_LINE_CHARS or curr_len <= _SOFT_SHORT_LINE_CHARS:
+    size_jump = False
+    if prev_sz and curr_sz:
+        lo, hi = (prev_sz, curr_sz) if prev_sz <= curr_sz else (curr_sz, prev_sz)
+        size_jump = hi / lo >= _SOFT_SIZE_RATIO_HARD_SPLIT
+
+    # Structural hard split (same policy as should_split_on_font_size_jump)
+    if size_jump and (prev_sz >= 13.0 or curr_sz >= 13.0):
+        return True
+    if size_jump and (
+        prev_len <= _SOFT_SHORT_LINE_CHARS or curr_len <= _SOFT_SHORT_LINE_CHARS
+    ):
+        return True
+    # Short heading line + face change without large size jump
+    if (
+        not size_jump
+        and (prev_len <= _SOFT_SHORT_LINE_CHARS or curr_len <= _SOFT_SHORT_LINE_CHARS)
+        and line_ends_sentence(prev_line)
+    ):
         return True
 
+    # Long body mid-clause Times→Courier: keep for MT
     return line_ends_sentence(prev_line)
 
 

@@ -112,12 +112,12 @@ class TestFontSwitchParagraphSplit:
         assert "Ancilla" not in _para_text(paras[0])
 
     def test_ocr_mid_sentence_times_to_courier_not_split(self):
-        """OCR dual-layer (font.unknown): mid-clause face keep for MT context.
+        """OCR dual-layer: mid-clause Times→smaller Courier stays one para for MT.
 
-        Same-size long body lines only — size/short-line guards must not fire.
+        font.unknown ends the first body with 11pt Times then 7.5pt Courier
+        ("occasional | sensationalism… never fakes"). Must not orphan the tail.
         """
         pf = ParagraphFinder(_config(ocr_workaround=True))
-        # Both lines long and same size so soft keep applies (not short/size hard).
         long_a = (
             "nothing but the facts and yes theres occasional bias occasional words"
         )
@@ -126,7 +126,7 @@ class TestFontSwitchParagraphSplit:
         )
         para = PdfParagraph(
             box=Box(x=50, y=200, x2=340, y2=300),
-            pdf_style=PdfStyle(font_id="Font1", font_size=10.0, graphic_state=None),
+            pdf_style=PdfStyle(font_id="Font1", font_size=11.0, graphic_state=None),
             pdf_paragraph_composition=[
                 _line(long_a, 280, "Font1"),
                 _line(long_b, 265, "Font2"),
@@ -134,17 +134,17 @@ class TestFontSwitchParagraphSplit:
             ],
             unicode="x",
         )
+        # Times ~11pt then Courier ~7.5pt (real dual-layer size jump)
+        for ch in para.pdf_paragraph_composition[0].pdf_line.pdf_character:
+            ch.pdf_style.font_size = 11.2
+        for comp in para.pdf_paragraph_composition[1:]:
+            for ch in comp.pdf_line.pdf_character:
+                ch.pdf_style.font_size = 7.5
         paras = [para]
         pf.process_independent_paragraphs(paras, median_width=200.0)
         assert len(paras) == 1
-        assert (
-            should_split_on_font_face_switch(
-                paras[0].pdf_paragraph_composition[0].pdf_line,
-                paras[0].pdf_paragraph_composition[1].pdf_line,
-                soft_mid_sentence=True,
-            )
-            is False
-        )
+        assert "sensationalism" in _para_text(paras[0])
+        assert "never" in _para_text(paras[0])
 
     def test_ocr_title_to_author_size_hard_splits(self):
         """OCR soft keep must not glue title (15pt) to author (12pt)."""
