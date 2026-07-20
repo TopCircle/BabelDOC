@@ -162,6 +162,60 @@ half while EN residual OCR text remains extractable.
 
 **Out of track:** PR-08 typesetting package split; drop-cap fixes (separate PR + same figure probe).
 
+### ⏸ FREEZE (2026-07-20): font.unknown CJK mid-word / citation wraps — **paused**
+
+Operator judgment: **current approach has not closed the gap**; stop iterating for now.
+Resume only with a **new plan** (not more one-off glue / dict / pull-back patches).
+
+| Field | Value |
+|-------|--------|
+| Sample | `tests/golden/translate.cli.font.unknown.pdf` → dual ZH half |
+| Code tip when frozen | `357beee` (`fix(cjk): pull-back…`) on dual-layer track after Phases 0–C + title/indent/courier |
+| Operator status | **Paused / not accepted** — user: 「这个你是改不好了」 |
+| Figure baseline | Keep independent; do **not** break figure probe while resuming |
+
+#### Still broken (repro on dual ZH half — circled by operator)
+
+| ID | Symptom | Example |
+|----|---------|---------|
+| F1 | Mid-word CJK wrap | `感` / `情用事` (感情用事) |
+| F2 | Citation open-paren at EOL | `第11卷（` then next line `1989年），263-282页` |
+| F3 | Place-name / related | historically `德` / `里`（新德里）; may recur with other names |
+| F4 | Related body orphans | short tails mid-sentence after OCR narrow box + greedy/DP mismatch |
+
+**What already works on this track (do not re-break):** ZH title/author painted; body not fully stacked; indent/center less wrong; some 感情/年 glue in unit sim — **production dual still shows F1–F2**.
+
+#### What was tried (do not blindly re-apply)
+
+| Layer | Change (commits / WIP) | Limit |
+|-------|------------------------|--------|
+| Word mark | `merge_cjk_units` mark **first** char of 二字词 `can_break=False` (`67fd9d2`) | Dict incomplete; DP/greedy width mismatch still wraps |
+| Kinsoku | line-end forbidden on `（`; glue `年` after digits (`34aeb00`+) | Cancel-break → overflow path still ends with `（` on real duals |
+| Pull-back | On wrap, pop illegal EOL tail to next line (`357beee`) | Unit sim OK; **operator dual still fails** (path/scale/DP adopt / not loaded?) |
+| EN lookahead off | OCR/CJK disable lookahead + 2× paren early wrap | Helps sim; not sufficient alone |
+| Dict | `感情`/`伪造`/`德里`/`新德里`… | Whack-a-mole; not a general CJK engine |
+| Digit glue | `第`+digits+`卷` / `1989年` in `merge_cjk_units` | Same: sim green, dual red |
+
+#### Likely structural gaps (for next designer — not confirmed fixed)
+
+1. **Two layout passes:** greedy then optional DP; if DP rejected (`opt_fit` / width estimate), bad greedy remains.
+2. **Estimated `line_widths` ≠ real multi-interval OCR box** → DP illegal or unused; greedy inserts extra breaks.
+3. **Pull-back / glue only on in-process units** — verify GUI/PDFMathTranslate actually runs **editable fork** at tip (not pip 0.6.x).
+4. **Half-space / NBSP / hyphenated OCR source** → unit stream may not match dict adjacency.
+5. **Scale search accepts mid-word wraps** as long as `all_units_fit` (break is “legal” to fit metric).
+
+#### Resume checklist (next session)
+
+- [ ] Confirm runtime: `babeldoc.__file__` → this fork; git tip ≥ freeze commit or rebased plan.
+- [ ] Capture **one** failing dual + IL dump (`typsetting.json` / debug) for the two circled regions only.
+- [ ] Prefer **one** mechanism: e.g. CJK-only break cost in DP + single layout path under `ocr_workaround`, not more ad-hoc `if` in the greedy loop.
+- [ ] Gate: figure `figure_baseline_probe` still green; unit tests for F1/F2 strings under OCR-like `box_w`.
+- [ ] Operator sign-off on **new** dual screenshots only (old `_circ_*.png` / `_fu_*.png` are stale evidence).
+
+**Local evidence (gitignored / untracked):** `tests/golden/_circ_p1.png`, `_circ_end.png`, `_circ_full.png`, `_fu_latest_left.png`.
+
+**Out of track:** PR-08 typesetting package split; drop-cap; figure golden re-baseline.
+
 ## Rating scale
 
 | Score | Meaning |
