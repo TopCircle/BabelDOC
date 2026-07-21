@@ -401,6 +401,40 @@ class StylesAndFormulas:
         max_y = max(char.visual_bbox.box.y2 for char in line.pdf_character)
         line.box = Box(min_x, min_y, max_x, max_y)
 
+    @staticmethod
+    def _is_prose_number_run(chars: list[PdfCharacter], start: int) -> bool:
+        """Digit run followed by Latin letter (optional spaces) → body prose.
+
+        Examples: ``50 Shades``, ``4th``, ``3D``. Not ``x=50``, ``a^2``, ``21%``
+        (non-letter after digits).
+        """
+        if start < 0 or start >= len(chars):
+            return False
+        ch0 = chars[start].char_unicode or ""
+        if not ch0 or not re.match(r"[0-9]", ch0):
+            return False
+        j = start + 1
+        while j < len(chars):
+            u = chars[j].char_unicode or ""
+            if u and re.match(r"[0-9]", u):
+                j += 1
+                continue
+            break
+        # skip spaces only (not punctuation)
+        while j < len(chars):
+            u = chars[j].char_unicode or ""
+            if u == " ":
+                j += 1
+                continue
+            break
+        if j >= len(chars):
+            return False
+        nxt = chars[j].char_unicode or ""
+        if not nxt:
+            return False
+        # ASCII letter after the number → "50 Shades" / "4th"
+        return bool(re.match(r"[A-Za-z]", nxt))
+
     def _classify_characters_in_composition(
         self,
         composition: PdfParagraphComposition,
@@ -474,6 +508,24 @@ class StylesAndFormulas:
             next_char = (
                 line.pdf_character[i + 1] if i < len(line.pdf_character) - 1 else None
             )
+
+            # Prose numbers (DeepLX path): "50 Shades", "4th Avenue" — default
+            # digit→formula injects ``{v1}`` into MT text. DeepLX often mangled
+            # the clause around that token (All Tied Up intro lost the whole
+            # third sentence). Longer paras with "21%" still OK; this is the
+            # digit+Latin-word pattern. Keep real math (digit next to math
+            # symbols / formula fonts) as formula.
+            if (
+                is_formula
+                and not in_formula_state
+                and not char.formula_layout_id
+                and char.pdf_style.font_id not in formula_font_ids
+                and not char.vertical
+                and char.char_unicode
+                and re.match(r"[0-9]", char.char_unicode)
+                and self._is_prose_number_run(line.pdf_character, i)
+            ):
+                is_formula = False
             isspace = char.char_unicode.isspace() if char.char_unicode else False
             prev_is_space = (
                 previous_char.char_unicode.isspace()

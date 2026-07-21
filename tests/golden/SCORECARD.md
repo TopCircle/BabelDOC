@@ -251,7 +251,7 @@ Resume only with a **new plan** (not more one-off glue / dict / pull-back patche
 |----:|-------|---------|-----------------|--------------|
 | **P0** | `align_center_false` | Body/warning blocks look **center** or short last line centered; left edge x scatters (std ≫ 20) | p5 top, p14 warnings | **L3** paragraph alignment |
 | **P0** | `list_indent` | Numbered steps: (1) MT markers ``2。`` not matched; (2) short items stay **center** so hang never runs; wrap under digit / centered blocks | p6/p7 safety list | list marker ``。`` + force-left + hang inset |
-| **P0** | `missing_zh` | Intro first para ZH drops EN third sentence (50 Shades…) — gap under short ZH line, not overflow | book p3 / dual p4 | **translation** incomplete; `translation_drops_sentences` retry/fallback (token ratio 0.3 too loose) |
+| **P0** | `missing_zh` | Intro first para ZH drops EN third sentence (50 Shades…) — gap under short ZH; long paras on same page OK; **DeepLX not LLM** | book p3 / dual p4 | digit ``50`` falsely formula → ``{v1}`` into DeepLX; prose-number demotion + optional sentence retry |
 | **P1** | `cjk_ragged_break` | Mid-phrase / orphan lines: 「这个」「理智和」「在这」; high line-length stdev | p5, p6, p8, p18, p20 | **L3** + CJK break (not dict F1) |
 | **P1** | `wrap_column` | Figure-side narrow column: acceptable wrap but uneven fill | p6, p7, p10, p20 | S3 done; residual is style/break |
 | **P2** | `title_half_en` | e.g. `technique 2: 床上捆绑` | p17 | glossary / span (DeepLX), not layout |
