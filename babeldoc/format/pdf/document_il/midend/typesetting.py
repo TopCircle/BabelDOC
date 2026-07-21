@@ -1766,22 +1766,114 @@ class Typesetting:
 
         return min_scale, final_typeset_units
 
+    # Leading marker for numbered list items (EN/CJK dual hanging indent).
+    _LIST_MARKER_RE = re.compile(
+        r"^(?:"
+        r"\d{1,3}\s*[\.．、\)]\s*"  # 1.  1、  1)
+        r"|\(\s*\d{1,3}\s*\)\s*"  # (1)
+        r"|[①-⑳]\s*"
+        r")"
+    )
+    # ~4 CJK glyphs at scale≈1 — shared min body column after hang/indent.
+    _MIN_LINE_BODY_PT = 48.0
+
     @staticmethod
     def _looks_like_numbered_list_item(paragraph: il_version_1.PdfParagraph) -> bool:
         """True when translated/source text starts like ``1.`` / ``1、`` / ``(1)``."""
         text = (getattr(paragraph, "unicode", None) or "").strip()
         if not text:
             return False
-        return bool(
-            re.match(
-                r"^(?:"
-                r"\d{1,3}\s*[\.．、\)]\s*"  # 1.  1、  1)
-                r"|\(\s*\d{1,3}\s*\)\s*"  # (1)
-                r"|[①-⑳]\s*"
-                r")",
-                text,
-            )
+        return bool(Typesetting._LIST_MARKER_RE.match(text))
+
+    @staticmethod
+    def _list_marker_hang_width(
+        paragraph: il_version_1.PdfParagraph,
+        typesetting_units: list[TypesettingUnit] | None,
+        scale: float,
+    ) -> float:
+        """Pure width of leading ``1. `` / ``2、`` from typesetting units.
+
+        Policy (OCR, line index, span cap) lives in ``_numbered_list_hang_inset``.
+        """
+        if not Typesetting._looks_like_numbered_list_item(paragraph):
+            return 0.0
+
+        parts: list[tuple[str, float]] = []
+        for u in typesetting_units or []:
+            ch = u.try_get_unicode() if hasattr(u, "try_get_unicode") else None
+            if not ch:
+                continue
+            parts.append((ch, float(getattr(u, "width", 0.0) or 0.0) * scale))
+        if not parts:
+            return 0.0
+
+        full = "".join(ch for ch, _ in parts)
+        lstripped = full.lstrip()
+        lead = len(full) - len(lstripped)
+        m = Typesetting._LIST_MARKER_RE.match(lstripped)
+        if not m:
+            return 0.0
+
+        end = lead + len(m.group(0))
+        hang = 0.0
+        pos = 0
+        for ch, w in parts:
+            if pos >= end:
+                break
+            n = len(ch)
+            if pos + n <= end:
+                hang += w
+            else:
+                hang += w * ((end - pos) / max(1, n))
+            pos += n
+        return hang if hang > 0.5 else 0.0
+
+    @staticmethod
+    def _numbered_list_hang_inset(
+        paragraph: il_version_1.PdfParagraph | None,
+        typesetting_units: list[TypesettingUnit] | None,
+        scale: float,
+        *,
+        line_idx: int,
+        alignment: str,
+        ocr_workaround: bool,
+        pocket_span: float,
+    ) -> float:
+        """Left inset for wrap lines of numbered lists (0 on first line / OCR / non-left).
+
+        EN dual lists hang under body after the serial; ZH reflow used to flush
+        wrap lines under the digit (All Tied Up safety list / golden screenshot).
+        """
+        if (
+            ocr_workaround
+            or alignment != "left"
+            or line_idx <= 0
+            or paragraph is None
+        ):
+            return 0.0
+        hang = Typesetting._list_marker_hang_width(
+            paragraph, typesetting_units, scale
         )
+        if hang <= 0.5:
+            return 0.0
+        if pocket_span > 1.0:
+            min_body = Typesetting._MIN_LINE_BODY_PT * max(scale, 0.5)
+            hang = min(hang, max(0.0, pocket_span - min_body))
+        return hang if hang > 0.5 else 0.0
+
+    @staticmethod
+    def _inset_leftmost_interval(
+        intervals: list[tuple[float, float]],
+        inset: float,
+    ) -> list[tuple[float, float]]:
+        """Shrink leftmost pocket from the left (hanging / content column)."""
+        if inset <= 0.5 or not intervals:
+            return intervals
+        ix1, ix2 = intervals[0]
+        nx1 = min(ix1 + inset, ix2)
+        if nx1 <= ix1 + 1e-9:
+            return intervals
+        return [(nx1, ix2), *intervals[1:]]
 
     @staticmethod
     def _resolve_effective_alignment(
@@ -2886,10 +2978,14 @@ class Typesetting:
 
         1. query residual pockets for the y-band
         2. cap **leftmost** pocket with EN reference width (not min(ref, sum))
-        3. first-line indent reduces capacity on the left pocket only
+        3. numbered-list hang: shrink leftmost pocket on wrap lines (same as place)
+        4. first-line indent reduces capacity on the left pocket only
 
         Returns ``(capacity, capped_intervals)``.
         """
+        ocr_mode = bool(
+            getattr(self.translation_config, "ocr_workaround", False)
+        )
         intervals = self._query_line_intervals(y_bottom, y_top, box)
         intervals = self._cap_leftmost_interval_with_reference(
             box,
@@ -2900,6 +2996,20 @@ class Typesetting:
         )
         if not intervals:
             return 0.0, [(box.x, box.x2)]
+
+        # Match placement: hang = leftmost inset on wrap lines (not a parallel x)
+        ix1, ix2 = intervals[0]
+        hang = Typesetting._numbered_list_hang_inset(
+            paragraph,
+            typesetting_units,
+            scale,
+            line_idx=line_idx,
+            alignment=alignment,
+            ocr_workaround=ocr_mode,
+            pocket_span=max(0.0, ix2 - ix1),
+        )
+        if hang > 0:
+            intervals = Typesetting._inset_leftmost_interval(intervals, hang)
 
         capacity = sum(max(0.0, ix2 - ix1) for ix1, ix2 in intervals)
 
@@ -2918,9 +3028,7 @@ class Typesetting:
                 ix2,
                 scale,
                 typesetting_units,
-                ocr_workaround=bool(
-                    getattr(self.translation_config, "ocr_workaround", False)
-                ),
+                ocr_workaround=ocr_mode,
             )
             if indent > 0:
                 line_start = max(ix1, box.x + indent)
@@ -3236,6 +3344,7 @@ class Typesetting:
             layout_line_idx,
             alignment=alignment,
         )
+        # line 0: no list hang (marker sits at left edge)
         interval_idx = 0
         available_x, available_x2 = intervals[0]
         current_x = available_x
@@ -3498,6 +3607,22 @@ class Typesetting:
                         layout_line_idx,
                         alignment=alignment,
                     )
+                    # Numbered-list hang: shrink leftmost pocket so available_x
+                    # is already the body column (same as capacity path / S3).
+                    _ix1, _ix2 = intervals[0]
+                    _hang = Typesetting._numbered_list_hang_inset(
+                        paragraph,
+                        typesetting_units,
+                        scale,
+                        line_idx=layout_line_idx,
+                        alignment=alignment,
+                        ocr_workaround=ocr_mode,
+                        pocket_span=max(0.0, _ix2 - _ix1),
+                    )
+                    if _hang > 0:
+                        intervals = Typesetting._inset_leftmost_interval(
+                            intervals, _hang
+                        )
                     interval_idx = 0
                     available_x, available_x2 = intervals[0]
                     # === DIAGNOSTIC: 每次换行时记录 available 范围 ===

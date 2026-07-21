@@ -368,6 +368,113 @@ class TestLooksLikeListItem:
         assert not Typesetting._looks_like_numbered_list_item(para)
 
 
+class TestListMarkerHangWidth:
+    """Hanging indent under body after serial (EN dual golden list vs flush ZH)."""
+
+    def _units_for(self, text: str, *, char_w: float = 10.0):
+        units = []
+        for ch in text:
+            u = SimpleNamespace(
+                width=char_w * (0.55 if ch.isascii() else 1.0),
+                is_space=(ch == " "),
+                unicode=ch,
+            )
+            u.try_get_unicode = lambda c=ch: c
+            units.append(u)
+        return units
+
+    def test_measures_marker_including_trailing_space(self):
+        text = "2. 永远、永远、永远不要将被捆绑者单独留在房间里"
+        para = PdfParagraph(
+            box=Box(x=56, y=100, x2=360, y2=200),
+            pdf_style=PdfStyle(font_id="base", font_size=11.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode=text,
+        )
+        units = self._units_for(text, char_w=10.0)
+        hang = Typesetting._list_marker_hang_width(para, units, scale=1.0)
+        # "2. " → digit 0.55*10 + '.' 0.55*10 + space 0.55*10 ≈ 16.5
+        assert 12.0 <= hang <= 22.0
+
+    def test_body_paragraph_zero_hang(self):
+        para = PdfParagraph(
+            box=Box(x=56, y=100, x2=360, y2=200),
+            pdf_style=PdfStyle(font_id="base", font_size=11.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="在捆绑安全方面，您需要采取一些基本的预防措施。",
+        )
+        units = self._units_for(para.unicode, char_w=12.0)
+        assert Typesetting._list_marker_hang_width(para, units, scale=1.0) == 0.0
+
+    def test_cjk_enumeration_marker(self):
+        text = "1、一定要使用安全词"
+        para = PdfParagraph(
+            box=Box(x=56, y=100, x2=360, y2=200),
+            pdf_style=PdfStyle(font_id="base", font_size=11.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode=text,
+        )
+        units = self._units_for(text, char_w=12.0)
+        hang = Typesetting._list_marker_hang_width(para, units, scale=1.0)
+        # "1、" — digit + fullwidth punct, no trailing space in text
+        assert hang >= 10.0
+
+    def test_inset_only_on_wrap_lines_not_ocr(self):
+        text = "2. 永远永远"
+        para = PdfParagraph(
+            box=Box(x=56, y=100, x2=360, y2=200),
+            pdf_style=PdfStyle(font_id="base", font_size=11.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode=text,
+        )
+        units = self._units_for(text, char_w=10.0)
+        raw = Typesetting._list_marker_hang_width(para, units, scale=1.0)
+        assert raw > 8.0
+        # first line: no hang
+        assert (
+            Typesetting._numbered_list_hang_inset(
+                para,
+                units,
+                1.0,
+                line_idx=0,
+                alignment="left",
+                ocr_workaround=False,
+                pocket_span=300.0,
+            )
+            == 0.0
+        )
+        # wrap line: hang
+        wrap_hang = Typesetting._numbered_list_hang_inset(
+            para,
+            units,
+            1.0,
+            line_idx=1,
+            alignment="left",
+            ocr_workaround=False,
+            pocket_span=300.0,
+        )
+        assert wrap_hang == pytest.approx(raw, abs=0.01)
+        # OCR: hang off (estimate must match place)
+        assert (
+            Typesetting._numbered_list_hang_inset(
+                para,
+                units,
+                1.0,
+                line_idx=1,
+                alignment="left",
+                ocr_workaround=True,
+                pocket_span=300.0,
+            )
+            == 0.0
+        )
+
+    def test_inset_leftmost_interval_preserves_rest(self):
+        intervals = [(50.0, 200.0), (220.0, 300.0)]
+        out = Typesetting._inset_leftmost_interval(intervals, 16.5)
+        assert out[0] == pytest.approx((66.5, 200.0))
+        assert out[1] == (220.0, 300.0)
+
+
 class TestEffectiveFirstLineIndent:
     def test_caps_indent_when_first_line_would_be_one_glyph(self):
         para = PdfParagraph(
@@ -559,6 +666,51 @@ class TestLayoutStyleConsistency:
         )
         assert placed
         assert placed[0].box.x == pytest.approx(74.0, abs=0.5)  # 50 + 24
+
+    def test_layout_numbered_list_hanging_indent_on_wrap(self):
+        """Wrap lines of ``2. …`` hang under body — match EN dual list style.
+
+        Golden: Screenshot_21-7-2026 list items 2/5 — ZH was flush under digit.
+        """
+        ts = self._typesetting()
+        # Narrow box so body wraps after marker + a few CJK glyphs
+        box = Box(x=50, y=100, x2=170, y2=400)
+        text = "2. 永远永远永远永远永远永远永远永远"
+        para = PdfParagraph(
+            box=box,
+            pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode=text,
+            first_line_indent=0.0,
+            alignment="left",
+        )
+        units = []
+        for ch in text:
+            w = 5.5 if ch.isascii() or ch == " " else 12.0
+            units.append(self._unit(ch=ch, width=w))
+        hang = Typesetting._list_marker_hang_width(para, units, scale=1.0)
+        assert hang > 8.0
+
+        placed, _ = ts._layout_typesetting_units(
+            units,
+            box,
+            scale=1.0,
+            line_skip=1.05,
+            paragraph=para,
+            use_english_line_break=False,
+            break_points=None,
+            reference_widths=None,
+        )
+        assert placed
+        # First line: marker at left edge of box
+        assert placed[0].box.x == pytest.approx(50.0, abs=0.5)
+        # Find first unit that drops to a lower y (wrap)
+        y0 = placed[0].box.y
+        wrap_units = [u for u in placed if u.box and u.box.y < y0 - 1.0]
+        assert wrap_units, "expected at least one wrap line"
+        # Continuation starts near available_x + hang, not flush at 50
+        assert wrap_units[0].box.x == pytest.approx(50.0 + hang, abs=1.5)
+        assert wrap_units[0].box.x > 50.0 + 8.0
 
     def test_layout_center_short_title(self):
         ts = self._typesetting()

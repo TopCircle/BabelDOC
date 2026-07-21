@@ -250,7 +250,7 @@ Resume only with a **new plan** (not more one-off glue / dict / pull-back patche
 | Pri | Class | Symptom | Pages (1-based) | Likely track |
 |----:|-------|---------|-----------------|--------------|
 | **P0** | `align_center_false` | Body/warning blocks look **center** or short last line centered; left edge x scatters (std ≫ 20) | p5 top, p14 warnings | **L3** paragraph alignment |
-| **P0** | `list_indent` | Numbered steps: `1.` / body / step 2 block use **different** left x | p14 (and similar list pages) | **L3** first-line / list indent |
+| **P0** | `list_indent` | Numbered steps: wrap lines flush under digit (no hang under body after `1. `); EN dual has clean hanging indent | p6 safety list (golden screenshot), p14 | **L3+** list hanging indent |
 | **P1** | `cjk_ragged_break` | Mid-phrase / orphan lines: 「这个」「理智和」「在这」; high line-length stdev | p5, p6, p8, p18, p20 | **L3** + CJK break (not dict F1) |
 | **P1** | `wrap_column` | Figure-side narrow column: acceptable wrap but uneven fill | p6, p7, p10, p20 | S3 done; residual is style/break |
 | **P2** | `title_half_en` | e.g. `technique 2: 床上捆绑` | p17 | glossary / span (DeepLX), not layout |
@@ -267,9 +267,11 @@ Resume only with a **new plan** (not more one-off glue / dict / pull-back patche
 |------|--------|
 | CJK long body demote center→left (keep arXiv tapering/tight headers) | ✅ `_resolve_effective_alignment(..., is_cjk=)` |
 | Numbered list items drop first-line indent | ✅ `_looks_like_numbered_list_item` |
+| Numbered list **hanging** indent on wrap lines | ✅ code: `_numbered_list_hang_inset` + leftmost pocket shrink (S3 estimate=place); **ATU dual re-translate still needed** for visual close |
 | Extreme indent (&gt;18% box) dropped | ✅ `_effective_first_line_indent` |
-| Tests | `test_paragraph_alignment` ATU + list + extreme indent |
-| Still open on ATU after L3 (need re-translate) | mid-phrase CJK orphans (「在这」「理智和」) — break quality, not align |
+| Tests | `test_paragraph_alignment` ATU + list + hang + OCR gate + extreme indent |
+| Still open on ATU after L3 (need re-translate) | mid-phrase CJK orphans (「在这」「理智和」) — break quality, not align; list hang visual confirm |
+| Golden visual (failure ref until re-dual) | `Screenshot_21-7-2026_105225_*.jpeg` — ZH list 2/5 wrap under digit vs EN hang |
 
 **Operator rule:** S1→S3 complete; **L3 shipped** for align/indent; remaining ATU ragged *breaks* need re-translate then optional CJK break pass.
 
