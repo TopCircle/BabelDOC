@@ -19,6 +19,7 @@ from babeldoc.format.pdf.document_il import PdfCurve
 from babeldoc.format.pdf.document_il import PdfForm
 from babeldoc.format.pdf.document_il import PdfFormula
 from babeldoc.format.pdf.document_il import PdfParagraphComposition
+from babeldoc.format.pdf.document_il import PdfSameStyleUnicodeCharacters
 from babeldoc.format.pdf.document_il import PdfStyle
 from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
@@ -1775,6 +1776,14 @@ class Typesetting:
         r"|[①-⑳]\s*"
         r")"
     )
+    # Next-item serial glued onto the previous item's last sentence
+    # (All Tied Up dual p21: item 3 ends ``恰到好处。4.`` / item 4 ends ``垂下来。5.``).
+    # Require a sentence terminator immediately before the serial so prose like
+    # ``The answer is 42.`` is not stripped.
+    _TRAILING_LIST_MARKER_RE = re.compile(
+        r"(?P<body>.*[。．.!?！？])\s*(?P<marker>\d{1,3}\s*[\.．。、\)])\s*$",
+        re.DOTALL,
+    )
     # ~4 CJK glyphs at scale≈1 — shared min body column after hang/indent.
     _MIN_LINE_BODY_PT = 48.0
 
@@ -1787,6 +1796,174 @@ class Typesetting:
         # NBSP / thin space after marker still counts as list
         text = text.replace("\xa0", " ").replace("\u2009", " ")
         return bool(Typesetting._LIST_MARKER_RE.match(text))
+
+    @staticmethod
+    def _join_list_marker_to_body(marker: str, body: str) -> str:
+        """Prepend ``4.`` / ``4。`` to body without double spaces; CJK needs no gap."""
+        m = (marker or "").strip()
+        b = body or ""
+        if not m:
+            return b
+        if not b:
+            return m
+        if m[-1:].isspace() or b[0].isspace():
+            return m + b
+        # Ideographic body (CJK) — match DeepLX style ``1。先将…``
+        o = ord(b[0])
+        if (
+            0x4E00 <= o <= 0x9FFF
+            or 0x3400 <= o <= 0x4DBF
+            or 0x3040 <= o <= 0x30FF
+            or 0xAC00 <= o <= 0xD7AF
+        ):
+            return m + b
+        return m + " " + b
+
+    @staticmethod
+    def _strip_trailing_marker_from_compositions(
+        paragraph: il_version_1.PdfParagraph,
+        marker: str,
+    ) -> bool:
+        """Remove trailing serial from compositions. Returns True if a composition changed."""
+        marker = (marker or "").strip()
+        if not marker or not paragraph.pdf_paragraph_composition:
+            return False
+        comps = paragraph.pdf_paragraph_composition
+        for i in range(len(comps) - 1, -1, -1):
+            comp = comps[i]
+            ssu = comp.pdf_same_style_unicode_characters
+            if ssu is not None and ssu.unicode:
+                text = ssu.unicode
+                m = Typesetting._TRAILING_LIST_MARKER_RE.search(text.rstrip())
+                if m and m.group("marker").strip() == marker:
+                    # Keep body including its sentence terminator; drop marker.
+                    new_text = m.group("body").rstrip()
+                    # Preserve any non-trailing remainder after rstrip match region
+                    # if the original had only trailing spaces after marker.
+                    ssu.unicode = new_text
+                    if not ssu.unicode.strip():
+                        del comps[i]
+                    return True
+            formula = comp.pdf_formula
+            if formula is not None and formula.pdf_character:
+                ftext = "".join(
+                    (c.char_unicode or "") for c in formula.pdf_character
+                ).strip()
+                if ftext == marker or ftext.rstrip() == marker:
+                    del comps[i]
+                    return True
+        return False
+
+    @staticmethod
+    def _prepend_marker_to_compositions(
+        paragraph: il_version_1.PdfParagraph,
+        marker: str,
+        style: PdfStyle | None = None,
+    ) -> None:
+        """Ensure leading serial exists on compositions (and matches ``unicode``)."""
+        marker = (marker or "").strip()
+        if not marker:
+            return
+        comps = paragraph.pdf_paragraph_composition
+        if comps is None:
+            paragraph.pdf_paragraph_composition = []
+            comps = paragraph.pdf_paragraph_composition
+
+        # Prefer mutating the first unicode span.
+        if comps:
+            ssu = comps[0].pdf_same_style_unicode_characters
+            if ssu is not None and ssu.unicode is not None:
+                body = ssu.unicode
+                if Typesetting._LIST_MARKER_RE.match(body.lstrip()):
+                    return
+                ssu.unicode = Typesetting._join_list_marker_to_body(marker, body)
+                return
+
+        use_style = style or getattr(paragraph, "pdf_style", None)
+        ssu = PdfSameStyleUnicodeCharacters(unicode=marker, pdf_style=use_style)
+        comps.insert(0, PdfParagraphComposition(pdf_same_style_unicode_characters=ssu))
+
+    @staticmethod
+    def reattach_trailing_list_markers(
+        paragraphs: list[il_version_1.PdfParagraph] | None,
+    ) -> int:
+        """Move trailing ``N.`` / ``N。`` from item *i* onto the start of item *i+1*.
+
+        ATU dual p21: translated item 3 ends with ``…恰到好处。4.`` while item 4's
+        body has no leading serial (and ends with ``…垂下来。5.``). Hang indent only
+        runs when ``_looks_like_numbered_list_item`` sees a leading marker, so the
+        orphaned bodies lay out as plain text (flush / wrong first-line indent).
+
+        Safe guards: marker must follow a sentence terminator; next paragraph must
+        not already start with a list marker; both sides need non-trivial body.
+        """
+        if not paragraphs or len(paragraphs) < 2:
+            return 0
+        moved = 0
+        for i in range(len(paragraphs) - 1):
+            prev = paragraphs[i]
+            nxt = paragraphs[i + 1]
+            prev_text = (getattr(prev, "unicode", None) or "").replace("\xa0", " ")
+            next_text = (getattr(nxt, "unicode", None) or "").replace("\xa0", " ")
+            if not prev_text.strip() or not next_text.strip():
+                continue
+            if Typesetting._looks_like_numbered_list_item(nxt):
+                continue
+            m = Typesetting._TRAILING_LIST_MARKER_RE.search(prev_text.rstrip())
+            if not m:
+                continue
+            marker = m.group("marker").strip()
+            body_prev = m.group("body").rstrip()
+            if len(body_prev) < 8 or len(next_text.strip()) < 6:
+                continue
+            # Update unicode first (hang / alignment keys off this).
+            prev.unicode = body_prev
+            nxt.unicode = Typesetting._join_list_marker_to_body(
+                marker, next_text.lstrip()
+            )
+            Typesetting._strip_trailing_marker_from_compositions(prev, marker)
+            Typesetting._prepend_marker_to_compositions(
+                nxt, marker, style=getattr(nxt, "pdf_style", None)
+            )
+            # Body-only boxes sit at the hang column (~body x) after the serial
+            # was stolen; snap left to the prior item's list gutter so ``5.`` is
+            # not typeset starting under the wrap column.
+            if (
+                prev.box is not None
+                and nxt.box is not None
+                and prev.box.x is not None
+                and nxt.box.x is not None
+                and float(nxt.box.x) > float(prev.box.x) + 4.0
+            ):
+                nxt.box.x = float(prev.box.x)
+            # List hang owns wrap inset; drop any residual first-line indent.
+            try:
+                nxt.first_line_indent = 0.0
+            except Exception:
+                pass
+            moved += 1
+            logger.debug(
+                "Reattached trailing list marker %r onto next paragraph (prev now starts %r)",
+                marker,
+                (nxt.unicode or "")[:24],
+            )
+        return moved
+
+    @staticmethod
+    def reattach_trailing_list_markers_on_document(
+        document: il_version_1.Document,
+    ) -> int:
+        """Page-wise pass; call once before typesetting."""
+        total = 0
+        for page in document.page or []:
+            total += Typesetting.reattach_trailing_list_markers(
+                page.pdf_paragraph
+            )
+        if total:
+            logger.info(
+                "Reattached %d trailing list marker(s) before typesetting", total
+            )
+        return total
 
     @staticmethod
     def _list_marker_hang_width(
@@ -2354,6 +2531,9 @@ class Typesetting:
         from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
             ExclusionZoneIndex,
         )
+
+        # ATU dual p21: serials glued to prior item ends → reattach so hang runs.
+        Typesetting.reattach_trailing_list_markers_on_document(document)
 
         # 预先构建每页的排除区域缓存，避免重复构建
         self._page_zone_cache: dict[int, ExclusionZoneIndex | None] = {}

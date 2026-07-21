@@ -508,6 +508,85 @@ class TestLooksLikeListItem:
         )
         assert not Typesetting._looks_like_numbered_list_item(para)
 
+
+class TestReattachTrailingListMarkers:
+    """ATU dual p21: ``4.``/``5.`` glued onto prior item ends → hang broken."""
+
+    def _para(self, text: str) -> PdfParagraph:
+        from babeldoc.format.pdf.document_il.il_version_1 import (
+            PdfSameStyleUnicodeCharacters,
+        )
+
+        ssu = PdfSameStyleUnicodeCharacters(
+            unicode=text,
+            pdf_style=PdfStyle(font_id="base", font_size=11.0, graphic_state=None),
+        )
+        return PdfParagraph(
+            box=Box(x=56, y=100, x2=360, y2=200),
+            pdf_style=PdfStyle(font_id="base", font_size=11.0, graphic_state=None),
+            pdf_paragraph_composition=[
+                PdfParagraphComposition(pdf_same_style_unicode_characters=ssu)
+            ],
+            unicode=text,
+        )
+
+    def test_atu_p21_items_3_to_5_reattach(self):
+        """Item3 ends ``。4.``; item4 body ends ``。5.``; item5 body has no serial."""
+        p3 = self._para(
+            "3。您可以尝试打第四个结，使其紧贴阴蒂。"
+            "试一试，做做实验，不断变化，直到恰到好处。4."
+        )
+        p4 = self._para(
+            "将打结的绳子从她两腿之间拉到背上，绕到后颈的绳子下面，"
+            "然后拉过来，让绳子垂下来。5."
+        )
+        p5 = self._para(
+            "现在把两股绳子分开，分别放在她身体的两侧。现在情况变得复杂了。"
+        )
+        # Body-only box after serial theft sits at hang column (~92).
+        p5.box = Box(x=92.0, y=100, x2=360, y2=200)
+        p5.first_line_indent = 18.0
+        p6 = self._para("6。将绳子拉到她腋下，在她身体两侧各拉一根。")
+
+        n = Typesetting.reattach_trailing_list_markers([p3, p4, p5, p6])
+        assert n == 2
+        assert p3.unicode.endswith("恰到好处。")
+        assert not p3.unicode.rstrip().endswith("4.")
+        assert Typesetting._looks_like_numbered_list_item(p4)
+        assert p4.unicode.startswith("4.")
+        assert "垂下来。" in p4.unicode and not p4.unicode.rstrip().endswith("5.")
+        assert Typesetting._looks_like_numbered_list_item(p5)
+        assert p5.unicode.startswith("5.")
+        assert "复杂了" in p5.unicode
+        # Snap body-only box left to list gutter; clear indent for hang.
+        assert p5.box.x == pytest.approx(56.0)
+        assert float(p5.first_line_indent or 0) == 0.0
+        # item 6 unchanged
+        assert p6.unicode.startswith("6。")
+        # compositions stay in sync for typesetting units
+        assert p4.pdf_paragraph_composition[0].pdf_same_style_unicode_characters.unicode.startswith(
+            "4."
+        )
+        assert p5.pdf_paragraph_composition[0].pdf_same_style_unicode_characters.unicode.startswith(
+            "5."
+        )
+
+    def test_does_not_steal_prose_number(self):
+        """``The answer is 42.`` must not reattach ``42.`` onto the next para."""
+        a = self._para("The answer is 42.")
+        b = self._para("More prose continues on the next paragraph without a list.")
+        n = Typesetting.reattach_trailing_list_markers([a, b])
+        assert n == 0
+        assert a.unicode == "The answer is 42."
+        assert not Typesetting._looks_like_numbered_list_item(b)
+
+    def test_skips_when_next_already_has_marker(self):
+        a = self._para("3。直到恰到好处。4.")
+        b = self._para("4。将打结的绳子从她两腿之间拉到背上。")
+        n = Typesetting.reattach_trailing_list_markers([a, b])
+        assert n == 0
+        assert a.unicode.endswith("4.")
+
     def test_list_item_forces_left_even_if_center_geometry(self):
         """ATU safety list: short multi-line items false-center without this."""
         para = PdfParagraph(
