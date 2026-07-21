@@ -186,14 +186,14 @@ class TestDetectParagraphAlignment:
         assert detect_paragraph_alignment(para, _page(612)) == "left"
 
     def test_single_line_page_centered(self):
-        # Single title line centered on page (L≈R page margins, real inset)
-        # x=120 leaves enough left margin; width well under 0.78*page
-        para = _line_para([(120.0, 492.0)])  # center 306, page 612, lm=120
+        # arXiv-style title: L≈R margins both ≥60, mid at page center
+        # (golden translate.cli.text.with.figure first line)
+        para = _line_para([(63.9, 548.1)])  # lm=rm≈64, center 306, page 612
         assert detect_paragraph_alignment(para, _page(612)) == "center"
 
     def test_single_line_flush_left_fullish_not_center(self):
         """ATU p7 lead-in / p13 TECHNIQUE title: flush left ~0.8 page wide."""
-        # w=490, center≈301, left@56 — was false center under 0.85 threshold
+        # w=490, center≈301, left@56 — lm=56 < 60 fails true-center margins
         para = _line_para([(56.0, 546.0)])
         assert detect_paragraph_alignment(para, _page(612)) == "left"
         para_title = _line_para([(56.0, 558.0)], label="title")

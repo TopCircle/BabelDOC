@@ -1571,25 +1571,30 @@ def detect_paragraph_alignment(
     if page_box is not None and page_box.x2 > page_box.x:
         page_center = (page_box.x + page_box.x2) / 2.0
         page_width = page_box.x2 - page_box.x
-        # Flush-left body/title (ATU p7 lead-in, p13 TECHNIQUE 1): left edge
-        # sits on the body margin while mid lands near page center only because
-        # the line is ~0.8 page wide — not true centered type.
-        # Require a real left margin (not column-flush) before calling center.
-        margin_flush = 48.0  # body inset on letter ebooks is typically ~56
+        # True page-centered titles (arXiv golden figure): L≈R margins both
+        # substantial (e.g. lm=rm≈64 for a 484pt title on letter).
+        # Flush-left ebook body/heads (ATU): lm≈56 on the body column while
+        # mid may still sit near page center for long lines — require BOTH
+        # margins ≥ ~60 and near-equal, not just mid≈page_center.
         all_centered = True
         for x, x2 in line_ranges:
             line_center = (x + x2) / 2.0
             line_width = x2 - x
+            lm = x - page_box.x
+            rm = page_box.x2 - x2
             if abs(line_center - page_center) > page_center_tolerance:
                 all_centered = False
                 break
             # Near-full-page lines are body text, not centered titles
-            # 0.78: ATU full-measure body/title is ~0.80–0.82 of page width
-            if line_width > page_width * 0.78:
+            if line_width > page_width * 0.85:
                 all_centered = False
                 break
-            # Left edge near page left → flush-left column, not page-centered
-            if (x - page_box.x) < margin_flush:
+            # Designed center has real inset on both sides (arXiv ≥~60).
+            # ATU body/heads at x≈56 fail this (lm too small / unequal).
+            if lm < 60.0 or rm < 60.0:
+                all_centered = False
+                break
+            if abs(lm - rm) > max(page_center_tolerance, page_width * 0.04):
                 all_centered = False
                 break
         if all_centered:

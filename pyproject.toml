@@ -1,6 +1,6 @@
 [project]
 name = "BabelDOC"
-version = "0.6.4.3"
+version = "0.6.4.4"
 description = "Yet Another Document Translator"
 license = "AGPL-3.0"
 readme = "README.md"
@@ -167,7 +167,7 @@ testpaths = ["tests"]
 # Track upstream BabelDOC as MAJOR.MINOR.PATCH (e.g. 0.6.4).
 # Fork-only bumps use a 4th segment: 0.6.4.1, 0.6.4.2, … — do not advance
 # PATCH until rebased/synced to a newer upstream release.
-current_version = "0.6.4.3"
+current_version = "0.6.4.4"
 version_pattern = "MAJOR.MINOR.PATCH[.BUILD]"
 
 [bumpver.file_patterns]
