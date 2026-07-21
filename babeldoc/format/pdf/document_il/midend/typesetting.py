@@ -1961,6 +1961,27 @@ class Typesetting:
                     return "left"
                 return alignment
 
+            widths_f = [float(w) for w in widths] if widths else []
+            if not widths_f and avg is not None:
+                widths_f = [float(avg)]
+            max_w = max(widths_f) if widths_f else 0.0
+            min_w = min(widths_f) if widths_f else 0.0
+
+            # Ebook full-measure body (All Tied Up p4 survey / two-thirds):
+            # EN lines ~480–500pt wide on a letter page. arXiv author/affil
+            # longest line is ~454pt tapering / ~360pt tight — stay under 470.
+            # This must run BEFORE tight_header logic: fullish is also high for
+            # body relative to its own box, which previously blocked demotion.
+            ebook_full_measure = max_w >= 470.0
+            if (
+                is_cjk
+                and label != "title"
+                and text_len >= 28
+                and line_count >= 2
+                and ebook_full_measure
+            ):
+                return "left"
+
             # Multi-line demotion (Orgasms false-center body):
             # majority of lines fill the para span AND there is a clearly
             # short last line. Do NOT demote 2-line arXiv affiliation blocks:
@@ -1974,36 +1995,23 @@ class Typesetting:
             ):
                 return "left"
 
-            # Ebook full-measure body mis-tagged center (All Tied Up p4 above
-            # Nice Rack: 2 EN lines ~480–500pt wide, flush left). arXiv affil
-            # averages ~350pt in a tight bbox — keep those centered.
-            if (
-                is_cjk
-                and text_len >= 36
-                and line_count >= 2
-                and avg is not None
-                and float(avg) >= 400.0
-                and fullish >= 0.45
-                and label != "title"
-            ):
-                return "left"
-
             # L3 / All Tied Up: long CJK from short *centered* EN marketing.
             # Keep arXiv multi-line headers only when tight bbox or strong
             # width pyramid (author/date), not uniform short pull-quotes.
             if is_cjk and text_len >= 36:
-                widths_f = [float(w) for w in widths] if widths else []
-                if not widths_f and avg is not None:
-                    widths_f = [float(avg)]
-                max_w = max(widths_f) if widths_f else 0.0
-                min_w = min(widths_f) if widths_f else 0.0
                 pyramid = max_w > 1.0 and (min_w / max_w) < 0.35
                 avg_fill = (
                     float(avg) / box_w
                     if avg is not None and box_w > 1.0
                     else fullish
                 )
-                tight_header = line_count <= 4 and fullish >= 0.55
+                # fullish alone is true for both arXiv tight headers AND ebook
+                # body — require NOT full-measure ebook width.
+                tight_header = (
+                    line_count <= 4
+                    and fullish >= 0.55
+                    and not ebook_full_measure
+                )
                 tapering_header = (
                     line_count <= 4
                     and fullish < 0.5

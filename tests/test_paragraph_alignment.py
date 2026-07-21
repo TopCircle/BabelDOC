@@ -325,7 +325,11 @@ class TestResolveEffectiveAlignment:
         assert Typesetting._resolve_effective_alignment(para, is_cjk=True) == "center"
 
     def test_atu_p4_full_measure_body_demotes_even_if_tagged_center(self):
-        """Safety net: wide EN body (~480pt avg) + long CJK → left."""
+        """Safety net: EN max line ≥470pt (ebook full measure) + CJK → left.
+
+        tight_header used to block demotion because body also has fullish≈1
+        relative to its own box — same as arXiv tight headers.
+        """
         from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
 
         zh = (
@@ -348,6 +352,24 @@ class TestResolveEffectiveAlignment:
             per_line_widths=[500.0, 480.0],
         )
         assert Typesetting._resolve_effective_alignment(para, is_cjk=True) == "left"
+
+        # Short last line must not drag max below threshold
+        para2 = PdfParagraph(
+            box=Box(x=56, y=100, x2=560, y2=200),
+            pdf_style=PdfStyle(font_id="base", font_size=14.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode=zh,
+        )
+        para2.alignment = "center"
+        para2.reference_metrics = ReferenceMetrics(
+            line_count=3,
+            avg_line_width=370.0,
+            last_line_width=117.0,
+            last_line_ratio=0.23,
+            font_size=14.0,
+            per_line_widths=[498.0, 497.0, 117.0],
+        )
+        assert Typesetting._resolve_effective_alignment(para2, is_cjk=True) == "left"
 
     def test_atu_long_cjk_centered_en_block_demotes_left(self):
         """All Tied Up p5-style: short centered EN lines → long ZH must flush-left."""
