@@ -223,6 +223,20 @@ def get_paragraph_unicode(paragraph: PdfParagraph) -> str:
 SPACE_REGEX = regex.compile(r"\s+", regex.UNICODE)
 
 
+def _is_cjk_char(ch: str | None) -> bool:
+    """True if the first codepoint is CJK (no inter-word space at line wrap)."""
+    if not ch:
+        return False
+    o = ord(ch[0])
+    return (
+        0x4E00 <= o <= 0x9FFF  # CJK Unified
+        or 0x3400 <= o <= 0x4DBF  # CJK Ext A
+        or 0x3040 <= o <= 0x30FF  # Hiragana / Katakana
+        or 0xAC00 <= o <= 0xD7AF  # Hangul syllables
+        or 0xF900 <= o <= 0xFAFF  # CJK Compatibility
+    )
+
+
 def strip_ascii_controls(text: str | None) -> str:
     """Remove C0/C1 control characters that leak into dual-PDF text as SOH spans.
 
@@ -299,18 +313,31 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
         if chars[i].char_unicode == " ":
             continue
 
-        # 如果两个字符都是 PdfCharacter，检查间距
+        # 如果两个字符都是 PdfCharacter，检查间距 / 换行
         if i < len(chars) - 1 and isinstance(chars[i + 1], PdfCharacter):
-            distance = chars[i + 1].box.x - chars[i].box.x2
-            if distance <= 0:
+            next_ch = chars[i + 1]
+            # Already have an explicit space glyph between words.
+            if next_ch.char_unicode and next_ch.char_unicode.isspace():
                 continue
+            distance = next_ch.box.x - chars[i].box.x2
             curr_w = chars[i].box.x2 - chars[i].box.x
-            next_w = chars[i + 1].box.x2 - chars[i + 1].box.x
+            next_w = next_ch.box.x2 - next_ch.box.x
             max_w = max(curr_w, next_w)
-            if not skip_space_insertion and (
-                (max_w > 0 and distance > max_w * SPACE_WIDTH_RATIO)
-                or Layout.is_newline(chars[i], chars[i + 1])
-            ):
+            # Line wraps jump back to the left margin → distance << 0.
+            # Must still insert a word-boundary space (ATU intro: "Is"+"it"
+            # → "Isit", "of"+"Grey" → "ofGrey") when process_paragraph_spacing
+            # has stripped the trailing space glyph on the previous line.
+            # is_newline was previously unreachable due to `distance <= 0: continue`.
+            is_nl = Layout.is_newline(chars[i], next_ch)
+            gap_is_word_boundary = (
+                distance > 0 and max_w > 0 and distance > max_w * SPACE_WIDTH_RATIO
+            )
+            if not skip_space_insertion and (is_nl or gap_is_word_boundary):
+                # Avoid CJK line-wrap spaces (source Chinese has no inter-word space).
+                if is_nl and _is_cjk_char(chars[i].char_unicode) and _is_cjk_char(
+                    next_ch.char_unicode
+                ):
+                    continue
                 unicode_chars.append(" ")  # 添加空格
 
     result = "".join(unicode_chars)
@@ -464,39 +491,53 @@ def add_space_dummy_chars(paragraph: PdfParagraph) -> None:
             continue
 
         # 检查两个组成部分之间是否需要添加空格
-        # 使用与 _add_space_dummy_chars_to_list 一致的 width-relative 阈值
+        # 使用与 _add_space_dummy_chars_to_list 一致的 width-relative 阈值。
+        # Line wraps have distance << 0; still insert via is_newline (same as
+        # get_char_unicode_string) so trailing-space strip does not glue words.
+        if next_first_char.char_unicode and next_first_char.char_unicode.isspace():
+            continue
+        if curr_last_char.char_unicode and curr_last_char.char_unicode.isspace():
+            continue
         distance = next_first_char.box.x - curr_last_char.box.x2
-        if distance > 0:
-            curr_w = curr_last_char.box.x2 - curr_last_char.box.x
-            next_w = next_first_char.box.x2 - next_first_char.box.x
-            max_w = max(curr_w, next_w)
-            SPACE_WIDTH_RATIO = 0.5
-            if not (max_w > 0 and distance > max_w * SPACE_WIDTH_RATIO):
-                continue
-            # 创建一个 dummy 字符作为空格
-            space_box = Box(
-                x=curr_last_char.box.x2,
-                y=curr_last_char.box.y,
-                x2=curr_last_char.box.x2 + distance,
-                y2=curr_last_char.box.y2,
-            )
+        curr_w = curr_last_char.box.x2 - curr_last_char.box.x
+        next_w = next_first_char.box.x2 - next_first_char.box.x
+        max_w = max(curr_w, next_w)
+        SPACE_WIDTH_RATIO = 0.5
+        is_nl = Layout.is_newline(curr_last_char, next_first_char)
+        gap_is_word_boundary = (
+            distance > 0 and max_w > 0 and distance > max_w * SPACE_WIDTH_RATIO
+        )
+        if not (is_nl or gap_is_word_boundary):
+            continue
+        if is_nl and _is_cjk_char(curr_last_char.char_unicode) and _is_cjk_char(
+            next_first_char.char_unicode
+        ):
+            continue
+        # Dummy width: real gap when positive; else a small advance for wraps.
+        gap_w = distance if distance > 0 else max(curr_w * 0.25, 1.0)
+        space_box = Box(
+            x=curr_last_char.box.x2,
+            y=curr_last_char.box.y,
+            x2=curr_last_char.box.x2 + gap_w,
+            y2=curr_last_char.box.y2,
+        )
 
-            space_char = PdfCharacter(
-                pdf_style=curr_last_char.pdf_style,
-                box=space_box,
-                char_unicode=" ",
-                scale=curr_last_char.scale,
-                advance=space_box.x2 - space_box.x,
-                visual_bbox=il_version_1.VisualBbox(box=space_box),
-            )
+        space_char = PdfCharacter(
+            pdf_style=curr_last_char.pdf_style,
+            box=space_box,
+            char_unicode=" ",
+            scale=curr_last_char.scale,
+            advance=space_box.x2 - space_box.x,
+            visual_bbox=il_version_1.VisualBbox(box=space_box),
+        )
 
-            # 将空格添加到当前组成部分的末尾
-            if curr_comp.pdf_line:
-                curr_comp.pdf_line.pdf_character.append(space_char)
-            elif curr_comp.pdf_same_style_characters:
-                curr_comp.pdf_same_style_characters.pdf_character.append(space_char)
-            elif curr_comp.pdf_formula:
-                curr_comp.pdf_formula.pdf_character.append(space_char)
+        # 将空格添加到当前组成部分的末尾
+        if curr_comp.pdf_line:
+            curr_comp.pdf_line.pdf_character.append(space_char)
+        elif curr_comp.pdf_same_style_characters:
+            curr_comp.pdf_same_style_characters.pdf_character.append(space_char)
+        elif curr_comp.pdf_formula:
+            curr_comp.pdf_formula.pdf_character.append(space_char)
 
 
 def _get_first_char_from_composition(
@@ -644,40 +685,53 @@ def _add_space_dummy_chars_to_list(chars: list[PdfCharacter]) -> None:
         curr_char = chars[i]
         next_char = chars[i + 1]
 
-        distance = next_char.box.x - curr_char.box.x2
-        if distance <= 0:
+        if next_char.char_unicode and next_char.char_unicode.isspace():
+            i += 1
+            continue
+        if curr_char.char_unicode and curr_char.char_unicode.isspace():
             i += 1
             continue
 
+        distance = next_char.box.x - curr_char.box.x2
         curr_w = curr_char.box.x2 - curr_char.box.x
         next_w = next_char.box.x2 - next_char.box.x
         max_w = max(curr_w, next_w)
-
-        if (max_w > 0 and distance > max_w * SPACE_WIDTH_RATIO) or Layout.is_newline(
-            curr_char, next_char
-        ):
-            # 创建一个 dummy 字符作为空格
-            space_box = Box(
-                x=curr_char.box.x2,
-                y=curr_char.box.y,
-                x2=curr_char.box.x2 + distance,
-                y2=curr_char.box.y2,
-            )
-
-            space_char = PdfCharacter(
-                pdf_style=curr_char.pdf_style,
-                box=space_box,
-                char_unicode=" ",
-                scale=curr_char.scale,
-                advance=space_box.x2 - space_box.x,
-                visual_bbox=il_version_1.VisualBbox(box=space_box),
-            )
-
-            # 在当前位置后插入空格字符
-            chars.insert(i + 1, space_char)
-            i += 2  # 跳过刚插入的空格
-        else:
+        is_nl = Layout.is_newline(curr_char, next_char)
+        gap_is_word_boundary = (
+            distance > 0 and max_w > 0 and distance > max_w * SPACE_WIDTH_RATIO
+        )
+        # distance <= 0 is normal at line wrap (next char returns to left margin).
+        # Previously we `continue`d here and never hit is_newline → "Isit"/"ofGrey".
+        if not (is_nl or gap_is_word_boundary):
             i += 1
+            continue
+        if is_nl and _is_cjk_char(curr_char.char_unicode) and _is_cjk_char(
+            next_char.char_unicode
+        ):
+            i += 1
+            continue
+
+        gap_w = distance if distance > 0 else max(curr_w * 0.25, 1.0)
+        # 创建一个 dummy 字符作为空格
+        space_box = Box(
+            x=curr_char.box.x2,
+            y=curr_char.box.y,
+            x2=curr_char.box.x2 + gap_w,
+            y2=curr_char.box.y2,
+        )
+
+        space_char = PdfCharacter(
+            pdf_style=curr_char.pdf_style,
+            box=space_box,
+            char_unicode=" ",
+            scale=curr_char.scale,
+            advance=space_box.x2 - space_box.x,
+            visual_bbox=il_version_1.VisualBbox(box=space_box),
+        )
+
+        # 在当前位置后插入空格字符
+        chars.insert(i + 1, space_char)
+        i += 2  # 跳过刚插入的空格
 
 
 def build_layout_index(page):

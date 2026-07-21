@@ -415,9 +415,12 @@ class ParagraphFinder:
             self._split_paragraph_into_lines(paragraph, current_formula_font_ids)
 
         # 第三步：处理段落中的空格
+        # Strip trailing spaces first, then insert wrap/gap dummies. If dummies
+        # are added first, process_paragraph_spacing pops line-end wrap spaces
+        # and re-glues "Is"+"it" → "Isit" (All Tied Up intro).
         for paragraph in paragraphs:
-            add_space_dummy_chars(paragraph)
             self.process_paragraph_spacing(paragraph)
+            add_space_dummy_chars(paragraph)
             self.update_paragraph_data(paragraph)
 
         # 第四步：计算所有行宽度的中位数
