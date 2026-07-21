@@ -349,7 +349,16 @@ class TestResolveEffectiveAlignment:
 
 class TestLooksLikeListItem:
     def test_numbered_forms(self):
-        for text in ("1. 第一步", "2、第二步", "3) 第三", "(4) 第四", "① 圆圈"):
+        # Include MT ``2。`` (ideographic full stop) — real ATU dual markers
+        for text in (
+            "1. 第一步",
+            "2、第二步",
+            "3) 第三",
+            "(4) 第四",
+            "① 圆圈",
+            "2。永远、永远、永远",
+            "5.\xa0保持清醒",
+        ):
             para = PdfParagraph(
                 box=Box(x=0, y=0, x2=100, y2=20),
                 pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
@@ -366,6 +375,19 @@ class TestLooksLikeListItem:
             unicode="在这个世界上，有近三分之二的女性",
         )
         assert not Typesetting._looks_like_numbered_list_item(para)
+
+    def test_list_item_forces_left_even_if_center_geometry(self):
+        """ATU safety list: short multi-line items false-center without this."""
+        para = PdfParagraph(
+            box=Box(x=100, y=100, x2=400, y2=160),
+            pdf_style=PdfStyle(font_id="base", font_size=11.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="2。永远、永远、永远不要让被捆绑者独自留在房间里，哪怕只有一分钟。",
+            alignment="center",
+        )
+        assert (
+            Typesetting._resolve_effective_alignment(para, is_cjk=True) == "left"
+        )
 
 
 class TestListMarkerHangWidth:

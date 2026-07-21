@@ -1767,9 +1767,10 @@ class Typesetting:
         return min_scale, final_typeset_units
 
     # Leading marker for numbered list items (EN/CJK dual hanging indent).
+    # Include ideographic ``。`` — DeepLX/MT often rewrites ``2.`` → ``2。``.
     _LIST_MARKER_RE = re.compile(
         r"^(?:"
-        r"\d{1,3}\s*[\.．、\)]\s*"  # 1.  1、  1)
+        r"\d{1,3}\s*[\.．。、\)]\s*"  # 1.  1． 1。 1、  1)
         r"|\(\s*\d{1,3}\s*\)\s*"  # (1)
         r"|[①-⑳]\s*"
         r")"
@@ -1779,10 +1780,12 @@ class Typesetting:
 
     @staticmethod
     def _looks_like_numbered_list_item(paragraph: il_version_1.PdfParagraph) -> bool:
-        """True when translated/source text starts like ``1.`` / ``1、`` / ``(1)``."""
+        """True when translated/source text starts like ``1.`` / ``1、`` / ``2。``."""
         text = (getattr(paragraph, "unicode", None) or "").strip()
         if not text:
             return False
+        # NBSP / thin space after marker still counts as list
+        text = text.replace("\xa0", " ").replace("\u2009", " ")
         return bool(Typesetting._LIST_MARKER_RE.match(text))
 
     @staticmethod
@@ -1899,6 +1902,12 @@ class Typesetting:
             text = (paragraph.unicode or "").strip()
             if label == "title" and len(text) <= 40:
                 return getattr(paragraph, "alignment", None) or "left"
+            return "left"
+
+        # Numbered list steps must stay flush-left with hang on wrap lines.
+        # Short EN hanging items often detect as center → ZH block centers
+        # (All Tied Up safety list items 2/5); hang only runs for left.
+        if Typesetting._looks_like_numbered_list_item(paragraph):
             return "left"
 
         alignment = getattr(paragraph, "alignment", None) or "left"
