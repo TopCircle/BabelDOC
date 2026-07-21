@@ -801,6 +801,23 @@ class ILTranslatorLLMOnly:
                         llm_translate_tracker.set_placeholder_full_match()
                         continue
 
+                    # EN multi-sentence body → CJK dropped a clause (All Tied Up
+                    # intro: 3 EN questions → 2 ZH). Token ratio 0.3 still passes.
+                    if ILTranslator.translation_drops_sentences(
+                        input_unicode, output_unicode
+                    ):
+                        llm_translate_tracker.set_error_message(
+                            "Translation drops sentences vs source; fallback."
+                        )
+                        logger.warning(
+                            "Translation drops sentences "
+                            f"(src_ends={ILTranslator.count_sentence_ends(input_unicode)}, "
+                            f"dst_ends={ILTranslator.count_sentence_ends(output_unicode)}); "
+                            "fallback to simple translate."
+                        )
+                        llm_translate_tracker.set_placeholder_full_match()
+                        continue
+
                     if not self.translation_config.disable_same_text_fallback:
                         edit_distance = Levenshtein.distance(
                             input_unicode, output_unicode

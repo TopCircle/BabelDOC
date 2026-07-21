@@ -389,6 +389,38 @@ class ILTranslator:
         except Exception:
             return 0
 
+    # Sentence terminators for completeness checks (EN→CJK body drop).
+    # Avoid decimals (3.14) and ellipses counted as many ends.
+    _EN_SENT_END_RE = re.compile(r"(?<!\d)[.!?](?!\d)(?=\s|$|[\"'”’）)])")
+    _CJK_SENT_END_RE = re.compile(r"[。！？]")
+
+    @classmethod
+    def count_sentence_ends(cls, text: str) -> int:
+        """Count sentence-ending punctuation (EN or CJK)."""
+        if not text:
+            return 0
+        cjk_ends = len(cls._CJK_SENT_END_RE.findall(text))
+        if cjk_ends > 0:
+            return cjk_ends
+        return len(cls._EN_SENT_END_RE.findall(text))
+
+    @classmethod
+    def translation_drops_sentences(cls, source: str, translated: str) -> bool:
+        """True when MT/LLM clearly lost sentence(s) vs source.
+
+        All Tied Up intro: EN 3 sentences (…ages? …phenomenon?) → ZH only 2
+        (您想知道…？这是您幻想…？) with a large empty gap — layout empty, not
+        overflow. Token-ratio 0.3 still accepts this; sentence count does not.
+        """
+        if not source or not translated:
+            return False
+        src_n = cls.count_sentence_ends(source)
+        if src_n < 2:
+            return False
+        dst_n = cls.count_sentence_ends(translated)
+        # Lost at least one full sentence (EN 3 → ZH 2, etc.)
+        return dst_n <= src_n - 1
+
     def translate(self, docs: Document):
         self.docs = docs
         tracker = DocumentTranslateTracker()
@@ -1673,6 +1705,47 @@ class ILTranslator:
                         },
                     )
                 translated_text = re.sub(r"[. 。…，]{20,}", ".", translated_text)
+
+                # Completeness: reject dropped sentences (e.g. EN 3 → ZH 2).
+                # Retry once without cache — bad cache / flaky MT often recovers.
+                if self.translation_drops_sentences(text, translated_text):
+                    logger.warning(
+                        "Translation drops sentences "
+                        f"(src_ends={self.count_sentence_ends(text)}, "
+                        f"dst_ends={self.count_sentence_ends(translated_text)}); "
+                        f"retry once. paragraph id: {paragraph.debug_id}"
+                    )
+                    if self.support_llm_translate:
+                        llm_prompt = self.generate_prompt_for_llm(
+                            text,
+                            title_paragraph,
+                            local_title_paragraph,
+                            translate_input,
+                        )
+                        translated_text = self.translate_engine.llm_translate(
+                            llm_prompt,
+                            ignore_cache=True,
+                            rate_limit_params={
+                                "paragraph_token_count": paragraph_token_count
+                            },
+                        )
+                    else:
+                        translated_text = self.translate_engine.translate(
+                            text,
+                            ignore_cache=True,
+                            rate_limit_params={
+                                "paragraph_token_count": paragraph_token_count
+                            },
+                        )
+                    translated_text = re.sub(
+                        r"[. 。…，]{20,}", ".", translated_text
+                    )
+                    if self.translation_drops_sentences(text, translated_text):
+                        logger.warning(
+                            "Translation still drops sentences after retry; "
+                            f"keeping result. paragraph id: {paragraph.debug_id} "
+                            f"output={translated_text[:80]!r}"
+                        )
 
                 # Post-translation processing
                 self.post_translate_paragraph(
