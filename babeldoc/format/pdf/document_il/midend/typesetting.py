@@ -1865,20 +1865,31 @@ class Typesetting:
                 return "left"
 
             # L3 / All Tied Up: long CJK from short *centered* EN marketing
-            # blocks reflow flush-left. Keep arXiv-style multi-line headers:
-            #   - tapering widths ending short (title/author/date), or
-            #   - few lines that fill a *tight* para bbox (affil after split).
+            # must reflow flush-left. Keep arXiv multi-line headers only when:
+            #   - tight bbox (lines fill para span), or
+            #   - strong width pyramid + short last + substantial avg fill
+            #     (author/date), not uniform short pull-quote lines.
             if is_cjk and text_len >= 48:
+                widths_f = [float(w) for w in widths] if widths else []
+                if not widths_f and avg is not None:
+                    widths_f = [float(avg)]
+                max_w = max(widths_f) if widths_f else 0.0
+                min_w = min(widths_f) if widths_f else 0.0
+                pyramid = max_w > 1.0 and (min_w / max_w) < 0.35
+                avg_fill = (
+                    float(avg) / box_w
+                    if avg is not None and box_w > 1.0
+                    else fullish
+                )
+                tight_header = line_count <= 4 and fullish >= 0.55
                 tapering_header = (
                     line_count <= 4
                     and fullish < 0.5
-                    and last_ratio < 0.55
+                    and last_ratio < 0.40
+                    and pyramid
+                    and avg_fill >= 0.55
                 )
-                tight_header = (
-                    line_count <= 4
-                    and fullish >= 0.55
-                )
-                if not (tapering_header or tight_header):
+                if not (tight_header or tapering_header):
                     return "left"
 
             return alignment

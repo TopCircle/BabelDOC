@@ -296,30 +296,35 @@ class TestResolveEffectiveAlignment:
         """All Tied Up p5-style: short centered EN lines → long ZH must flush-left."""
         from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
 
-        para = PdfParagraph(
-            box=Box(x=80, y=100, x2=530, y2=280),
-            pdf_style=PdfStyle(font_id="base", font_size=11.0, graphic_state=None),
-            pdf_paragraph_composition=[],
-            unicode=(
-                "最近的一项全国性调查清楚地表明，与伴侣一起参加各种性活动的女性"
-                "更有可能经历和享受高潮体验。在这个世界上，有近三分之二的女性"
-                "在来访时感到困难重重，这应该足以成为您尝试新事物的理由！"
-            ),
+        long_zh = (
+            "最近的一项全国性调查清楚地表明，与伴侣一起参加各种性活动的女性"
+            "更有可能经历和享受高潮体验。在这个世界上，有近三分之二的女性"
+            "在来访时感到困难重重，这应该足以成为您尝试新事物的理由！"
         )
+        for name, widths, last_r in (
+            ("uniform", [280.0, 240.0, 260.0, 140.0], 0.50),
+            ("mild_taper", [280.0, 240.0, 200.0, 100.0], 100 / 280),
+        ):
+            para = PdfParagraph(
+                box=Box(x=80, y=100, x2=530, y2=280),
+                pdf_style=PdfStyle(font_id="base", font_size=11.0, graphic_state=None),
+                pdf_paragraph_composition=[],
+                unicode=long_zh,
+            )
+            para.alignment = "center"
+            para.reference_metrics = ReferenceMetrics(
+                line_count=4,
+                avg_line_width=sum(widths) / len(widths),
+                last_line_width=widths[-1],
+                last_line_ratio=last_r,
+                font_size=11.0,
+                per_line_widths=widths,
+            )
+            assert (
+                Typesetting._resolve_effective_alignment(para, is_cjk=True) == "left"
+            ), name
+        # Non-CJK keeps geometric center
         para.alignment = "center"
-        # EN lines short/centered — fullish low vs wide box
-        para.reference_metrics = ReferenceMetrics(
-            line_count=4,
-            avg_line_width=220.0,
-            last_line_width=140.0,
-            last_line_ratio=0.55,
-            font_size=11.0,
-            per_line_widths=[280.0, 240.0, 260.0, 140.0],
-        )
-        assert (
-            Typesetting._resolve_effective_alignment(para, is_cjk=True) == "left"
-        )
-        # Non-CJK keeps geometric center for same metrics
         assert (
             Typesetting._resolve_effective_alignment(para, is_cjk=False) == "center"
         )
