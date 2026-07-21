@@ -269,10 +269,12 @@ Resume only with a **new plan** (not more one-off glue / dict / pull-back patche
 | CJK long body demote center→left (keep arXiv tapering/tight headers) | ✅ `_resolve_effective_alignment(..., is_cjk=)` |
 | Numbered list items drop first-line indent | ✅ `_looks_like_numbered_list_item` |
 | Numbered list **hanging** indent on wrap lines | ✅ code: `_numbered_list_hang_inset` + leftmost pocket shrink (S3 estimate=place) |
-| Trailing serial reattach (ATU p21 items 4/5) | ✅ `reattach_trailing_list_markers` before typeset (0.6.4.5) — ``…好处。4.`` → next starts ``4.`` |
+| Trailing serial reattach (ATU p21 items 4/5) | ✅ 0.6.4.8: always **strip** trailing ``。4.`` even when next already has leading serial; normalize ``N。``→``N.`` |
 | Extreme indent (&gt;18% box) dropped | ✅ `_effective_first_line_indent` |
 | Tests | `test_paragraph_alignment` ATU + list + hang + reattach + OCR gate + extreme indent |
-| Still open on ATU after L3 (need re-translate) | mid-phrase CJK orphans (「在这」「理智和」) — break quality, not align |
+| CJK layout-first rectangular fill (长短参差) | ✅ **primary** 0.6.4.7: `_uniform_cjk_reference_widths` + DP fill×6; EN short tail not mid ZH |
+| CJK word collocation (dict) | ✅ **secondary**: ebook dict (乳房/背带/…); no hard 的/和 kinsoku (hurts fill) |
+| Still open on ATU after L3 (need re-translate) | residual layout glue on p23 (EN leftover / item-6 overlap / `分开。2.`); re-dual for fill visual |
 | Golden visual (failure ref until re-dual) | `Screenshot_21-7-2026_105225_*.jpeg` — ZH list 2/5 wrap under digit vs EN hang |
 
 **Operator rule:** S1→S3 complete; **L3 shipped** for align/indent; remaining ATU ragged *breaks* need re-translate then optional CJK break pass.

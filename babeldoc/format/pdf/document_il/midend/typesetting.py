@@ -153,9 +153,12 @@ def merge_cjk_units(units: list['TypesettingUnit']) -> list['TypesettingUnit']:
 
     策略：
     1. 二字/三字词典：词组内部 ``can_break_line=False``（标在首字上）
-    2. 行首禁则：。，）」等前的字符不可断（避免标点落行首）
-    3. 行尾禁则：（【「等本身不可断（避免开括号落行尾）
+    2. 行首禁则：。，）」/的地得… 前的字符不可断（避免标点/助词落行首）
+    3. 行尾禁则：（【「/和与及… 本身不可断（避免开括号/连词落行尾）
     4. 数字粘连：连续数字不拆；「第」+ 数字 +「卷/年…」整段不拆
+
+    ATU dual p22–23 goldens: ``这些背|带`` / ``乳|房`` / ``她|的背部`` /
+    ``肩膀和|前方`` — fixed via dict + particle/conj kinsoku.
     """
     if not units:
         return units
@@ -1344,6 +1347,12 @@ class Typesetting:
             reference_widths = None
         else:
             reference_widths = self._extract_original_line_widths(paragraph)
+            # Layout-first (CJK dual): uniform full measure — not EN tail
+            # widths, not word-level micro-tuning. ATU p22–23 长短参差.
+            if self.is_cjk and reference_widths:
+                reference_widths = Typesetting._uniform_cjk_reference_widths(
+                    reference_widths
+                )
         if reference_widths:
             logger.debug(
                 f"Reference layout: {len(reference_widths)} original lines, "
@@ -1735,6 +1744,8 @@ class Typesetting:
                     if getattr(self.translation_config, "ocr_workaround", False)
                     else self._extract_original_line_widths(paragraph)
                 )
+                if self.is_cjk and force_ref:
+                    force_ref = Typesetting._uniform_cjk_reference_widths(force_ref)
                 force_units, _ = self._layout_typesetting_units(
                     typesetting_units,
                     box,
@@ -1784,6 +1795,10 @@ class Typesetting:
         r"(?P<body>.*[。．.!?！？])\s*(?P<marker>\d{1,3}\s*[\.．。、\)])\s*$",
         re.DOTALL,
     )
+    # Leading serial with CJK/fullwidth punct that MT rewrote from ``1.``
+    _LEADING_LIST_MARKER_DOT_RE = re.compile(
+        r"^(?P<lead>\s*)(?P<num>\d{1,3})\s*(?P<punct>[。．、])\s*"
+    )
     # ~4 CJK glyphs at scale≈1 — shared min body column after hang/indent.
     _MIN_LINE_BODY_PT = 48.0
 
@@ -1798,9 +1813,55 @@ class Typesetting:
         return bool(Typesetting._LIST_MARKER_RE.match(text))
 
     @staticmethod
+    def _marker_digit(marker: str) -> str | None:
+        m = re.match(r"(\d{1,3})", (marker or "").strip())
+        return m.group(1) if m else None
+
+    @staticmethod
+    def _normalize_list_marker_token(marker: str) -> str:
+        """Force list serial to ASCII ``N.`` (never ``N。`` from DeepLX)."""
+        digit = Typesetting._marker_digit(marker)
+        if not digit:
+            return (marker or "").strip()
+        return f"{digit}."
+
+    @staticmethod
+    def _normalize_leading_list_marker_text(text: str | None) -> str | None:
+        """Rewrite leading ``1。`` / ``1．`` / ``1、`` → ``1.`` for list items.
+
+        DeepLX often localizes the list period to ideographic ``。``, which
+        looks like a Chinese sentence end and breaks hang-width consistency.
+        Only the *leading* serial is touched — body ``句号。`` stays.
+        """
+        if text is None:
+            return None
+        if not text:
+            return text
+        # NBSP from MT
+        t = text.replace("\xa0", " ").replace("\u2009", " ")
+        m = Typesetting._LEADING_LIST_MARKER_DOT_RE.match(t)
+        if not m:
+            return text
+        # Keep original leading whitespace; body after marker
+        rest = t[m.end() :]
+        # CJK body: no space after ``1.`` (same as EN dual ``1.Start`` often);
+        # Latin body: one space.
+        if rest and not rest[0].isspace():
+            o = ord(rest[0])
+            is_cjk = (
+                0x4E00 <= o <= 0x9FFF
+                or 0x3400 <= o <= 0x4DBF
+                or 0x3040 <= o <= 0x30FF
+                or 0xAC00 <= o <= 0xD7AF
+            )
+            if not is_cjk:
+                rest = " " + rest
+        return f"{m.group('lead')}{m.group('num')}.{rest}"
+
+    @staticmethod
     def _join_list_marker_to_body(marker: str, body: str) -> str:
-        """Prepend ``4.`` / ``4。`` to body without double spaces; CJK needs no gap."""
-        m = (marker or "").strip()
+        """Prepend normalized ``4.`` to body without double spaces; CJK needs no gap."""
+        m = Typesetting._normalize_list_marker_token(marker)
         b = body or ""
         if not m:
             return b
@@ -1808,7 +1869,7 @@ class Typesetting:
             return m
         if m[-1:].isspace() or b[0].isspace():
             return m + b
-        # Ideographic body (CJK) — match DeepLX style ``1。先将…``
+        # Ideographic body (CJK) — ``1.先将…`` (ASCII period, no space)
         o = ord(b[0])
         if (
             0x4E00 <= o <= 0x9FFF
@@ -1825,8 +1886,8 @@ class Typesetting:
         marker: str,
     ) -> bool:
         """Remove trailing serial from compositions. Returns True if a composition changed."""
-        marker = (marker or "").strip()
-        if not marker or not paragraph.pdf_paragraph_composition:
+        want_digit = Typesetting._marker_digit(marker)
+        if not want_digit or not paragraph.pdf_paragraph_composition:
             return False
         comps = paragraph.pdf_paragraph_composition
         for i in range(len(comps) - 1, -1, -1):
@@ -1835,11 +1896,9 @@ class Typesetting:
             if ssu is not None and ssu.unicode:
                 text = ssu.unicode
                 m = Typesetting._TRAILING_LIST_MARKER_RE.search(text.rstrip())
-                if m and m.group("marker").strip() == marker:
+                if m and Typesetting._marker_digit(m.group("marker")) == want_digit:
                     # Keep body including its sentence terminator; drop marker.
                     new_text = m.group("body").rstrip()
-                    # Preserve any non-trailing remainder after rstrip match region
-                    # if the original had only trailing spaces after marker.
                     ssu.unicode = new_text
                     if not ssu.unicode.strip():
                         del comps[i]
@@ -1849,7 +1908,9 @@ class Typesetting:
                 ftext = "".join(
                     (c.char_unicode or "") for c in formula.pdf_character
                 ).strip()
-                if ftext == marker or ftext.rstrip() == marker:
+                if Typesetting._marker_digit(ftext) == want_digit and re.fullmatch(
+                    r"\d{1,3}\s*[\.．。、\)]?", ftext
+                ):
                     del comps[i]
                     return True
         return False
@@ -1861,7 +1922,7 @@ class Typesetting:
         style: PdfStyle | None = None,
     ) -> None:
         """Ensure leading serial exists on compositions (and matches ``unicode``)."""
-        marker = (marker or "").strip()
+        marker = Typesetting._normalize_list_marker_token(marker)
         if not marker:
             return
         comps = paragraph.pdf_paragraph_composition
@@ -1875,6 +1936,10 @@ class Typesetting:
             if ssu is not None and ssu.unicode is not None:
                 body = ssu.unicode
                 if Typesetting._LIST_MARKER_RE.match(body.lstrip()):
+                    # Already has a serial — still normalize ``4。`` → ``4.``
+                    ssu.unicode = Typesetting._normalize_leading_list_marker_text(
+                        body
+                    )
                     return
                 ssu.unicode = Typesetting._join_list_marker_to_body(marker, body)
                 return
@@ -1884,18 +1949,39 @@ class Typesetting:
         comps.insert(0, PdfParagraphComposition(pdf_same_style_unicode_characters=ssu))
 
     @staticmethod
+    def _normalize_list_marker_on_paragraph(
+        paragraph: il_version_1.PdfParagraph,
+    ) -> bool:
+        """Normalize leading list punct on unicode + first composition. True if changed."""
+        changed = False
+        old_u = getattr(paragraph, "unicode", None)
+        new_u = Typesetting._normalize_leading_list_marker_text(old_u)
+        if new_u is not None and new_u != old_u:
+            paragraph.unicode = new_u
+            changed = True
+        comps = paragraph.pdf_paragraph_composition or []
+        if comps:
+            ssu = comps[0].pdf_same_style_unicode_characters
+            if ssu is not None and ssu.unicode is not None:
+                new_c = Typesetting._normalize_leading_list_marker_text(ssu.unicode)
+                if new_c is not None and new_c != ssu.unicode:
+                    ssu.unicode = new_c
+                    changed = True
+        return changed
+
+    @staticmethod
     def reattach_trailing_list_markers(
         paragraphs: list[il_version_1.PdfParagraph] | None,
     ) -> int:
-        """Move trailing ``N.`` / ``N。`` from item *i* onto the start of item *i+1*.
+        """Strip trailing glued serials; move onto next item when it lacks one.
 
-        ATU dual p21: translated item 3 ends with ``…恰到好处。4.`` while item 4's
-        body has no leading serial (and ends with ``…垂下来。5.``). Hang indent only
-        runs when ``_looks_like_numbered_list_item`` sees a leading marker, so the
-        orphaned bodies lay out as plain text (flush / wrong first-line indent).
+        ATU dual p21 cases:
+        * Item 3 ends ``…恰到好处。4.`` and item 4 body has no leading serial
+          → move ``4.`` to item 4 start.
+        * Item 4 *already* starts with ``4。`` but item 3 still ends with ``4.``
+          (duplicate after partial fix / MT) → **still strip** trailing from 3.
 
-        Safe guards: marker must follow a sentence terminator; next paragraph must
-        not already start with a list marker; both sides need non-trivial body.
+        Always normalize leading serials to ASCII ``N.`` (not ``N。``).
         """
         if not paragraphs or len(paragraphs) < 2:
             return 0
@@ -1905,49 +1991,87 @@ class Typesetting:
             nxt = paragraphs[i + 1]
             prev_text = (getattr(prev, "unicode", None) or "").replace("\xa0", " ")
             next_text = (getattr(nxt, "unicode", None) or "").replace("\xa0", " ")
-            if not prev_text.strip() or not next_text.strip():
-                continue
-            if Typesetting._looks_like_numbered_list_item(nxt):
+            if not prev_text.strip():
                 continue
             m = Typesetting._TRAILING_LIST_MARKER_RE.search(prev_text.rstrip())
             if not m:
                 continue
-            marker = m.group("marker").strip()
+            marker_raw = m.group("marker").strip()
+            marker = Typesetting._normalize_list_marker_token(marker_raw)
             body_prev = m.group("body").rstrip()
-            if len(body_prev) < 8 or len(next_text.strip()) < 6:
+            if len(body_prev) < 8:
                 continue
-            # Update unicode first (hang / alignment keys off this).
+
+            next_has_marker = Typesetting._looks_like_numbered_list_item(nxt)
+            # Strip trailing serial from prev always (dedupe when next already
+            # has the leading marker — ATU p21 after partial reattach).
             prev.unicode = body_prev
-            nxt.unicode = Typesetting._join_list_marker_to_body(
-                marker, next_text.lstrip()
-            )
-            Typesetting._strip_trailing_marker_from_compositions(prev, marker)
-            Typesetting._prepend_marker_to_compositions(
-                nxt, marker, style=getattr(nxt, "pdf_style", None)
-            )
-            # Body-only boxes sit at the hang column (~body x) after the serial
-            # was stolen; snap left to the prior item's list gutter so ``5.`` is
-            # not typeset starting under the wrap column.
-            if (
-                prev.box is not None
-                and nxt.box is not None
-                and prev.box.x is not None
-                and nxt.box.x is not None
-                and float(nxt.box.x) > float(prev.box.x) + 4.0
-            ):
-                nxt.box.x = float(prev.box.x)
-            # List hang owns wrap inset; drop any residual first-line indent.
-            try:
-                nxt.first_line_indent = 0.0
-            except Exception:
-                pass
+            Typesetting._strip_trailing_marker_from_compositions(prev, marker_raw)
+            # Sync first composition if strip missed multi-span residual
+            if (prev.unicode or "").rstrip() != body_prev:
+                prev.unicode = body_prev
+            comps = prev.pdf_paragraph_composition or []
+            if comps:
+                ssu = comps[-1].pdf_same_style_unicode_characters
+                if ssu is not None and ssu.unicode:
+                    tm = Typesetting._TRAILING_LIST_MARKER_RE.search(
+                        ssu.unicode.rstrip()
+                    )
+                    if tm and Typesetting._marker_digit(
+                        tm.group("marker")
+                    ) == Typesetting._marker_digit(marker):
+                        ssu.unicode = tm.group("body").rstrip()
+
+            if not next_has_marker:
+                if len((next_text or "").strip()) < 6:
+                    # Stripped prev only; next too short to own the serial
+                    moved += 1
+                    continue
+                nxt.unicode = Typesetting._join_list_marker_to_body(
+                    marker, next_text.lstrip()
+                )
+                Typesetting._prepend_marker_to_compositions(
+                    nxt, marker, style=getattr(nxt, "pdf_style", None)
+                )
+                if (
+                    prev.box is not None
+                    and nxt.box is not None
+                    and prev.box.x is not None
+                    and nxt.box.x is not None
+                    and float(nxt.box.x) > float(prev.box.x) + 4.0
+                ):
+                    nxt.box.x = float(prev.box.x)
+                try:
+                    nxt.first_line_indent = 0.0
+                except Exception:
+                    pass
+            else:
+                # Next already has a leading serial — just normalize its punct
+                Typesetting._normalize_list_marker_on_paragraph(nxt)
+
             moved += 1
             logger.debug(
-                "Reattached trailing list marker %r onto next paragraph (prev now starts %r)",
+                "List marker glue: stripped trailing %r from prev; next_has=%s",
                 marker,
-                (nxt.unicode or "")[:24],
+                next_has_marker,
             )
         return moved
+
+    @staticmethod
+    def normalize_list_markers_on_document(
+        document: il_version_1.Document,
+    ) -> int:
+        """Normalize leading ``N。`` → ``N.`` on every list-like paragraph."""
+        n = 0
+        for page in document.page or []:
+            for para in page.pdf_paragraph or []:
+                if Typesetting._normalize_list_marker_on_paragraph(para):
+                    n += 1
+        if n:
+            logger.info(
+                "Normalized %d leading list marker(s) to ASCII period", n
+            )
+        return n
 
     @staticmethod
     def reattach_trailing_list_markers_on_document(
@@ -1959,9 +2083,12 @@ class Typesetting:
             total += Typesetting.reattach_trailing_list_markers(
                 page.pdf_paragraph
             )
+        # Always normalize leading list dots after reattach (and for clean items)
+        Typesetting.normalize_list_markers_on_document(document)
         if total:
             logger.info(
-                "Reattached %d trailing list marker(s) before typesetting", total
+                "Reattached/stripped %d trailing list marker(s) before typesetting",
+                total,
             )
         return total
 
@@ -3090,6 +3217,35 @@ class Typesetting:
                 if w > 0:
                     widths.append(w)
         return widths
+
+    @staticmethod
+    def _uniform_cjk_reference_widths(
+        reference_widths: list[float] | None,
+        *,
+        fullish_ratio: float = 0.85,
+    ) -> list[float] | None:
+        """**Layout-first** for CJK dual: one full measure for every line.
+
+        Priority: rectangular column (English-style body) over replaying EN
+        per-line raggedness or word-collocation micro-breaks.
+
+        EN paragraphs often end with a short last line ``[500, 500, 200]``.
+        ZH is longer, so line index 2 became an *intermediate* Chinese line
+        capped at 200pt — severe 长短参差 (ATU p22–23). Collapse to the max of
+        EN lines ≥ ``fullish_ratio * max`` so intermediate ZH lines share one
+        width; only the final ZH line may stay short by content.
+
+        Narrow figure columns (all lines short but equal) keep that column.
+        """
+        if not reference_widths:
+            return reference_widths
+        usable = [float(w) for w in reference_widths if w is not None and float(w) >= 12.0]
+        if not usable:
+            return reference_widths
+        peak = max(usable)
+        fullish = [w for w in usable if w >= peak * fullish_ratio]
+        measure = max(fullish) if fullish else peak
+        return [measure]
 
     def _query_line_intervals(
         self,

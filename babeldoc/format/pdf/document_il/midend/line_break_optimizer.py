@@ -18,8 +18,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_WIDOW_PENALTY = 500.0  # 孤行惩罚（最后一行 ≤3 个字）
 DEFAULT_OVERFLOW_PENALTY = 10000.0  # 超宽惩罚（不应该发生，但作为安全兜底）
 # Intermediate CJK lines: multiply residual² so DP prefers fuller lines
-# (方块感) more than English raggedness alone.
-CJK_INTERIOR_FILL_WEIGHT = 2.5
+# (方块感 / English-style rectangular column). Last line stays unweighted.
+# 2.5 was too soft vs kinsoku-forced early wraps; 6.0 strongly packs mids.
+CJK_INTERIOR_FILL_WEIGHT = 6.0
 
 
 def optimal_line_break(

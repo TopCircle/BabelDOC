@@ -96,6 +96,12 @@ class TestCJKDict:
         assert is_cjk_two_char_word("学习")
         assert is_cjk_two_char_word("中国")
         assert is_cjk_two_char_word("发展")
+        # ATU p22–23 mid-word goldens
+        assert is_cjk_two_char_word("乳房")
+        assert is_cjk_two_char_word("背带")
+        assert is_cjk_two_char_word("积聚")
+        assert is_cjk_two_char_word("绳索")
+        assert is_cjk_two_char_word("捆绑")
 
     def test_non_words(self):
         """非常见词组不应被识别。"""
@@ -182,6 +188,30 @@ class TestCJKDP:
 # ──────────────────────────────────────────────────────────────
 
 
+class TestUniformCjkReferenceWidths:
+    """CJK dual: rectangular column, not EN last-line short mid-paragraph."""
+
+    def test_collapses_short_en_tail(self):
+        from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
+
+        # EN body: two full + short last → ZH must not use 200 as mid line
+        out = Typesetting._uniform_cjk_reference_widths([500.0, 500.0, 200.0])
+        assert out == [500.0]
+
+    def test_keeps_narrow_figure_column(self):
+        from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
+
+        # All lines short relative to page but equal → keep column
+        out = Typesetting._uniform_cjk_reference_widths([180.0, 180.0, 175.0, 100.0])
+        assert out == [180.0]
+
+    def test_empty_passthrough(self):
+        from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
+
+        assert Typesetting._uniform_cjk_reference_widths(None) is None
+        assert Typesetting._uniform_cjk_reference_widths([]) == []
+
+
 class TestCJKCost:
     def test_cjk_interior_line_penalty(self):
         """CJK 内部行应强烈惩罚非满行。"""
@@ -229,6 +259,9 @@ class TestKinsoku:
         assert not is_cjk_line_start_forbidden("%")
         assert not is_cjk_line_start_forbidden("/")
         assert not is_cjk_line_start_forbidden(",")
+        # Layout-first: particles are NOT hard kinsoku (would force short lines)
+        assert not is_cjk_line_start_forbidden("的")
+        assert not is_cjk_line_start_forbidden("了")
 
     def test_line_end_forbidden_chars(self):
         assert is_cjk_line_end_forbidden("（")
@@ -236,6 +269,9 @@ class TestKinsoku:
         assert is_cjk_line_end_forbidden("“")
         assert is_cjk_line_end_forbidden("(")  # mixed-script open paren
         assert not is_cjk_line_end_forbidden("。")
+        # Conjunctions not hard-glued (layout fill wins over 词语搭配)
+        assert not is_cjk_line_end_forbidden("和")
+        assert not is_cjk_line_end_forbidden("的")
 
     def test_halfwidth_period_does_not_block_break_after_cjk(self):
         """「见3.」式混排：半角点不应禁止在「3」前断（点不在行首禁则里）。"""
@@ -280,6 +316,62 @@ class TestKinsoku:
         assert units[2].can_break_line_cache is False
         # 句号行首禁则 → 前一字符「）」不可断
         assert units[5].can_break_line_cache is False
+
+    def test_atu_p22_word_dict_secondary_to_fill(self):
+        """Dict still protects 背|带 / 乳|房; layout measure is separate path."""
+
+        class _U(MockUnit):
+            def __init__(self, **kw):
+                super().__init__(**kw)
+                self.can_break_line_cache = None
+
+            @property
+            def can_break_line(self):
+                if self.can_break_line_cache is not None:
+                    return self.can_break_line_cache
+                return self._can_break_line
+
+        # Secondary: two-char dict still glues known words
+        units = [_U(unicode=ch) for ch in "这些背带设计"]
+        merge_cjk_units(units)
+        assert units[2].can_break_line_cache is False  # 背|
+
+        units = [_U(unicode=ch) for ch in "指的是乳房在"]
+        merge_cjk_units(units)
+        assert units[3].can_break_line_cache is False  # 乳|
+
+        # Particles/conjunctions are NOT hard-glued (layout-first)
+        units = [_U(unicode=ch) for ch in "圈在她的背部"]
+        merge_cjk_units(units)
+        de_idx = next(i for i, u in enumerate(units) if u.try_get_unicode() == "的")
+        assert units[de_idx - 1].can_break_line_cache is not False
+
+        units = [_U(unicode=ch) for ch in "肩膀和前方"]
+        merge_cjk_units(units)
+        he_idx = next(i for i, u in enumerate(units) if u.try_get_unicode() == "和")
+        assert units[he_idx].can_break_line_cache is not False
+
+        # With uniform full measure, interior residuals stay small (layout-first)
+        text = "这些背带设计用于挤压乳房与血液积聚在乳房中使其变得异常敏感"
+        units = [_U(unicode=ch, width=12.0) for ch in text]
+        merge_cjk_units(units)
+        line_w = 120.0
+        breaks = optimal_line_break(
+            units, [line_w] * 6, scale=1.0, space_width=5.0, cjk_mode=True
+        )
+        assert breaks is not None
+        from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
+            _compute_line_width,
+        )
+
+        pts = [0] + breaks + [len(units)]
+        interior_rems = []
+        for i in range(len(pts) - 2):  # exclude last line
+            a, b = pts[i], pts[i + 1]
+            w = _compute_line_width(units, a, b, 1.0, 5.0, 0.0)
+            interior_rems.append(line_w - w)
+        # Interiors should be near-full (≤ ~1.5 chars leftover under fill weight)
+        assert max(interior_rems) <= 24.0, interior_rems
 
     def test_merge_glues_ganqing_and_volume_year(self):
         """感情 / 第11卷 / 1989年 must not break mid-token."""

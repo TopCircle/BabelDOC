@@ -561,8 +561,6 @@ class TestReattachTrailingListMarkers:
         # Snap body-only box left to list gutter; clear indent for hang.
         assert p5.box.x == pytest.approx(56.0)
         assert float(p5.first_line_indent or 0) == 0.0
-        # item 6 unchanged
-        assert p6.unicode.startswith("6。")
         # compositions stay in sync for typesetting units
         assert p4.pdf_paragraph_composition[0].pdf_same_style_unicode_characters.unicode.startswith(
             "4."
@@ -570,6 +568,14 @@ class TestReattachTrailingListMarkers:
         assert p5.pdf_paragraph_composition[0].pdf_same_style_unicode_characters.unicode.startswith(
             "5."
         )
+        # Document pass also normalizes leading ``6。`` → ``6.``
+        from babeldoc.format.pdf.document_il.il_version_1 import Document, Page
+
+        doc = Document(
+            page=[Page(pdf_paragraph=[p3, p4, p5, p6], page_number=0)]
+        )
+        Typesetting.normalize_list_markers_on_document(doc)
+        assert p6.unicode.startswith("6.")
 
     def test_does_not_steal_prose_number(self):
         """``The answer is 42.`` must not reattach ``42.`` onto the next para."""
@@ -580,12 +586,43 @@ class TestReattachTrailingListMarkers:
         assert a.unicode == "The answer is 42."
         assert not Typesetting._looks_like_numbered_list_item(b)
 
-    def test_skips_when_next_already_has_marker(self):
+    def test_strips_trailing_even_when_next_already_has_marker(self):
+        """ATU p21: item4 already ``4。…`` but item3 still ends ``。4.`` → dedupe."""
         a = self._para("3。直到恰到好处。4.")
         b = self._para("4。将打结的绳子从她两腿之间拉到背上。")
         n = Typesetting.reattach_trailing_list_markers([a, b])
-        assert n == 0
-        assert a.unicode.endswith("4.")
+        assert n == 1
+        assert a.unicode.endswith("恰到好处。")
+        assert not a.unicode.rstrip().endswith("4.")
+        # Leading serial normalized to ASCII period
+        assert b.unicode.startswith("4.")
+        assert not b.unicode.startswith("4。")
+
+    def test_normalize_leading_list_marker_period(self):
+        """DeepLX ``2。永远`` → ``2.永远`` (ASCII period, not ideographic)。"""
+        assert (
+            Typesetting._normalize_leading_list_marker_text(
+                "2。永远、永远、永远不要"
+            )
+            == "2.永远、永远、永远不要"
+        )
+        assert (
+            Typesetting._normalize_leading_list_marker_text("3．第三步")
+            == "3.第三步"
+        )
+        # Body sentence periods untouched
+        assert (
+            Typesetting._normalize_leading_list_marker_text(
+                "正文没有序号。仍有句号。"
+            )
+            == "正文没有序号。仍有句号。"
+        )
+        p = self._para("1。先将绳子挂在她的脖子上。")
+        assert Typesetting._normalize_list_marker_on_paragraph(p)
+        assert p.unicode.startswith("1.")
+        assert p.pdf_paragraph_composition[
+            0
+        ].pdf_same_style_unicode_characters.unicode.startswith("1.")
 
     def test_list_item_forces_left_even_if_center_geometry(self):
         """ATU safety list: short multi-line items false-center without this."""

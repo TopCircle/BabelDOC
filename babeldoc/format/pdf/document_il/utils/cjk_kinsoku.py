@@ -14,6 +14,11 @@ when the previous unit is CJK.
 
 from __future__ import annotations
 
+# Priority: **layout fill first**, word/particle collocation second.
+# Hard kinsoku here is punctuation-only. Gluing 的/和 as hard breaks forces
+# early wraps and short intermediate lines (worse than mid-word 的|背).
+# Word preference lives in cjk_dict (secondary, can still yield).
+
 # 行首禁用：断行后下一行首字不能是这些（以全角/CJK 标点为主）
 CJK_LINE_START_FORBIDDEN: frozenset[str] = frozenset(
     # 中文点号 / 结束标点
