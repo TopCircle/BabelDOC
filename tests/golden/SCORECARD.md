@@ -249,7 +249,7 @@ Resume only with a **new plan** (not more one-off glue / dict / pull-back patche
 
 | Pri | Class | Symptom | Pages (1-based) | Likely track |
 |----:|-------|---------|-----------------|--------------|
-| **P0** | `align_center_false` | Body/warning blocks look **center** or short last line centered; left edge x scatters (std ≫ 20) | p5 top, p14 warnings | **L3** paragraph alignment |
+| **P0** | `align_center_false` | Body/warning blocks look **center** or short last line centered; left edge x scatters (std ≫ 20) | book p4 above Nice Rack (survey / two-thirds), p14 warnings | **page_sym** false-positive on flush-left ~80% width body + CJK demote avg≥400pt (fixed); re-dual needed |
 | **P0** | `list_indent` | Numbered steps: (1) MT markers ``2。`` not matched; (2) short items stay **center** so hang never runs; wrap under digit / centered blocks | p6/p7 safety list | list marker ``。`` + force-left + hang inset |
 | **P0** | `missing_zh` | Intro first para ZH drops EN third sentence (50 Shades…) — gap under short ZH; long paras on same page OK; **DeepLX not LLM** | book p3 / dual p4 | **parse:** EOL spaces stripped + wrap ``distance<=0`` skipped ``is_newline`` → ``Isit``/``ofGrey`` (fixed); residual may still be DeepLX partial — re-dual needed |
 | **P1** | `cjk_ragged_break` | Mid-phrase / orphan lines: 「这个」「理智和」「在这」; high line-length stdev | p5, p6, p8, p18, p20 | **L3** + CJK break (not dict F1) |

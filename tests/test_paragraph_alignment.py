@@ -141,6 +141,38 @@ class TestDetectParagraphAlignment:
         para = _line_para(lines)
         assert detect_paragraph_alignment(para, _page(612)) == "left"
 
+    def test_atu_p4_survey_body_not_page_symmetric_center(self):
+        """All Tied Up book p4 above Nice Rack: flush-left EN body.
+
+        Two/three full-measure lines at x=56 have lm≈rm and mid-page centers;
+        page-symmetric detection must not call that a centered header.
+        """
+        # Para 2: survey (3 lines, short last)
+        para2 = _line_para(
+            [
+                (56.0, 557.2),
+                (56.0, 559.2),
+                (56.0, 175.4),
+            ]
+        )
+        assert detect_paragraph_alignment(para2, _page(612)) == "left"
+        # Para 3: two thirds (2 lines, both fairly full — the hard case)
+        para3 = _line_para(
+            [
+                (56.0, 546.1),
+                (56.0, 480.2),
+            ]
+        )
+        assert detect_paragraph_alignment(para3, _page(612)) == "left"
+        # 2 full lines without short tail (if last EN line split off)
+        para2_only = _line_para(
+            [
+                (56.0, 557.2),
+                (56.0, 559.2),
+            ]
+        )
+        assert detect_paragraph_alignment(para2_only, _page(612)) == "left"
+
     def test_title_label_does_not_force_center(self):
         # Ebook section headings are often left-aligned but labeled "title"
         # by DocLayout — must stay left, not float to center of wide box.
@@ -291,6 +323,31 @@ class TestResolveEffectiveAlignment:
             per_line_widths=[361.7, 346.9],
         )
         assert Typesetting._resolve_effective_alignment(para, is_cjk=True) == "center"
+
+    def test_atu_p4_full_measure_body_demotes_even_if_tagged_center(self):
+        """Safety net: wide EN body (~480pt avg) + long CJK → left."""
+        from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
+
+        zh = (
+            "最近的一项全国性调查清楚地表明，与伴侣一起参加各种性活动的女性"
+            "更有可能经历和享受高潮体验"
+        )
+        para = PdfParagraph(
+            box=Box(x=56, y=100, x2=560, y2=180),
+            pdf_style=PdfStyle(font_id="base", font_size=14.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode=zh,
+        )
+        para.alignment = "center"
+        para.reference_metrics = ReferenceMetrics(
+            line_count=2,
+            avg_line_width=490.0,
+            last_line_width=480.0,
+            last_line_ratio=0.98,
+            font_size=14.0,
+            per_line_widths=[500.0, 480.0],
+        )
+        assert Typesetting._resolve_effective_alignment(para, is_cjk=True) == "left"
 
     def test_atu_long_cjk_centered_en_block_demotes_left(self):
         """All Tied Up p5-style: short centered EN lines → long ZH must flush-left."""

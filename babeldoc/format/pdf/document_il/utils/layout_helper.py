@@ -1478,14 +1478,29 @@ def detect_paragraph_alignment(
         (so left_ratio is high) but each line is still centered on the page.
         Must not match left-column body (asymmetric page margins) or near-full
         justified body lines.
+
+        All Tied Up book p4 (above Nice Rack): 2–3 EN body lines at x≈56 with
+        width ~80% of page have lm≈rm and centers near mid-page. That is
+        *flush-left full-measure body*, not a centered header — reject when
+        lines share a left edge and the longest is still wide.
         """
         if page_box is None or page_box.x2 <= page_box.x:
             return False
         page_center = (page_box.x + page_box.x2) / 2.0
         page_width = page_box.x2 - page_box.x
+        # Flush-left wide body: shared left edge + long measure (ebook body).
+        # arXiv author/affil lines *vary* their left edge as they taper.
+        if len(line_ranges) >= 2:
+            line_lefts = [x for x, _ in line_ranges]
+            line_ws = [x2 - x for x, x2 in line_ranges]
+            shared_left = (max(line_lefts) - min(line_lefts)) <= tol
+            if shared_left and max(line_ws) >= page_width * 0.72:
+                return False
         for x, x2 in line_ranges:
             w = x2 - x
-            if w > page_width * 0.85:
+            # 0.78: near-full body (ATU ~0.80–0.82) must not count as centered
+            # header; keep true titles under that threshold.
+            if w > page_width * 0.78:
                 return False
             line_center = (x + x2) / 2.0
             if abs(line_center - page_center) > page_center_tolerance:

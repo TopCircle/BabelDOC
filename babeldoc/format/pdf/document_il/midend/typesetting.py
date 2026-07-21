@@ -1974,6 +1974,20 @@ class Typesetting:
             ):
                 return "left"
 
+            # Ebook full-measure body mis-tagged center (All Tied Up p4 above
+            # Nice Rack: 2 EN lines ~480–500pt wide, flush left). arXiv affil
+            # averages ~350pt in a tight bbox — keep those centered.
+            if (
+                is_cjk
+                and text_len >= 36
+                and line_count >= 2
+                and avg is not None
+                and float(avg) >= 400.0
+                and fullish >= 0.45
+                and label != "title"
+            ):
+                return "left"
+
             # L3 / All Tied Up: long CJK from short *centered* EN marketing.
             # Keep arXiv multi-line headers only when tight bbox or strong
             # width pyramid (author/date), not uniform short pull-quotes.
