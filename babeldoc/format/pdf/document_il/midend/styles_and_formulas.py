@@ -403,10 +403,10 @@ class StylesAndFormulas:
 
     @staticmethod
     def _is_prose_number_run(chars: list[PdfCharacter], start: int) -> bool:
-        """Digit run followed by Latin letter (optional spaces) → body prose.
+        """Digit run in body prose → must not become formula placeholders.
 
-        Examples: ``50 Shades``, ``4th``, ``3D``. Not ``x=50``, ``a^2``, ``21%``
-        (non-letter after digits).
+        Examples: ``50 Shades``, ``4th``, ``3D``, ``20 feet``, ``ideally 25, longer``.
+        Not ``x=50``, ``a^2``, ``21%`` (math / unit-suffix without Latin word).
         """
         if start < 0 or start >= len(chars):
             return False
@@ -420,10 +420,11 @@ class StylesAndFormulas:
                 j += 1
                 continue
             break
-        # skip spaces only (not punctuation)
+        # Skip spaces and light prose punctuation before the next word
+        # ("25, longer" / "20 feet" / "3. something").
         while j < len(chars):
             u = chars[j].char_unicode or ""
-            if u == " ":
+            if u in " \t,.;:":
                 j += 1
                 continue
             break
@@ -432,7 +433,7 @@ class StylesAndFormulas:
         nxt = chars[j].char_unicode or ""
         if not nxt:
             return False
-        # ASCII letter after the number → "50 Shades" / "4th"
+        # ASCII letter after the number → "50 Shades" / "20 feet" / "4th"
         return bool(re.match(r"[A-Za-z]", nxt))
 
     def _classify_characters_in_composition(
@@ -509,16 +510,14 @@ class StylesAndFormulas:
                 line.pdf_character[i + 1] if i < len(line.pdf_character) - 1 else None
             )
 
-            # Prose numbers (DeepLX path): "50 Shades", "4th Avenue" — default
-            # digit→formula injects ``{v1}`` into MT text. DeepLX often mangled
-            # the clause around that token (All Tied Up intro lost the whole
-            # third sentence). Longer paras with "21%" still OK; this is the
-            # digit+Latin-word pattern. Keep real math (digit next to math
-            # symbols / formula fonts) as formula.
+            # Prose numbers (DeepLX path): "50 Shades", "20 feet", "25, longer".
+            # Digits default to formula → ``{vN}`` into MT; layout may also set
+            # formula_layout_id on body digits (ATU p20 stacked 20+25 → "2025").
+            # Still demote digit+Latin prose even when layout_id is set, unless
+            # the char is on a real formula font.
             if (
                 is_formula
                 and not in_formula_state
-                and not char.formula_layout_id
                 and char.pdf_style.font_id not in formula_font_ids
                 and not char.vertical
                 and char.char_unicode
@@ -1031,14 +1030,21 @@ class StylesAndFormulas:
             return PdfParagraphComposition(pdf_line=new_line)
 
     def is_translatable_formula(self, formula: PdfFormula) -> bool:
-        """判断公式是否只包含需要正常翻译的字符（数字、空格和英文逗号）"""
-        if all(char.formula_layout_id for char in formula.pdf_character):
-            return False
+        """判断公式是否只包含需要正常翻译的字符（数字、空格和英文逗号）
 
-        text = "".join(char.char_unicode for char in formula.pdf_character)
+        Pure body numbers (ATU p20 ``20 feet`` / ``25,``) must become plain text
+        even when DocLayout set ``formula_layout_id`` — otherwise placeholders
+        stack as ``2025`` and the counts vanish from prose.
+        """
+        text = "".join(char.char_unicode or "" for char in formula.pdf_character)
         if formula.y_offset > 0.1:
             return False
-        return bool(re.match(r"^[0-9, .]+$", text))
+        # Pure digit / comma / space / period runs are always body numbers.
+        if re.match(r"^[0-9, .]+$", text):
+            return True
+        if all(char.formula_layout_id for char in formula.pdf_character):
+            return False
+        return False
 
     def should_split_formula(self, formula: PdfFormula) -> bool:
         """判断公式是否需要按逗号拆分（包含逗号且有其他特殊符号）"""

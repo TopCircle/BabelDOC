@@ -37,3 +37,25 @@ class TestProseNumberRun:
     def test_ordinal(self):
         chars = [_ch(c, x=i * 6) for i, c in enumerate("4th")]
         assert StylesAndFormulas._is_prose_number_run(chars, 0)
+
+    def test_twenty_feet(self):
+        """ATU p20: 20 feet / 25, longer — must not become {vN}."""
+        chars = [_ch(c, x=i * 6) for i, c in enumerate("20 feet")]
+        assert StylesAndFormulas._is_prose_number_run(chars, 0)
+        assert StylesAndFormulas._is_prose_number_run(chars, 1)
+
+    def test_twenty_five_comma_longer(self):
+        chars = [_ch(c, x=i * 6) for i, c in enumerate("25, longer")]
+        assert StylesAndFormulas._is_prose_number_run(chars, 0)
+        assert StylesAndFormulas._is_prose_number_run(chars, 1)
+
+    def test_is_translatable_pure_digits_even_with_layout_id(self):
+        """DocLayout formula_layout_id must not keep pure 20/25 as formula."""
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfFormula
+
+        chars = [_ch("2", x=0), _ch("0", x=6)]
+        for c in chars:
+            c.formula_layout_id = 1
+        formula = PdfFormula(pdf_character=chars, y_offset=0.0)
+        # Call unbound — no FontMapper needed for this check
+        assert StylesAndFormulas.is_translatable_formula(None, formula)

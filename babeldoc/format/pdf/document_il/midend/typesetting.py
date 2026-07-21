@@ -1919,15 +1919,20 @@ class Typesetting:
         text_len = len(text)
         unit_n = len(typesetting_units) if typesetting_units is not None else 0
 
-        # Short title/heading may stay centered.
-        if label == "title" and text_len <= 48 and unit_n <= 48:
-            return alignment
-
         rm = getattr(paragraph, "reference_metrics", None)
         box = paragraph.box
         box_w = 0.0
+        para_left = 0.0
         if box is not None and box.x2 is not None and box.x is not None:
             box_w = float(box.x2 - box.x)
+            para_left = float(box.x)
+
+        # Short title/heading may stay centered — but only when EN box is not
+        # flush-left full-measure (ATU TECHNIQUE 1 / ebook section heads).
+        if label == "title" and text_len <= 48 and unit_n <= 48:
+            flush_left_wide = para_left < 62.0 and box_w >= 400.0
+            if not flush_left_wide:
+                return alignment
 
         line_count = 0
         fullish = 0.0
@@ -1953,36 +1958,34 @@ class Typesetting:
             max_w = max(widths_f) if widths_f else 0.0
             min_w = min(widths_f) if widths_f else 0.0
 
-            # Ebook full-measure body (All Tied Up p4 survey / two-thirds):
-            # EN lines ~480–500pt wide on a letter page. arXiv author/affil
-            # longest line is ~454pt tapering / ~360pt tight — stay under 470.
-            # Also: if metrics collapsed to line_count=1 but the EN *box* is
-            # still full-measure, ZH body must not stay "center" (prod dual
-            # v0.6.5 still centered those paras).
-            ebook_full_measure = max_w >= 470.0 or (
-                box_w >= 450.0 and (avg is not None and float(avg) >= 400.0)
+            # Ebook full-measure body (ATU p4/p7/p13): EN ~480–500pt wide at
+            # left margin ~56. arXiv page-centered titles start ~x=64 with
+            # symmetric margins — require flush-left box to avoid demoting them.
+            para_left = float(box.x) if box is not None and box.x is not None else 0.0
+            flush_left = para_left < 62.0
+            ebook_full_measure = flush_left and (
+                max_w >= 470.0
+                or (box_w >= 450.0 and avg is not None and float(avg) >= 400.0)
             )
-            if (
-                is_cjk
-                and label != "title"
-                and text_len >= 28
-                and ebook_full_measure
-            ):
+            # Short ZH (p7 ~23 chars, p13 title ~8) still demotes when EN was
+            # full-measure flush-left.
+            if is_cjk and text_len >= 4 and ebook_full_measure:
                 return "left"
 
             # Single-line EN centered block → often becomes multi-line ZH.
             # If ZH is wider than the original line box, reflow left
-            # (All Tied Up p5 pull-quotes). Keep real titles (label=title).
+            # (All Tied Up p5 pull-quotes). Flush-left wide EN → left even for
+            # short ZH / title labels (TECHNIQUE 1).
             if line_count <= 1:
+                flush_left_wide = box_w >= 400.0 and flush_left
                 if (
                     is_cjk
-                    and text_len >= 28
-                    and label != "title"
+                    and text_len >= 4
                     and box_w > 1.0
                     and (
                         text_len * 11.0 > box_w * 1.15
-                        # Wide body box even when ZH still fits one visual line
-                        or (box_w >= 400.0 and text_len >= 36)
+                        or flush_left_wide
+                        or (box_w >= 400.0 and text_len >= 20 and flush_left)
                     )
                 ):
                     return "left"

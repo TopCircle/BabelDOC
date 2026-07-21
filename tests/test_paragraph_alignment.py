@@ -186,9 +186,18 @@ class TestDetectParagraphAlignment:
         assert detect_paragraph_alignment(para, _page(612)) == "left"
 
     def test_single_line_page_centered(self):
-        # Single title line centered on page (L≈R page margins)
-        para = _line_para([(63.9, 548.1)])  # center 306, page 612
+        # Single title line centered on page (L≈R page margins, real inset)
+        # x=120 leaves enough left margin; width well under 0.78*page
+        para = _line_para([(120.0, 492.0)])  # center 306, page 612, lm=120
         assert detect_paragraph_alignment(para, _page(612)) == "center"
+
+    def test_single_line_flush_left_fullish_not_center(self):
+        """ATU p7 lead-in / p13 TECHNIQUE title: flush left ~0.8 page wide."""
+        # w=490, center≈301, left@56 — was false center under 0.85 threshold
+        para = _line_para([(56.0, 546.0)])
+        assert detect_paragraph_alignment(para, _page(612)) == "left"
+        para_title = _line_para([(56.0, 558.0)], label="title")
+        assert detect_paragraph_alignment(para_title, _page(612)) == "left"
 
     def test_single_line_column_not_center(self):
         # Left column body line — not page-centered
@@ -388,6 +397,32 @@ class TestResolveEffectiveAlignment:
             per_line_widths=[501.0],
         )
         assert Typesetting._resolve_effective_alignment(para1, is_cjk=True) == "left"
+
+    def test_atu_p7_short_leadin_demotes_despite_short_zh(self):
+        """p7 safety lead-in ~24 CJK chars from full-measure EN must go left."""
+        from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
+
+        zh = "在捆绑安全方面，您需要采取一些基本的预防措施。"
+        para = PdfParagraph(
+            box=Box(x=56, y=100, x2=546, y2=120),
+            pdf_style=PdfStyle(font_id="base", font_size=14.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode=zh,
+        )
+        para.alignment = "center"
+        para.reference_metrics = ReferenceMetrics(
+            line_count=1,
+            avg_line_width=490.0,
+            last_line_width=490.0,
+            last_line_ratio=1.0,
+            font_size=14.0,
+            per_line_widths=[490.0],
+        )
+        assert Typesetting._resolve_effective_alignment(para, is_cjk=True) == "left"
+        # Section title style
+        para.layout_label = "title"
+        para.unicode = "技术1：简单领带"
+        assert Typesetting._resolve_effective_alignment(para, is_cjk=True) == "left"
 
     def test_atu_long_cjk_centered_en_block_demotes_left(self):
         """All Tied Up p5-style: short centered EN lines → long ZH must flush-left."""

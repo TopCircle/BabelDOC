@@ -1571,6 +1571,11 @@ def detect_paragraph_alignment(
     if page_box is not None and page_box.x2 > page_box.x:
         page_center = (page_box.x + page_box.x2) / 2.0
         page_width = page_box.x2 - page_box.x
+        # Flush-left body/title (ATU p7 lead-in, p13 TECHNIQUE 1): left edge
+        # sits on the body margin while mid lands near page center only because
+        # the line is ~0.8 page wide — not true centered type.
+        # Require a real left margin (not column-flush) before calling center.
+        margin_flush = 48.0  # body inset on letter ebooks is typically ~56
         all_centered = True
         for x, x2 in line_ranges:
             line_center = (x + x2) / 2.0
@@ -1579,7 +1584,12 @@ def detect_paragraph_alignment(
                 all_centered = False
                 break
             # Near-full-page lines are body text, not centered titles
-            if line_width > page_width * 0.85:
+            # 0.78: ATU full-measure body/title is ~0.80–0.82 of page width
+            if line_width > page_width * 0.78:
+                all_centered = False
+                break
+            # Left edge near page left → flush-left column, not page-centered
+            if (x - page_box.x) < margin_flush:
                 all_centered = False
                 break
         if all_centered:
