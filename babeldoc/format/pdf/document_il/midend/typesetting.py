@@ -1947,20 +1947,6 @@ class Typesetting:
             else:
                 fullish = 0.0
 
-            # Single-line EN centered block → often becomes multi-line ZH.
-            # If ZH is wider than the original line box, reflow left
-            # (All Tied Up p5 pull-quotes). Keep real titles (label=title).
-            if line_count <= 1:
-                if (
-                    is_cjk
-                    and text_len >= 28
-                    and label != "title"
-                    and box_w > 1.0
-                    and text_len * 11.0 > box_w * 1.15
-                ):
-                    return "left"
-                return alignment
-
             widths_f = [float(w) for w in widths] if widths else []
             if not widths_f and avg is not None:
                 widths_f = [float(avg)]
@@ -1970,17 +1956,37 @@ class Typesetting:
             # Ebook full-measure body (All Tied Up p4 survey / two-thirds):
             # EN lines ~480–500pt wide on a letter page. arXiv author/affil
             # longest line is ~454pt tapering / ~360pt tight — stay under 470.
-            # This must run BEFORE tight_header logic: fullish is also high for
-            # body relative to its own box, which previously blocked demotion.
-            ebook_full_measure = max_w >= 470.0
+            # Also: if metrics collapsed to line_count=1 but the EN *box* is
+            # still full-measure, ZH body must not stay "center" (prod dual
+            # v0.6.5 still centered those paras).
+            ebook_full_measure = max_w >= 470.0 or (
+                box_w >= 450.0 and (avg is not None and float(avg) >= 400.0)
+            )
             if (
                 is_cjk
                 and label != "title"
                 and text_len >= 28
-                and line_count >= 2
                 and ebook_full_measure
             ):
                 return "left"
+
+            # Single-line EN centered block → often becomes multi-line ZH.
+            # If ZH is wider than the original line box, reflow left
+            # (All Tied Up p5 pull-quotes). Keep real titles (label=title).
+            if line_count <= 1:
+                if (
+                    is_cjk
+                    and text_len >= 28
+                    and label != "title"
+                    and box_w > 1.0
+                    and (
+                        text_len * 11.0 > box_w * 1.15
+                        # Wide body box even when ZH still fits one visual line
+                        or (box_w >= 400.0 and text_len >= 36)
+                    )
+                ):
+                    return "left"
+                return alignment
 
             # Multi-line demotion (Orgasms false-center body):
             # majority of lines fill the para span AND there is a clearly

@@ -371,6 +371,24 @@ class TestResolveEffectiveAlignment:
         )
         assert Typesetting._resolve_effective_alignment(para2, is_cjk=True) == "left"
 
+        # Metrics collapsed to 1 line but box is still full-measure body
+        para1 = PdfParagraph(
+            box=Box(x=56, y=100, x2=558, y2=120),
+            pdf_style=PdfStyle(font_id="base", font_size=14.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode=zh,
+        )
+        para1.alignment = "center"
+        para1.reference_metrics = ReferenceMetrics(
+            line_count=1,
+            avg_line_width=501.0,
+            last_line_width=501.0,
+            last_line_ratio=1.0,
+            font_size=14.0,
+            per_line_widths=[501.0],
+        )
+        assert Typesetting._resolve_effective_alignment(para1, is_cjk=True) == "left"
+
     def test_atu_long_cjk_centered_en_block_demotes_left(self):
         """All Tied Up p5-style: short centered EN lines → long ZH must flush-left."""
         from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
