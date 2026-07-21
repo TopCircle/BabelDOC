@@ -1837,17 +1837,6 @@ class Typesetting:
             widths = getattr(rm, "per_line_widths", None) or []
             last_ratio = float(getattr(rm, "last_line_ratio", 1.0) or 1.0)
 
-            # Single-line page-centered title/date: avg≈box always; trust
-            # detection (it already rejected near-full-page body lines).
-            if line_count <= 1:
-                return alignment
-
-            # Multi-line demotion (Orgasms false-center body):
-            # majority of lines fill the para span AND there is a clearly
-            # short last line. Do NOT demote 2-line arXiv affiliation blocks:
-            # after date split their tight bbox makes fullish≈1.0 even though
-            # every original line is page-centered (golden figure PDF header
-            # lines 3–4 were forced left by the old fullish-only rule).
             if widths:
                 fullish = sum(
                     1 for w in widths if float(w) >= box_w * 0.85
@@ -1857,6 +1846,26 @@ class Typesetting:
             else:
                 fullish = 0.0
 
+            # Single-line EN centered block → often becomes multi-line ZH.
+            # If ZH is wider than the original line box, reflow left
+            # (All Tied Up p5 pull-quotes). Keep real titles (label=title).
+            if line_count <= 1:
+                if (
+                    is_cjk
+                    and text_len >= 28
+                    and label != "title"
+                    and box_w > 1.0
+                    and text_len * 11.0 > box_w * 1.15
+                ):
+                    return "left"
+                return alignment
+
+            # Multi-line demotion (Orgasms false-center body):
+            # majority of lines fill the para span AND there is a clearly
+            # short last line. Do NOT demote 2-line arXiv affiliation blocks:
+            # after date split their tight bbox makes fullish≈1.0 even though
+            # every original line is page-centered (golden figure PDF header
+            # lines 3–4 were forced left by the old fullish-only rule).
             if (
                 fullish >= 0.5
                 and line_count >= 3
@@ -1864,12 +1873,10 @@ class Typesetting:
             ):
                 return "left"
 
-            # L3 / All Tied Up: long CJK from short *centered* EN marketing
-            # must reflow flush-left. Keep arXiv multi-line headers only when:
-            #   - tight bbox (lines fill para span), or
-            #   - strong width pyramid + short last + substantial avg fill
-            #     (author/date), not uniform short pull-quote lines.
-            if is_cjk and text_len >= 48:
+            # L3 / All Tied Up: long CJK from short *centered* EN marketing.
+            # Keep arXiv multi-line headers only when tight bbox or strong
+            # width pyramid (author/date), not uniform short pull-quotes.
+            if is_cjk and text_len >= 36:
                 widths_f = [float(w) for w in widths] if widths else []
                 if not widths_f and avg is not None:
                     widths_f = [float(avg)]
@@ -1889,7 +1896,12 @@ class Typesetting:
                     and pyramid
                     and avg_fill >= 0.55
                 )
-                if not (tight_header or tapering_header):
+                # Will ZH wrap far beyond original total line budget?
+                orig_budget = sum(widths_f) if widths_f else box_w
+                zh_overflow = text_len * 11.0 > orig_budget * 1.5
+                if zh_overflow and not (tight_header or tapering_header):
+                    return "left"
+                if not (tight_header or tapering_header) and text_len >= 48:
                     return "left"
 
             return alignment

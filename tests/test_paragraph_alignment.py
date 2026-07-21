@@ -301,19 +301,22 @@ class TestResolveEffectiveAlignment:
             "更有可能经历和享受高潮体验。在这个世界上，有近三分之二的女性"
             "在来访时感到困难重重，这应该足以成为您尝试新事物的理由！"
         )
-        for name, widths, last_r in (
-            ("uniform", [280.0, 240.0, 260.0, 140.0], 0.50),
-            ("mild_taper", [280.0, 240.0, 200.0, 100.0], 100 / 280),
-        ):
+        cases = [
+            # Real ATU: often ONE centered EN line → multi-line ZH
+            ("single_en_line", 1, [320.0], 1.0),
+            ("uniform", 4, [280.0, 240.0, 260.0, 140.0], 0.50),
+            ("mild_taper", 4, [280.0, 240.0, 200.0, 100.0], 100 / 280),
+        ]
+        for name, nline, widths, last_r in cases:
             para = PdfParagraph(
-                box=Box(x=80, y=100, x2=530, y2=280),
+                box=Box(x=100, y=100, x2=100 + max(widths), y2=280),
                 pdf_style=PdfStyle(font_id="base", font_size=11.0, graphic_state=None),
                 pdf_paragraph_composition=[],
                 unicode=long_zh,
             )
             para.alignment = "center"
             para.reference_metrics = ReferenceMetrics(
-                line_count=4,
+                line_count=nline,
                 avg_line_width=sum(widths) / len(widths),
                 last_line_width=widths[-1],
                 last_line_ratio=last_r,
@@ -323,10 +326,24 @@ class TestResolveEffectiveAlignment:
             assert (
                 Typesetting._resolve_effective_alignment(para, is_cjk=True) == "left"
             ), name
-        # Non-CJK keeps geometric center
-        para.alignment = "center"
+        # Non-CJK: single-line centered EN stays center (no ZH-overflow demotion)
+        para_en = PdfParagraph(
+            box=Box(x=100, y=100, x2=420, y2=120),
+            pdf_style=PdfStyle(font_id="base", font_size=11.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode="And the cherry on top of it all? More survey text here.",
+        )
+        para_en.alignment = "center"
+        para_en.reference_metrics = ReferenceMetrics(
+            line_count=1,
+            avg_line_width=320.0,
+            last_line_width=320.0,
+            last_line_ratio=1.0,
+            font_size=11.0,
+            per_line_widths=[320.0],
+        )
         assert (
-            Typesetting._resolve_effective_alignment(para, is_cjk=False) == "center"
+            Typesetting._resolve_effective_alignment(para_en, is_cjk=False) == "center"
         )
 
 
