@@ -642,6 +642,18 @@ class TestReattachTrailingListMarkers:
         p = self._para("b。采取主动")
         assert Typesetting._normalize_list_marker_on_paragraph(p)
         assert p.unicode.startswith("b.")
+        # Academic ``I.`` / ``E.`` must not hang as quiz list
+        assert not Typesetting._looks_like_numbered_list_item(
+            self._para("I. Introduction to the topic of desire")
+        )
+        assert not Typesetting._looks_like_numbered_list_item(
+            self._para("E. Something else entirely here now")
+        )
+        # Mid-string without tip label must not rewrite
+        assert (
+            Typesetting._normalize_leading_list_marker_text("正文 3。句号仍是句号。")
+            == "正文 3。句号仍是句号。"
+        )
 
     def test_list_item_forces_left_even_if_center_geometry(self):
         """ATU safety list: short multi-line items false-center without this."""

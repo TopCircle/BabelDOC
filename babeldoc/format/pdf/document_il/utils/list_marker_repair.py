@@ -21,15 +21,16 @@ from babeldoc.format.pdf.document_il import il_version_1
 
 logger = logging.getLogger(__name__)
 
-# Leading marker for numbered / lettered list items (EN/CJK dual hanging indent).
-# Include ideographic ``。`` — DeepLX/MT often rewrites ``2.`` → ``2。``.
-# Day 6 quiz uses ``a.``/``b.`` options — lettered serials need the same hang path.
+# Leading list markers (EN/CJK dual hanging indent).
+# Digits: full range. Letters: **a–d / A–D only** (quiz options) — avoid
+# hanging academic ``I. Introduction`` / ``A. Methods`` body titles.
+# Ideographic ``。`` — DeepLX often rewrites ``2.`` → ``2。``.
 LIST_MARKER_RE = re.compile(
     r"^(?:"
     r"\d{1,3}\s*[\.．。、\)]\s*"  # 1.  1． 1。 1、  1)
-    r"|[a-zA-Z]\s*[\.．。、\)]\s*"  # a.  b） A.
+    r"|[a-dA-D]\s*[\.．。、\)]\s*"  # a. b） (quiz)
     r"|\(\s*\d{1,3}\s*\)\s*"  # (1)
-    r"|\(\s*[a-zA-Z]\s*\)\s*"  # (a)
+    r"|\(\s*[a-dA-D]\s*\)\s*"  # (a)
     r"|[①-⑳]\s*"
     r")"
 )
@@ -40,21 +41,22 @@ LIST_MARKER_RE = re.compile(
 # ``The answer is 42.`` is not stripped.
 TRAILING_LIST_MARKER_RE = re.compile(
     r"(?P<body>.*[。．.!?！？])\s*"
-    r"(?P<marker>(?:\d{1,3}|[a-zA-Z])\s*[\.．。、\)])\s*$",
+    r"(?P<marker>(?:\d{1,3}|[a-dA-D])\s*[\.．。、\)])\s*$",
     re.DOTALL,
 )
 
 # Leading serial with CJK/fullwidth punct that MT rewrote from ``1.`` / ``a.``
 LEADING_LIST_MARKER_DOT_RE = re.compile(
-    r"^(?P<lead>\s*)(?P<num>\d{1,3}|[a-zA-Z])\s*(?P<punct>[。．、])\s*"
+    r"^(?P<lead>\s*)(?P<num>\d{1,3}|[a-dA-D])\s*(?P<punct>[。．、])\s*"
 )
 
-# Mid-string tip/list serials: ``提示 3。最大值`` / ``TIP 3。`` (not sentence end)
+# Mid-string tip serials only (Day 6 ``提示 3。最大值``) — not arbitrary ``a。``
 MID_LIST_IDEO_PERIOD_RE = re.compile(
-    r"(?<![.\dA-Za-z\u4e00-\u9fff])"
-    r"(?P<num>\d{1,3}|[a-zA-Z])"
+    r"(?:提示|TIP|秘诀|Moregas\w*|MOREGASM)\s*"
+    r"(?P<num>\d{1,3})"
     r"\s*。"
-    r"(?=[\u4e00-\u9fffA-Za-z「『《])"
+    r"(?=[\u4e00-\u9fffA-Za-z「『《])",
+    re.IGNORECASE,
 )
 
 
@@ -68,14 +70,19 @@ def _is_cjk_char0(ch: str) -> bool:
     )
 
 
-def looks_like_numbered_list_item(paragraph: il_version_1.PdfParagraph) -> bool:
-    """True when translated/source text starts like ``1.`` / ``1、`` / ``2。``."""
+def looks_like_list_item(paragraph: il_version_1.PdfParagraph) -> bool:
+    """True when text starts like ``1.`` / ``a.`` / ``2。`` / ``(b)``."""
     text = (getattr(paragraph, "unicode", None) or "").strip()
     if not text:
         return False
     # NBSP / thin space after marker still counts as list
     text = text.replace("\xa0", " ").replace("\u2009", " ")
     return bool(LIST_MARKER_RE.match(text))
+
+
+def looks_like_numbered_list_item(paragraph: il_version_1.PdfParagraph) -> bool:
+    """Backward-compatible alias for :func:`looks_like_list_item`."""
+    return looks_like_list_item(paragraph)
 
 
 def marker_digit(marker: str) -> str | None:
@@ -85,12 +92,12 @@ def marker_digit(marker: str) -> str | None:
 
 
 def marker_key(marker: str) -> str | None:
-    """Stable id for a list serial: digit string or single letter (lowercased)."""
+    """Stable id for a list serial: digit string or quiz letter a–d (lower)."""
     s = (marker or "").strip()
     d = marker_digit(s)
     if d:
         return d
-    m = re.match(r"([a-zA-Z])", s)
+    m = re.match(r"([a-dA-D])", s)
     return m.group(1).lower() if m else None
 
 
@@ -107,8 +114,7 @@ def normalize_leading_list_marker_text(text: str | None) -> str | None:
 
     DeepLX often localizes the list period to ideographic ``。``, which
     looks like a Chinese sentence end and breaks hang-width consistency.
-    Also rewrites mid-string tip serials ``3。最大值`` → ``3.最大值``.
-    Leading serial uses ASCII period; body ``句号。`` stays.
+    Mid-string tip serials only after tip labels: ``提示 3。最大值`` → ``3.``.
     """
     if text is None:
         return None
@@ -129,9 +135,9 @@ def normalize_leading_list_marker_text(text: str | None) -> str | None:
         if num.isalpha():
             num = num.lower()
         t = f"{m.group('lead')}{num}.{rest}"
-    # Mid-string tip/list serials (Day 6 ``提示 3。最大值前戏``)
+    # Mid-string tip serials only (``提示 3。最大值`` → keep label, ``3.``)
     t2 = MID_LIST_IDEO_PERIOD_RE.sub(
-        lambda mm: f"{mm.group('num').lower() if mm.group('num').isalpha() else mm.group('num')}.",
+        lambda mm: mm.group(0).replace("。", ".", 1),
         t,
     )
     return t2
@@ -181,7 +187,7 @@ def strip_trailing_marker_from_compositions(
                 (c.char_unicode or "") for c in formula.pdf_character
             ).strip()
             if marker_key(ftext) == want and re.fullmatch(
-                r"(?:\d{1,3}|[a-zA-Z])\s*[\.．。、\)]?", ftext
+                r"(?:\d{1,3}|[a-dA-D])\s*[\.．。、\)]?", ftext
             ):
                 del comps[i]
                 return True
@@ -272,7 +278,7 @@ def reattach_trailing_list_markers(
         if len(body_prev) < 8:
             continue
 
-        next_has_marker = looks_like_numbered_list_item(nxt)
+        next_has_marker = looks_like_list_item(nxt)
         # Strip trailing serial from prev always (dedupe when next already
         # has the leading marker — ATU p21 after partial reattach).
         prev.unicode = body_prev

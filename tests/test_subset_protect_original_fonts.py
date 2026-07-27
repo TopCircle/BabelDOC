@@ -15,19 +15,26 @@ import pytest
 
 from babeldoc.assets import assets
 from babeldoc.format.pdf.document_il.backend import pdf_creater as pc
+from babeldoc.format.pdf.document_il.utils import font_subset as fs
 
 
 class TestEmbeddingFontNameMatch:
     def test_source_han_positive(self):
+        assert fs.is_babeldoc_embedding_font_name("Source Han Sans CN Regular")
+        assert fs.is_babeldoc_embedding_font_name("SourceHanSansCN-Regular")
+        assert fs.is_babeldoc_embedding_font_name("/Source#20Han#20Sans#20CN#20Regular")
+        # re-export on pdf_creater for older imports
         assert pc.is_babeldoc_embedding_font_name("Source Han Sans CN Regular")
-        assert pc.is_babeldoc_embedding_font_name("SourceHanSansCN-Regular")
-        assert pc.is_babeldoc_embedding_font_name("/Source#20Han#20Sans#20CN#20Regular")
 
     def test_publisher_subset_tag_negative(self):
-        assert not pc.is_babeldoc_embedding_font_name("FQJZCV+Ubuntu-Light")
-        assert not pc.is_babeldoc_embedding_font_name("Ubuntu-MediumItalic")
-        assert not pc.is_babeldoc_embedding_font_name("TrajanPro-Regular")
-        assert not pc.is_babeldoc_embedding_font_name("Georgia-Italic")
+        assert not fs.is_babeldoc_embedding_font_name("FQJZCV+Ubuntu-Light")
+        assert not fs.is_babeldoc_embedding_font_name("Ubuntu-MediumItalic")
+        assert not fs.is_babeldoc_embedding_font_name("TrajanPro-Regular")
+        assert not fs.is_babeldoc_embedding_font_name("Georgia-Italic")
+
+    def test_no_substring_false_positive(self):
+        # Exact tokens only — short stems must not match arbitrary faces
+        assert not fs.is_babeldoc_embedding_font_name("NotARealFont")
 
 
 class TestSubsetProtectsOriginalFonts:
@@ -56,7 +63,7 @@ class TestSubsetProtectsOriginalFonts:
             )
 
         out = tmp_path / "subset_protected.pdf"
-        pc._subset_and_save(doc, out)
+        fs.subset_embedding_fonts_and_save(doc, out)
         doc.close()
 
         src = pymupdf.open(day6)
@@ -104,7 +111,7 @@ class TestSubsetProtectsOriginalFonts:
         doc[1].insert_font(name, str(fpath))
         doc[1].insert_text((72, 72), "测", fontname=name, fontsize=12)
         out = tmp_path / "sfnt_check.pdf"
-        pc._subset_and_save(doc, out)
+        fs.subset_embedding_fonts_and_save(doc, out)
         doc.close()
 
         sub = pymupdf.open(out)

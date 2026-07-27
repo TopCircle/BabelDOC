@@ -15,10 +15,15 @@ import freetype
 import pymupdf
 from bitstring import BitStream
 
-from babeldoc.assets.embedding_assets_metadata import EMBEDDING_FONT_METADATA
 from babeldoc.assets.embedding_assets_metadata import FONT_NAMES
 from babeldoc.format.pdf.document_il import PdfOriginalPath
 from babeldoc.format.pdf.document_il import il_version_1
+from babeldoc.format.pdf.document_il.utils.font_subset import (
+    is_babeldoc_embedding_font_name,
+)
+from babeldoc.format.pdf.document_il.utils.font_subset import (
+    subset_embedding_fonts_and_save,
+)
 from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
 from babeldoc.format.pdf.document_il.utils.matrix_helper import matrix_to_bytes
 from babeldoc.format.pdf.document_il.utils.type3_font_metrics import (
@@ -36,179 +41,9 @@ SUBSET_FONT_STAGE_NAME = "Subset font"
 SAVE_PDF_STAGE_NAME = "Save PDF"
 _EXTGSTATE_USAGE_RE = re.compile(rb"/([!#$%&'*+,\-.0-9:;=?@A-Z\\^_`a-z{|}~]+)\s+gs\b")
 _SHADING_USAGE_RE = re.compile(rb"/([!#$%&'*+,\-.0-9:;=?@A-Z\\^_`a-z{|}~]+)\s+sh\b")
-_PDF_NAME_HEX_RE = re.compile(r"#([0-9A-Fa-f]{2})")
-_FONT_FILE_KEYS = ("FontFile", "FontFile2", "FontFile3")
 
-
-def _pdf_name_decode(name: str | None) -> str:
-    """Decode PDF name escapes (``#20`` → space) and strip leading ``/``."""
-    if not name:
-        return ""
-    s = name[1:] if name.startswith("/") else name
-    return _PDF_NAME_HEX_RE.sub(lambda m: chr(int(m.group(1), 16)), s)
-
-
-def _norm_font_token(name: str | None) -> str:
-    """Normalize font labels for embedding-font matching."""
-    s = _pdf_name_decode(name)
-    # Drop PDF subset tag prefix ``ABCDEF+Ubuntu-Light`` → ``Ubuntu-Light``
-    if "+" in s:
-        s = s.split("+", 1)[1]
-    return re.sub(r"[^a-z0-9]", "", s.lower())
-
-
-def _embedding_font_tokens() -> set[str]:
-    """Tokens identifying BabelDOC-injected CJK/Latin embedding fonts only."""
-    toks: set[str] = set()
-    for n in FONT_NAMES:
-        t = _norm_font_token(n)
-        if t:
-            toks.add(t)
-    for file_name, meta in EMBEDDING_FONT_METADATA.items():
-        stem = Path(file_name).stem
-        # ``LXGWWenKaiGB-Regular.1.520`` → also try without version suffix
-        for candidate in (stem, re.sub(r"\.\d+.*$", "", stem), meta.get("font_name", "")):
-            t = _norm_font_token(candidate)
-            if t:
-                toks.add(t)
-    return toks
-
-
-_EMBEDDING_FONT_TOKENS = _embedding_font_tokens()
-
-
-def is_babeldoc_embedding_font_name(name: str | None) -> bool:
-    """True when ``name`` is a BabelDOC embedding face (Source Han / LXGW / Noto…).
-
-    Original publisher fonts (``FQJZCV+Ubuntu-Light``, Trajan, …) return False so
-    global ``subset_fonts`` will not rewrite them — that rewrite corrupts skipped
-    pages, header/footer chrome, and figure/callout text that still use the
-    original content stream under ``q … Q`` overlays.
-    """
-    token = _norm_font_token(name)
-    if not token or len(token) < 4:
-        return False
-    if token in _EMBEDDING_FONT_TOKENS:
-        return True
-    # Allow stem containment for CID BaseFont variants
-    # e.g. ``SourceHanSansCN-Regular`` vs ``sourcehansanscnregular``
-    for emb in _EMBEDDING_FONT_TOKENS:
-        if len(emb) >= 10 and (emb in token or token in emb):
-            return True
-    return False
-
-
-def _font_descriptor_label(doc: pymupdf.Document, desc_xref: int) -> str:
-    for key in ("FontName", "FontFamily", "BaseFont"):
-        v = doc.xref_get_key(desc_xref, key)
-        if v[0] != "null" and v[1]:
-            return _pdf_name_decode(v[1])
-    return ""
-
-
-def _iter_font_file_links(
-    doc: pymupdf.Document,
-) -> list[tuple[int, str, int, bool, str]]:
-    """List ``(descriptor_xref, key, file_xref, is_embedding, label)``."""
-    found: list[tuple[int, str, int, bool, str]] = []
-    for xref in range(1, doc.xref_length()):
-        for key in _FONT_FILE_KEYS:
-            k = doc.xref_get_key(xref, key)
-            if k[0] != "xref":
-                continue
-            m = re.search(r"(\d+)\s+0\s+R", k[1] or "")
-            if not m:
-                continue
-            file_xref = int(m.group(1))
-            label = _font_descriptor_label(doc, xref)
-            found.append(
-                (xref, key, file_xref, is_babeldoc_embedding_font_name(label), label)
-            )
-    return found
-
-
-def _protect_non_embedding_font_files(
-    doc: pymupdf.Document,
-) -> list[tuple[int, str, int, bytes, int | None, str | None, str]]:
-    """Detach original FontFile* streams so ``subset_fonts`` cannot rewrite them.
-
-    Saves **decompressed** font program bytes (plus optional ``Length1`` /
-    ``Subtype``) so restore can re-encode once. Using ``xref_stream_raw`` +
-    ``update_stream`` double-Flate'd the program and MuPDF then failed with
-    ``FT_New_Memory_Face: unknown file format`` — original faces looked wrong
-    even though BaseFont names remained.
-
-    Returns protection records for :func:`_restore_non_embedding_font_files`.
-    """
-    protected: list[tuple[int, str, int, bytes, int | None, str | None, str]] = []
-    for desc_xref, key, file_xref, is_emb, label in _iter_font_file_links(doc):
-        if is_emb:
-            continue
-        try:
-            # Decompressed font program (TTF / CFF), not the Flate wire bytes.
-            data = doc.xref_stream(file_xref)
-        except Exception as e:
-            logger.debug(
-                "Skip protecting font stream xref=%s (%s): %s", file_xref, label, e
-            )
-            continue
-        if not data:
-            continue
-        length1: int | None = None
-        subtype: str | None = None
-        try:
-            l1 = doc.xref_get_key(file_xref, "Length1")
-            if l1[0] != "null" and l1[1]:
-                length1 = int(str(l1[1]).strip())
-        except Exception:
-            length1 = None
-        try:
-            st = doc.xref_get_key(file_xref, "Subtype")
-            if st[0] != "null" and st[1]:
-                subtype = str(st[1]).strip()
-        except Exception:
-            subtype = None
-        protected.append(
-            (desc_xref, key, file_xref, data, length1, subtype, label)
-        )
-        doc.xref_set_key(desc_xref, key, "null")
-    if protected:
-        logger.info(
-            "Font subset protect: detached %d original font stream(s) "
-            "(headers/footers/figures/skipped pages)",
-            len(protected),
-        )
-    return protected
-
-
-def _restore_non_embedding_font_files(
-    doc: pymupdf.Document,
-    protected: list[tuple[int, str, int, bytes, int | None, str | None, str]],
-) -> None:
-    """Re-attach original FontFile* streams after subsetting embedding fonts."""
-    restored = 0
-    for desc_xref, key, file_xref, data, length1, subtype, label in protected:
-        try:
-            # Single compress pass — do not pass already-Flate bytes.
-            doc.update_stream(file_xref, data)
-            if length1 is not None:
-                doc.xref_set_key(file_xref, "Length1", str(length1))
-            if subtype:
-                # Preserve Type1C vs CIDFontType0C etc.
-                if not subtype.startswith("/"):
-                    subtype = "/" + subtype.lstrip("/")
-                doc.xref_set_key(file_xref, "Subtype", subtype)
-            doc.xref_set_key(desc_xref, key, f"{file_xref} 0 R")
-            restored += 1
-        except Exception as e:
-            logger.warning(
-                "Failed to restore original font stream xref=%s (%s): %s",
-                file_xref,
-                label,
-                e,
-            )
-    if restored:
-        logger.info("Font subset protect: restored %d original font stream(s)", restored)
+# Re-export for older imports / tests that used pdf_creater.is_babeldoc_…
+__all_font_subset_exports__ = ("is_babeldoc_embedding_font_name",)
 
 
 class RenderUnit(ABC):
@@ -747,44 +582,8 @@ def reproduce_cmap(doc):
 
 
 def _subset_and_save(pdf: pymupdf.Document, output_path: str | Path) -> None:
-    """Subset **BabelDOC embedding fonts only**, then write a compact PDF.
-
-    CJK embedding fonts (Source Han / LXGW) are multi‑MB full TTFs. Without
-    subsetting, mono/dual jump from ~1–2MB sources to 30–60MB+. ``subset_fonts``
-    keeps only glyphs actually used; save must use garbage + deflate_fonts or
-    the trimmed font streams are not written compactly.
-
-    **Critical:** MuPDF ``subset_fonts`` rewrites *every* eligible embedded face.
-    That destroys original publisher fonts still needed for:
-
-    * pages outside ``--pages`` (e.g. cover when ``2-``)
-    * untranslated header/footer chrome kept under ``q … Q`` base streams
-    * figure / callout / chart labels left in the source language
-
-    We detach non-embedding FontFile* before subset and restore them after, so
-    only BabelDOC-injected faces are trimmed.
-    """
-    protected = _protect_non_embedding_font_files(pdf)
-    try:
-        try:
-            pdf.subset_fonts(fallback=False)
-        except Exception as e:
-            # Some Type1 / odd CID fonts reject strict subset; still try.
-            logger.warning(
-                "subset_fonts(fallback=False) failed (%s); retry fallback=True", e
-            )
-            pdf.subset_fonts(fallback=True)
-    finally:
-        _restore_non_embedding_font_files(pdf, protected)
-    # garbage=4 drops unreferenced full-font streams; deflate_fonts compresses
-    # the remaining subset FontFile2/3 data.
-    pdf.save(
-        str(output_path),
-        garbage=4,
-        deflate=True,
-        deflate_fonts=True,
-        clean=True,
-    )
+    """Thin wrapper — policy lives in ``utils.font_subset``."""
+    subset_embedding_fonts_and_save(pdf, output_path)
 
 
 def _subset_fonts_process(pdf_path, output_path):

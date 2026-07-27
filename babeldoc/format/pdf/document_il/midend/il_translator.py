@@ -36,7 +36,9 @@ from babeldoc.format.pdf.document_il.utils.layout_helper import (
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     is_same_style_except_size,
 )
-from babeldoc.format.pdf.document_il.utils.mt_token_sanitize import sanitize_mt_output
+from babeldoc.format.pdf.document_il.utils.mt_token_sanitize import (
+    normalize_translated_text,
+)
 from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
     is_placeholder_only_paragraph,
 )
@@ -1422,11 +1424,8 @@ class ILTranslator:
             if llm_translate_tracker := tracker.last_llm_translate_tracker():
                 llm_translate_tracker.set_placeholder_full_match()
             return False
-        # Drop C0 SOH etc. before parse — DeepLX/style boundaries sometimes
-        # leave U+0001 which becomes standalone invisible spans in dual PDFs.
-        translated_text = strip_ascii_controls(translated_text)
-        # DeepLX debris: {1cH00FFFFi1}, QBS0, orphan ``{ 箴言`` (Day 6 dual).
-        translated_text = sanitize_mt_output(translated_text)
+        # Single post-MT normalize (controls + debris + residual 〖B…〗 markers).
+        translated_text = normalize_translated_text(translated_text)
         paragraph.unicode = translated_text
         paragraph.pdf_paragraph_composition = self.parse_translate_output(
             translate_input,
@@ -1434,15 +1433,8 @@ class ILTranslator:
             tracker,
             tracker.last_llm_translate_tracker(),
         )
-        # Clean residual markers from paragraph.unicode — downstream code
-        # (e.g. get_paragraph_unicode, pdf_creater) may read this field
-        # directly instead of going through compositions.
-        if paragraph.unicode and "〖B" in paragraph.unicode:
-            paragraph.unicode = ILTranslator._strip_style_markers(
-                paragraph.unicode
-            )
-        paragraph.unicode = strip_ascii_controls(paragraph.unicode)
-        paragraph.unicode = sanitize_mt_output(paragraph.unicode)
+        # Parse may leave residual markers on paragraph.unicode / compositions.
+        paragraph.unicode = normalize_translated_text(paragraph.unicode)
 
         # Heading punctuation localization for CJK targets.
         # English headings use "." as separator (e.g. "LESSON 6. Things..."),
@@ -1461,10 +1453,8 @@ class ILTranslator:
                 continue
             if ssu.pdf_style is None:
                 ssu.pdf_style = paragraph.pdf_style
-            # Final per-composition scrub (parse paths / residual markers)
             if ssu.unicode:
-                ssu.unicode = strip_ascii_controls(ssu.unicode)
-                ssu.unicode = sanitize_mt_output(ssu.unicode)
+                ssu.unicode = normalize_translated_text(ssu.unicode)
         return True
 
     def _build_role_block(self) -> str:
