@@ -212,3 +212,50 @@ class Glossary:
             scratch = hyperscan.Scratch(hs_db)
             hs_db.scan(text.encode("utf-8"), on_match, scratch=scratch)
         return active_entries
+
+    def protect_terms_for_mt(self, text: str) -> tuple[str, list[tuple[str, str]]]:
+        """Replace matched source terms with opaque placeholders for non-LLM MT.
+
+        DeepLX/CLI engines never see the LLM glossary table; without protection
+        they mangle domain terms (``trigasm``→三棱镜, ``TAKE CHARGE``→收费).
+        Longest source first. Returns ``(protected_text, [(placeholder, target)])``.
+        """
+        if not text or not self.entries:
+            return text, []
+        active = self.get_active_entries_for_text(text)
+        if not active:
+            return text, []
+        # Longest source first so multi-word terms win
+        active_sorted = sorted(active, key=lambda st: len(st[0]), reverse=True)
+        mapping: list[tuple[str, str]] = []
+        out = text
+        for i, (source, target) in enumerate(active_sorted):
+            if not source:
+                continue
+            placeholder = f"⟦G{i}⟧"
+            pattern = re.compile(re.escape(source), re.IGNORECASE)
+            new_out, n = pattern.subn(placeholder, out)
+            if n > 0:
+                out = new_out
+                mapping.append((placeholder, target))
+        return out, mapping
+
+    @staticmethod
+    def restore_protected_terms(
+        text: str, mapping: list[tuple[str, str]]
+    ) -> str:
+        """Replace placeholders with glossary targets after MT."""
+        if not text or not mapping:
+            return text
+        out = text
+        for placeholder, target in mapping:
+            out = out.replace(placeholder, target)
+            # MT sometimes inserts spaces: ⟦ G0 ⟧
+            if placeholder.startswith("⟦") and placeholder.endswith("⟧"):
+                inner = re.escape(placeholder[1:-1])
+                out = re.sub(
+                    rf"⟦\s*{inner}\s*⟧",
+                    target,
+                    out,
+                )
+        return out

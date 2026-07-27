@@ -328,6 +328,119 @@ def reattach_trailing_list_markers(
     return moved
 
 
+# Day 6 quiz: EN ``a. A flirty…`` / collapsed multi-options → ``a.a.`` / ``a.b.``
+_GLUED_DUP_LETTER_RE = re.compile(
+    r"(?i)(?<![a-z0-9])([a-d])\.\1\.\s*"
+)
+_GLUED_CONSEC_LETTERS_RE = re.compile(
+    r"(?i)(?<![a-z0-9])([a-d])\.([a-d])\.\s*"
+)
+# Mid-paragraph next options after CJK/Latin sentence end or semicolon
+_MID_OPTION_SPLIT_RE = re.compile(
+    r"(?<=[。；;!?！？])\s*(?=[a-dA-D]\.\s*)"
+)
+# Also split when options jammed: ``…； c.`` or ``…。 b.``
+_MID_OPTION_LOOSE_RE = re.compile(
+    r"(?<=[\u4e00-\u9fffA-Za-z0-9）\)])\s+(?=[a-dA-D]\.\s*[\u4e00-\u9fffA-Za-z])"
+)
+
+
+def expand_glued_quiz_options_text(text: str | None) -> str | None:
+    """Fix Day-6 style glued quiz markers in a single string.
+
+    * ``a.a. 巧克力`` (from EN ``a. A chocolate…``) → ``a. 巧克力``
+    * ``a.b. 黑色上衣`` (collapsed option b) → ``b. 黑色上衣``
+    * ``b. …； c. …`` → split on newline for later paragraph split
+    """
+    if text is None:
+        return None
+    if not text:
+        return text
+    t = text.replace("\xa0", " ").replace("\u2009", " ")
+    # Same letter doubled (article A after a.)
+    t = _GLUED_DUP_LETTER_RE.sub(r"\1. ", t)
+    # Two different letters with no body between → keep the *second* option letter
+    # (content belongs to the latter after paragraph merge).
+    t = _GLUED_CONSEC_LETTERS_RE.sub(r"\2. ", t)
+    # Split subsequent options onto their own lines
+    t = _MID_OPTION_SPLIT_RE.sub("\n", t)
+    t = _MID_OPTION_LOOSE_RE.sub("\n", t)
+    return t
+
+
+def _clone_paragraph_shell(
+    paragraph: il_version_1.PdfParagraph,
+    unicode: str,
+) -> il_version_1.PdfParagraph:
+    """Shallow-copy layout fields; new unicode composition."""
+    style = getattr(paragraph, "pdf_style", None)
+    ssu = PdfSameStyleUnicodeCharacters(unicode=unicode, pdf_style=style)
+    box = None
+    if paragraph.box is not None:
+        b = paragraph.box
+        box = type(b)(
+            x=b.x, y=b.y, x2=b.x2, y2=b.y2
+        ) if hasattr(b, "x") else b
+    return il_version_1.PdfParagraph(
+        box=box,
+        pdf_style=style,
+        pdf_paragraph_composition=[
+            PdfParagraphComposition(pdf_same_style_unicode_characters=ssu)
+        ],
+        unicode=unicode,
+        layout_label=getattr(paragraph, "layout_label", None),
+        alignment=getattr(paragraph, "alignment", None),
+        first_line_indent=0.0,
+        debug_id=getattr(paragraph, "debug_id", None),
+        xobj_id=getattr(paragraph, "xobj_id", None),
+    )
+
+
+def split_glued_quiz_options_on_page(
+    paragraphs: list[il_version_1.PdfParagraph] | None,
+) -> list[il_version_1.PdfParagraph]:
+    """Expand glued ``a.a.``/``a.b.`` and split multi-option paragraphs."""
+    if not paragraphs:
+        return paragraphs or []
+    out: list[il_version_1.PdfParagraph] = []
+    for para in paragraphs:
+        raw = getattr(para, "unicode", None) or ""
+        expanded = expand_glued_quiz_options_text(raw)
+        if expanded is None:
+            out.append(para)
+            continue
+        parts = [p.strip() for p in expanded.split("\n") if p.strip()]
+        if len(parts) <= 1:
+            if expanded != raw:
+                para.unicode = expanded
+                comps = para.pdf_paragraph_composition or []
+                if comps and comps[0].pdf_same_style_unicode_characters is not None:
+                    comps[0].pdf_same_style_unicode_characters.unicode = expanded
+                normalize_list_marker_on_paragraph(para)
+            out.append(para)
+            continue
+        # Multi-option: first part mutates original; rest are clones
+        first = parts[0]
+        para.unicode = first
+        comps = para.pdf_paragraph_composition or []
+        if comps and comps[0].pdf_same_style_unicode_characters is not None:
+            comps[0].pdf_same_style_unicode_characters.unicode = first
+        # Drop extra compositions that held jammed text
+        if len(comps) > 1:
+            para.pdf_paragraph_composition = comps[:1]
+        try:
+            para.first_line_indent = 0.0
+        except Exception:
+            pass
+        normalize_list_marker_on_paragraph(para)
+        out.append(para)
+        for part in parts[1:]:
+            clone = _clone_paragraph_shell(para, part)
+            normalize_list_marker_on_paragraph(clone)
+            out.append(clone)
+    return out
+
+
 def normalize_list_markers_on_document(
     document: il_version_1.Document,
 ) -> int:
@@ -350,6 +463,11 @@ def reattach_trailing_list_markers_on_document(
     """Page-wise pass; call once before typesetting."""
     total = 0
     for page in document.page or []:
+        # Quiz glue before reattach so hang sees clean serials
+        if page.pdf_paragraph:
+            page.pdf_paragraph = split_glued_quiz_options_on_page(
+                page.pdf_paragraph
+            )
         total += reattach_trailing_list_markers(page.pdf_paragraph)
     # Always normalize leading list dots after reattach (and for clean items)
     normalize_list_markers_on_document(document)

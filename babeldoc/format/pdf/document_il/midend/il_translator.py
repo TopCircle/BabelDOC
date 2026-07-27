@@ -1693,12 +1693,27 @@ class ILTranslator:
                     )
                     llm_translate_tracker.set_output(translated_text)
                 else:
+                    # DeepLX/CLI: no LLM glossary table — protect terms with
+                    # placeholders, translate, then restore targets.
+                    term_maps: list[tuple[str, str]] = []
+                    text_for_mt = text
+                    for glossary in self._cached_glossaries or []:
+                        text_for_mt, part = glossary.protect_terms_for_mt(
+                            text_for_mt
+                        )
+                        term_maps.extend(part)
                     translated_text = self.translate_engine.translate(
-                        text,
+                        text_for_mt,
                         rate_limit_params={
                             "paragraph_token_count": paragraph_token_count
                         },
                     )
+                    if term_maps:
+                        from babeldoc.glossary import Glossary as _Glossary
+
+                        translated_text = _Glossary.restore_protected_terms(
+                            translated_text, term_maps
+                        )
                 translated_text = re.sub(r"[. 。…，]{20,}", ".", translated_text)
 
                 # Completeness: reject dropped sentences (e.g. EN 3 → ZH 2).
@@ -1725,13 +1740,26 @@ class ILTranslator:
                             },
                         )
                     else:
+                        term_maps_r: list[tuple[str, str]] = []
+                        text_retry = text
+                        for glossary in self._cached_glossaries or []:
+                            text_retry, part = glossary.protect_terms_for_mt(
+                                text_retry
+                            )
+                            term_maps_r.extend(part)
                         translated_text = self.translate_engine.translate(
-                            text,
+                            text_retry,
                             ignore_cache=True,
                             rate_limit_params={
                                 "paragraph_token_count": paragraph_token_count
                             },
                         )
+                        if term_maps_r:
+                            from babeldoc.glossary import Glossary as _Glossary
+
+                            translated_text = _Glossary.restore_protected_terms(
+                                translated_text, term_maps_r
+                            )
                     translated_text = re.sub(
                         r"[. 。…，]{20,}", ".", translated_text
                     )
