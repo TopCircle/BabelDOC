@@ -275,7 +275,7 @@ Resume only with a **new plan** (not more one-off glue / dict / pull-back patche
 | CJK layout-first rectangular fill (长短参差) | ✅ **primary** 0.6.4.7: `_uniform_cjk_reference_widths` + DP fill×6; EN short tail not mid ZH |
 | Figure dual abstract `%` / `99.00%` formula scramble | ✅ 0.6.4.9: prose `%`, coalesce digit style spans, soft-hyphen join (`ap-`+`prox`) |
 | Figure dual author Latin spaces (`S.Hazra` / `andM.H.`) | ✅ 0.6.4.10: `_gap_is_word_boundary` Latin path (`.`+Cap / lower→Upper, 0.35× + 2pt) |
-| PDF size / CJK font subset | ✅ 0.6.4.12: always subset (not gated by skip_clean); in-process fallback; garbage=4 save; log MB before/after |
+| PDF size / CJK font subset | ✅ 0.6.4.12: always subset (not gated by skip_clean); in-process fallback; garbage=4 save; log MB before/after — **operator accepted 2026-07-27** |
 | Structure extract (code-review) | ✅ 0.6.4.11: `list_marker_repair` / `prose_numbers` / `text_recovery`; version via `const` only |
 | CJK word collocation (dict) | ✅ **secondary**: ebook dict (乳房/背带/…); layout-first rectangular fill is primary |
 | Still open on ATU after L3 (need re-translate) | residual layout glue on p23 (EN leftover / item-6 overlap / `分开。2.`); re-dual for fill visual |
