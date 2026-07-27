@@ -41,6 +41,51 @@ class TestSoftHyphenJoin:
         assert text.replace(" ", "") == "approx"
         assert "-" not in text
 
+    def test_intentional_dash_before_actually_not_glued(self):
+        """Day6 TOC: ``Trigasm- actually`` must not become ``Trigasmactually``.
+
+        That glue produced mono garbage ``TrigasMacTuaLLy`` after MT casing.
+        """
+        from babeldoc.format.pdf.document_il.utils import text_recovery
+
+        src = "4. Trigasm- actually, make hers triple, please!"
+        out = text_recovery.rejoin_soft_hyphens_in_text(src)
+        assert "Trigasmactually" not in out
+        assert "Trigasm- actually" in out
+        # True soft hyphen still rejoins
+        assert (
+            text_recovery.rejoin_soft_hyphens_in_text(
+                "dispersive ap- proximation breaks"
+            )
+            == "dispersive approximation breaks"
+        )
+
+    def test_line_wrap_before_free_word_keeps_space(self):
+        # ``Trigasm-`` EOL then ``actually`` — intentional dash, not soft hyphen
+        chars = [
+            _ch("T", 50, y=200),
+            _ch("r", 56, y=200),
+            _ch("i", 62, y=200),
+            _ch("g", 68, y=200),
+            _ch("a", 74, y=200),
+            _ch("s", 80, y=200),
+            _ch("m", 86, y=200),
+            _ch("-", 92, y=200),
+            _ch("a", 50, y=185),  # wrap
+            _ch("c", 56, y=185),
+            _ch("t", 62, y=185),
+            _ch("u", 68, y=185),
+            _ch("a", 74, y=185),
+            _ch("l", 80, y=185),
+            _ch("l", 86, y=185),
+            _ch("y", 92, y=185),
+        ]
+        text = get_char_unicode_string(chars)
+        assert "Trigasmactually" not in text
+        assert "actually" in text
+        # Hyphen may remain or become space; words must stay separate
+        assert "Trigasm" in text
+
 
 class TestLatinAuthorSpaces:
     """Figure dual authors: TeX gaps ~3.6pt under 0.5× wide-capital threshold."""

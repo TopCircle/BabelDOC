@@ -334,10 +334,24 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
             # Soft hyphen at TeX line wrap: ``ap-`` + ``proximation`` → ``approximation``
             # (figure dual ``dispersive ap-`` / ``proximation breaks``). Do this
             # before inserting a wrap space so MT never sees ``ap-proximation``.
+            # Peek the full next Latin token so free words (``actually``) after
+            # an intentional dash are not glued (``Trigasm-`` / ``actually``).
             if is_nl and isinstance(chars[i], PdfCharacter) and isinstance(
                 next_ch, PdfCharacter
             ):
-                if text_recovery.is_soft_hyphen_line_wrap(chars[i], next_ch):
+                next_word_parts: list[str] = []
+                j = i + 1
+                while j < len(chars) and isinstance(chars[j], PdfCharacter):
+                    u = chars[j].char_unicode or ""
+                    if u and u[0].isalpha() and ord(u[0]) < 128:
+                        next_word_parts.append(u[0])
+                        j += 1
+                    else:
+                        break
+                next_word = "".join(next_word_parts)
+                if text_recovery.is_soft_hyphen_line_wrap(
+                    chars[i], next_ch, next_word
+                ):
                     # Drop the hyphen already appended for chars[i]
                     if unicode_chars and unicode_chars[-1] in "-‐‑":
                         unicode_chars.pop()

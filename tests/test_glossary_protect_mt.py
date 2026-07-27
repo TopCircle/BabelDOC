@@ -24,3 +24,24 @@ def test_protect_and_restore_trigasm():
     assert "三重高潮" in restored
     assert "主动掌控型" in restored
     assert "混合G点高潮" in restored
+
+
+def test_protect_toc_title_trigasm_dash_actually():
+    """Full TOC phrase after soft-hyphen fix: protect term, keep dash/space."""
+    g = Glossary(
+        "day6",
+        [
+            GlossaryEntry("trigasm", "三重高潮", "zh-CN"),
+            GlossaryEntry(
+                "Trigasm- actually, make hers triple, please!",
+                "三重高潮——让她也来个三重的，拜托！",
+                "zh-CN",
+            ),
+        ],
+    )
+    text = "4. Trigasm- actually, make hers triple, please!"
+    protected, mapping = g.protect_terms_for_mt(text)
+    restored = Glossary.restore_protected_terms(protected, mapping)
+    assert "三重高潮" in restored
+    assert "TrigasMac" not in restored
+    assert "trigasmactually" not in restored.lower()
