@@ -129,28 +129,48 @@ def _iter_font_file_links(
 
 def _protect_non_embedding_font_files(
     doc: pymupdf.Document,
-) -> list[tuple[int, str, int, bytes, str]]:
+) -> list[tuple[int, str, int, bytes, int | None, str | None, str]]:
     """Detach original FontFile* streams so ``subset_fonts`` cannot rewrite them.
+
+    Saves **decompressed** font program bytes (plus optional ``Length1`` /
+    ``Subtype``) so restore can re-encode once. Using ``xref_stream_raw`` +
+    ``update_stream`` double-Flate'd the program and MuPDF then failed with
+    ``FT_New_Memory_Face: unknown file format`` — original faces looked wrong
+    even though BaseFont names remained.
 
     Returns protection records for :func:`_restore_non_embedding_font_files`.
     """
-    protected: list[tuple[int, str, int, bytes, str]] = []
+    protected: list[tuple[int, str, int, bytes, int | None, str | None, str]] = []
     for desc_xref, key, file_xref, is_emb, label in _iter_font_file_links(doc):
         if is_emb:
             continue
         try:
-            raw = doc.xref_stream_raw(file_xref)
-        except Exception:
-            try:
-                raw = doc.xref_stream(file_xref)
-            except Exception as e:
-                logger.debug(
-                    "Skip protecting font stream xref=%s (%s): %s", file_xref, label, e
-                )
-                continue
-        if not raw:
+            # Decompressed font program (TTF / CFF), not the Flate wire bytes.
+            data = doc.xref_stream(file_xref)
+        except Exception as e:
+            logger.debug(
+                "Skip protecting font stream xref=%s (%s): %s", file_xref, label, e
+            )
             continue
-        protected.append((desc_xref, key, file_xref, raw, label))
+        if not data:
+            continue
+        length1: int | None = None
+        subtype: str | None = None
+        try:
+            l1 = doc.xref_get_key(file_xref, "Length1")
+            if l1[0] != "null" and l1[1]:
+                length1 = int(str(l1[1]).strip())
+        except Exception:
+            length1 = None
+        try:
+            st = doc.xref_get_key(file_xref, "Subtype")
+            if st[0] != "null" and st[1]:
+                subtype = str(st[1]).strip()
+        except Exception:
+            subtype = None
+        protected.append(
+            (desc_xref, key, file_xref, data, length1, subtype, label)
+        )
         doc.xref_set_key(desc_xref, key, "null")
     if protected:
         logger.info(
@@ -163,13 +183,21 @@ def _protect_non_embedding_font_files(
 
 def _restore_non_embedding_font_files(
     doc: pymupdf.Document,
-    protected: list[tuple[int, str, int, bytes, str]],
+    protected: list[tuple[int, str, int, bytes, int | None, str | None, str]],
 ) -> None:
     """Re-attach original FontFile* streams after subsetting embedding fonts."""
     restored = 0
-    for desc_xref, key, file_xref, raw, label in protected:
+    for desc_xref, key, file_xref, data, length1, subtype, label in protected:
         try:
-            doc.update_stream(file_xref, raw)
+            # Single compress pass — do not pass already-Flate bytes.
+            doc.update_stream(file_xref, data)
+            if length1 is not None:
+                doc.xref_set_key(file_xref, "Length1", str(length1))
+            if subtype:
+                # Preserve Type1C vs CIDFontType0C etc.
+                if not subtype.startswith("/"):
+                    subtype = "/" + subtype.lstrip("/")
+                doc.xref_set_key(file_xref, "Subtype", subtype)
             doc.xref_set_key(desc_xref, key, f"{file_xref} 0 R")
             restored += 1
         except Exception as e:

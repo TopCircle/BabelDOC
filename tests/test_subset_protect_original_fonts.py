@@ -88,6 +88,46 @@ class TestSubsetProtectsOriginalFonts:
             src.close()
             sub.close()
 
+    def test_restored_publisher_ttf_is_valid_sfnt(self, tmp_path: Path):
+        """Regression: double-Flate restore made FT_New_Memory_Face fail."""
+        day6 = Path(
+            "/Users/yun/Library/CloudStorage/OneDrive-Personal/Documentos/"
+            "Books/Gabrielle Moore/7 day orgasm/Day 6/Day 6.pdf"
+        )
+        if not day6.is_file():
+            pytest.skip("Day 6 source PDF not available on this machine")
+
+        doc = pymupdf.open(day6)
+        fam = assets.get_font_family("zh-CN")
+        name = fam["base"][0]
+        fpath, _ = assets.get_font_and_metadata(name)
+        doc[1].insert_font(name, str(fpath))
+        doc[1].insert_text((72, 72), "测", fontname=name, fontsize=12)
+        out = tmp_path / "sfnt_check.pdf"
+        pc._subset_and_save(doc, out)
+        doc.close()
+
+        sub = pymupdf.open(out)
+        try:
+            found = False
+            for f in sub.get_page_fonts(0, full=True):
+                if "Ubuntu-Light" not in (f[3] or ""):
+                    continue
+                _n, _ext, _typ, content = sub.extract_font(f[0])
+                assert content and len(content) > 1000
+                # TrueType / OpenType sfnt version
+                assert content[:4] in (
+                    b"\x00\x01\x00\x00",
+                    b"OTTO",
+                    b"true",
+                    b"ttcf",
+                ), content[:8].hex()
+                found = True
+                break
+            assert found, "expected Ubuntu-Light on cover page resources"
+        finally:
+            sub.close()
+
     def test_unprotected_subset_damages_day6_cover(self, tmp_path: Path):
         """Document the failure mode we are guarding against."""
         day6 = Path(
