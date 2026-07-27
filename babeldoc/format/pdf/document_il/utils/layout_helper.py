@@ -13,6 +13,7 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
+from babeldoc.format.pdf.document_il.utils import text_recovery
 
 logger = logging.getLogger(__name__)
 # HEIGHT_NOT_USFUL_CHAR_IN_CHAR = (
@@ -237,65 +238,13 @@ def _is_cjk_char(ch: str | None) -> bool:
     )
 
 
-# Default: gap > 50% of the *wider* glyph (avoids "There"→"The re").
-_SPACE_WIDTH_RATIO = 0.5
-# TeX author lines (figure dual): inter-word gaps ~3.6pt sit just under
-# 0.5× wide capitals (H/D/M thr≈3.7–5.1) → ``S.Hazra`` / ``andM.H.Devoret``.
-# Relaxed Latin-only path uses 35% + absolute floor without reopening CJK glue.
-_LATIN_WORD_GAP_RATIO = 0.35
-_LATIN_WORD_MIN_GAP_PT = 2.0
-
-
-def _is_ascii_alpha(ch: str | None) -> bool:
-    return bool(ch) and ch[0].isalpha() and ord(ch[0]) < 128
-
-
-def _gap_is_word_boundary(
-    prev: PdfCharacter,
-    next_ch: PdfCharacter,
-    distance: float,
-) -> bool:
-    """Whether ``distance`` between two chars should insert a word space.
-
-    Standard rule: ``distance > 0.5 * max(widths)``.
-    Latin token rule (figure dual authors): after ``.``/``,`` before a letter,
-    or lower→Upper (``and M``), accept slightly tighter TeX gaps (≥2pt and
-    ``> 0.35 * max width``).
-    """
-    if distance <= 0:
-        return False
-    if not prev.box or not next_ch.box:
-        return False
-    curr_w = prev.box.x2 - prev.box.x
-    next_w = next_ch.box.x2 - next_ch.box.x
-    max_w = max(curr_w, next_w)
-    if max_w <= 0:
-        return False
-    if distance > max_w * _SPACE_WIDTH_RATIO:
-        return True
-    if distance < _LATIN_WORD_MIN_GAP_PT or distance <= max_w * _LATIN_WORD_GAP_RATIO:
-        return False
-    prev_u = prev.char_unicode or ""
-    next_u = next_ch.char_unicode or ""
-    if not next_u:
-        return False
-    # ``S. Hazra`` / ``P. D.`` / ``M. H.``
-    if prev_u == "." and next_u[0].isupper() and ord(next_u[0]) < 128:
-        return True
-    # ``and M`` (lowercase then capital)
-    if (
-        prev_u
-        and prev_u[-1].islower()
-        and ord(prev_u[-1]) < 128
-        and next_u[0].isupper()
-        and ord(next_u[0]) < 128
-    ):
-        return True
-    # ``Hazra,1`` usually no space before digit; ``1, ∗`` thin — skip comma+digit
-    # ``Frunzio,1 and`` — comma then space glyph usually present
-    if prev_u == "," and _is_ascii_alpha(next_u):
-        return True
-    return False
+# Text recovery (word-gap + soft-hyphen) lives in ``text_recovery``.
+# Keep private aliases so internal call sites stay stable.
+_SPACE_WIDTH_RATIO = text_recovery.SPACE_WIDTH_RATIO
+_LATIN_WORD_GAP_RATIO = text_recovery.LATIN_WORD_GAP_RATIO
+_LATIN_WORD_MIN_GAP_PT = text_recovery.LATIN_WORD_MIN_GAP_PT
+_is_ascii_alpha = text_recovery.is_ascii_alpha
+_gap_is_word_boundary = text_recovery.gap_is_word_boundary
 
 
 def strip_ascii_controls(text: str | None) -> str:
@@ -388,9 +337,7 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
             if is_nl and isinstance(chars[i], PdfCharacter) and isinstance(
                 next_ch, PdfCharacter
             ):
-                prev_u = chars[i].char_unicode or ""
-                next_u = next_ch.char_unicode or ""
-                if prev_u == "-" and next_u and next_u[0].islower():
+                if text_recovery.is_soft_hyphen_line_wrap(chars[i], next_ch):
                     # Drop the hyphen already appended for chars[i]
                     if unicode_chars and unicode_chars[-1] in "-‐‑":
                         unicode_chars.pop()
@@ -416,7 +363,7 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
     result = result.replace(" ", " ")  # NARROW NO-BREAK SPACE
     result = result.replace(" ", " ")  # MEDIUM MATHEMATICAL SPACE
     # TeX soft hyphens after style regroup: ``ap- proximation`` → ``approximation``
-    result = regex.sub(r"(?<=[A-Za-z])-\s+(?=[a-z])", "", result)
+    result = text_recovery.rejoin_soft_hyphens_in_text(result)
     normalize = unicodedata.normalize("NFKC", result)
     result = SPACE_REGEX.sub(" ", normalize).strip()
     return result

@@ -578,11 +578,25 @@ def _subset_fonts_process(pdf_path, output_path):
     Args:
         pdf_path: Path to the PDF file to subset
         output_path: Path where to save the result
+
+    CJK embedding fonts (Source Han / LXGW) are multi‑MB full TTFs. Without
+    subsetting, mono/dual jump from ~1–2MB sources to 30–60MB+. ``subset_fonts``
+    keeps only glyphs actually used; save must use garbage + deflate_fonts or
+    the trimmed font streams are not written compactly (plain ``save()`` left
+    figure dual ~33MB vs ~1.1MB after garbage=4/deflate_fonts).
     """
     try:
         pdf = pymupdf.open(pdf_path)
         pdf.subset_fonts(fallback=False)
-        pdf.save(output_path)
+        # garbage=4 drops unreferenced full-font streams; deflate_fonts compresses
+        # the remaining subset FontFile2/3 data.
+        pdf.save(
+            output_path,
+            garbage=4,
+            deflate=True,
+            deflate_fonts=True,
+            clean=True,
+        )
         # 返回 0 表示成功
         os._exit(0)
     except Exception as e:
@@ -1265,8 +1279,9 @@ class PDFCreater:
         process = Process(target=_subset_fonts_process, args=(temp_input, temp_output))
         process.start()
 
-        # Wait for subprocess with timeout (1 minute)
-        timeout = 60  # 1 minutes in seconds
+        # CJK full-font subset can exceed 60s on long books; failing open leaves
+        # 30–60MB mono/dual. Allow 5 minutes before giving up.
+        timeout = 300
         start_time = time.time()
 
         while process.is_alive():
