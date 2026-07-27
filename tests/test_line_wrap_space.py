@@ -22,6 +22,66 @@ from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_paragraph_unicode
 
 
+class TestSoftHyphenJoin:
+    """TeX line-wrap soft hyphens must rejoin before translate (figure dual)."""
+
+    def test_ap_proximation_rejoins(self):
+        # Line1 ends with ``ap-``, line2 starts ``proximation`` at left margin
+        chars = [
+            _ch("a", 50, y=200),
+            _ch("p", 56, y=200),
+            _ch("-", 62, y=200),
+            _ch("p", 50, y=185, w=6),  # newline: lower y, x jumps left
+            _ch("r", 56, y=185),
+            _ch("o", 62, y=185),
+            _ch("x", 68, y=185),
+        ]
+        text = get_char_unicode_string(chars)
+        # Soft hyphen dropped and no wrap space: ap- + prox → approx
+        assert text.replace(" ", "") == "approx"
+        assert "-" not in text
+
+
+class TestLatinAuthorSpaces:
+    """Figure dual authors: TeX gaps ~3.6pt under 0.5× wide-capital threshold."""
+
+    def test_initial_dot_before_surname(self):
+        # ``S.`` then gap 3.61 then ``H`` (w≈7.5) — thr0.5=3.74 misses, thr0.35 hits
+        # S:78.6–84.1  .:84.1–86.9  H:90.51–98.0  a:98.0–
+        chars = [
+            _ch("S", 78.6, w=5.5),
+            _ch(".", 84.1, w=2.8),
+            _ch("H", 90.51, w=7.5),
+            _ch("a", 98.0, w=5.0),
+        ]
+        text = get_char_unicode_string(chars)
+        assert text.startswith("S. H")
+
+    def test_and_before_initial(self):
+        # ``and`` + gap 3.61 + ``M`` (wide capital thr0.5=4.57)
+        # d ends 445.5, M at 449.11
+        chars = [
+            _ch("a", 430.0, w=5.0),
+            _ch("n", 435.0, w=5.5),
+            _ch("d", 440.5, w=5.0),
+            _ch("M", 449.11, w=9.1),
+            _ch(".", 458.2, w=2.8),
+        ]
+        text = get_char_unicode_string(chars)
+        assert "and M" in text
+
+    def test_no_false_split_inside_word(self):
+        # Intra-word gaps ~0 must not insert spaces
+        chars = [
+            _ch("T", 0, w=6),
+            _ch("h", 6.2, w=5),
+            _ch("e", 11.5, w=5),
+            _ch("r", 16.5, w=4),
+            _ch("e", 20.5, w=5),
+        ]
+        assert get_char_unicode_string(chars) == "There"
+
+
 def _ch(
     u: str,
     x: float,

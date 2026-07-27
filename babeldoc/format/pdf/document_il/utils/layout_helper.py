@@ -237,6 +237,67 @@ def _is_cjk_char(ch: str | None) -> bool:
     )
 
 
+# Default: gap > 50% of the *wider* glyph (avoids "There"→"The re").
+_SPACE_WIDTH_RATIO = 0.5
+# TeX author lines (figure dual): inter-word gaps ~3.6pt sit just under
+# 0.5× wide capitals (H/D/M thr≈3.7–5.1) → ``S.Hazra`` / ``andM.H.Devoret``.
+# Relaxed Latin-only path uses 35% + absolute floor without reopening CJK glue.
+_LATIN_WORD_GAP_RATIO = 0.35
+_LATIN_WORD_MIN_GAP_PT = 2.0
+
+
+def _is_ascii_alpha(ch: str | None) -> bool:
+    return bool(ch) and ch[0].isalpha() and ord(ch[0]) < 128
+
+
+def _gap_is_word_boundary(
+    prev: PdfCharacter,
+    next_ch: PdfCharacter,
+    distance: float,
+) -> bool:
+    """Whether ``distance`` between two chars should insert a word space.
+
+    Standard rule: ``distance > 0.5 * max(widths)``.
+    Latin token rule (figure dual authors): after ``.``/``,`` before a letter,
+    or lower→Upper (``and M``), accept slightly tighter TeX gaps (≥2pt and
+    ``> 0.35 * max width``).
+    """
+    if distance <= 0:
+        return False
+    if not prev.box or not next_ch.box:
+        return False
+    curr_w = prev.box.x2 - prev.box.x
+    next_w = next_ch.box.x2 - next_ch.box.x
+    max_w = max(curr_w, next_w)
+    if max_w <= 0:
+        return False
+    if distance > max_w * _SPACE_WIDTH_RATIO:
+        return True
+    if distance < _LATIN_WORD_MIN_GAP_PT or distance <= max_w * _LATIN_WORD_GAP_RATIO:
+        return False
+    prev_u = prev.char_unicode or ""
+    next_u = next_ch.char_unicode or ""
+    if not next_u:
+        return False
+    # ``S. Hazra`` / ``P. D.`` / ``M. H.``
+    if prev_u == "." and next_u[0].isupper() and ord(next_u[0]) < 128:
+        return True
+    # ``and M`` (lowercase then capital)
+    if (
+        prev_u
+        and prev_u[-1].islower()
+        and ord(prev_u[-1]) < 128
+        and next_u[0].isupper()
+        and ord(next_u[0]) < 128
+    ):
+        return True
+    # ``Hazra,1`` usually no space before digit; ``1, ∗`` thin — skip comma+digit
+    # ``Frunzio,1 and`` — comma then space glyph usually present
+    if prev_u == "," and _is_ascii_alpha(next_u):
+        return True
+    return False
+
+
 def strip_ascii_controls(text: str | None) -> str:
     """Remove C0/C1 control characters that leak into dual-PDF text as SOH spans.
 
@@ -278,14 +339,6 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
     Returns:
         str: 处理后的 Unicode 字符串
     """
-    # Space threshold: gap must exceed this fraction of the wider character's
-    # width.  Using max(w1,w2) instead of avg(w1,w2) prevents narrow characters
-    # (e.g. 'r'=2pt beside 'e'=5pt) from pulling the threshold too low, which
-    # would falsely split words like "There" → "The re".  Raised from 0.4 to
-    # 0.5 to fix residual fragments like "li ke" (from "like") and "ther"
-    # (from "There") caused by fonts with wider intra-word kerning.
-    SPACE_WIDTH_RATIO = 0.5
-
     # Decorative text detection: skip space insertion for art layouts
     # like "G e n t l y" where gaps are intentionally large.
     skip_space_insertion = _is_decorative_text(
@@ -320,18 +373,28 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
             if next_ch.char_unicode and next_ch.char_unicode.isspace():
                 continue
             distance = next_ch.box.x - chars[i].box.x2
-            curr_w = chars[i].box.x2 - chars[i].box.x
-            next_w = next_ch.box.x2 - next_ch.box.x
-            max_w = max(curr_w, next_w)
             # Line wraps jump back to the left margin → distance << 0.
             # Must still insert a word-boundary space (ATU intro: "Is"+"it"
             # → "Isit", "of"+"Grey" → "ofGrey") when process_paragraph_spacing
             # has stripped the trailing space glyph on the previous line.
             # is_newline was previously unreachable due to `distance <= 0: continue`.
             is_nl = Layout.is_newline(chars[i], next_ch)
-            gap_is_word_boundary = (
-                distance > 0 and max_w > 0 and distance > max_w * SPACE_WIDTH_RATIO
+            gap_is_word_boundary = _gap_is_word_boundary(
+                chars[i], next_ch, distance
             )
+            # Soft hyphen at TeX line wrap: ``ap-`` + ``proximation`` → ``approximation``
+            # (figure dual ``dispersive ap-`` / ``proximation breaks``). Do this
+            # before inserting a wrap space so MT never sees ``ap-proximation``.
+            if is_nl and isinstance(chars[i], PdfCharacter) and isinstance(
+                next_ch, PdfCharacter
+            ):
+                prev_u = chars[i].char_unicode or ""
+                next_u = next_ch.char_unicode or ""
+                if prev_u == "-" and next_u and next_u[0].islower():
+                    # Drop the hyphen already appended for chars[i]
+                    if unicode_chars and unicode_chars[-1] in "-‐‑":
+                        unicode_chars.pop()
+                    continue  # no space; next char appends directly
             if not skip_space_insertion and (is_nl or gap_is_word_boundary):
                 # Avoid CJK line-wrap spaces (source Chinese has no inter-word space).
                 if is_nl and _is_cjk_char(chars[i].char_unicode) and _is_cjk_char(
@@ -352,6 +415,8 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
     result = result.replace("​", "")   # ZERO-WIDTH SPACE (remove)
     result = result.replace(" ", " ")  # NARROW NO-BREAK SPACE
     result = result.replace(" ", " ")  # MEDIUM MATHEMATICAL SPACE
+    # TeX soft hyphens after style regroup: ``ap- proximation`` → ``approximation``
+    result = regex.sub(r"(?<=[A-Za-z])-\s+(?=[a-z])", "", result)
     normalize = unicodedata.normalize("NFKC", result)
     result = SPACE_REGEX.sub(" ", normalize).strip()
     return result
@@ -500,12 +565,9 @@ def add_space_dummy_chars(paragraph: PdfParagraph) -> None:
             continue
         distance = next_first_char.box.x - curr_last_char.box.x2
         curr_w = curr_last_char.box.x2 - curr_last_char.box.x
-        next_w = next_first_char.box.x2 - next_first_char.box.x
-        max_w = max(curr_w, next_w)
-        SPACE_WIDTH_RATIO = 0.5
         is_nl = Layout.is_newline(curr_last_char, next_first_char)
-        gap_is_word_boundary = (
-            distance > 0 and max_w > 0 and distance > max_w * SPACE_WIDTH_RATIO
+        gap_is_word_boundary = _gap_is_word_boundary(
+            curr_last_char, next_first_char, distance
         )
         if not (is_nl or gap_is_word_boundary):
             continue
@@ -676,10 +738,6 @@ def _add_space_dummy_chars_to_list(chars: list[PdfCharacter]) -> None:
     if _is_decorative_text(chars):
         return
 
-    # Space threshold: gap must exceed this fraction of the wider character's
-    # width, matching get_char_unicode_string's approach.
-    SPACE_WIDTH_RATIO = 0.5
-
     i = 0
     while i < len(chars) - 1:
         curr_char = chars[i]
@@ -694,11 +752,9 @@ def _add_space_dummy_chars_to_list(chars: list[PdfCharacter]) -> None:
 
         distance = next_char.box.x - curr_char.box.x2
         curr_w = curr_char.box.x2 - curr_char.box.x
-        next_w = next_char.box.x2 - next_char.box.x
-        max_w = max(curr_w, next_w)
         is_nl = Layout.is_newline(curr_char, next_char)
-        gap_is_word_boundary = (
-            distance > 0 and max_w > 0 and distance > max_w * SPACE_WIDTH_RATIO
+        gap_is_word_boundary = _gap_is_word_boundary(
+            curr_char, next_char, distance
         )
         # distance <= 0 is normal at line wrap (next char returns to left margin).
         # Previously we `continue`d here and never hit is_newline → "Isit"/"ofGrey".

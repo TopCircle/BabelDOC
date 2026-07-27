@@ -273,6 +273,8 @@ Resume only with a **new plan** (not more one-off glue / dict / pull-back patche
 | Extreme indent (&gt;18% box) dropped | ✅ `_effective_first_line_indent` |
 | Tests | `test_paragraph_alignment` ATU + list + hang + reattach + OCR gate + extreme indent |
 | CJK layout-first rectangular fill (长短参差) | ✅ **primary** 0.6.4.7: `_uniform_cjk_reference_widths` + DP fill×6; EN short tail not mid ZH |
+| Figure dual abstract `%` / `99.00%` formula scramble | ✅ 0.6.4.9: prose `%`, coalesce digit style spans, soft-hyphen join (`ap-`+`prox`) |
+| Figure dual author Latin spaces (`S.Hazra` / `andM.H.`) | ✅ 0.6.4.10: `_gap_is_word_boundary` Latin path (`.`+Cap / lower→Upper, 0.35× + 2pt) |
 | CJK word collocation (dict) | ✅ **secondary**: ebook dict (乳房/背带/…); no hard 的/和 kinsoku (hurts fill) |
 | Still open on ATU after L3 (need re-translate) | residual layout glue on p23 (EN leftover / item-6 overlap / `分开。2.`); re-dual for fill visual |
 | Golden visual (failure ref until re-dual) | `Screenshot_21-7-2026_105225_*.jpeg` — ZH list 2/5 wrap under digit vs EN hang |
