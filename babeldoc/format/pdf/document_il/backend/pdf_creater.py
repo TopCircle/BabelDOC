@@ -572,12 +572,8 @@ def reproduce_cmap(doc):
     return doc
 
 
-def _subset_fonts_process(pdf_path, output_path):
-    """Function to run in subprocess for font subsetting.
-
-    Args:
-        pdf_path: Path to the PDF file to subset
-        output_path: Path where to save the result
+def _subset_and_save(pdf: pymupdf.Document, output_path: str | Path) -> None:
+    """Subset embedded fonts and write a compact PDF.
 
     CJK embedding fonts (Source Han / LXGW) are multi‑MB full TTFs. Without
     subsetting, mono/dual jump from ~1–2MB sources to 30–60MB+. ``subset_fonts``
@@ -586,17 +582,32 @@ def _subset_fonts_process(pdf_path, output_path):
     figure dual ~33MB vs ~1.1MB after garbage=4/deflate_fonts).
     """
     try:
-        pdf = pymupdf.open(pdf_path)
         pdf.subset_fonts(fallback=False)
-        # garbage=4 drops unreferenced full-font streams; deflate_fonts compresses
-        # the remaining subset FontFile2/3 data.
-        pdf.save(
-            output_path,
-            garbage=4,
-            deflate=True,
-            deflate_fonts=True,
-            clean=True,
-        )
+    except Exception as e:
+        # Some Type1 / odd CID fonts reject strict subset; still try.
+        logger.warning("subset_fonts(fallback=False) failed (%s); retry fallback=True", e)
+        pdf.subset_fonts(fallback=True)
+    # garbage=4 drops unreferenced full-font streams; deflate_fonts compresses
+    # the remaining subset FontFile2/3 data.
+    pdf.save(
+        str(output_path),
+        garbage=4,
+        deflate=True,
+        deflate_fonts=True,
+        clean=True,
+    )
+
+
+def _subset_fonts_process(pdf_path, output_path):
+    """Function to run in subprocess for font subsetting.
+
+    Args:
+        pdf_path: Path to the PDF file to subset
+        output_path: Path where to save the result
+    """
+    try:
+        pdf = pymupdf.open(pdf_path)
+        _subset_and_save(pdf, output_path)
         # 返回 0 表示成功
         os._exit(0)
     except Exception as e:
@@ -1245,23 +1256,40 @@ class PDFCreater:
             pdf.update_stream(int(resource_xref_id), draw_op.tobytes())
         translation_config.raise_if_cancelled()
 
-        # 使用子进程进行字体子集化
-        if not translation_config.skip_clean:
-            pdf = self.subset_fonts_in_subprocess(pdf, translation_config, tag="debug")
+        # Always subset embedding fonts (independent of skip_clean — that flag
+        # only controls save(clean=) for viewer compatibility).
+        pdf = self.subset_fonts_in_subprocess(pdf, translation_config, tag="debug")
         return pdf
+
+    @staticmethod
+    def _subset_fonts_in_process(
+        temp_input: str, temp_output: str
+    ) -> bool:
+        """In-process subset fallback when the subprocess fails or times out."""
+        try:
+            pdf = pymupdf.open(temp_input)
+            _subset_and_save(pdf, temp_output)
+            pdf.close()
+            return (
+                Path(temp_output).exists() and Path(temp_output).stat().st_size > 0
+            )
+        except Exception as e:
+            logger.error("In-process font subsetting failed: %s", e)
+            return False
 
     @staticmethod
     def subset_fonts_in_subprocess(
         pdf: pymupdf.Document, translation_config: TranslationConfig, tag: str
     ) -> pymupdf.Document:
-        """Run font subsetting in a subprocess with timeout.
+        """Subset embedded fonts (subprocess first, then in-process fallback).
 
         Args:
             pdf: The PDF document object
             translation_config: Translation configuration
 
         Returns:
-            Path to the PDF with subsetted fonts, or original path if subsetting failed or timed out
+            Document with subsetted fonts, or the original document if both
+            subprocess and in-process subsetting fail.
         """
         original_pdf = pdf
         # Create temporary file paths
@@ -1274,6 +1302,12 @@ class PDFCreater:
 
         # Save PDF to temporary file without subsetting
         pdf.save(temp_input)
+        input_size = Path(temp_input).stat().st_size
+        logger.info(
+            "Font subsetting start tag=%s input_size=%.1fMB",
+            tag,
+            input_size / (1024 * 1024),
+        )
 
         # Create and start subprocess
         process = Process(target=_subset_fonts_process, args=(temp_input, temp_output))
@@ -1283,9 +1317,11 @@ class PDFCreater:
         # 30–60MB mono/dual. Allow 5 minutes before giving up.
         timeout = 300
         start_time = time.time()
+        timed_out = False
 
         while process.is_alive():
             if time.time() - start_time > timeout:
+                timed_out = True
                 logger.warning(
                     f"Font subsetting timeout after {timeout} seconds, terminating subprocess"
                 )
@@ -1302,28 +1338,60 @@ class PDFCreater:
                         process.terminate()
                 except Exception as e:
                     logger.error(f"Error terminating font subsetting process: {e}")
-
-                return original_pdf
+                break
 
             time.sleep(0.5)  # Check every half second
 
         # Process completed, check exit code
         exit_code = process.exitcode
-        success = exit_code == 0
-
-        # Check if subsetting was successful
-        if (
-            success
+        success = (
+            (not timed_out)
+            and exit_code == 0
             and Path(temp_output).exists()
             and Path(temp_output).stat().st_size > 0
-        ):
-            logger.info("Font subsetting completed successfully")
-            return pymupdf.open(temp_output)
-        else:
+        )
+
+        if not success:
             logger.warning(
-                f"Font subsetting failed with exit code {exit_code} or produced empty file"
+                "Font subsetting subprocess failed (exit=%s timed_out=%s); "
+                "trying in-process fallback",
+                exit_code,
+                timed_out,
             )
-            return original_pdf
+            # Remove empty/partial output so fallback can write cleanly
+            try:
+                Path(temp_output).unlink(missing_ok=True)
+            except Exception:
+                pass
+            success = PDFCreater._subset_fonts_in_process(temp_input, temp_output)
+
+        if success:
+            out_size = Path(temp_output).stat().st_size
+            ratio = (out_size / input_size) if input_size else 1.0
+            logger.info(
+                "Font subsetting completed tag=%s %.1fMB → %.1fMB (%.0f%%)",
+                tag,
+                input_size / (1024 * 1024),
+                out_size / (1024 * 1024),
+                ratio * 100,
+            )
+            if out_size > input_size * 0.9 and input_size > 5 * 1024 * 1024:
+                logger.warning(
+                    "Font subsetting did not shrink a large PDF much "
+                    "(tag=%s %.1fMB → %.1fMB); full CJK fonts may remain",
+                    tag,
+                    input_size / (1024 * 1024),
+                    out_size / (1024 * 1024),
+                )
+            return pymupdf.open(temp_output)
+
+        logger.error(
+            "Font subsetting failed completely tag=%s; output will keep full "
+            "embedded fonts (~tens of MB for CJK). input_size=%.1fMB",
+            tag,
+            input_size / (1024 * 1024),
+        )
+        return original_pdf
 
     @staticmethod
     def save_pdf_with_timeout(
@@ -1503,17 +1571,20 @@ class PDFCreater:
                     )
                     pbar.advance()
             translation_config.raise_if_cancelled()
-            gc_level = 1
-            if self.translation_config.ocr_workaround:
-                gc_level = 4
+            # After subset, garbage=4 keeps only the trimmed FontFile streams.
+            # OCR path already needed 4; non-OCR used 1 and could leave dead
+            # full-font objects if a prior subset step only partially cleaned.
+            gc_level = 4
             with self.translation_config.progress_monitor.stage_start(
                 SUBSET_FONT_STAGE_NAME,
                 1,
             ) as pbar:
-                if not translation_config.skip_clean:
-                    pdf = self.subset_fonts_in_subprocess(
-                        pdf, translation_config, tag="mono"
-                    )
+                # Always subset — skip_clean only affects save(clean=) for
+                # viewer compatibility. Coupling them left 30–60MB mono/dual
+                # whenever 「增强兼容性」enabled skip_clean.
+                pdf = self.subset_fonts_in_subprocess(
+                    pdf, translation_config, tag="mono"
+                )
 
                 pbar.advance()
             try:
