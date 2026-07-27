@@ -42,6 +42,17 @@ from babeldoc.format.pdf.document_il.utils.mt_token_sanitize import (
 from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
     is_placeholder_only_paragraph,
 )
+from babeldoc.format.pdf.document_il.utils.pullquote_dedupe import (
+    is_pullquote_duplicate_of_body,
+)
+from babeldoc.format.pdf.document_il.utils.style_marker_recover import StyleSpan
+from babeldoc.format.pdf.document_il.utils.style_marker_recover import (
+    coalesce_emphasis_style_run,
+)
+from babeldoc.format.pdf.document_il.utils.style_marker_recover import (
+    rewrap_styles_from_source,
+)
+from babeldoc.format.pdf.document_il.utils.style_marker_recover import style_by_id
 from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
     is_pure_numeric_paragraph,
 )
@@ -616,9 +627,8 @@ class ILTranslator:
             # Original placeholder-like tokens extracted from the source text.
             # Key: exact matched token string; Value: occurrence count.
             self.original_placeholder_tokens: dict[str, int] = {}
-            # Style spans for non-LLM translators: list of (start, end, PdfStyle)
-            # Positions are approximate indices in the unicode string.
-            self.style_spans: list[tuple[int, PdfStyle]] = []  # (span_id, PdfStyle)
+            # Non-LLM emphasis spans (〖Bn〗…〖/Bn〗 + source for rewrap).
+            self.style_spans: list[StyleSpan] = []
 
         def set_original_placeholder_tokens(self, tokens: dict[str, int] | None):
             """Attach original placeholder-like tokens from source text."""
@@ -770,10 +780,14 @@ class ILTranslator:
         placeholder_id = 1
         placeholders = []
         chars = []
-        style_spans = []  # (span_id, PdfStyle) — markers embedded in text, not indices
-        for composition in paragraph.pdf_paragraph_composition:
+        style_spans: list[StyleSpan] = []
+        compositions = list(paragraph.pdf_paragraph_composition or [])
+        i_comp = 0
+        while i_comp < len(compositions):
+            composition = compositions[i_comp]
             if composition.pdf_line:
                 chars.extend(composition.pdf_line.pdf_character)
+                i_comp += 1
             elif composition.pdf_formula:
                 formula_placeholder = self.create_formula_placeholder(
                     composition.pdf_formula,
@@ -784,8 +798,10 @@ class ILTranslator:
                 # 公式只需要一个占位符，所以 id+1
                 placeholder_id = formula_placeholder.id + 1
                 chars.extend(formula_placeholder.placeholder)
+                i_comp += 1
             elif composition.pdf_character:
                 chars.append(composition.pdf_character)
+                i_comp += 1
             elif composition.pdf_same_style_characters:
                 comp_style = composition.pdf_same_style_characters.pdf_style
                 base_style = paragraph.pdf_style
@@ -793,29 +809,28 @@ class ILTranslator:
                 if disable_rich_text_translate:
                     # Non-LLM path: any different font_id implies intentional
                     # visual distinction (bold, italic, different typeface).
-                    # Don't rely on font_mapper.map() to decide — the original
-                    # PDF author chose a different font for a reason.
                     if (
                         is_same_style(comp_style, base_style)
                         or is_same_style_except_size(comp_style, base_style)
                     ):
-                        # Truly same style, or only size differs → skip
                         chars.extend(
                             composition.pdf_same_style_characters.pdf_character,
                         )
+                        i_comp += 1
                         continue
 
-                    # Different font_id → wrap with invisible markers for
-                    # post-translation extraction.  Markers use Unicode
-                    # corner brackets (〖〗) which survive DeepLX/Google
-                    # translation and don't appear in natural text.
-                    span_id = len(style_spans)
-                    chars.append(f"〖B{span_id}〗")
-                    chars.extend(
-                        composition.pdf_same_style_characters.pdf_character,
+                    # Merge line-broken same-style runs, then wrap 〖Bn〗.
+                    span_chars, span_style, i_comp = coalesce_emphasis_style_run(
+                        compositions, i_comp, base_style
                     )
+                    span_id = len(style_spans)
+                    source_text = get_char_unicode_string(span_chars)
+                    chars.append(f"〖B{span_id}〗")
+                    chars.extend(span_chars)
                     chars.append(f"〖/B{span_id}〗")
-                    style_spans.append((span_id, comp_style))
+                    style_spans.append(
+                        StyleSpan(span_id, span_style, source_text)
+                    )
                     continue
 
                 fonta = self.font_mapper.map(
@@ -852,18 +867,22 @@ class ILTranslator:
                     # or len(composition.pdf_same_style_characters.pdf_character) == 1
                 ):
                     chars.extend(composition.pdf_same_style_characters.pdf_character)
-                    continue
-                placeholder = self.create_rich_text_placeholder(
-                    composition.pdf_same_style_characters,
-                    placeholder_id,
-                    paragraph,
-                )
-                placeholders.append(placeholder)
-                # 样式需要一左一右两个占位符，所以 id+2
-                placeholder_id = placeholder.id + 2
-                chars.append(placeholder.left_placeholder)
-                chars.extend(composition.pdf_same_style_characters.pdf_character)
-                chars.append(placeholder.right_placeholder)
+                    i_comp += 1
+                else:
+                    placeholder = self.create_rich_text_placeholder(
+                        composition.pdf_same_style_characters,
+                        placeholder_id,
+                        paragraph,
+                    )
+                    placeholders.append(placeholder)
+                    # 样式需要一左一右两个占位符，所以 id+2
+                    placeholder_id = placeholder.id + 2
+                    chars.append(placeholder.left_placeholder)
+                    chars.extend(
+                        composition.pdf_same_style_characters.pdf_character
+                    )
+                    chars.append(placeholder.right_placeholder)
+                    i_comp += 1
             else:
                 logger.error(
                     "Unexpected PdfParagraphComposition type "
@@ -1041,43 +1060,27 @@ class ILTranslator:
         output: str,
         input_text: TranslateInput,
     ) -> list[PdfParagraphComposition]:
-        """Parse marker-wrapped spans from translated output.
+        """Parse 〖Bn〗 spans from MT output; rewrap dropped markers first.
 
-        Uses Unicode corner-bracket markers (〖B0〗...〖/B0〗) that survive
-        non-LLM translation (DeepLX, Google Translate).  This gives word-level
-        alignment instead of the proportional character-count guessing used
-        by the old _split_output_by_style_spans approach.
-
-        The markers are embedded in the source text before translation:
-            ...from 〖B0〗vaginismus〖/B0〗 (vaginal tightness) or 〖B1〗...
-        and survive translation:
-            ...因〖B0〗阴道痉挛〖/B0〗（阴道紧缩）或〖B1〗...
-
-        We regex-extract each span, build styled compositions, and strip
-        the markers from the final output.
+        See ``style_marker_recover.rewrap_styles_from_source`` for recovery
+        when DeepLX strips QBS/QES but leaves the English term.
         """
-        result = []
-        # Match: 〖B<digits>〗<content>〖/B<same_digits>〗
-        # Use [\s\S]*? instead of .*? to match across newlines — translators
-        # may reformat text and insert line breaks inside marker pairs.
+        result: list[PdfParagraphComposition] = []
         marker_re = re.compile(r"〖B(\d+)〗([\s\S]*?)〖/B\1〗")
 
-        # Build a lookup: span_id → PdfStyle
-        style_by_id = {}
-        for span_id, style in input_text.style_spans:
-            style_by_id[span_id] = style
+        recovered = rewrap_styles_from_source(output, input_text.style_spans)
+        if recovered:
+            output = recovered
 
+        styles = style_by_id(input_text.style_spans)
         last_end = 0
         for m in marker_re.finditer(output):
             span_id = int(m.group(1))
             styled_text = m.group(2)
 
-            # Unstyled text between previous span end and this marker.
-            # Strip any residual markers that the regex didn't match
-            # (e.g. corrupted by translator, partial match, etc.)
             if m.start() > last_end:
                 unstyled = ILTranslator._strip_style_markers(
-                    output[last_end:m.start()]
+                    output[last_end : m.start()]
                 )
                 if unstyled.strip():
                     comp = PdfParagraphComposition()
@@ -1090,19 +1093,15 @@ class ILTranslator:
                     )
                     result.append(comp)
 
-            # Styled text span
             if styled_text.strip():
                 comp = PdfParagraphComposition()
                 comp.pdf_same_style_unicode_characters = (
                     PdfSameStyleUnicodeCharacters()
                 )
                 comp.pdf_same_style_unicode_characters.unicode = styled_text
-
-                style = style_by_id.get(span_id)
+                style = styles.get(span_id)
                 if style:
-                    # Preserve font_id (for bold/italic detection) and
-                    # graphic_state, but use base_style.font_size so that
-                    # bold text matches the surrounding normal text size.
+                    # Keep font_id + color; normalize size to body.
                     merged = copy.deepcopy(style)
                     if input_text.base_style and input_text.base_style.font_size:
                         merged.font_size = input_text.base_style.font_size
@@ -1111,17 +1110,17 @@ class ILTranslator:
                     comp.pdf_same_style_unicode_characters.pdf_style = (
                         input_text.base_style
                     )
-
                 result.append(comp)
 
             last_end = m.end()
 
-        # Remaining base-style text after the last marker
         if last_end < len(output):
             remaining = ILTranslator._strip_style_markers(output[last_end:])
             if remaining.strip():
                 comp = PdfParagraphComposition()
-                comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
+                comp.pdf_same_style_unicode_characters = (
+                    PdfSameStyleUnicodeCharacters()
+                )
                 comp.pdf_same_style_unicode_characters.unicode = remaining
                 comp.pdf_same_style_unicode_characters.pdf_style = (
                     input_text.base_style
@@ -1129,13 +1128,11 @@ class ILTranslator:
                 result.append(comp)
 
         if not result:
-            # Fallback: no markers matched — check if raw markers are in text
             if "〖B" in output:
                 logger.warning(
                     "Markers NOT parsed but present in output (preview=%s)",
                     output[:200],
                 )
-            # Fallback: strip markers and use base-style
             comp = PdfParagraphComposition()
             comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
             comp.pdf_same_style_unicode_characters.unicode = (
@@ -1146,17 +1143,14 @@ class ILTranslator:
             )
             return [comp]
 
-        # Strip any remaining markers from _parse_style_markers result
         for comp in result:
-            if (
+            uni = (
                 comp.pdf_same_style_unicode_characters
                 and comp.pdf_same_style_unicode_characters.unicode
-                and "〖B" in comp.pdf_same_style_unicode_characters.unicode
-            ):
+            )
+            if uni and "〖B" in uni:
                 comp.pdf_same_style_unicode_characters.unicode = (
-                    ILTranslator._strip_style_markers(
-                        comp.pdf_same_style_unicode_characters.unicode
-                    )
+                    ILTranslator._strip_style_markers(uni)
                 )
         return result
 
@@ -1669,6 +1663,14 @@ class ILTranslator:
                 if self.use_as_fallback:
                     # il translator llm only modifies unicode in some situations
                     paragraph.unicode = get_paragraph_unicode(paragraph)
+                # Side callout that duplicates body quote → keep source (no 2nd MT)
+                if is_pullquote_duplicate_of_body(paragraph, page):
+                    logger.debug(
+                        "skip pull-quote MT (near-duplicate of body): id=%s text=%r",
+                        paragraph.debug_id,
+                        (paragraph.unicode or "")[:60],
+                    )
+                    return
                 # Pre-translation processing
                 text, translate_input = self.pre_translate_paragraph(
                     paragraph, tracker, page_font_map, xobj_font_map

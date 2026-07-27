@@ -191,6 +191,56 @@ class TestDetectParagraphAlignment:
         para = _line_para([(63.9, 548.1)])  # lm=rm≈64, center 306, page 612
         assert detect_paragraph_alignment(para, _page(612)) == "center"
 
+    def test_arxiv_title_center_even_with_unrelated_body_column(self):
+        """arXiv title left (~64) ≠ ebook body column (~102) → still center."""
+        title = _line_para([(63.9, 548.1)], label="title")
+        body_a = _line_para([(102.0, 560.0), (102.0, 555.0), (102.0, 400.0)])
+        body_b = _line_para([(102.0, 558.0), (102.0, 530.0)])
+        page = _page(612)
+        page.pdf_paragraph = [title, body_a, body_b]
+        assert detect_paragraph_alignment(title, page) == "center"
+
+    def test_day6_tip2_long_head_flush_body_column_is_left(self):
+        """Day6 MOREGASM TIP 2: long EN head mid≈page center but left@body.
+
+        Geometry (letter 612): x=102..511 → mid≈306, lm≈rm≈102. Pure
+        page-symmetric rules called this center (figure dual adaptation).
+        Same page body also starts at x=102 → must stay left.
+        """
+        tip = _line_para([(102.0, 510.87)], label="title")
+        body_a = _line_para([(102.0, 560.0), (102.0, 555.0), (102.0, 300.0)])
+        body_b = _line_para([(102.4, 507.0), (102.4, 500.0), (102.5, 385.0)])
+        body_c = _line_para([(102.0, 326.0), (102.0, 320.0)])
+        page = _page(612)
+        page.pdf_paragraph = [tip, body_a, body_b, body_c]
+        assert detect_paragraph_alignment(tip, page) == "left"
+
+    def test_day6_tip2_without_body_peers_still_center_by_geometry(self):
+        """No body column evidence → keep page-symmetric center (no page ctx)."""
+        tip = _line_para([(102.0, 510.87)], label="title")
+        # Isolated page: only the tip → cannot know body column
+        page = _page(612)
+        page.pdf_paragraph = [tip]
+        assert detect_paragraph_alignment(tip, page) == "center"
+
+    def test_single_strong_body_peer_defines_column(self):
+        """One multi-line body with ≥3 lines is enough to demote a long head."""
+        tip = _line_para([(102.0, 510.87)], label="title")
+        body = _line_para(
+            [(102.0, 560.0), (102.0, 555.0), (102.0, 500.0), (102.0, 300.0)]
+        )
+        page = _page(612)
+        page.pdf_paragraph = [tip, body]
+        assert detect_paragraph_alignment(tip, page) == "left"
+
+    def test_single_weak_body_peer_does_not_define_column(self):
+        """One 2-line peer alone is too weak (could be a short callout)."""
+        tip = _line_para([(102.0, 510.87)], label="title")
+        weak = _line_para([(102.0, 400.0), (102.0, 380.0)])
+        page = _page(612)
+        page.pdf_paragraph = [tip, weak]
+        assert detect_paragraph_alignment(tip, page) == "center"
+
     def test_single_line_flush_left_fullish_not_center(self):
         """ATU p7 lead-in / p13 TECHNIQUE title: flush left ~0.8 page wide."""
         # w=490, center≈301, left@56 — lm=56 < 60 fails true-center margins

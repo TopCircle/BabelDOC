@@ -52,6 +52,12 @@ class TestSoftHyphenJoin:
         out = text_recovery.rejoin_soft_hyphens_in_text(src)
         assert "Trigasmactually" not in out
         assert "Trigasm- actually" in out
+        # Decorative mixed-case TOC (per-glyph style) — regression for 0.6.4.18
+        # which only captured lowercase ``ac`` and glued to TrigasMacTuaLLy.
+        deco = "4. TrigasM- acTuaLLy, Make Hers TripLe, pLease!"
+        deco_out = text_recovery.rejoin_soft_hyphens_in_text(deco)
+        assert "TrigasMacTuaLLy" not in deco_out
+        assert "acTuaLLy" in deco_out
         # True soft hyphen still rejoins
         assert (
             text_recovery.rejoin_soft_hyphens_in_text(

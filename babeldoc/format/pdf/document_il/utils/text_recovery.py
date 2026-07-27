@@ -22,10 +22,11 @@ LATIN_WORD_GAP_RATIO = 0.35
 LATIN_WORD_MIN_GAP_PT = 2.0
 
 # Candidate soft-hyphen after style regroup: ``ap- proximation``.
-# Captures the continuation token so we can reject free English words
-# (``Trigasm- actually`` must NOT become ``Trigasmactually``).
+# Captures the full continuation token (mixed-case allowed) so we can reject
+# free English words. Decorative TOC fonts often yield ``acTuaLLy``; matching
+# only ``[a-z]+`` would capture ``ac`` (len<4), rejoin to ``TrigasMacTuaLLy``.
 SOFT_HYPHEN_CANDIDATE_RE = regex.compile(
-    r"(?<=[A-Za-z])-\s+([a-z][a-z']*)"
+    r"(?<=[A-Za-z])-\s+([A-Za-z][A-Za-z']*)"
 )
 
 # High-frequency free-standing English words (len>=4). Soft-hyphen
@@ -225,6 +226,23 @@ def gap_is_word_boundary(
     return False
 
 
+def should_soft_rejoin(continuation: str | None) -> bool:
+    """Whether ``word- cont`` is a TeX soft hyphen that should glue.
+
+    Rejoin only pure-lowercase, non-standalone tails (``proximation``,
+    ``ence``).  Refuse free English words (``actually``) and decorative
+    mixed/Title case (``acTuaLLy``).
+    """
+    if not continuation:
+        return False
+    # Pure lowercase only — mixed/Title/UPPER stays as intentional dash.
+    if not continuation.islower():
+        return False
+    if is_standalone_en_word(continuation):
+        return False
+    return True
+
+
 def is_soft_hyphen_line_wrap(
     prev: PdfCharacter,
     next_ch: PdfCharacter,
@@ -232,34 +250,32 @@ def is_soft_hyphen_line_wrap(
 ) -> bool:
     """TeX soft hyphen at line wrap: ``ap-`` + ``proximation`` → join without space.
 
-    Refuses when the next token is a free English word so intentional dashes
-    like ``Trigasm-`` / ``actually`` at a line break stay separate.
+    Geometry: prev is ``-`` and next starts a Latin letter run.  Semantics
+    deferred to :func:`should_soft_rejoin` on the peeked continuation token.
     """
     prev_u = prev.char_unicode or ""
     next_u = next_ch.char_unicode or ""
-    if prev_u not in "-‐‑" or not next_u or not next_u[0].islower():
+    if prev_u not in "-‐‑" or not next_u or not next_u[0].isalpha():
         return False
     token = next_word if next_word is not None else next_u
     m = regex.match(r"[A-Za-z']+", token or "")
-    cont = m.group(0) if m else token
-    if is_standalone_en_word(cont):
-        return False
-    return True
+    cont = m.group(0) if m else (token or "")
+    return should_soft_rejoin(cont)
 
 
 def rejoin_soft_hyphens_in_text(text: str) -> str:
     """Collapse ``ap- proximation`` style soft hyphens left after style regroup.
 
-    Keeps intentional dashes before free English words:
-    ``Trigasm- actually`` must not become ``Trigasmactually``.
+    Keeps intentional dashes before free English words / decorative casing:
+    ``Trigasm- actually`` / ``TrigasM- acTuaLLy`` must not glue.
     """
     if not text or "-" not in text:
         return text
 
     def _sub(m: regex.Match[str]) -> str:
         cont = m.group(1)
-        if is_standalone_en_word(cont):
-            return m.group(0)  # keep "- actually"
-        return cont  # drop "- " and glue continuation
+        if should_soft_rejoin(cont):
+            return cont  # drop "- " and glue
+        return m.group(0)  # keep hyphen + space
 
     return SOFT_HYPHEN_CANDIDATE_RE.sub(_sub, text)

@@ -213,16 +213,49 @@ class Glossary:
             hs_db.scan(text.encode("utf-8"), on_match, scratch=scratch)
         return active_entries
 
+    # Style markers may sit between glossary words after rich-text wrap:
+    # ``author of 〖B0〗The Passion Prescription〖/B0〗``.
+    _STYLE_MARKER_CHUNK = r"(?:〖/?B\d+〗)"
+    _FLEX_BETWEEN_WORDS = rf"(?:\s|{_STYLE_MARKER_CHUNK})+"
+
+    @classmethod
+    def _mt_term_pattern(cls, source: str) -> re.Pattern[str]:
+        """Case-insensitive pattern; multi-word allows style markers / spaces.
+
+        Optionally absorbs a leading open + trailing close marker pair so the
+        whole styled phrase becomes one placeholder.
+        """
+        source = source.strip()
+        if not source:
+            return re.compile(r"(?!)")  # never matches
+        words = source.split()
+        open_m = rf"(?:〖B\d+〗)?"
+        close_m = rf"(?:〖/B\d+〗)?"
+        if len(words) == 1:
+            body = re.escape(words[0])
+        else:
+            body = cls._FLEX_BETWEEN_WORDS.join(re.escape(w) for w in words)
+        return re.compile(open_m + body + close_m, re.IGNORECASE)
+
     def protect_terms_for_mt(self, text: str) -> tuple[str, list[tuple[str, str]]]:
         """Replace matched source terms with opaque placeholders for non-LLM MT.
 
         DeepLX/CLI engines never see the LLM glossary table; without protection
         they mangle domain terms (``trigasm``→三棱镜, ``TAKE CHARGE``→收费).
-        Longest source first. Returns ``(protected_text, [(placeholder, target)])``.
+        Longest source first. Multi-word terms also match when ``〖Bn〗`` style
+        markers sit between words (book titles after rich-text wrap).
+
+        Returns ``(protected_text, [(placeholder, target)])``.
         """
         if not text or not self.entries:
             return text, []
-        active = self.get_active_entries_for_text(text)
+        # Match against marker-stripped text for hyperscan activation, but
+        # apply replacements on the real string (flex pattern).
+        plain = re.sub(r"〖/?B\d+〗", "", text)
+        active = self.get_active_entries_for_text(plain)
+        if not active:
+            # Also try raw text (no markers case)
+            active = self.get_active_entries_for_text(text)
         if not active:
             return text, []
         # Longest source first so multi-word terms win
@@ -233,11 +266,16 @@ class Glossary:
             if not source:
                 continue
             placeholder = f"⟦G{i}⟧"
-            pattern = re.compile(re.escape(source), re.IGNORECASE)
+            pattern = self._mt_term_pattern(source)
             new_out, n = pattern.subn(placeholder, out)
             if n > 0:
                 out = new_out
                 mapping.append((placeholder, target))
+                # Orphan markers left by partial wraps around the placeholder
+                ph = re.escape(placeholder)
+                out = re.sub(rf"〖B\d+〗{ph}〖/B\d+〗", placeholder, out)
+                out = re.sub(rf"〖B\d+〗{ph}", placeholder, out)
+                out = re.sub(rf"{ph}〖/B\d+〗", placeholder, out)
         return out, mapping
 
     @staticmethod
