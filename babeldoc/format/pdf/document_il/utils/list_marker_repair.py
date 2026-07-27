@@ -21,12 +21,15 @@ from babeldoc.format.pdf.document_il import il_version_1
 
 logger = logging.getLogger(__name__)
 
-# Leading marker for numbered list items (EN/CJK dual hanging indent).
+# Leading marker for numbered / lettered list items (EN/CJK dual hanging indent).
 # Include ideographic ``。`` — DeepLX/MT often rewrites ``2.`` → ``2。``.
+# Day 6 quiz uses ``a.``/``b.`` options — lettered serials need the same hang path.
 LIST_MARKER_RE = re.compile(
     r"^(?:"
     r"\d{1,3}\s*[\.．。、\)]\s*"  # 1.  1． 1。 1、  1)
+    r"|[a-zA-Z]\s*[\.．。、\)]\s*"  # a.  b） A.
     r"|\(\s*\d{1,3}\s*\)\s*"  # (1)
+    r"|\(\s*[a-zA-Z]\s*\)\s*"  # (a)
     r"|[①-⑳]\s*"
     r")"
 )
@@ -36,13 +39,22 @@ LIST_MARKER_RE = re.compile(
 # Require a sentence terminator immediately before the serial so prose like
 # ``The answer is 42.`` is not stripped.
 TRAILING_LIST_MARKER_RE = re.compile(
-    r"(?P<body>.*[。．.!?！？])\s*(?P<marker>\d{1,3}\s*[\.．。、\)])\s*$",
+    r"(?P<body>.*[。．.!?！？])\s*"
+    r"(?P<marker>(?:\d{1,3}|[a-zA-Z])\s*[\.．。、\)])\s*$",
     re.DOTALL,
 )
 
-# Leading serial with CJK/fullwidth punct that MT rewrote from ``1.``
+# Leading serial with CJK/fullwidth punct that MT rewrote from ``1.`` / ``a.``
 LEADING_LIST_MARKER_DOT_RE = re.compile(
-    r"^(?P<lead>\s*)(?P<num>\d{1,3})\s*(?P<punct>[。．、])\s*"
+    r"^(?P<lead>\s*)(?P<num>\d{1,3}|[a-zA-Z])\s*(?P<punct>[。．、])\s*"
+)
+
+# Mid-string tip/list serials: ``提示 3。最大值`` / ``TIP 3。`` (not sentence end)
+MID_LIST_IDEO_PERIOD_RE = re.compile(
+    r"(?<![.\dA-Za-z\u4e00-\u9fff])"
+    r"(?P<num>\d{1,3}|[a-zA-Z])"
+    r"\s*。"
+    r"(?=[\u4e00-\u9fffA-Za-z「『《])"
 )
 
 
@@ -67,24 +79,36 @@ def looks_like_numbered_list_item(paragraph: il_version_1.PdfParagraph) -> bool:
 
 
 def marker_digit(marker: str) -> str | None:
+    """Numeric serial only (``4.`` → ``4``). Letters use :func:`marker_key`."""
     m = re.match(r"(\d{1,3})", (marker or "").strip())
     return m.group(1) if m else None
 
 
+def marker_key(marker: str) -> str | None:
+    """Stable id for a list serial: digit string or single letter (lowercased)."""
+    s = (marker or "").strip()
+    d = marker_digit(s)
+    if d:
+        return d
+    m = re.match(r"([a-zA-Z])", s)
+    return m.group(1).lower() if m else None
+
+
 def normalize_list_marker_token(marker: str) -> str:
-    """Force list serial to ASCII ``N.`` (never ``N。`` from DeepLX)."""
-    digit = marker_digit(marker)
-    if not digit:
+    """Force list serial to ASCII ``N.`` / ``a.`` (never ``N。`` from DeepLX)."""
+    key = marker_key(marker)
+    if not key:
         return (marker or "").strip()
-    return f"{digit}."
+    return f"{key}."
 
 
 def normalize_leading_list_marker_text(text: str | None) -> str | None:
-    """Rewrite leading ``1。`` / ``1．`` / ``1、`` → ``1.`` for list items.
+    """Rewrite leading ``1。`` / ``a。`` / ``1．`` → ``1.`` / ``a.`` for list items.
 
     DeepLX often localizes the list period to ideographic ``。``, which
     looks like a Chinese sentence end and breaks hang-width consistency.
-    Only the *leading* serial is touched — body ``句号。`` stays.
+    Also rewrites mid-string tip serials ``3。最大值`` → ``3.最大值``.
+    Leading serial uses ASCII period; body ``句号。`` stays.
     """
     if text is None:
         return None
@@ -93,16 +117,24 @@ def normalize_leading_list_marker_text(text: str | None) -> str | None:
     # NBSP from MT
     t = text.replace("\xa0", " ").replace("\u2009", " ")
     m = LEADING_LIST_MARKER_DOT_RE.match(t)
-    if not m:
-        return text
-    # Keep original leading whitespace; body after marker
-    rest = t[m.end() :]
-    # CJK body: no space after ``1.`` (same as EN dual ``1.Start`` often);
-    # Latin body: one space.
-    if rest and not rest[0].isspace():
-        if not _is_cjk_char0(rest):
-            rest = " " + rest
-    return f"{m.group('lead')}{m.group('num')}.{rest}"
+    if m:
+        rest = t[m.end() :]
+        # CJK body: no space after ``1.`` (same as EN dual ``1.Start`` often);
+        # Latin body: one space.
+        if rest and not rest[0].isspace():
+            if not _is_cjk_char0(rest):
+                rest = " " + rest
+        num = m.group("num")
+        # Letters stay lowercase for hang consistency (a. b. …)
+        if num.isalpha():
+            num = num.lower()
+        t = f"{m.group('lead')}{num}.{rest}"
+    # Mid-string tip/list serials (Day 6 ``提示 3。最大值前戏``)
+    t2 = MID_LIST_IDEO_PERIOD_RE.sub(
+        lambda mm: f"{mm.group('num').lower() if mm.group('num').isalpha() else mm.group('num')}.",
+        t,
+    )
+    return t2
 
 
 def join_list_marker_to_body(marker: str, body: str) -> str:
@@ -126,8 +158,8 @@ def strip_trailing_marker_from_compositions(
     marker: str,
 ) -> bool:
     """Remove trailing serial from compositions. Returns True if a composition changed."""
-    want_digit = marker_digit(marker)
-    if not want_digit or not paragraph.pdf_paragraph_composition:
+    want = marker_key(marker)
+    if not want or not paragraph.pdf_paragraph_composition:
         return False
     comps = paragraph.pdf_paragraph_composition
     for i in range(len(comps) - 1, -1, -1):
@@ -136,7 +168,7 @@ def strip_trailing_marker_from_compositions(
         if ssu is not None and ssu.unicode:
             text = ssu.unicode
             m = TRAILING_LIST_MARKER_RE.search(text.rstrip())
-            if m and marker_digit(m.group("marker")) == want_digit:
+            if m and marker_key(m.group("marker")) == want:
                 # Keep body including its sentence terminator; drop marker.
                 new_text = m.group("body").rstrip()
                 ssu.unicode = new_text
@@ -148,8 +180,8 @@ def strip_trailing_marker_from_compositions(
             ftext = "".join(
                 (c.char_unicode or "") for c in formula.pdf_character
             ).strip()
-            if marker_digit(ftext) == want_digit and re.fullmatch(
-                r"\d{1,3}\s*[\.．。、\)]?", ftext
+            if marker_key(ftext) == want and re.fullmatch(
+                r"(?:\d{1,3}|[a-zA-Z])\s*[\.．。、\)]?", ftext
             ):
                 del comps[i]
                 return True
@@ -253,7 +285,7 @@ def reattach_trailing_list_markers(
             ssu = comps[-1].pdf_same_style_unicode_characters
             if ssu is not None and ssu.unicode:
                 tm = TRAILING_LIST_MARKER_RE.search(ssu.unicode.rstrip())
-                if tm and marker_digit(tm.group("marker")) == marker_digit(marker):
+                if tm and marker_key(tm.group("marker")) == marker_key(marker):
                     ssu.unicode = tm.group("body").rstrip()
 
         if not next_has_marker:

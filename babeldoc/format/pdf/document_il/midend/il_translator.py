@@ -36,6 +36,7 @@ from babeldoc.format.pdf.document_il.utils.layout_helper import (
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     is_same_style_except_size,
 )
+from babeldoc.format.pdf.document_il.utils.mt_token_sanitize import sanitize_mt_output
 from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
     is_placeholder_only_paragraph,
 )
@@ -1424,6 +1425,8 @@ class ILTranslator:
         # Drop C0 SOH etc. before parse — DeepLX/style boundaries sometimes
         # leave U+0001 which becomes standalone invisible spans in dual PDFs.
         translated_text = strip_ascii_controls(translated_text)
+        # DeepLX debris: {1cH00FFFFi1}, QBS0, orphan ``{ 箴言`` (Day 6 dual).
+        translated_text = sanitize_mt_output(translated_text)
         paragraph.unicode = translated_text
         paragraph.pdf_paragraph_composition = self.parse_translate_output(
             translate_input,
@@ -1439,6 +1442,7 @@ class ILTranslator:
                 paragraph.unicode
             )
         paragraph.unicode = strip_ascii_controls(paragraph.unicode)
+        paragraph.unicode = sanitize_mt_output(paragraph.unicode)
 
         # Heading punctuation localization for CJK targets.
         # English headings use "." as separator (e.g. "LESSON 6. Things..."),
@@ -1460,6 +1464,7 @@ class ILTranslator:
             # Final per-composition scrub (parse paths / residual markers)
             if ssu.unicode:
                 ssu.unicode = strip_ascii_controls(ssu.unicode)
+                ssu.unicode = sanitize_mt_output(ssu.unicode)
         return True
 
     def _build_role_block(self) -> str:

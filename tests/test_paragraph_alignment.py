@@ -624,6 +624,25 @@ class TestReattachTrailingListMarkers:
             0
         ].pdf_same_style_unicode_characters.unicode.startswith("1.")
 
+    def test_lettered_list_marker_and_mid_tip_serial(self):
+        """Day 6 quiz ``a。`` and tip ``3。最大值`` → ASCII period."""
+        assert Typesetting._looks_like_numbered_list_item(
+            self._para("a。如果她的回答大多为 A")
+        )
+        assert (
+            Typesetting._normalize_leading_list_marker_text("a。如果她的回答大多为 A")
+            == "a.如果她的回答大多为 A"
+        )
+        assert (
+            Typesetting._normalize_leading_list_marker_text(
+                "MOREGASM 提示 3。最大值前戏"
+            )
+            == "MOREGASM 提示 3.最大值前戏"
+        )
+        p = self._para("b。采取主动")
+        assert Typesetting._normalize_list_marker_on_paragraph(p)
+        assert p.unicode.startswith("b.")
+
     def test_list_item_forces_left_even_if_center_geometry(self):
         """ATU safety list: short multi-line items false-center without this."""
         para = PdfParagraph(
