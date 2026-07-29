@@ -128,3 +128,51 @@ def test_create_typesetting_units_no_page_fonts_uses_synthetic():
     original_font = ts.font_mapper.map.call_args[0][0]
     assert original_font.font_id == "F33"
     assert original_font.name == "F33"
+
+
+def test_create_typesetting_units_none_xobj_id_defaults_to_page_stream():
+    """Page-level paragraphs often have xobj_id=None — must not assert."""
+    from babeldoc.format.pdf.document_il.midend.typesetting import TypesettingUnit
+
+    style = PdfStyle(font_id="F1", font_size=12.0, graphic_state=None)
+    dummy_font = MagicMock()
+    unit = TypesettingUnit(
+        unicode="中",
+        font=dummy_font,
+        original_font=None,
+        font_size=12.0,
+        style=style,
+        xobj_id=None,
+    )
+    assert unit.xobj_id == -1
+
+    # Full create_typesetting_units path with paragraph.xobj_id is None
+    ts = _typesetter()
+    known = PdfFont(
+        name="Helvetica",
+        font_id="F1",
+        xref_id=1,
+        encoding_length=1,
+        bold=False,
+        italic=False,
+        monospace=False,
+        serif=True,
+    )
+    fonts = {"F1": known}
+    comp = PdfParagraphComposition(
+        pdf_same_style_unicode_characters=PdfSameStyleUnicodeCharacters(
+            unicode="Hi",
+            pdf_style=style,
+        )
+    )
+    para = PdfParagraph(
+        box=Box(x=0, y=0, x2=100, y2=20),
+        pdf_style=style,
+        pdf_paragraph_composition=[comp],
+        unicode="Hi",
+        xobj_id=None,
+    )
+    units = ts.create_typesetting_units(para, fonts)
+    assert len(units) == 2
+    assert all(u.xobj_id == -1 for u in units)
+

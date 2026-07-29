@@ -316,9 +316,11 @@ class TypesettingUnit:
             assert font_size, "Font size must be provided when unicode is provided"
             assert style, "Style must be provided when unicode is provided"
             assert len(unicode) == 1, "Unicode must be a single character"
-            assert xobj_id is not None, (
-                "Xobj id must be provided when unicode is provided"
-            )
+            # Page-level text often has paragraph.xobj_id is None. Downstream
+            # (render, font maps) treat -1 as "page content stream" — same
+            # convention as layout_parser / il_translator debug paragraphs.
+            if xobj_id is None:
+                xobj_id = -1
 
             self.font = font
             if font is not None and hasattr(font, "font_id"):
@@ -3939,6 +3941,12 @@ class Typesetting:
                         o = ord(ch)
                         return not (o < 32 or o == 127 or 0x80 <= o <= 0x9F)
 
+                    # None → page stream (-1); TypesettingUnit also defaults.
+                    unit_xobj = (
+                        paragraph.xobj_id
+                        if paragraph.xobj_id is not None
+                        else -1
+                    )
                     result.extend(
                         [
                             TypesettingUnit(
@@ -3950,7 +3958,7 @@ class Typesetting:
                                 original_font=font,
                                 font_size=style.font_size,
                                 style=style,
-                                xobj_id=paragraph.xobj_id,
+                                xobj_id=unit_xobj,
                                 debug_info=composition.pdf_same_style_unicode_characters.debug_info
                                 or False,
                             )
