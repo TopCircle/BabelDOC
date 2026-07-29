@@ -50,10 +50,19 @@ python -m babeldoc.tools.figure_baseline_probe \
 
 # synthetic smoke (CI-safe)
 python -m babeldoc.tools.figure_baseline_probe --self-check
+
+# IL text integrity (paragraph_finder must keep key phrases; blocks seudo/operah)
+# Required after any change to stream_order / paragraph_finder / text_recovery
+pytest tests/test_figure_il_invariants.py tests/test_stream_visual_order.py -q
 ```
 
 Exit **0** = hard gates pass; exit **1** = regression. Unit tests:
 `tests/test_figure_baseline_probe.py`.
+
+**Reading-order / stream_order policy (0.6.4.32+):**
+- Reorder **title / section_header only** — `plain text` is never reordered.
+- Glyph line cluster uses **y2 (top)** so descenders (p/y) stay on the line.
+- Do not expand reorder triggers without figure IL invariants green.
 
 **Recorded snapshot (local dual @ Phase 0, tip after figure-text skip):**
 

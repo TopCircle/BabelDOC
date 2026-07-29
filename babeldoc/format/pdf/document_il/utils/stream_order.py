@@ -30,6 +30,15 @@ _DEFAULT_MIN_PAIRS = 4
 # Guard: only reorder short decorative-like runs, not long body lines.
 _MAX_REORDER_CHARS = 64
 _MIN_SINGLE_LETTER_RATIO = 0.55
+# Reading-order repair is title-only.  arXiv / body "plain text" lines are
+# almost always single-glyph runs and would match decorative heuristics —
+# reordering them smashed figure golden (pseudo → seudo).  Allow-list only.
+_REORDER_ALLOWED_LABELS = frozenset(
+    {
+        "title",
+        "section_header",
+    }
+)
 
 
 def _resolve_char_box(char: PdfCharacter) -> Box | None:
@@ -190,13 +199,23 @@ def _same_order(a: list[PdfCharacter], b: list[PdfCharacter]) -> bool:
 
 def maybe_reorder_reversed_stream(
     chars: list[PdfCharacter],
+    *,
+    layout_label: str | None = None,
 ) -> list[PdfCharacter]:
-    """Reorder only reverse-paint / misplaced-digit decorative runs.
+    """Reorder reverse-paint / misplaced-digit runs on **title-like** labels only.
+
+    Hard rules (all required):
+      1. ``layout_label`` in {title, section_header} — **plain text never**
+      2. Short single-letter decorative geometry
+      3. Reverse-paint ratio high **or** misplaced leading digit (1Chapter)
 
     Does **not** reorder merely because visual sort differs — that path
-    scrambled arXiv body lines when descenders fell into other y-buckets.
+    scrambled arXiv body (descenders → false second line → ``seudo``).
     """
     if not chars:
+        return chars
+    label = (layout_label or "").strip().lower()
+    if label not in _REORDER_ALLOWED_LABELS:
         return chars
     if not _looks_like_decorative_run(chars):
         return chars

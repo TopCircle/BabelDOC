@@ -46,7 +46,10 @@ def test_who_has_orgasms_reverse_stream_detected():
     stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
 
     assert is_stream_visually_reversed(stream) is True
-    ordered = maybe_reorder_reversed_stream(stream)
+    # Without title label — must not reorder (body safety)
+    assert maybe_reorder_reversed_stream(stream) is stream
+    assert maybe_reorder_reversed_stream(stream, layout_label="plain text") is stream
+    ordered = maybe_reorder_reversed_stream(stream, layout_label="title")
     assert ordered is not stream  # new list when reordered
     text = get_char_unicode_string(ordered)
     assert _alnum(text).startswith("who")
@@ -102,7 +105,9 @@ def test_1chapter_misplaced_digit_becomes_chapter_1():
     xs_ch = [44.0 + i * 9 for i in range(len(chapter))]
     stream = [_ch("1", 199.0)] + [_ch(c, x) for c, x in zip(chapter, xs_ch)]
     assert "".join(c.char_unicode for c in stream) == "1Chapter"
-    ordered = maybe_reorder_reversed_stream(stream)
+    # plain text must not fix 1Chapter (title-only policy)
+    assert maybe_reorder_reversed_stream(stream, layout_label="plain text") is stream
+    ordered = maybe_reorder_reversed_stream(stream, layout_label="title")
     assert ordered is not stream
     assert "".join(c.char_unicode for c in ordered) == "Chapter1"
     text = get_char_unicode_string(ordered)
@@ -110,6 +115,16 @@ def test_1chapter_misplaced_digit_becomes_chapter_1():
     assert alnum.startswith("chapter")
     assert alnum.endswith("1")
     assert not alnum.startswith("1chapter")
+
+
+def test_plain_text_never_reorders_even_if_fully_reversed():
+    """Hard gate: plain text identity regardless of reverse geometry."""
+    letters = list("Who haS orgaSMS?")
+    xs = list(range(100, 100 + 10 * len(letters), 10))
+    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
+    assert is_stream_visually_reversed(stream) is True
+    for label in (None, "", "plain text", "paragraph", "text", "abandon"):
+        assert maybe_reorder_reversed_stream(stream, layout_label=label) is stream
 
 
 def test_descender_glyphs_stay_on_same_line_as_peers():

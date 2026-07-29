@@ -261,7 +261,7 @@ class ParagraphFinder:
         _normalize_first_line_indent(paragraph)
 
         # Reverse-paint decorative titles (WHO HAS ORGASMS? → ?SMSrgao SahWho).
-        # Single entry: stream_order.maybe_reorder_reversed_stream.
+        # Title-label only — plain text is never reordered (figure golden).
         from babeldoc.format.pdf.document_il.utils.layout_helper import (
             _is_decorative_text,
             compute_decorative_tracking,
@@ -270,10 +270,13 @@ class ParagraphFinder:
             maybe_reorder_reversed_stream,
         )
 
+        layout_label = getattr(paragraph, "layout_label", None)
         for composition in paragraph.pdf_paragraph_composition:
             if composition.pdf_line and composition.pdf_line.pdf_character:
                 line_chars = composition.pdf_line.pdf_character
-                reordered = maybe_reorder_reversed_stream(line_chars)
+                reordered = maybe_reorder_reversed_stream(
+                    line_chars, layout_label=layout_label
+                )
                 if reordered is not line_chars:
                     composition.pdf_line.pdf_character = reordered
                     self.update_line_data(composition.pdf_line)
