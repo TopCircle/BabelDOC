@@ -29,6 +29,7 @@ from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
 from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
     is_pure_numeric_paragraph,
 )
+from babeldoc.format.pdf.document_il.utils.skip_audit import SkipReason
 from babeldoc.format.pdf.translation_config import TitleContextSnapshot
 from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.translator.translator import BaseTranslator
@@ -176,6 +177,7 @@ class ILTranslatorLLMOnly:
 
     def translate(self, docs: Document) -> None:
         self.il_translator.docs = docs
+        self.il_translator.skip_report.clear()
         tracker = DocumentTranslateTracker()
         self.mid = 0
 
@@ -254,6 +256,7 @@ class ILTranslatorLLMOnly:
             logger.debug(f"save translate tracking to {path}")
             with Path(path).open("w", encoding="utf-8") as f:
                 f.write(tracker.to_json())
+        self.il_translator._maybe_write_skip_report()
         logger.info(
             f"Translation completed. Total: {self.total_count}, Successful: {self.ok_count}, Fallback: {self.fallback_count}"
         )
@@ -298,7 +301,9 @@ class ILTranslatorLLMOnly:
         if translated_ids is not None and id(paragraph) in translated_ids:
             return False
 
-        if self.il_translator.should_skip_region_paragraph(page, paragraph):
+        region_reason = self.il_translator.region_skip_reason(page, paragraph)
+        if region_reason is not None:
+            self.il_translator.record_skip(page, paragraph, region_reason)
             return False
 
         # CID paragraph check
@@ -562,7 +567,9 @@ class ILTranslatorLLMOnly:
             if paragraph.debug_id is None or paragraph.unicode is None:
                 continue
 
-            if self.il_translator.should_skip_region_paragraph(page, paragraph):
+            region_reason = self.il_translator.region_skip_reason(page, paragraph)
+            if region_reason is not None:
+                self.il_translator.record_skip(page, paragraph, region_reason)
                 if pbar:
                     pbar.advance(1)
                 continue
@@ -575,16 +582,25 @@ class ILTranslatorLLMOnly:
 
             # Check minimum length - advance progress bar if filtered out
             if len(paragraph.unicode) < self.translation_config.min_text_length:
+                self.il_translator.record_skip(
+                    page, paragraph, SkipReason.TOO_SHORT
+                )
                 if pbar:
                     pbar.advance(1)
                 continue
 
             if is_pure_numeric_paragraph(paragraph):
+                self.il_translator.record_skip(
+                    page, paragraph, SkipReason.PURE_NUMERIC
+                )
                 if pbar:
                     pbar.advance(1)
                 continue
 
             if is_placeholder_only_paragraph(paragraph):
+                self.il_translator.record_skip(
+                    page, paragraph, SkipReason.PLACEHOLDER_ONLY
+                )
                 if pbar:
                     pbar.advance(1)
                 continue
@@ -656,8 +672,13 @@ class ILTranslatorLLMOnly:
             for i in range(len(batch_paragraph.paragraphs)):
                 paragraph = batch_paragraph.paragraphs[i]
                 tracker = batch_paragraph.trackers[i]
+                page_i = (
+                    batch_paragraph.pages[i]
+                    if i < len(batch_paragraph.pages)
+                    else None
+                )
                 text, translate_input = self.il_translator.pre_translate_paragraph(
-                    paragraph, tracker, page_font_map, xobj_font_map
+                    paragraph, tracker, page_font_map, xobj_font_map, page=page_i
                 )
                 if text is None:
                     pbar.advance(1)

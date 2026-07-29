@@ -45,6 +45,9 @@ from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
 from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
     should_skip_side_callout_mt,
 )
+from babeldoc.format.pdf.document_il.utils.skip_audit import SkipReason
+from babeldoc.format.pdf.document_il.utils.skip_audit import SkipReport
+from babeldoc.format.pdf.document_il.utils.skip_audit import side_callout_skip_reason
 from babeldoc.format.pdf.document_il.utils.style_marker_recover import StyleSpan
 from babeldoc.format.pdf.document_il.utils.style_marker_recover import (
     coalesce_emphasis_style_run,
@@ -382,6 +385,8 @@ class ILTranslator:
         self.use_as_fallback = False
         self.add_content_filter_hint_lock = threading.Lock()
         self.docs = None
+        # PR-C1: observability only — does not change skip predicates.
+        self.skip_report = SkipReport()
 
         # Pre-compile patterns for placeholder-like tokens that may be hallucinated by LLM.
         # We only consider the same shapes as our own formula & rich-text placeholders.
@@ -435,8 +440,73 @@ class ILTranslator:
         # Lost at least one full sentence (EN 3 → ZH 2, etc.)
         return dst_n <= src_n - 1
 
+    def _maybe_write_skip_report(self) -> None:
+        """Write skip_report.json when debug/working_dir (same gate as tracking)."""
+        if not (
+            self.translation_config.debug
+            or self.translation_config.working_dir is not None
+        ):
+            return
+        path = self.translation_config.get_working_file_path("skip_report.json")
+        try:
+            self.skip_report.write_json(path)
+            logger.debug(
+                "save skip report to %s (%s events)",
+                path,
+                self.skip_report.to_dict().get("total", 0),
+            )
+        except Exception:
+            logger.exception("failed to write skip_report.json to %s", path)
+
+    def record_skip(
+        self,
+        page: Page | None,
+        paragraph: PdfParagraph,
+        reason: SkipReason | str,
+    ) -> None:
+        """Record a skip event (thread-safe). No-op effect on translation."""
+        self.skip_report.record(page=page, paragraph=paragraph, reason=reason)
+
+    def region_skip_reason(
+        self,
+        page: Page,
+        paragraph: PdfParagraph,
+    ) -> SkipReason | None:
+        """Classify figure/header/footer skip without changing predicates."""
+        if self.should_skip_figure_text_paragraph(page, paragraph):
+            return SkipReason.FIGURE_TEXT
+        if not self.should_skip_header_footer_paragraph(page, paragraph):
+            return None
+        # Sub-classify band (same geometry as should_skip_header_footer_paragraph).
+        if not (
+            page.cropbox
+            and page.cropbox.box
+            and paragraph.box
+        ):
+            return SkipReason.HEADER
+        page_top = page.cropbox.box.y2
+        page_bottom = page.cropbox.box.y
+        paragraph_top = paragraph.box.y2
+        paragraph_bottom = paragraph.box.y
+        if (
+            page_top is not None
+            and paragraph_bottom is not None
+            and self.translation_config.skip_header
+            and paragraph_bottom >= page_top - self.translation_config.header_height
+        ):
+            return SkipReason.HEADER
+        if (
+            page_bottom is not None
+            and paragraph_top is not None
+            and self.translation_config.skip_footer
+            and paragraph_top <= page_bottom + self.translation_config.footer_height
+        ):
+            return SkipReason.FOOTER
+        return SkipReason.HEADER
+
     def translate(self, docs: Document):
         self.docs = docs
+        self.skip_report.clear()
         tracker = DocumentTranslateTracker()
 
         if not self.translation_config.shared_context_cross_split_part.first_paragraph:
@@ -474,6 +544,7 @@ class ILTranslator:
             logger.debug(f"save translate tracking to {path}")
             with Path(path).open("w", encoding="utf-8") as f:
                 f.write(tracker.to_json())
+        self._maybe_write_skip_report()
 
     def find_title_paragraph(self, docs: Document) -> PdfParagraph | None:
         """Find the first paragraph with layout_label 'title' in the document.
@@ -502,7 +573,9 @@ class ILTranslator:
     ):
         self.translation_config.raise_if_cancelled()
         for paragraph in page.pdf_paragraph:
-            if self.should_skip_region_paragraph(page, paragraph):
+            region_reason = self.region_skip_reason(page, paragraph)
+            if region_reason is not None:
+                self.record_skip(page, paragraph, region_reason)
                 if pbar:
                     pbar.advance(1)
                 continue
@@ -713,16 +786,20 @@ class ILTranslator:
         paragraph: PdfParagraph,
         page_font_map: dict[str, PdfFont] = None,
         disable_rich_text_translate: bool | None = None,
+        page: Page | None = None,
     ):
         if not paragraph.pdf_paragraph_composition:
+            self.record_skip(page, paragraph, SkipReason.EMPTY_COMPOSITION)
             return
 
         # Skip pure numeric paragraphs
         if is_pure_numeric_paragraph(paragraph):
+            self.record_skip(page, paragraph, SkipReason.PURE_NUMERIC)
             return None
 
         # Skip paragraphs with only placeholders
         if is_placeholder_only_paragraph(paragraph):
+            self.record_skip(page, paragraph, SkipReason.PLACEHOLDER_ONLY)
             return None
 
         # Extract original placeholder-like tokens from the raw paragraph text
@@ -898,7 +975,9 @@ class ILTranslator:
                     f"Too many placeholders ({len(placeholders)}) in paragraph[{paragraph.debug_id}], "
                     "disabling rich text translation for this paragraph",
                 )
-                return self.get_translate_input(paragraph, page_font_map, True)
+                return self.get_translate_input(
+                    paragraph, page_font_map, True, page=page
+                )
 
         text = get_char_unicode_string(chars)
         translate_input = self.TranslateInput(text, placeholders, paragraph.pdf_style)
@@ -1374,9 +1453,11 @@ class ILTranslator:
         tracker: ParagraphTranslateTracker,
         page_font_map: dict[str, PdfFont],
         xobj_font_map: dict[int, dict[str, PdfFont]],
+        page: Page | None = None,
     ):
         """Pre-translation processing: prepare text for translation."""
         if paragraph.vertical:
+            self.record_skip(page, paragraph, SkipReason.VERTICAL)
             return None, None
         tracker.set_pdf_unicode(paragraph.unicode)
         if paragraph.xobj_id in xobj_font_map:
@@ -1388,7 +1469,7 @@ class ILTranslator:
             disable_rich_text_translate = True
 
         translate_input = self.get_translate_input(
-            paragraph, page_font_map, disable_rich_text_translate
+            paragraph, page_font_map, disable_rich_text_translate, page=page
         )
         if not translate_input:
             return None, None
@@ -1402,6 +1483,7 @@ class ILTranslator:
             logger.debug(
                 f"Text too short to translate, skip. Text: {text}. Paragraph id: {paragraph.debug_id}."
             )
+            self.record_skip(page, paragraph, SkipReason.TOO_SHORT)
             return None, None
         return text, translate_input
 
@@ -1666,15 +1748,22 @@ class ILTranslator:
                 # Side callout: near-duplicate of body, or ultra-narrow tall
                 # strip that cannot fit CJK (OA p8 red figure callout) → keep EN
                 if should_skip_side_callout_mt(paragraph, page):
+                    reason = side_callout_skip_reason(paragraph, page)
+                    self.record_skip(
+                        page,
+                        paragraph,
+                        reason or SkipReason.ULTRA_NARROW,
+                    )
                     logger.debug(
-                        "skip side-callout MT: id=%s text=%r",
+                        "skip side-callout MT: id=%s reason=%s text=%r",
                         paragraph.debug_id,
+                        reason.value if reason else "ultra_narrow",
                         (paragraph.unicode or "")[:60],
                     )
                     return
                 # Pre-translation processing
                 text, translate_input = self.pre_translate_paragraph(
-                    paragraph, tracker, page_font_map, xobj_font_map
+                    paragraph, tracker, page_font_map, xobj_font_map, page=page
                 )
                 if text is None:
                     return
