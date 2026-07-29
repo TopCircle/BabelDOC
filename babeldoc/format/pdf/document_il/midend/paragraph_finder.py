@@ -260,21 +260,22 @@ class ParagraphFinder:
         # 向后兼容：旧 XML 中 FirstLineIndent 可能是 bool 或字符串 "true"
         _normalize_first_line_indent(paragraph)
 
-        # Repair reverse-paint decorative titles (e.g. WHO HAS ORGASMS? painted
-        # right-to-left → "?SMSrgao SahWho") by sorting each line LTR when the
-        # stream is reverse-dominant. Safe for normal LTR body (ratio ≈ 0).
+        # Reverse-paint decorative titles (WHO HAS ORGASMS? → ?SMSrgao SahWho).
+        # Single entry: stream_order.maybe_reorder_reversed_stream.
         from babeldoc.format.pdf.document_il.utils.layout_helper import (
-            is_stream_visually_reversed,
-            sort_chars_visual_order,
+            _is_decorative_text,
+            compute_decorative_tracking,
+        )
+        from babeldoc.format.pdf.document_il.utils.stream_order import (
+            maybe_reorder_reversed_stream,
         )
 
         for composition in paragraph.pdf_paragraph_composition:
             if composition.pdf_line and composition.pdf_line.pdf_character:
                 line_chars = composition.pdf_line.pdf_character
-                if is_stream_visually_reversed(line_chars):
-                    composition.pdf_line.pdf_character = sort_chars_visual_order(
-                        line_chars
-                    )
+                reordered = maybe_reorder_reversed_stream(line_chars)
+                if reordered is not line_chars:
+                    composition.pdf_line.pdf_character = reordered
                     self.update_line_data(composition.pdf_line)
 
         chars = []
@@ -297,15 +298,10 @@ class ParagraphFinder:
                 continue
 
         # Detect decorative text and compute tracking for re-layout
-        if chars:
-            from babeldoc.format.pdf.document_il.utils.layout_helper import (
-                _is_decorative_text,
-                compute_decorative_tracking,
-            )
-            if _is_decorative_text(chars):
-                tracking = compute_decorative_tracking(chars)
-                if tracking and tracking > 0:
-                    paragraph.decorative_tracking = tracking
+        if chars and _is_decorative_text(chars):
+            tracking = compute_decorative_tracking(chars)
+            if tracking and tracking > 0:
+                paragraph.decorative_tracking = tracking
 
         if update_unicode and chars:
             paragraph.unicode = get_char_unicode_string(chars)
@@ -461,8 +457,9 @@ class ParagraphFinder:
 
         self.fix_overlapping_paragraphs(page)
 
-        # 第六步：对每一行的字符进行排序
-        # self._sort_characters_in_lines(page)
+        # Full-line LTR sort is intentionally NOT applied here: it broke
+        # legitimate multi-span layouts.  Reverse-paint titles are repaired
+        # conditionally in update_paragraph_data via stream_order.
 
         self.add_debug_info(page)
 
@@ -1213,25 +1210,6 @@ class ParagraphFinder:
                 " Some overlaps might remain."
             )
 
-    def _sort_characters_in_lines(self, page: Page):
-        """Sort characters in each line from left to right, top to bottom."""
-        for paragraph in page.pdf_paragraph:
-            for composition in paragraph.pdf_paragraph_composition:
-                if composition.pdf_line:
-                    line = composition.pdf_line
-                    line.pdf_character.sort(key=self._get_char_sort_key)
-
-    def _get_char_sort_key(self, char: PdfCharacter):
-        """Get sort key for character positioning (top to bottom, left to right)."""
-        visual_box = char.visual_bbox.box
-        pdf_box = char.box
-
-        # Use visual box if IoU with bbox is >= 0.1, otherwise use bbox
-        if calculate_iou_for_boxes(visual_box, pdf_box) >= 0.1:
-            box = visual_box
-        else:
-            box = pdf_box
-
-        # Sort by y coordinate first (top to bottom), then x coordinate (left to right)
-        # Note: In PDF coordinate system, y increases upward, so we negate y for top-to-bottom sorting
-        return (box.x, -box.y)
+    # Character LTR ordering for reverse-paint streams: see stream_order.py
+    # (maybe_reorder_reversed_stream).  Do not reintroduce unconditional
+    # line-wide sorts — they fight multi-span decorative layouts.

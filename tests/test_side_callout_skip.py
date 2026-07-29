@@ -1,4 +1,4 @@
-"""Pull-quote near-duplicate skip (Day6 side callout)."""
+"""Side-callout MT skip (pull-quote duplicate + ultra-narrow strip)."""
 
 from __future__ import annotations
 
@@ -6,14 +6,14 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
-from babeldoc.format.pdf.document_il.utils.pullquote_dedupe import (
+from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
     is_pullquote_duplicate_of_body,
 )
-from babeldoc.format.pdf.document_il.utils.pullquote_dedupe import (
+from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
     is_ultra_narrow_side_callout,
 )
-from babeldoc.format.pdf.document_il.utils.pullquote_dedupe import normalize_for_dup
-from babeldoc.format.pdf.document_il.utils.pullquote_dedupe import (
+from babeldoc.format.pdf.document_il.utils.side_callout_skip import normalize_for_dup
+from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
     should_skip_side_callout_mt,
 )
 
@@ -71,6 +71,7 @@ def test_side_callout_contained_in_body_is_duplicate():
     page = _page(body, callout)
     assert is_pullquote_duplicate_of_body(callout, page) is True
     assert is_pullquote_duplicate_of_body(body, page) is False
+    assert should_skip_side_callout_mt(callout, page) is True
 
 
 def test_unique_body_not_duplicate():
@@ -109,6 +110,21 @@ def test_left_column_body_not_ultra_narrow_callout():
     )
     page = _page(body)
     assert is_ultra_narrow_side_callout(body, page) is False
+    assert should_skip_side_callout_mt(body, page) is False
+
+
+def test_right_half_narrow_width_alone_still_needs_height():
+    """width_ratio < 0.18 on right half but short height is not a tall strip."""
+    short = _para(
+        "Short callout text that is long enough in chars but not tall enough.",
+        x=430,
+        x2=500,
+        y=400,
+        y2=420,  # h=20, w=70 → h/w < 0.9
+        layout_label="plain text",
+    )
+    page = _page(short)
+    assert is_ultra_narrow_side_callout(short, page) is False
 
 
 def test_title_not_ultra_narrow_even_if_narrow_box():
@@ -122,3 +138,20 @@ def test_title_not_ultra_narrow_even_if_narrow_box():
     )
     page = _page(title)
     assert is_ultra_narrow_side_callout(title, page) is False
+
+
+def test_compat_reexport_from_pullquote_dedupe():
+    """Older imports via pullquote_dedupe still resolve."""
+    from babeldoc.format.pdf.document_il.utils import pullquote_dedupe as pq
+
+    callout = _para(
+        "The best way for you to learn the clit-stimulating techniques "
+        "that work best for her is going to be by watching her pleasure herself!",
+        x=429,
+        x2=509,
+        y=361,
+        y2=481,
+    )
+    page = _page(callout)
+    assert pq.is_ultra_narrow_side_callout(callout, page) is True
+    assert pq.should_skip_side_callout_mt(callout, page) is True

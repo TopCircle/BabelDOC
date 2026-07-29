@@ -1,4 +1,4 @@
-"""Reverse-paint decorative titles → visual LTR reorder."""
+"""Reverse-paint decorative titles → visual LTR reorder (stream_order)."""
 
 from __future__ import annotations
 
@@ -9,10 +9,13 @@ from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     get_char_unicode_string,
 )
-from babeldoc.format.pdf.document_il.utils.layout_helper import (
+from babeldoc.format.pdf.document_il.utils.stream_order import (
     is_stream_visually_reversed,
 )
-from babeldoc.format.pdf.document_il.utils.layout_helper import (
+from babeldoc.format.pdf.document_il.utils.stream_order import (
+    maybe_reorder_reversed_stream,
+)
+from babeldoc.format.pdf.document_il.utils.stream_order import (
     sort_chars_visual_order,
 )
 
@@ -32,26 +35,31 @@ def _ch(text: str, x: float, y: float = 100.0, w: float = 8.0) -> PdfCharacter:
     )
 
 
+def _alnum(s: str) -> str:
+    return "".join(c.lower() for c in s if c.isalnum())
+
+
 def test_who_has_orgasms_reverse_stream_detected():
-    # Paint order right-to-left: ? S M S a g r o   S a h o h W
-    # Visual LTR: W h o   h a S   o r g a S M S ?
+    # Paint order right-to-left; visual LTR: Who haS orgaSMS?
     letters = list("Who haS orgaSMS?")
     xs = list(range(100, 100 + 10 * len(letters), 10))
-    # reverse paint
     stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
+
     assert is_stream_visually_reversed(stream) is True
-    ordered = sort_chars_visual_order(stream)
+    ordered = maybe_reorder_reversed_stream(stream)
+    assert ordered is not stream  # new list when reordered
     text = get_char_unicode_string(ordered)
-    assert text.replace(" ", "").lower().startswith("who")
-    assert "orgasms" in text.replace(" ", "").lower() or "orgasms" in "".join(
-        c.char_unicode for c in ordered
-    ).lower().replace(" ", "")
+    assert _alnum(text).startswith("who")
+    assert "orgasms" in _alnum(text)
+    # Exact visual order (decorative caps preserved)
+    assert "".join(c.char_unicode for c in ordered) == "Who haS orgaSMS?"
 
 
 def test_ltr_body_not_reversed():
     word = "There is a myth"
     chars = [_ch(ch, 100 + i * 7) for i, ch in enumerate(word)]
     assert is_stream_visually_reversed(chars) is False
+    assert maybe_reorder_reversed_stream(chars) is chars  # identity
     assert [c.char_unicode for c in sort_chars_visual_order(chars)] == list(word)
 
 
@@ -61,3 +69,27 @@ def test_sort_is_idempotent_on_ltr():
     once = sort_chars_visual_order(chars)
     twice = sort_chars_visual_order(once)
     assert [c.char_unicode for c in once] == [c.char_unicode for c in twice]
+
+
+def test_long_body_not_reordered_even_if_partially_rtl():
+    """Guard: long runs skip reorder even when reverse_ratio would fire."""
+    # Build a long reverse stream — decorative guard rejects by length
+    letters = list("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789xxx")
+    assert len(letters) > 64
+    xs = list(range(100, 100 + 5 * len(letters), 5))
+    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
+    # may be reverse-dominant geometrically
+    assert is_stream_visually_reversed(stream) is True
+    # but maybe_reorder refuses long runs
+    assert maybe_reorder_reversed_stream(stream) is stream
+
+
+def test_cluster_by_y_then_x():
+    """Two visual lines: lower line first in stream, higher y on top."""
+    # PDF y grows up: line at y=120 is above y=100
+    top = [_ch(c, 100 + i * 10, y=120) for i, c in enumerate("AB")]
+    bot = [_ch(c, 100 + i * 10, y=100) for i, c in enumerate("CD")]
+    # stream paints bottom first, reverse within top
+    stream = list(reversed(bot)) + list(reversed(top))
+    ordered = sort_chars_visual_order(stream)
+    assert "".join(c.char_unicode for c in ordered) == "ABCD"

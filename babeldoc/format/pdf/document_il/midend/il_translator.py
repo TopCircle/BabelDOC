@@ -42,7 +42,7 @@ from babeldoc.format.pdf.document_il.utils.mt_token_sanitize import (
 from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
     is_placeholder_only_paragraph,
 )
-from babeldoc.format.pdf.document_il.utils.pullquote_dedupe import (
+from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
     should_skip_side_callout_mt,
 )
 from babeldoc.format.pdf.document_il.utils.style_marker_recover import StyleSpan
