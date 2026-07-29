@@ -26,10 +26,11 @@ GOLDEN_SRC = (
 )
 
 # Must appear (substring, case-insensitive) in joined paragraph unicode.
-REQUIRED_PHRASES = (
-    "pseudo-syndrome",
-    "syndrome detection",
-    "composite operation",
+# Hyphen optional: soft-hyphen recovery may normalize spacing around it.
+REQUIRED_PHRASE_RES = (
+    re.compile(r"pseudo[-\s]?syndrome", re.I),
+    re.compile(r"syndrome\s+detection", re.I),
+    re.compile(r"composite\s+operation", re.I),
 )
 
 # If present without a nearby healthy form, treat as regression.
@@ -120,12 +121,15 @@ def test_figure_golden_paragraph_finder_key_phrases(tmp_path: Path):
     joined = _joined_paragraph_unicode(dumps[0])
     assert joined.strip(), "empty paragraph unicode"
 
-    lower = joined.lower()
-    for phrase in REQUIRED_PHRASES:
-        assert phrase in lower, (
-            f"missing required phrase {phrase!r} in paragraph_finder unicode "
+    for rx in REQUIRED_PHRASE_RES:
+        assert rx.search(joined), (
+            f"missing required phrase /{rx.pattern}/ in paragraph_finder unicode "
             f"(len={len(joined)}). Sample:\n{joined[:600]}"
         )
+    # Prefer hyphenated compound kept (not glued to pseudosyndrome)
+    assert "pseudosyndrome" not in joined.lower().replace(" ", ""), (
+        "intentional compound pseudo-syndrome was glued to pseudosyndrome"
+    )
 
     for rx in FORBIDDEN_FRAGMENT_RES:
         m = rx.search(joined)

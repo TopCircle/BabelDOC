@@ -380,10 +380,8 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
     result = result.replace("​", "")   # ZERO-WIDTH SPACE (remove)
     result = result.replace(" ", " ")  # NARROW NO-BREAK SPACE
     result = result.replace(" ", " ")  # MEDIUM MATHEMATICAL SPACE
-    # TeX soft hyphens after style regroup: ``ap- proximation`` → ``approximation``
-    # (also expands any remaining Latin ligatures inside the joined text)
-    result = text_recovery.rejoin_soft_hyphens_in_text(result)
-    result = text_recovery.expand_latin_ligatures(result)
+    # Soft hyphens, ligature gaps, known mid-word splits (OA di/ff, cli toral)
+    result = text_recovery.recover_latin_word_fragments(result)
     normalize = unicodedata.normalize("NFKC", result)
     result = SPACE_REGEX.sub(" ", normalize).strip()
     return result

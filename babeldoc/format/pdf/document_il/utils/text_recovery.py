@@ -254,12 +254,54 @@ def gap_is_word_boundary(
     return False
 
 
+# Continuations that look like soft-hyphen tails (not full words).
+_SOFT_HYPHEN_SUFFIXES = (
+    "tion",
+    "sion",
+    "ness",
+    "ment",
+    "able",
+    "ible",
+    "ence",
+    "ance",
+    "ally",
+    "ially",
+    "ing",
+    "ers",
+    "ies",
+    "ous",
+    "ive",
+    "ized",
+    "ised",
+    "ular",  # particular → …
+    "ent",
+)
+_SOFT_HYPHEN_DOUBLE_START = frozenset(
+    {
+        "ff",
+        "fi",
+        "fl",
+        "ss",
+        "ll",
+        "tt",
+        "pp",
+        "rr",
+        "nn",
+        "mm",
+        "cc",
+        "dd",
+        "gg",
+    }
+)
+
+
 def should_soft_rejoin(continuation: str | None) -> bool:
     """Whether ``word- cont`` is a TeX soft hyphen that should glue.
 
-    Rejoin only pure-lowercase, non-standalone tails (``proximation``,
-    ``ence``).  Refuse free English words (``actually``) and decorative
-    mixed/Title case (``acTuaLLy``).
+    Rejoin tails like ``proximation`` / ``fferent`` / ``ence``.  Refuse:
+      * free English words (``actually``)
+      * decorative mixed case (``acTuaLLy``)
+      * full words after intentional hyphens (``pseudo- syndrome`` → keep)
     """
     if not continuation:
         return False
@@ -268,7 +310,16 @@ def should_soft_rejoin(continuation: str | None) -> bool:
         return False
     if is_standalone_en_word(continuation):
         return False
-    return True
+    # Ligature-style / double-consonant line wraps (di- fferent)
+    if len(continuation) >= 2 and continuation[:2] in _SOFT_HYPHEN_DOUBLE_START:
+        return True
+    if any(continuation.endswith(s) for s in _SOFT_HYPHEN_SUFFIXES):
+        return True
+    # Short pure tails (ing/ed already partially covered); keep len 2–5 open
+    if 2 <= len(continuation) <= 5:
+        return True
+    # Longer tokens without suffix shape are full words (syndrome, detection)
+    return False
 
 
 def is_soft_hyphen_line_wrap(
@@ -313,3 +364,120 @@ def rejoin_soft_hyphens_in_text(text: str) -> str:
         return m.group(0)  # keep hyphen + space
 
     return SOFT_HYPHEN_CANDIDATE_RE.sub(_sub, text)
+
+
+# After ligature expand: ``di fferent`` / ``di ﬀerent`` (false word gap).
+_LIGATURE_SPACE_CONT_RE = regex.compile(
+    r"(?<=[A-Za-z])\s+((?:ff|fi|fl|ffi|ffl)[a-z]*)",
+    regex.IGNORECASE,
+)
+
+# Hyphen without space: ``di-fferent`` / ``ap-proximation``.
+_SOFT_HYPHEN_TIGHT_RE = regex.compile(
+    r"(?<=[A-Za-z])-([a-z]{2,})"
+)
+
+# Full words often split by PDF gaps / soft hyphens in design ebooks (OA dual).
+# Only join when prefix+suffix exactly matches — avoids ``the cult`` / ``to the``.
+_KNOWN_SPLIT_WORDS = frozenset(
+    {
+        "different",
+        "difficult",
+        "clitoral",
+        "proficient",
+        "sufficient",
+        "efficient",
+        "efficiently",
+        "effectively",
+        "exceptionally",
+        "approximately",
+        "discrimination",
+        "stimulation",
+        "measurement",
+        "characteristics",
+        "particularly",
+        "immediately",
+        "successfully",
+        "overwhelmingly",
+        "understanding",
+        "selfunderstanding",  # after hyphen strip variants
+    }
+)
+
+def rejoin_ligature_space_splits(text: str) -> str:
+    """Glue ``di fferent`` / ``di ﬀerent`` after ligature expand (no hyphen)."""
+    if not text:
+        return text
+    text = expand_latin_ligatures(text)
+
+    def _sub(m: regex.Match[str]) -> str:
+        cont = m.group(1)
+        # Keep original match casing of continuation as expanded ascii lower/upper
+        return cont
+
+    return _LIGATURE_SPACE_CONT_RE.sub(_sub, text)
+
+
+def rejoin_soft_hyphen_tight(text: str) -> str:
+    """Glue ``di-fferent`` when continuation passes :func:`should_soft_rejoin`."""
+    if not text or "-" not in text:
+        return text
+
+    def _sub(m: regex.Match[str]) -> str:
+        cont = m.group(1)
+        if should_soft_rejoin(cont):
+            return cont
+        return m.group(0)
+
+    return _SOFT_HYPHEN_TIGHT_RE.sub(_sub, text)
+
+
+def rejoin_known_split_latin_words(text: str) -> str:
+    """Glue ``cli toral`` / ``di fferent`` when the joined token is a known word.
+
+    Tokenizes into alpha / non-alpha runs and joins adjacent alpha tokens
+    separated only by whitespace when ``left+right`` is in the dictionary.
+    Scans left-to-right with restart so ``direct cli toral`` becomes
+    ``direct clitoral`` (not a failed ``directcli``).
+    """
+    if not text:
+        return text
+    text = expand_latin_ligatures(text)
+    # Keep whitespace runs as separate tokens
+    parts: list[str] = regex.findall(r"[A-Za-z]+|\s+|[^A-Za-z\s]+", text)
+    changed = True
+    while changed:
+        changed = False
+        i = 0
+        while i < len(parts) - 2:
+            left, mid, right = parts[i], parts[i + 1], parts[i + 2]
+            if (
+                left.isalpha()
+                and right.isalpha()
+                and mid.isspace()
+                and right.islower()
+                and (left + right).lower() in _KNOWN_SPLIT_WORDS
+            ):
+                parts[i] = left + right
+                del parts[i + 1 : i + 3]
+                changed = True
+                # restart from i to allow chain joins
+                continue
+            i += 1
+    return "".join(parts)
+
+
+def recover_latin_word_fragments(text: str) -> str:
+    """Full post-pass: ligatures, soft hyphens, known mid-word space splits.
+
+    Call after assembling paragraph unicode and before MT.
+    """
+    if not text:
+        return text
+    text = expand_latin_ligatures(text)
+    text = rejoin_soft_hyphens_in_text(text)
+    text = rejoin_soft_hyphen_tight(text)
+    text = rejoin_ligature_space_splits(text)
+    text = rejoin_known_split_latin_words(text)
+    text = expand_latin_ligatures(text)
+    return text
