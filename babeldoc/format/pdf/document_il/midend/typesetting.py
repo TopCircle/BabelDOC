@@ -316,11 +316,10 @@ class TypesettingUnit:
             assert font_size, "Font size must be provided when unicode is provided"
             assert style, "Style must be provided when unicode is provided"
             assert len(unicode) == 1, "Unicode must be a single character"
-            # Page-level text often has paragraph.xobj_id is None. Downstream
-            # (render, font maps) treat -1 as "page content stream" — same
-            # convention as layout_parser / il_translator debug paragraphs.
-            if xobj_id is None:
-                xobj_id = -1
+            # Page-level paragraphs often omit xobj_id (None → page stream).
+            from babeldoc.format.pdf.document_il.utils.font_resolve import (
+                normalize_xobj_id,
+            )
 
             self.font = font
             if font is not None and hasattr(font, "font_id"):
@@ -334,7 +333,7 @@ class TypesettingUnit:
 
             self.font_size = font_size
             self.style = style
-            self.xobj_id = xobj_id
+            self.xobj_id = normalize_xobj_id(xobj_id)
 
     def try_resue_cache(self, old_tu: TypesettingUnit):
         if old_tu.is_cjk_char_cache is not None:
@@ -3822,55 +3821,13 @@ class Typesetting:
             return []
         result = []
 
+        from babeldoc.format.pdf.document_il.utils.font_resolve import (
+            resolve_style_font_for_typesetting,
+        )
+
         @cache
         def get_font(font_id: str, xobj_id: int | None):
-            """Resolve style font_id without KeyError on missing IDs (e.g. F33).
-
-            Design PDFs sometimes reference a page/xobj font that was not
-            registered on ``page.pdf_font`` (stripped subset, orphan style).
-            Hard ``fonts[font_id]`` aborted the whole job mid-Typesetting.
-            Fall back: xobj map → page map → any PdfFont on the page →
-            synthetic PdfFont so FontMapper still has a style probe.
-            """
-            # 1) XObject-local map (dict[str, PdfFont])
-            if xobj_id is not None and xobj_id in fonts:
-                font_map = fonts[xobj_id]
-                if isinstance(font_map, dict):
-                    if font_id in font_map:
-                        return font_map[font_id]
-                    # miss on xobj — try page-level below
-            # 2) Page-level or BabelDOC-injected font id
-            hit = fonts.get(font_id) if font_id is not None else None
-            if hit is not None and not isinstance(hit, dict):
-                return hit
-            # 3) Any real PdfFont already on the page
-            for v in fonts.values():
-                if isinstance(v, il_version_1.PdfFont):
-                    logger.warning(
-                        "typesetting: font_id %r missing (xobj=%s); "
-                        "fallback to page font %r",
-                        font_id,
-                        xobj_id,
-                        v.font_id,
-                    )
-                    return v
-            # 4) Synthetic style probe — FontMapper.map uses bold/serif only
-            logger.warning(
-                "typesetting: font_id %r missing (xobj=%s); "
-                "using synthetic PdfFont (no page fonts available)",
-                font_id,
-                xobj_id,
-            )
-            return il_version_1.PdfFont(
-                name=font_id or "unknown",
-                font_id=font_id or "base",
-                xref_id=0,
-                encoding_length=2,
-                bold=False,
-                italic=False,
-                monospace=False,
-                serif=True,
-            )
+            return resolve_style_font_for_typesetting(fonts, font_id, xobj_id)
 
         for composition in paragraph.pdf_paragraph_composition:
             if composition is None:
@@ -3941,12 +3898,7 @@ class Typesetting:
                         o = ord(ch)
                         return not (o < 32 or o == 127 or 0x80 <= o <= 0x9F)
 
-                    # None → page stream (-1); TypesettingUnit also defaults.
-                    unit_xobj = (
-                        paragraph.xobj_id
-                        if paragraph.xobj_id is not None
-                        else -1
-                    )
+                    # xobj_id=None → page stream via TypesettingUnit / normalize
                     result.extend(
                         [
                             TypesettingUnit(
@@ -3958,7 +3910,7 @@ class Typesetting:
                                 original_font=font,
                                 font_size=style.font_size,
                                 style=style,
-                                xobj_id=unit_xobj,
+                                xobj_id=paragraph.xobj_id,
                                 debug_info=composition.pdf_same_style_unicode_characters.debug_info
                                 or False,
                             )

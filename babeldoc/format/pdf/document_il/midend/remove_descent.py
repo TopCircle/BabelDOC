@@ -81,20 +81,16 @@ class RemoveDescent:
             for font in xobj.pdf_font:
                 fonts[xobj.xobj_id][font.font_id] = font
 
+        from babeldoc.format.pdf.document_il.utils.font_resolve import (
+            resolve_style_font,
+        )
+
         @cache
         def get_font(
             font_id: str,
             xobj_id: int | None = None,
         ) -> il_version_1.PdfFont | None:
-            if xobj_id is not None and xobj_id in fonts:
-                font_map = fonts[xobj_id]
-                if isinstance(font_map, dict) and font_id in font_map:
-                    return font_map[font_id]
-            return (
-                fonts.get(font_id)
-                if isinstance(fonts.get(font_id), il_version_1.PdfFont)
-                else None
-            )
+            return resolve_style_font(fonts, font_id, xobj_id)
 
         # Process all standalone characters in the page
         for char in page.pdf_character:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
@@ -12,40 +11,39 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
 from babeldoc.format.pdf.document_il.il_version_1 import PdfSameStyleUnicodeCharacters
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
+from babeldoc.format.pdf.document_il.midend.typesetting import TypesettingUnit
+from babeldoc.format.pdf.document_il.utils.font_resolve import PAGE_STREAM_XOBJ_ID
 
 
 def _typesetter() -> Typesetting:
     cfg = MagicMock()
     cfg.lang_out = "zh-CN"
     cfg.primary_font_family = None
-    # FontMapper is heavy; stub map to return a dummy mupdf-like font object
     ts = object.__new__(Typesetting)
     ts.translation_config = cfg
-    ts.is_cjk = False  # skip CJK word merge path
+    ts.is_cjk = False
     ts.font_mapper = MagicMock()
     dummy = MagicMock()
     dummy.char_lengths = MagicMock(return_value=(10.0,))
-    # TypesettingUnit.width may call into the mapped font
     dummy.has_glyph = MagicMock(return_value=True)
     ts.font_mapper.map = MagicMock(return_value=dummy)
     return ts
 
 
-def test_create_typesetting_units_missing_font_id_falls_back():
-    """Style references F33 which is not in page fonts → no KeyError."""
+def test_create_typesetting_units_missing_font_id_uses_synthetic():
+    """Style F33 not in page fonts → synthetic probe, no KeyError."""
     ts = _typesetter()
     known = PdfFont(
         name="Helvetica",
         font_id="F1",
         xref_id=1,
         encoding_length=1,
-        bold=False,
+        bold=True,  # must NOT be used as random fallback
         italic=False,
         monospace=False,
         serif=True,
     )
     fonts = {"F1": known}
-
     style = PdfStyle(font_id="F33", font_size=12.0, graphic_state=None)
     comp = PdfParagraphComposition(
         pdf_same_style_unicode_characters=PdfSameStyleUnicodeCharacters(
@@ -60,20 +58,19 @@ def test_create_typesetting_units_missing_font_id_falls_back():
         unicode="你好",
         xobj_id=0,
     )
-
     units = ts.create_typesetting_units(para, fonts)
-    assert len(units) == 2  # two CJK chars
-    # FontMapper.map received the fallback PdfFont (F1), not KeyError
-    assert ts.font_mapper.map.called
+    assert len(units) == 2
     original_font = ts.font_mapper.map.call_args[0][0]
-    assert original_font.font_id == "F1"
+    assert original_font.font_id == "F33"
+    assert original_font.bold is False  # synthetic, not F1 bold
 
 
-def test_create_typesetting_units_missing_xobj_font_falls_back_to_page():
+def test_create_typesetting_units_xobj_miss_falls_back_to_page_same_id():
+    """Xobj map lacks id but page has it under same font_id."""
     ts = _typesetter()
     known = PdfFont(
         name="Helvetica",
-        font_id="F1",
+        font_id="F33",
         xref_id=1,
         encoding_length=1,
         bold=False,
@@ -81,9 +78,8 @@ def test_create_typesetting_units_missing_xobj_font_falls_back_to_page():
         monospace=False,
         serif=True,
     )
-    # xobj 7 has its own map without F33; page has F1
     fonts = {
-        "F1": known,
+        "F33": known,
         7: {"F2": known},
     }
     style = PdfStyle(font_id="F33", font_size=11.0, graphic_state=None)
@@ -102,13 +98,12 @@ def test_create_typesetting_units_missing_xobj_font_falls_back_to_page():
     )
     units = ts.create_typesetting_units(para, fonts)
     assert len(units) == 2
-    original_font = ts.font_mapper.map.call_args[0][0]
-    assert original_font.font_id == "F1"
+    assert ts.font_mapper.map.call_args[0][0] is known
 
 
 def test_create_typesetting_units_no_page_fonts_uses_synthetic():
     ts = _typesetter()
-    fonts = {}  # empty
+    fonts = {}
     style = PdfStyle(font_id="F33", font_size=12.0, graphic_state=None)
     comp = PdfParagraphComposition(
         pdf_same_style_unicode_characters=PdfSameStyleUnicodeCharacters(
@@ -127,26 +122,20 @@ def test_create_typesetting_units_no_page_fonts_uses_synthetic():
     assert len(units) == 1
     original_font = ts.font_mapper.map.call_args[0][0]
     assert original_font.font_id == "F33"
-    assert original_font.name == "F33"
 
 
 def test_create_typesetting_units_none_xobj_id_defaults_to_page_stream():
-    """Page-level paragraphs often have xobj_id=None — must not assert."""
-    from babeldoc.format.pdf.document_il.midend.typesetting import TypesettingUnit
-
     style = PdfStyle(font_id="F1", font_size=12.0, graphic_state=None)
-    dummy_font = MagicMock()
     unit = TypesettingUnit(
         unicode="中",
-        font=dummy_font,
+        font=MagicMock(),
         original_font=None,
         font_size=12.0,
         style=style,
         xobj_id=None,
     )
-    assert unit.xobj_id == -1
+    assert unit.xobj_id == PAGE_STREAM_XOBJ_ID
 
-    # Full create_typesetting_units path with paragraph.xobj_id is None
     ts = _typesetter()
     known = PdfFont(
         name="Helvetica",
@@ -174,5 +163,4 @@ def test_create_typesetting_units_none_xobj_id_defaults_to_page_stream():
     )
     units = ts.create_typesetting_units(para, fonts)
     assert len(units) == 2
-    assert all(u.xobj_id == -1 for u in units)
-
+    assert all(u.xobj_id == PAGE_STREAM_XOBJ_ID for u in units)
