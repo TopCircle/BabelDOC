@@ -167,7 +167,28 @@ class TestPreExpandNarrowBox:
         out = Typesetting._pre_expand_narrow_box(
             RightBlocked(), box, para, _page(), units, apply_layout=True
         )
-        # get_max_bottom_space returns 40; implementation uses min_y = that + 2
+        # get_max_bottom_space returns 40; box_expand uses min_y = that + 2
         assert out.y == pytest.approx(42.0)
         assert out.x2 - out.x == pytest.approx(105.0)
         assert para.box is out
+
+    def test_scale_search_axis_order_matches_prefer_down(self):
+        """Scale loop must use the same prefer_down policy as pre-expand."""
+        from babeldoc.format.pdf.document_il.utils.box_expand import (
+            expand_axis_order,
+            prefer_expand_down,
+        )
+
+        narrow = Box(x=102.0, y=78.0, x2=207.0, y2=168.0)
+        prefer = prefer_expand_down(
+            narrow, ocr_mode=False, get_max_right=lambda b: b.x2
+        )
+        assert prefer is True
+        assert expand_axis_order(prefer_down=prefer)[0] == "down"
+        # Wide body with free right → right first
+        wide = Box(x=50.0, y=100.0, x2=500.0, y2=200.0)
+        prefer_w = prefer_expand_down(
+            wide, ocr_mode=False, get_max_right=lambda b: 550
+        )
+        assert prefer_w is False
+        assert expand_axis_order(prefer_down=prefer_w)[0] == "right"
