@@ -5,7 +5,7 @@
 > **原则**：每个 PR 可独立 merge、有明确验收页与测试；**先修 IL 输入，再修 skip 策略，最后修 box 重排**。  
 > **禁止**：在未过 figure IL 不变性 + OA 抽样页前扩大 `stream_order` 触发面。
 
-**当前代码基线**：`0.6.4.37`（A recovery + C1 skip_report + B title + D narrow_callout_mode；figure IL invariants）
+**当前代码基线**：`0.6.4.37`（A recovery + B title + C1 report + C2 safer skip + D narrow_callout；figure IL invariants）
 
 ---
 
@@ -220,9 +220,10 @@ pytest tests/test_figure_il_invariants.py tests/test_stream_visual_order.py \
 | Sprint | PR | 版本暗示 |
 |--------|-----|----------|
 | 1 | **A** 软连字符/连字 | 0.6.4.33 |
-| 1 | **C** skip 审计（可先只做 report，不改行为） | 0.6.4.34 |
+| 1 | **C1** skip 审计 report | 0.6.4.34 |
 | 2 | **B** 标题/页眉 | 0.6.4.35 |
-| 2 | **D** 窄旁注 | 0.6.4.37 |
+| 2 | **D** 窄旁注 | 0.6.4.36 |
+| 2 | **C2** 收紧误 skip | 0.6.4.37 |
 | 3 | **E** glossary + 全量重生 dual 3–120 对照 | — |
 
 **C 可拆两刀：**  
