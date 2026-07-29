@@ -303,11 +303,15 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
             continue
 
         # use unicode regex to replace all space with " "
+        raw_u = chars[i].char_unicode or ""
+        # Expand Latin ligatures (ﬁ/ﬂ/ﬀ/ﬃ) before NFKC so residual EN scans
+        # and DeepLX never see presentation-form codepoints.
+        raw_u = text_recovery.expand_latin_ligatures(raw_u)
         unicode_chars.append(
             regex.sub(
                 r"\s+",
                 " ",
-                unicodedata.normalize("NFKC", chars[i].char_unicode),
+                unicodedata.normalize("NFKC", raw_u),
             )
         )
 
@@ -377,7 +381,9 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
     result = result.replace(" ", " ")  # NARROW NO-BREAK SPACE
     result = result.replace(" ", " ")  # MEDIUM MATHEMATICAL SPACE
     # TeX soft hyphens after style regroup: ``ap- proximation`` → ``approximation``
+    # (also expands any remaining Latin ligatures inside the joined text)
     result = text_recovery.rejoin_soft_hyphens_in_text(result)
+    result = text_recovery.expand_latin_ligatures(result)
     normalize = unicodedata.normalize("NFKC", result)
     result = SPACE_REGEX.sub(" ", normalize).strip()
     return result

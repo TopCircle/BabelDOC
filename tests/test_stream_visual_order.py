@@ -93,3 +93,20 @@ def test_cluster_by_y_then_x():
     stream = list(reversed(bot)) + list(reversed(top))
     ordered = sort_chars_visual_order(stream)
     assert "".join(c.char_unicode for c in ordered) == "ABCD"
+
+
+def test_1chapter_misplaced_digit_becomes_chapter_1():
+    """OA decorative '1' painted first at right edge → visual 'Chapter 1'."""
+    # Stream: digit at x=199 first, then Chapter LTR from x=44 (tight kerning)
+    chapter = list("Chapter")
+    xs_ch = [44.0 + i * 9 for i in range(len(chapter))]
+    stream = [_ch("1", 199.0)] + [_ch(c, x) for c, x in zip(chapter, xs_ch)]
+    assert "".join(c.char_unicode for c in stream) == "1Chapter"
+    ordered = maybe_reorder_reversed_stream(stream)
+    assert ordered is not stream
+    assert "".join(c.char_unicode for c in ordered) == "Chapter1"
+    text = get_char_unicode_string(ordered)
+    alnum = "".join(c for c in text.lower() if c.isalnum())
+    assert alnum.startswith("chapter")
+    assert alnum.endswith("1")
+    assert not alnum.startswith("1chapter")

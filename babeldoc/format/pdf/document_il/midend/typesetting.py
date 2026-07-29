@@ -1549,11 +1549,27 @@ class Typesetting:
             # Order: right first (short EN titles → longer CJK), then down.
             # OCR dual-layer: expand down first so body can use the white-fill
             # height instead of only growing sideways.
+            # Figure-adjacent narrow columns (right blocked): expand down first
+            # so CJK reflows more lines instead of crushing into a glyph tower.
             # Trigger expansion as soon as scale drops below ~full size, not
             # only after scale < 0.7 (that was too late for "Edging"-class titles).
             if expand_space_flag < 2 and scale >= 0.85:
                 space_expanded = False
-                expand_down_first = ocr_mode
+                box_w_now = (
+                    (box.x2 - box.x)
+                    if box and box.x2 is not None and box.x is not None
+                    else 0.0
+                )
+                right_blocked = False
+                try:
+                    right_blocked = (
+                        self.get_max_right_space(box, page) - 5
+                    ) <= (box.x2 + 1)
+                except Exception:
+                    right_blocked = False
+                expand_down_first = ocr_mode or (
+                    box_w_now < 150.0 and right_blocked
+                )
                 retry_scale = 1.0 if ocr_mode else initial_scale
 
                 if expand_space_flag == 0:
@@ -2202,11 +2218,15 @@ class Typesetting:
         typesetting_units: list[TypesettingUnit],
         apply_layout: bool,
     ) -> Box:
-        """Widen a tight original box when translated content is much longer.
+        """Widen (or deepen) a tight original box when translated content is longer.
 
         Classic case: English section heading "Edging" (~50pt wide) translates
         to "边缘控制（Edging）" which needs ~120pt+ at full size. Fitting the
         original box forces scale ~0.5 and ugly mid-word line breaks.
+
+        Figure-adjacent body columns (OA p7 left strip ~105pt): right is blocked
+        by the photo, so expand **down** early so CJK can reflow more lines
+        instead of crushing scale into a one-glyph tower.
         """
         if not box or not typesetting_units:
             return box
@@ -2227,32 +2247,62 @@ class Typesetting:
         label = (getattr(paragraph, "layout_label", None) or "").lower()
         # Short headings: expand sooner (1.15x). Body needs clearer overflow
         # (1.5x) so normal paragraphs are not stretched.
+        # Ultra-narrow body columns (figure-adjacent): trigger at 1.2x so we
+        # attempt right-then-down expansion before the scale search.
         is_short_heading = len(text) <= 40 or (
             label in ("title", "section_header") and len(text) <= 48
         )
-        ratio_need = 1.15 if is_short_heading else 1.5
+        is_narrow_column = box_w < 150.0
+        if is_short_heading:
+            ratio_need = 1.15
+        elif is_narrow_column:
+            ratio_need = 1.2
+        else:
+            ratio_need = 1.5
         if content_w < box_w * ratio_need:
             return box
 
+        # Prefer right expand; if blocked and box is narrow, deepen instead.
+        max_x = box.x2
         try:
             max_x = self.get_max_right_space(box, page) - 5
         except Exception:
-            return box
+            max_x = box.x2
 
-        if max_x <= box.x2 + 1:
-            return box
+        if max_x > box.x2 + 1:
+            expanded = Box(x=box.x, y=box.y, x2=max_x, y2=box.y2)
+            logger.debug(
+                "Pre-expanded narrow paragraph box: width %.1f → %.1f "
+                "(content≈%.1f) text=%r",
+                box_w,
+                max_x - box.x,
+                content_w,
+                (paragraph.unicode or "")[:40],
+            )
+            if apply_layout:
+                paragraph.box = expanded
+            return expanded
 
-        expanded = Box(x=box.x, y=box.y, x2=max_x, y2=box.y2)
-        logger.debug(
-            "Pre-expanded narrow paragraph box: width %.1f → %.1f (content≈%.1f) text=%r",
-            box_w,
-            max_x - box.x,
-            content_w,
-            (paragraph.unicode or "")[:40],
-        )
-        if apply_layout:
-            paragraph.box = expanded
-        return expanded
+        # Right blocked (typical figure-adjacent column): grow downward.
+        if is_narrow_column or is_short_heading:
+            try:
+                min_y = self.get_max_bottom_space(box, page) + 2
+            except Exception:
+                return box
+            if min_y < box.y - 1:
+                expanded = Box(x=box.x, y=min_y, x2=box.x2, y2=box.y2)
+                logger.debug(
+                    "Pre-expanded narrow column downward: height %.1f → %.1f "
+                    "text=%r",
+                    box.y2 - box.y,
+                    box.y2 - min_y,
+                    (paragraph.unicode or "")[:40],
+                )
+                if apply_layout:
+                    paragraph.box = expanded
+                return expanded
+
+        return box
 
     def _ocr_pre_expand_box(
         self,

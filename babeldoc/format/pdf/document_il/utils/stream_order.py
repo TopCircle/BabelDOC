@@ -1,10 +1,16 @@
 """Visual reading-order repair for reverse-paint PDF text streams.
 
-Design PDFs often paint decorative titles (``WHO HAS ORGASMS?``) as
-per-character objects in reverse paint order.  Stream unicode then
-becomes ``?SMSrgao SahWho``.  This module detects reverse-dominant lines
-and reorders characters top-to-bottom, left-to-right before unicode
-assembly and MT.
+Design PDFs often paint decorative titles as per-character objects in
+non-reading order:
+
+* Full reverse: ``WHO HAS ORGASMS?`` → stream ``?SMSrgao SahWho``
+* Misplaced chapter digit: large ``1`` painted first at the right edge →
+  stream ``1Chapter`` instead of visual ``Chapter 1``
+* Two segments: ``Love and Sex`` then left-side ``Chapter 1`` → stream
+  ``Love and Sex Chapter 1`` while visual LTR is ``Chapter 1 Love and Sex``
+
+This module reorders short decorative runs to top-to-bottom / left-to-right
+before unicode assembly and MT.
 
 Owns only geometry/order; callers decide when to apply.
 """
@@ -23,11 +29,13 @@ _DEFAULT_MIN_PAIRS = 4
 # happen to have a few RTL pairs (zigzag / multi-column noise).
 _MAX_REORDER_CHARS = 64
 _MIN_SINGLE_LETTER_RATIO = 0.55
+# Out-of-order paint with few decreasing pairs (e.g. 1Chapter: 1/8 = 0.12)
+# still differs from visual LTR — catch via order identity, not only ratio.
 
 
 def _resolve_char_box(char: PdfCharacter) -> Box | None:
     """Prefer visual_bbox when it overlaps pdf box (same policy as
-    ``ParagraphFinder._get_char_sort_key``); else fall back to either.
+    historical ``ParagraphFinder._get_char_sort_key``); else fall back.
     """
     visual = None
     vb = getattr(char, "visual_bbox", None)
@@ -134,7 +142,6 @@ def sort_chars_visual_order(
         else:
             items.append((i, xy[1], xy[0], ch))
 
-    # Cluster by y first (bucket), preserve top-to-bottom via negated bucket
     buckets: dict[int, list[tuple[int, float, float, PdfCharacter]]] = {}
     for item in items:
         bucket = int(round(item[1] / y_tol))
@@ -149,18 +156,27 @@ def sort_chars_visual_order(
     return ordered
 
 
+def _same_order(a: list[PdfCharacter], b: list[PdfCharacter]) -> bool:
+    return len(a) == len(b) and all(x is y for x, y in zip(a, b))
+
+
 def maybe_reorder_reversed_stream(
     chars: list[PdfCharacter],
 ) -> list[PdfCharacter]:
-    """If stream is reverse-dominant decorative text, return visual LTR order.
+    """If decorative stream is not visual LTR, return sorted order.
 
-    Otherwise returns the same list object (no copy) so callers can detect
-    identity and skip ``update_line_data``.
+    Covers reverse-paint (``?SMSrgao SahWho``), misplaced chapter digits
+    (``1Chapter`` → ``Chapter 1``), and two-segment titles whose paint
+    order is not left-to-right.  Non-decorative / long body is left alone.
+
+    Returns the same list object when no change is needed so callers can
+    detect identity and skip ``update_line_data``.
     """
     if not chars:
         return chars
     if not _looks_like_decorative_run(chars):
         return chars
-    if not is_stream_visually_reversed(chars):
+    ordered = sort_chars_visual_order(chars)
+    if _same_order(ordered, chars):
         return chars
-    return sort_chars_visual_order(chars)
+    return ordered

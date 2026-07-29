@@ -132,6 +132,9 @@ class TestPreExpandNarrowBox:
             def get_max_right_space(self, current_box, page):
                 return current_box.x2  # no room
 
+            def get_max_bottom_space(self, current_box, page):
+                return current_box.y  # no room down either
+
         box = Box(x=56.0, y=97.4, x2=105.1, y2=114.0)
         units = [SimpleNamespace(width=12.0) for _ in range(12)]
         para = SimpleNamespace(
@@ -143,3 +146,28 @@ class TestPreExpandNarrowBox:
         )
         assert abs((out.x2 - out.x) - 49.1) < 0.01
         assert para.box is None
+
+    def test_expands_down_when_right_blocked_narrow_column(self):
+        """OA p7 left column ~105pt: figure blocks right → deepen box."""
+
+        class RightBlocked:
+            def get_max_right_space(self, current_box, page):
+                return current_box.x2
+
+            def get_max_bottom_space(self, current_box, page):
+                return 40.0  # room below
+
+        box = Box(x=102.0, y=78.0, x2=207.0, y2=168.0)  # w=105
+        units = [SimpleNamespace(width=8.0) for _ in range(40)]  # 320pt content
+        para = SimpleNamespace(
+            unicode="Women like different things beside the photo column",
+            box=None,
+            layout_label="plain text",
+        )
+        out = Typesetting._pre_expand_narrow_box(
+            RightBlocked(), box, para, _page(), units, apply_layout=True
+        )
+        # get_max_bottom_space returns 40; implementation uses min_y = that + 2
+        assert out.y == pytest.approx(42.0)
+        assert out.x2 - out.x == pytest.approx(105.0)
+        assert para.box is out

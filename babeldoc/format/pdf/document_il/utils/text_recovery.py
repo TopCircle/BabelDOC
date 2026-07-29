@@ -4,6 +4,10 @@ PDF often omits explicit space glyphs; TeX author lines use ~3.6pt gaps that
 fall just under the classic 0.5× width threshold (``S.Hazra`` / ``andM.H.``).
 Line wraps also leave soft hyphens (``ap-`` + ``proximation``).
 
+Latin presentation ligatures (``ﬁ``/``ﬂ``/``ﬀ``/``ﬃ``/``ﬄ``) sometimes
+survive as single codepoints and break DeepLX / residual EN scans; expand
+them to ASCII sequences before MT.
+
 Used by ``layout_helper.get_char_unicode_string`` and dummy-space insertion.
 """
 
@@ -12,6 +16,30 @@ from __future__ import annotations
 import regex
 
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
+
+# Latin presentation forms (FB00–FB04). NFKC usually expands these; keep an
+# explicit map so partial/broken pipelines and char-level paths still recover.
+_LATIN_LIGATURES = str.maketrans(
+    {
+        "\ufb00": "ff",  # ﬀ
+        "\ufb01": "fi",  # ﬁ
+        "\ufb02": "fl",  # ﬂ
+        "\ufb03": "ffi",  # ﬃ
+        "\ufb04": "ffl",  # ﬄ
+        "\ufb05": "ft",  # long s + t (rare)
+        "\ufb06": "st",  # st
+    }
+)
+
+
+def expand_latin_ligatures(text: str | None) -> str:
+    """Expand Latin presentation ligatures to ASCII letter sequences.
+
+    Safe on ``None``/empty. Idempotent for already-expanded text.
+    """
+    if not text:
+        return "" if text is None else text
+    return text.translate(_LATIN_LIGATURES)
 
 # Default: gap > 50% of the *wider* glyph (avoids "There"→"The re").
 SPACE_WIDTH_RATIO = 0.5
@@ -268,12 +296,18 @@ def rejoin_soft_hyphens_in_text(text: str) -> str:
 
     Keeps intentional dashes before free English words / decorative casing:
     ``Trigasm- actually`` / ``TrigasM- acTuaLLy`` must not glue.
+
+    Ligatures in the continuation (``di- ﬃcult``) are expanded first so the
+    free-word blocklist and rejoin logic see ``fficult`` not a private-use char.
     """
-    if not text or "-" not in text:
+    if not text:
+        return text
+    text = expand_latin_ligatures(text)
+    if "-" not in text:
         return text
 
     def _sub(m: regex.Match[str]) -> str:
-        cont = m.group(1)
+        cont = expand_latin_ligatures(m.group(1))
         if should_soft_rejoin(cont):
             return cont  # drop "- " and glue
         return m.group(0)  # keep hyphen + space
