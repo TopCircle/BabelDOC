@@ -110,3 +110,46 @@ def test_1chapter_misplaced_digit_becomes_chapter_1():
     assert alnum.startswith("chapter")
     assert alnum.endswith("1")
     assert not alnum.startswith("1chapter")
+
+
+def test_descender_glyphs_stay_on_same_line_as_peers():
+    """arXiv body: p/y have lower box.y but same topline — must not split.
+
+    Regression: figure golden dual scrambled ``pseudo-syndrome`` → ``seudo``
+    when mid-Y clustering put descenders in another bucket.
+    """
+    # Tops aligned at y2=360; bottoms differ for descenders
+    def _glyph(ch: str, x: float, *, descender: bool = False) -> PdfCharacter:
+        if descender:
+            box = Box(x=x, y=353.5, x2=x + 5, y2=360.0)  # lower bottom
+        else:
+            box = Box(x=x, y=355.4, x2=x + 5, y2=360.0)
+        return PdfCharacter(
+            pdf_character_id=None,
+            char_unicode=ch,
+            box=box,
+            visual_bbox=VisualBbox(box=box),
+            pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+            scale=1.0,
+            advance=5.0,
+            vertical=False,
+            xobj_id=None,
+        )
+
+    word = list("pseudo-syndrome")
+    # p and y are descenders
+    desc = {"p", "y", "g", "q"}
+    stream = [
+        _glyph(ch, 100 + i * 6, descender=(ch in desc)) for i, ch in enumerate(word)
+    ]
+    # LTR body line must not be rewritten
+    assert maybe_reorder_reversed_stream(stream) is stream
+    ordered = sort_chars_visual_order(stream)
+    assert "".join(c.char_unicode for c in ordered) == "pseudo-syndrome"
+
+
+def test_ltr_body_line_not_reordered_when_sort_would_shuffle_noise():
+    """Even if decorative-like (single letters), pure LTR body is untouched."""
+    word = list("compositeoperation")
+    chars = [_ch(ch, 50 + i * 5) for i, ch in enumerate(word)]
+    assert maybe_reorder_reversed_stream(chars) is chars
