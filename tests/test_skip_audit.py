@@ -172,8 +172,9 @@ def test_region_skip_reason_header_band():
         mediabox=Box(x=0, y=0, x2=612, y2=792),
         cropbox=SimpleNamespace(box=Box(x=0, y=0, x2=612, y2=792)),
     )
+    # Short chrome — still header-skipped (PR-C2)
     header = _para(
-        "Chapter 1 Learn The Trigasm", y=750, y2=780, layout_label="plain text"
+        "Learn The Trigasm", y=750, y2=780, layout_label="plain text"
     )
     title = _para("Love and Sex", y=750, y2=780, layout_label="title")
     body = _para("Body text in the middle.", y=400, y2=440, layout_label="plain text")

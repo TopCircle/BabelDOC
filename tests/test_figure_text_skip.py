@@ -123,12 +123,20 @@ class TestSkipInTranslator:
         cfg.header_height = 50
         tr = ILTranslator(cfg.translator, cfg)
         page = _page_with_figure()
-        # Top-of-page title-like band, not figure text
-        header = _para(
+        # Title in top band is never header-skipped (PR-C2 / SCORECARD).
+        title = _para(
             "Benchmarking readout",
             label="title",
             box=Box(x=100, y=750, x2=500, y2=780),
         )
-        assert not tr.should_skip_figure_text_paragraph(page, header)
-        assert tr.should_skip_header_footer_paragraph(page, header)
-        assert tr.should_skip_region_paragraph(page, header)
+        assert not tr.should_skip_figure_text_paragraph(page, title)
+        assert not tr.should_skip_header_footer_paragraph(page, title)
+        assert not tr.should_skip_region_paragraph(page, title)
+        # Short running chrome still header-skipped
+        chrome = _para(
+            "Learn The Trigasm",
+            label="plain text",
+            box=Box(x=200, y=760, x2=400, y2=780),
+        )
+        assert tr.should_skip_header_footer_paragraph(page, chrome)
+        assert tr.should_skip_region_paragraph(page, chrome)

@@ -178,41 +178,25 @@ class ParagraphFinder:
                 formula_layout.class_name = "isolate_formula"
 
     def _in_skip_header_footer_band(self, page: Page, paragraph) -> bool:
-        """Same geometry as ILTranslator.should_skip_header_footer_paragraph.
+        """Same policy as ILTranslator.should_skip_header_footer_paragraph (PR-C2).
 
         Used so OCR white-fill is not painted over regions that will not be
         retypeset (invisible OCR + white fill = blank hole).
         """
-        if getattr(paragraph, "layout_label", None) == "title":
-            return False
+        from babeldoc.format.pdf.document_il.utils.region_skip import (
+            should_skip_header_footer,
+        )
+
         cfg = self.translation_config
-        # Mirror ILTranslator: OCR dual-layer never treats top band as skip.
-        if getattr(cfg, "ocr_workaround", False):
-            return False
-        if not (
-            (cfg.skip_header or cfg.skip_footer)
-            and page.cropbox
-            and page.cropbox.box
-            and paragraph.box
-        ):
-            return False
-        page_top = page.cropbox.box.y2
-        page_bottom = page.cropbox.box.y
-        paragraph_top = paragraph.box.y2
-        paragraph_bottom = paragraph.box.y
-        if None in (page_top, page_bottom, paragraph_top, paragraph_bottom):
-            return False
-        if (
-            cfg.skip_header
-            and paragraph_bottom >= page_top - cfg.header_height
-        ):
-            return True
-        if (
-            cfg.skip_footer
-            and paragraph_top <= page_bottom + cfg.footer_height
-        ):
-            return True
-        return False
+        return should_skip_header_footer(
+            page,
+            paragraph,
+            skip_header=bool(getattr(cfg, "skip_header", False)),
+            skip_footer=bool(getattr(cfg, "skip_footer", False)),
+            header_height=float(getattr(cfg, "header_height", 40) or 0),
+            footer_height=float(getattr(cfg, "footer_height", 40) or 0),
+            ocr_workaround=bool(getattr(cfg, "ocr_workaround", False)),
+        )
 
     def add_text_fill_background(self, page: Page):
         layout_map = {layout.id: layout for layout in page.page_layout}

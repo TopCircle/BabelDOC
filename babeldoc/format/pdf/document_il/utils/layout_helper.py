@@ -1099,11 +1099,28 @@ FIGURE_CONTAINER_LAYOUT_NAMES = frozenset(
         "image",
     }
 )
-# Short enough to treat as a chart/figure label when overlapping a figure box.
+# Explicit figure_text labels: keep a slightly higher cap.
 _FIGURE_LABEL_MAX_CHARS = 64
+# Spatial path (no figure_text label): tighter — body callouts sit near figures.
+_FIGURE_SPATIAL_MAX_CHARS = 48
 # Spatial path: fraction of the *paragraph* box that must lie inside a figure
 # box (``calculate_iou_for_boxes`` = inter/|para|, not Jaccard IoU).
 FIGURE_TEXT_COVERAGE_THRESHOLD = 0.5
+# Reject spatial match when para is a body column (PR-C2 OA side prose).
+_FIGURE_SPATIAL_MAX_WIDTH_RATIO = 0.22
+
+
+def _looks_like_body_prose(text: str) -> bool:
+    """True for multi-word sentences — not chart tick labels (PR-C2)."""
+    t = (text or "").strip()
+    if len(t) < 20:
+        return False
+    spaces = t.count(" ")
+    if spaces >= 5:
+        return True
+    if spaces >= 3 and t[-1] in ".!?…":
+        return True
+    return False
 
 
 def is_figure_text_paragraph(
@@ -1117,8 +1134,8 @@ def is_figure_text_paragraph(
     Matches when:
 
     1. ``layout_label`` is ``figure_text`` / hybrid, or
-    2. Short text whose box is mostly covered by a ``figure``/``image`` layout
-       (mis-labels like plain ``text`` on arXiv diagram annotations).
+    2. Short non-prose text whose box is mostly covered by a ``figure``/``image``
+       layout (mis-labels like plain ``text`` on arXiv diagram annotations).
 
     Spatial test uses **coverage of the paragraph**
     (``inter / |paragraph.box|`` via ``calculate_iou_for_boxes(para, fig)``),
@@ -1126,16 +1143,42 @@ def is_figure_text_paragraph(
     scores ~1.0.
 
     Captions (``figure_caption`` / ``figure_title``) are **not** matched.
+    PR-C2: spatial path rejects body prose and wide columns.
     """
     label = (getattr(paragraph, "layout_label", None) or "").strip()
     if label in FIGURE_TEXT_LAYOUT_LABELS:
         return True
 
     text = (getattr(paragraph, "unicode", None) or "").strip()
-    if not text or len(text) > _FIGURE_LABEL_MAX_CHARS:
+    if not text or len(text) > _FIGURE_SPATIAL_MAX_CHARS:
+        return False
+    # Explicit long labels under the old 64 cap still skip only via label path.
+    if _looks_like_body_prose(text):
         return False
     if page is None or not paragraph.box:
         return False
+
+    # Wide body columns beside a full-bleed figure are not chart labels.
+    page_box = None
+    for attr in ("cropbox", "mediabox"):
+        cb = getattr(page, attr, None)
+        if cb is None:
+            continue
+        page_box = cb.box if hasattr(cb, "box") and cb.box is not None else cb
+        if page_box is not None and getattr(page_box, "x2", None) is not None:
+            break
+    if (
+        page_box is not None
+        and paragraph.box.x is not None
+        and paragraph.box.x2 is not None
+        and page_box.x is not None
+        and page_box.x2 is not None
+        and page_box.x2 > page_box.x
+    ):
+        para_w = float(paragraph.box.x2) - float(paragraph.box.x)
+        page_w = float(page_box.x2) - float(page_box.x)
+        if page_w > 0 and para_w / page_w >= _FIGURE_SPATIAL_MAX_WIDTH_RATIO:
+            return False
 
     thr = float(coverage_threshold)
     for layout in page.page_layout or []:

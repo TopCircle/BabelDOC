@@ -45,6 +45,12 @@ from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
 from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
     should_skip_side_callout_mt,
 )
+from babeldoc.format.pdf.document_il.utils.region_skip import (
+    classify_header_footer_skip,
+)
+from babeldoc.format.pdf.document_il.utils.region_skip import (
+    should_skip_header_footer,
+)
 from babeldoc.format.pdf.document_il.utils.skip_audit import SkipReason
 from babeldoc.format.pdf.document_il.utils.skip_audit import SkipReport
 from babeldoc.format.pdf.document_il.utils.skip_audit import side_callout_skip_reason
@@ -472,37 +478,25 @@ class ILTranslator:
         page: Page,
         paragraph: PdfParagraph,
     ) -> SkipReason | None:
-        """Classify figure/header/footer skip without changing predicates."""
+        """Classify figure/header/footer skip (PR-C2 safer bounds)."""
         if self.should_skip_figure_text_paragraph(page, paragraph):
             return SkipReason.FIGURE_TEXT
-        if not self.should_skip_header_footer_paragraph(page, paragraph):
-            return None
-        # Sub-classify band (same geometry as should_skip_header_footer_paragraph).
-        if not (
-            page.cropbox
-            and page.cropbox.box
-            and paragraph.box
-        ):
+        band = classify_header_footer_skip(
+            page,
+            paragraph,
+            skip_header=self.translation_config.skip_header,
+            skip_footer=self.translation_config.skip_footer,
+            header_height=self.translation_config.header_height,
+            footer_height=self.translation_config.footer_height,
+            ocr_workaround=bool(
+                getattr(self.translation_config, "ocr_workaround", False)
+            ),
+        )
+        if band == "header":
             return SkipReason.HEADER
-        page_top = page.cropbox.box.y2
-        page_bottom = page.cropbox.box.y
-        paragraph_top = paragraph.box.y2
-        paragraph_bottom = paragraph.box.y
-        if (
-            page_top is not None
-            and paragraph_bottom is not None
-            and self.translation_config.skip_header
-            and paragraph_bottom >= page_top - self.translation_config.header_height
-        ):
-            return SkipReason.HEADER
-        if (
-            page_bottom is not None
-            and paragraph_top is not None
-            and self.translation_config.skip_footer
-            and paragraph_top <= page_bottom + self.translation_config.footer_height
-        ):
+        if band == "footer":
             return SkipReason.FOOTER
-        return SkipReason.HEADER
+        return None
 
     def translate(self, docs: Document):
         self.docs = docs
@@ -630,52 +624,21 @@ class ILTranslator:
     ) -> bool:
         """Skip paragraphs fully inside configured header/footer bands.
 
-        Never skips ``layout_label == "title"``: paper titles sit in the top
-        band but are document content, not running headers. Skipping them on
-        OCR dual-layer PDFs leaves white fill over the page image with no ZH
-        paint (blank title).
+        Never skips ``title`` / ``section_header``, or body-like long prose
+        that only geometrically sits in the band (PR-C2). OCR dual-layer
+        never uses header/footer skip (white-fill would blank ZH).
         """
-        if getattr(paragraph, "layout_label", None) == "title":
-            return False
-        # Searchable dual-layer: top band is paper title/author, not a running
-        # header. skip_header + white fill would blank the whole top of ZH.
-        if getattr(self.translation_config, "ocr_workaround", False):
-            return False
-
-        if not (
-            (self.translation_config.skip_header or self.translation_config.skip_footer)
-            and page.cropbox
-            and page.cropbox.box
-            and paragraph.box
-        ):
-            return False
-
-        page_top = page.cropbox.box.y2
-        page_bottom = page.cropbox.box.y
-        paragraph_top = paragraph.box.y2
-        paragraph_bottom = paragraph.box.y
-
-        if (
-            page_top is None
-            or page_bottom is None
-            or paragraph_top is None
-            or paragraph_bottom is None
-        ):
-            return False
-
-        if (
-            self.translation_config.skip_header
-            and paragraph_bottom >= page_top - self.translation_config.header_height
-        ):
-            return True
-
-        if (
-            self.translation_config.skip_footer
-            and paragraph_top <= page_bottom + self.translation_config.footer_height
-        ):
-            return True
-
-        return False
+        return should_skip_header_footer(
+            page,
+            paragraph,
+            skip_header=self.translation_config.skip_header,
+            skip_footer=self.translation_config.skip_footer,
+            header_height=self.translation_config.header_height,
+            footer_height=self.translation_config.footer_height,
+            ocr_workaround=bool(
+                getattr(self.translation_config, "ocr_workaround", False)
+            ),
+        )
 
     def should_skip_region_paragraph(
         self,

@@ -78,6 +78,11 @@ Figure labels stay in the source language by default (`translate_figure_text=Fal
 UI: **Translate figure text** off). Opt in to translate chart annotations.
 Independent of **Translate table text** (RapidOCR table path).
 
+**Header/figure skip (PR-C2 0.6.4.37+):**
+- Never skip `title` / `section_header` as header chrome.
+- Long `plain text` body (≥48 chars) in the geometric header band still MT.
+- Spatial figure-text path rejects body prose and wide columns; short labels still skip.
+
 **Narrow side callout (PR-D 0.6.4.36+ / OA p8 red strip):**
 
 | Mode (`--narrow-callout-mode`) | Behavior |
