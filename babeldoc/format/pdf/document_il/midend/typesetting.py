@@ -3448,6 +3448,11 @@ class Typesetting:
             layout_line_idx,
             alignment=alignment,
         )
+        # Quiz / numbered list items: never pack short options into a second
+        # horizontal pocket on the same baseline (Day6 Q3 a/c left + b/d right
+        # overpaint). Single left column only.
+        if Typesetting._looks_like_numbered_list_item(paragraph) and intervals:
+            intervals = [intervals[0]]
         # line 0: no list hang (marker sits at left edge)
         interval_idx = 0
         available_x, available_x2 = intervals[0]
@@ -3711,6 +3716,8 @@ class Typesetting:
                         layout_line_idx,
                         alignment=alignment,
                     )
+                    if Typesetting._looks_like_numbered_list_item(paragraph) and intervals:
+                        intervals = [intervals[0]]
                     # Numbered-list hang: shrink leftmost pocket so available_x
                     # is already the body column (same as capacity path / S3).
                     _ix1, _ix2 = intervals[0]

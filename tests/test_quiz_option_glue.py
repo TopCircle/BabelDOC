@@ -51,6 +51,24 @@ class TestSplitGluedQuizParagraphs:
         assert out[0].unicode.startswith("b.")
         assert any(x.unicode.lstrip().startswith("c.") for x in out)
 
+    def test_split_options_get_stacked_boxes_not_same_y(self):
+        """Day6 dual p3: a–d must not share one baseline after split."""
+        p = _para(
+            "a. 巧克力，满足嗜好； b. 脆饼干，盐瘾； c. 酸糖，酸味； d. 薯片，辣味。"
+        )
+        # Tall band like multi-option source
+        p.box = Box(x=150, y=100, x2=500, y2=200)
+        out = split_glued_quiz_options_on_page([p])
+        assert len(out) >= 4
+        y2s = [float(o.box.y2) for o in out if o.box and o.box.y2 is not None]
+        # Each option lower on the page (smaller y2 in PDF coords)
+        assert y2s == sorted(y2s, reverse=True)
+        # Distinct baselines (not all equal)
+        assert len(set(round(y, 1) for y in y2s)) == len(y2s)
+        # Adjacent pitch ≈ constant
+        pitches = [y2s[i] - y2s[i + 1] for i in range(len(y2s) - 1)]
+        assert all(p > 10 for p in pitches)
+
     def test_double_a_single_para(self):
         p = _para("a.a. 花香。")
         out = split_glued_quiz_options_on_page([p])

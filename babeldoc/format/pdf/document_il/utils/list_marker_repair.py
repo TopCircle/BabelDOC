@@ -368,19 +368,51 @@ def expand_glued_quiz_options_text(text: str | None) -> str | None:
     return t
 
 
+def _option_line_pitch(paragraph: il_version_1.PdfParagraph) -> float:
+    """Vertical pitch (pt) between stacked quiz options (PDF y-up)."""
+    style = getattr(paragraph, "pdf_style", None)
+    fs = float(getattr(style, "font_size", None) or 11.0)
+    return max(14.0, fs * 1.45)
+
+
+def _box_for_split_option(
+    origin_box,
+    line_index: int,
+    pitch: float,
+):
+    """Box for option *line_index* (0=first) stacked below *origin_box* top.
+
+    Clones used to copy the parent box unchanged → all a–d typeset at the
+    same ``box.y2`` and overpaint (Day6 dual p3–4 quiz).
+    """
+    b = origin_box
+    if b is None or getattr(b, "x", None) is None or getattr(b, "x2", None) is None:
+        return None
+    top = float(b.y2) if b.y2 is not None else float(b.y or 0.0) + pitch
+    y2 = top - pitch * line_index
+    y = y2 - pitch
+    return type(b)(x=b.x, y=y, x2=b.x2, y2=y2)
+
+
 def _clone_paragraph_shell(
     paragraph: il_version_1.PdfParagraph,
     unicode: str,
+    *,
+    origin_box=None,
+    line_index: int = 0,
+    pitch: float | None = None,
 ) -> il_version_1.PdfParagraph:
-    """Shallow-copy layout fields; new unicode composition."""
+    """Shallow-copy layout fields; new unicode composition.
+
+    *line_index* > 0 stacks the box below *origin_box* top (PDF y-up) so
+    split quiz options do not share one baseline.
+    """
     style = getattr(paragraph, "pdf_style", None)
     ssu = PdfSameStyleUnicodeCharacters(unicode=unicode, pdf_style=style)
-    box = None
-    if paragraph.box is not None:
-        b = paragraph.box
-        box = type(b)(
-            x=b.x, y=b.y, x2=b.x2, y2=b.y2
-        ) if hasattr(b, "x") else b
+    if pitch is None:
+        pitch = _option_line_pitch(paragraph)
+    src_box = origin_box if origin_box is not None else getattr(paragraph, "box", None)
+    box = _box_for_split_option(src_box, line_index, pitch)
     return il_version_1.PdfParagraph(
         box=box,
         pdf_style=style,
@@ -389,7 +421,7 @@ def _clone_paragraph_shell(
         ],
         unicode=unicode,
         layout_label=getattr(paragraph, "layout_label", None),
-        alignment=getattr(paragraph, "alignment", None),
+        alignment="left",
         first_line_indent=0.0,
         debug_id=getattr(paragraph, "debug_id", None),
         xobj_id=getattr(paragraph, "xobj_id", None),
@@ -399,7 +431,11 @@ def _clone_paragraph_shell(
 def split_glued_quiz_options_on_page(
     paragraphs: list[il_version_1.PdfParagraph] | None,
 ) -> list[il_version_1.PdfParagraph]:
-    """Expand glued ``a.a.``/``a.b.`` and split multi-option paragraphs."""
+    """Expand glued ``a.a.``/``a.b.`` and split multi-option paragraphs.
+
+    Each split option gets its **own stacked box** (not a clone of the parent
+    box) so typesetting does not overpaint a–d on one baseline.
+    """
     if not paragraphs:
         return paragraphs or []
     out: list[il_version_1.PdfParagraph] = []
@@ -419,28 +455,44 @@ def split_glued_quiz_options_on_page(
                 normalize_list_marker_on_paragraph(para)
             out.append(para)
             continue
-        # Multi-option: first part mutates original; rest are clones
+        # Multi-option: first part mutates original; rest are stacked clones.
+        # Snapshot origin box *before* carving (clones must share that top).
+        pitch = _option_line_pitch(para)
+        origin = para.box
+        if origin is not None and hasattr(origin, "x"):
+            origin_box = type(origin)(
+                x=origin.x, y=origin.y, x2=origin.x2, y2=origin.y2
+            )
+        else:
+            origin_box = origin
         first = parts[0]
         para.unicode = first
         comps = para.pdf_paragraph_composition or []
         if comps and comps[0].pdf_same_style_unicode_characters is not None:
             comps[0].pdf_same_style_unicode_characters.unicode = first
-        # Drop extra compositions that held jammed text
         if len(comps) > 1:
             para.pdf_paragraph_composition = comps[:1]
+        first_box = _box_for_split_option(origin_box, 0, pitch)
+        if first_box is not None:
+            para.box = first_box
         try:
             para.first_line_indent = 0.0
+            para.alignment = "left"
         except Exception:
             pass
         normalize_list_marker_on_paragraph(para)
         out.append(para)
-        for part in parts[1:]:
-            clone = _clone_paragraph_shell(para, part)
+        for i, part in enumerate(parts[1:], start=1):
+            clone = _clone_paragraph_shell(
+                para,
+                part,
+                origin_box=origin_box,
+                line_index=i,
+                pitch=pitch,
+            )
             normalize_list_marker_on_paragraph(clone)
             out.append(clone)
     return out
-
-
 def normalize_list_markers_on_document(
     document: il_version_1.Document,
 ) -> int:
