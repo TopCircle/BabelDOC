@@ -95,6 +95,51 @@ def test_ultra_narrow_tall_callout_skipped():
     page = _page(callout)
     assert is_ultra_narrow_side_callout(callout, page) is True
     assert should_skip_side_callout_mt(callout, page) is True
+    assert should_skip_side_callout_mt(callout, page, mode="keep_en") is True
+
+
+def test_ultra_narrow_expand_mode_does_not_skip():
+    """PR-D: expand mode sends ultra-narrow callout to MT."""
+    from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
+        normalize_narrow_callout_mode,
+    )
+
+    callout = _para(
+        "The best way for you to learn the clit-stimulating techniques "
+        "that work best for her is going to be by watching her pleasure herself!",
+        x=429,
+        x2=509,
+        y=361,
+        y2=481,
+        layout_label="plain text",
+    )
+    page = _page(callout)
+    assert is_ultra_narrow_side_callout(callout, page) is True
+    assert should_skip_side_callout_mt(callout, page, mode="expand") is False
+    assert (
+        should_skip_side_callout_mt(callout, page, mode="translate_body_column")
+        is False
+    )
+    assert normalize_narrow_callout_mode("EXPAND") == "expand"
+    assert normalize_narrow_callout_mode("bogus") == "keep_en"
+
+
+def test_pullquote_always_skips_even_in_expand_mode():
+    quote = (
+        "Since her orgasm is essentially an intense contraction of her PC and "
+        "pelvic floor muscles, strengthening them increases blood flow to the "
+        "area and enables her to experience a deeper pleasure sensation and a "
+        "repeated series of pulses"
+    )
+    body = _para(
+        f'"{quote}," says Laura Berman, author of The Passion Prescription.',
+        x=102,
+        x2=360,
+    )
+    callout = _para(quote, x=360, x2=560)
+    page = _page(body, callout)
+    assert should_skip_side_callout_mt(callout, page, mode="expand") is True
+    assert should_skip_side_callout_mt(callout, page, mode="keep_en") is True
 
 
 def test_left_column_body_not_ultra_narrow_callout():

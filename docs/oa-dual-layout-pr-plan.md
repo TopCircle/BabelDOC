@@ -5,7 +5,7 @@
 > **原则**：每个 PR 可独立 merge、有明确验收页与测试；**先修 IL 输入，再修 skip 策略，最后修 box 重排**。  
 > **禁止**：在未过 figure IL 不变性 + OA 抽样页前扩大 `stream_order` 触发面。
 
-**当前代码基线**：`0.6.4.35`（PR-A recovery + PR-C1 skip_report + PR-B top-band title/Chapter；figure IL invariants）
+**当前代码基线**：`0.6.4.36`（A recovery + C1 skip_report + B title + D narrow_callout_mode；figure IL invariants）
 
 ---
 

@@ -1745,9 +1745,14 @@ class ILTranslator:
                 if self.use_as_fallback:
                     # il translator llm only modifies unicode in some situations
                     paragraph.unicode = get_paragraph_unicode(paragraph)
-                # Side callout: near-duplicate of body, or ultra-narrow tall
-                # strip that cannot fit CJK (OA p8 red figure callout) → keep EN
-                if should_skip_side_callout_mt(paragraph, page):
+                # Side callout: pull-quote dup always skip; ultra-narrow
+                # respects narrow_callout_mode (default keep_en → skip MT).
+                _callout_mode = getattr(
+                    self.translation_config, "narrow_callout_mode", "keep_en"
+                )
+                if should_skip_side_callout_mt(
+                    paragraph, page, mode=_callout_mode
+                ):
                     reason = side_callout_skip_reason(paragraph, page)
                     self.record_skip(
                         page,
@@ -1755,9 +1760,10 @@ class ILTranslator:
                         reason or SkipReason.ULTRA_NARROW,
                     )
                     logger.debug(
-                        "skip side-callout MT: id=%s reason=%s text=%r",
+                        "skip side-callout MT: id=%s reason=%s mode=%s text=%r",
                         paragraph.debug_id,
                         reason.value if reason else "ultra_narrow",
+                        _callout_mode,
                         (paragraph.unicode or "")[:60],
                     )
                     return

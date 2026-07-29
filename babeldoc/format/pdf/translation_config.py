@@ -226,6 +226,9 @@ class TranslationConfig:
         quote_narrow_threshold: float = 0.8,
         quote_indent_threshold: float = 0.15,
         quote_right_margin_threshold: float = 0.05,
+        # PR-D: ultra-narrow side callout product policy
+        # keep_en | expand | translate_body_column
+        narrow_callout_mode: str = "keep_en",
     ):
         self.translator = translator
         self.term_extraction_translator = term_extraction_translator or translator
@@ -410,6 +413,13 @@ class TranslationConfig:
         self.quote_right_margin_threshold = max(
             min(float(quote_right_margin_threshold if quote_right_margin_threshold is not None else 0.05), 0.5),
             0.0,
+        )
+        from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
+            normalize_narrow_callout_mode,
+        )
+
+        self.narrow_callout_mode = normalize_narrow_callout_mode(
+            narrow_callout_mode
         )
 
         if self.ocr_workaround:

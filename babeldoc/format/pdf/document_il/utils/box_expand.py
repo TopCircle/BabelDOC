@@ -18,10 +18,13 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 
 # Figure-adjacent body columns (OA p7 left strip ~105pt on letter).
 NARROW_COLUMN_MAX_WIDTH = 150.0
+# Ultra-narrow callout strip (OA p8 ~80pt) — expand sooner under expand mode.
+ULTRA_NARROW_COLUMN_MAX_WIDTH = 100.0
 
 # Content-width / box-width thresholds before we attempt expansion.
 RATIO_SHORT_HEADING = 1.15
 RATIO_NARROW_COLUMN = 1.2
+RATIO_ULTRA_NARROW = 1.05  # PR-D: almost any CJK overflow triggers expand
 RATIO_BODY = 1.5
 
 Axis = Literal["right", "down"]
@@ -40,6 +43,12 @@ def is_narrow_column(box: Box | None) -> bool:
     return 0 < w < NARROW_COLUMN_MAX_WIDTH
 
 
+def is_ultra_narrow_column(box: Box | None) -> bool:
+    """Tighter than :func:`is_narrow_column` (OA p8 callout ~80pt)."""
+    w = box_width(box)
+    return 0 < w < ULTRA_NARROW_COLUMN_MAX_WIDTH
+
+
 def is_short_heading_text(text: str | None, layout_label: str | None) -> bool:
     t = (text or "").strip()
     label = (layout_label or "").lower()
@@ -54,6 +63,8 @@ def content_expand_ratio_need(
     box: Box | None,
 ) -> float:
     """Minimum content_w / box_w before pre-expand attempts."""
+    if is_ultra_narrow_column(box):
+        return RATIO_ULTRA_NARROW
     if is_short_heading_text(text, layout_label):
         return RATIO_SHORT_HEADING
     if is_narrow_column(box):
@@ -80,10 +91,14 @@ def prefer_expand_down(
 ) -> bool:
     """Whether the first expansion axis should be down rather than right.
 
-    True for OCR dual-layer (use white-fill height) and for narrow columns
-    whose right side is blocked by a figure/exclusion zone.
+    True for OCR dual-layer (use white-fill height), ultra-narrow callouts,
+    and for narrow columns whose right side is blocked by a figure/exclusion.
     """
     if ocr_mode:
+        return True
+    # Ultra-narrow right strips almost always sit against a figure — prefer
+    # down even if a few points remain to the right (PR-D).
+    if is_ultra_narrow_column(box):
         return True
     return is_narrow_column(box) and is_right_blocked(box, get_max_right)
 
@@ -168,6 +183,13 @@ def try_pre_expand_for_content(
     ratio_need = content_expand_ratio_need(text, layout_label, box)
     if content_w < box_w * ratio_need:
         return None
+
+    # Ultra-narrow callouts: down first (figure blocks right).
+    if is_ultra_narrow_column(box):
+        down = try_expand_down(box, get_max_bottom)
+        if down is not None:
+            return down
+        return try_expand_right(box, get_max_right)
 
     right = try_expand_right(box, get_max_right)
     if right is not None:

@@ -78,6 +78,16 @@ Figure labels stay in the source language by default (`translate_figure_text=Fal
 UI: **Translate figure text** off). Opt in to translate chart annotations.
 Independent of **Translate table text** (RapidOCR table path).
 
+**Narrow side callout (PR-D 0.6.4.36+ / OA p8 red strip):**
+
+| Mode (`--narrow-callout-mode`) | Behavior |
+|--------------------------------|----------|
+| `keep_en` (**default**) | Skip MT for ultra-narrow tall right strip → clean EN callout (no ZH tower) |
+| `expand` / `translate_body_column` | Translate + typesetting expands box **down-first** |
+
+Pull-quote near-duplicates of body always keep EN regardless of mode.
+Left-column body (~105pt, OA p7) is **not** ultra-narrow and still translates.
+
 ### Dual-layer recover gates (do not skip)
 
 Resume dual-layer / `font.unknown` **only** with independent PRs. **Never** bulk

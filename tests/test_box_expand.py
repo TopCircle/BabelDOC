@@ -22,9 +22,45 @@ def _box(x=100.0, y=100.0, x2=200.0, y2=200.0) -> Box:
 
 
 def test_is_narrow_column_threshold():
+    from babeldoc.format.pdf.document_il.utils.box_expand import (
+        ULTRA_NARROW_COLUMN_MAX_WIDTH,
+        is_ultra_narrow_column,
+        RATIO_ULTRA_NARROW,
+    )
+
     assert is_narrow_column(_box(x=0, x2=NARROW_COLUMN_MAX_WIDTH - 1))
     assert not is_narrow_column(_box(x=0, x2=NARROW_COLUMN_MAX_WIDTH))
     assert not is_narrow_column(_box(x=0, x2=300))
+    assert is_ultra_narrow_column(_box(x=429, x2=509))  # 80pt OA p8
+    assert not is_ultra_narrow_column(
+        _box(x=0, x2=ULTRA_NARROW_COLUMN_MAX_WIDTH)
+    )
+    assert content_expand_ratio_need("long zh text", "plain text", _box(x=429, x2=509)) == (
+        RATIO_ULTRA_NARROW
+    )
+
+
+def test_ultra_narrow_prefer_down_and_pre_expand():
+    """PR-D: ultra-narrow prefer down-first even if a few pt free on right."""
+    from babeldoc.format.pdf.document_il.utils.box_expand import (
+        try_pre_expand_for_content,
+    )
+
+    narrow = _box(x=429, y=361, x2=509, y2=481)  # 80×120
+    assert prefer_expand_down(
+        narrow, ocr_mode=False, get_max_right=lambda b: b.x2 + 8
+    )
+    # content slightly over box width → expand down when bottom free
+    expanded = try_pre_expand_for_content(
+        narrow,
+        content_w=90.0,  # > 80 * 1.05
+        text="x" * 40,
+        layout_label="plain text",
+        get_max_right=lambda b: b.x2,  # blocked right
+        get_max_bottom=lambda b: 200.0,  # free below
+    )
+    assert expanded is not None
+    assert expanded.y < narrow.y
 
 
 def test_prefer_expand_down_ocr():

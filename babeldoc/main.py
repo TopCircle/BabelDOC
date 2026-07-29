@@ -424,6 +424,18 @@ def create_parser():
         default=False,
         help="Enable post-layout optimization pass that detects paragraph overlaps after typesetting (Phase 1: detection only).",
     )
+    translation_group.add_argument(
+        "--narrow-callout-mode",
+        type=str,
+        choices=["keep_en", "expand", "translate_body_column"],
+        default="keep_en",
+        help=(
+            "Ultra-narrow side callout (e.g. OA p8 red strip ~80pt): "
+            "'keep_en' (default) skips MT and keeps source language; "
+            "'expand' / 'translate_body_column' translate and expand the box "
+            "down-first. Pull-quote duplicates always keep EN."
+        ),
+    )
     # service option argument group
     service_group = translation_group.add_mutually_exclusive_group()
     service_group.add_argument(
@@ -784,6 +796,9 @@ async def main():
             header_height=args.header_height,
             footer_height=args.footer_height,
             enable_post_layout_optimization=args.enable_post_layout_optimization,
+            narrow_callout_mode=getattr(
+                args, "narrow_callout_mode", "keep_en"
+            ),
         )
 
         def nop(_x):
