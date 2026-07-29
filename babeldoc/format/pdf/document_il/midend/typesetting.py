@@ -3448,9 +3448,10 @@ class Typesetting:
             layout_line_idx,
             alignment=alignment,
         )
-        # Quiz / numbered list items: never pack short options into a second
-        # horizontal pocket on the same baseline (Day6 Q3 a/c left + b/d right
-        # overpaint). Single left column only.
+        # List items (quiz a–d / numbered steps): use leftmost residual only.
+        # Tradeoff: true multi-column or wrap-into-right-pocket lists lose the
+        # second pocket; needed so short options (花/清新) do not overpaint
+        # left+right on one baseline (Day6 Q3).
         if Typesetting._looks_like_numbered_list_item(paragraph) and intervals:
             intervals = [intervals[0]]
         # line 0: no list hang (marker sits at left edge)
@@ -3716,6 +3717,7 @@ class Typesetting:
                         layout_line_idx,
                         alignment=alignment,
                     )
+                    # Same list single-column policy as first line (see above).
                     if Typesetting._looks_like_numbered_list_item(paragraph) and intervals:
                         intervals = [intervals[0]]
                     # Numbered-list hang: shrink leftmost pocket so available_x

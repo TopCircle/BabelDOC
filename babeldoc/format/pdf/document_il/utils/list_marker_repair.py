@@ -368,10 +368,32 @@ def expand_glued_quiz_options_text(text: str | None) -> str | None:
     return t
 
 
-def _option_line_pitch(paragraph: il_version_1.PdfParagraph) -> float:
-    """Vertical pitch (pt) between stacked quiz options (PDF y-up)."""
+def _option_line_pitch(
+    paragraph: il_version_1.PdfParagraph,
+    *,
+    n_parts: int = 1,
+    origin_box=None,
+) -> float:
+    """Vertical pitch (pt) between stacked quiz options (PDF y-up).
+
+    Prefer carving the original multi-line band evenly:
+    ``pitch = max(min_readable, band_height / n_parts)``.
+    Falls back to font-based pitch when the box is missing or degenerate.
+    """
     style = getattr(paragraph, "pdf_style", None)
     fs = float(getattr(style, "font_size", None) or 11.0)
+    min_pitch = max(12.0, fs * 1.25)
+    n = max(1, int(n_parts))
+    b = origin_box if origin_box is not None else getattr(paragraph, "box", None)
+    if (
+        b is not None
+        and getattr(b, "y", None) is not None
+        and getattr(b, "y2", None) is not None
+    ):
+        band = float(b.y2) - float(b.y)
+        if band > min_pitch * 0.5:
+            # Even split of source band; never thinner than readable min.
+            return max(min_pitch, band / n)
     return max(14.0, fs * 1.45)
 
 
@@ -457,7 +479,6 @@ def split_glued_quiz_options_on_page(
             continue
         # Multi-option: first part mutates original; rest are stacked clones.
         # Snapshot origin box *before* carving (clones must share that top).
-        pitch = _option_line_pitch(para)
         origin = para.box
         if origin is not None and hasattr(origin, "x"):
             origin_box = type(origin)(
@@ -465,6 +486,9 @@ def split_glued_quiz_options_on_page(
             )
         else:
             origin_box = origin
+        pitch = _option_line_pitch(
+            para, n_parts=len(parts), origin_box=origin_box
+        )
         first = parts[0]
         para.unicode = first
         comps = para.pdf_paragraph_composition or []
@@ -493,6 +517,8 @@ def split_glued_quiz_options_on_page(
             normalize_list_marker_on_paragraph(clone)
             out.append(clone)
     return out
+
+
 def normalize_list_markers_on_document(
     document: il_version_1.Document,
 ) -> int:
