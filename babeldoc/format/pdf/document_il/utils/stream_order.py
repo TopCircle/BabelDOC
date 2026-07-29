@@ -30,13 +30,24 @@ _DEFAULT_MIN_PAIRS = 4
 # Guard: only reorder short decorative-like runs, not long body lines.
 _MAX_REORDER_CHARS = 64
 _MIN_SINGLE_LETTER_RATIO = 0.55
-# Reading-order repair is title-only.  arXiv / body "plain text" lines are
-# almost always single-glyph runs and would match decorative heuristics —
-# reordering them smashed figure golden (pseudo → seudo).  Allow-list only.
+# Reading-order repair is title-like by default.  arXiv / body "plain text"
+# lines are almost always single-glyph runs and would match decorative
+# heuristics — reordering them smashed figure golden (pseudo → seudo).
+# Allow-list always; plain text only with explicit top-band flag (PR-B).
 _REORDER_ALLOWED_LABELS = frozenset(
     {
         "title",
         "section_header",
+    }
+)
+# Mis-labeled chapter titles (DocLayout → plain text) in the page top band.
+_REORDER_PLAIN_TOP_LABELS = frozenset(
+    {
+        "",
+        "plain text",
+        "text",
+        "paragraph",
+        "paragraph_hybrid",
     }
 )
 
@@ -197,25 +208,47 @@ def _same_order(a: list[PdfCharacter], b: list[PdfCharacter]) -> bool:
     return len(a) == len(b) and all(x is y for x, y in zip(a, b))
 
 
+def label_allows_stream_reorder(
+    layout_label: str | None,
+    *,
+    in_page_top_band: bool = False,
+) -> bool:
+    """Whether *layout_label* may use reverse-paint reorder.
+
+    - Always: ``title`` / ``section_header``
+    - Plain-text family **only** when *in_page_top_band* (PR-B OA chapter titles)
+    - Mid-page plain text: never (figure golden)
+    """
+    label = (layout_label or "").strip().lower()
+    if label in _REORDER_ALLOWED_LABELS:
+        return True
+    if in_page_top_band and label in _REORDER_PLAIN_TOP_LABELS:
+        return True
+    return False
+
+
 def maybe_reorder_reversed_stream(
     chars: list[PdfCharacter],
     *,
     layout_label: str | None = None,
+    in_page_top_band: bool = False,
 ) -> list[PdfCharacter]:
-    """Reorder reverse-paint / misplaced-digit runs on **title-like** labels only.
+    """Reorder reverse-paint / misplaced-digit runs on **title-like** runs.
 
     Hard rules (all required):
-      1. ``layout_label`` in {title, section_header} — **plain text never**
+      1. Label is title/section_header, **or** plain-text family in page top band
       2. Short single-letter decorative geometry
       3. Reverse-paint ratio high **or** misplaced leading digit (1Chapter)
 
     Does **not** reorder merely because visual sort differs — that path
     scrambled arXiv body (descenders → false second line → ``seudo``).
+    Mid-page plain text never reorders even when reverse-looking.
     """
     if not chars:
         return chars
-    label = (layout_label or "").strip().lower()
-    if label not in _REORDER_ALLOWED_LABELS:
+    if not label_allows_stream_reorder(
+        layout_label, in_page_top_band=in_page_top_band
+    ):
         return chars
     if not _looks_like_decorative_run(chars):
         return chars

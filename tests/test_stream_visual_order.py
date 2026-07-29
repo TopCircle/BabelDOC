@@ -118,13 +118,30 @@ def test_1chapter_misplaced_digit_becomes_chapter_1():
 
 
 def test_plain_text_never_reorders_even_if_fully_reversed():
-    """Hard gate: plain text identity regardless of reverse geometry."""
+    """Hard gate: mid-page plain text identity regardless of reverse geometry.
+
+    PR-B: top-band plain text may reorder (see test_pr_b_title_header);
+    default ``in_page_top_band=False`` keeps figure-golden safety.
+    """
     letters = list("Who haS orgaSMS?")
     xs = list(range(100, 100 + 10 * len(letters), 10))
     stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
     assert is_stream_visually_reversed(stream) is True
     for label in (None, "", "plain text", "paragraph", "text", "abandon"):
         assert maybe_reorder_reversed_stream(stream, layout_label=label) is stream
+        assert (
+            maybe_reorder_reversed_stream(
+                stream, layout_label=label, in_page_top_band=False
+            )
+            is stream
+        )
+    # abandon never reorders even in top band
+    assert (
+        maybe_reorder_reversed_stream(
+            stream, layout_label="abandon", in_page_top_band=True
+        )
+        is stream
+    )
 
 
 def test_descender_glyphs_stay_on_same_line_as_peers():

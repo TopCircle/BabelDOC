@@ -467,6 +467,30 @@ def rejoin_known_split_latin_words(text: str) -> str:
     return "".join(parts)
 
 
+# OA / design PDFs: "Chapter1" after digit reorder or tight kerning.
+# Chapter + 1–3 digits not already spaced; stops before a 4th digit.
+_CHAPTER_DIGIT_RE = regex.compile(
+    r"(?i)\b(chapter)(\d{1,3})(?!\d)"
+)
+
+
+def space_chapter_number(text: str) -> str:
+    """Insert a space in ``Chapter1`` / ``CHAPTER12`` → ``Chapter 1``.
+
+    Safe on body text: only matches the word Chapter immediately followed by
+    1–3 digits (typical chapter index). Idempotent when already spaced
+    (``Chapter 1`` has a non-digit gap). Also splits before CJK
+    (``Chapter1爱`` → ``Chapter 1爱``).
+    """
+    if not text or "hapter" not in text.lower():
+        return text
+
+    def _sub(m: regex.Match) -> str:
+        return f"{m.group(1)} {m.group(2)}"
+
+    return _CHAPTER_DIGIT_RE.sub(_sub, text)
+
+
 def recover_latin_word_fragments(text: str) -> str:
     """Full post-pass: ligatures, soft hyphens, known mid-word space splits.
 
@@ -479,5 +503,6 @@ def recover_latin_word_fragments(text: str) -> str:
     text = rejoin_soft_hyphen_tight(text)
     text = rejoin_ligature_space_splits(text)
     text = rejoin_known_split_latin_words(text)
+    text = space_chapter_number(text)
     text = expand_latin_ligatures(text)
     return text

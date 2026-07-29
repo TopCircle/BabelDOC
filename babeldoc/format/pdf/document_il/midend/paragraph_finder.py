@@ -45,6 +45,14 @@ _DEFAULT_INDENT = 12.0
 # Cap first-line indent so a bad detection cannot shove text far right
 _MAX_FIRST_LINE_INDENT = 48.0
 
+# PR-B: page top band for decorative title reverse-reorder / Chapter merge.
+# Fraction of page height, floored at 72pt (1 inch).
+_TITLE_TOP_BAND_RATIO = 0.12
+_TITLE_TOP_BAND_MIN_PT = 72.0
+# Short title line after "Chapter N" (chars)
+_CHAPTER_TITLE_MAX_CHARS = 80
+_CHAPTER_LINE_RE = re.compile(r"^\s*chapter\s*\d{1,3}\s*$", re.IGNORECASE)
+
 
 def _normalize_first_line_indent(paragraph):
     """向后兼容：将旧 XML 中的 bool/字符串 first_line_indent 转为 float。"""
@@ -253,7 +261,45 @@ class ParagraphFinder:
                 )
             )
 
-    def update_paragraph_data(self, paragraph: PdfParagraph, update_unicode=False):
+    def _page_crop_box(self, page: Page | None):
+        if page is None:
+            return None
+        cb = getattr(page, "cropbox", None) or getattr(page, "mediabox", None)
+        if cb is None:
+            return None
+        if hasattr(cb, "box") and cb.box is not None:
+            return cb.box
+        if getattr(cb, "x", None) is not None and getattr(cb, "y2", None) is not None:
+            return cb
+        return None
+
+    def paragraph_in_title_top_band(
+        self, page: Page | None, paragraph: PdfParagraph
+    ) -> bool:
+        """True when the paragraph sits in the decorative title / header zone.
+
+        Used for PR-B reverse-reorder on mis-labeled plain text and Chapter
+        merge. Mid-page body is never top-band.
+        """
+        box = getattr(paragraph, "box", None)
+        page_box = self._page_crop_box(page)
+        if box is None or page_box is None:
+            return False
+        if None in (box.y, box.y2, page_box.y, page_box.y2):
+            return False
+        page_h = float(page_box.y2) - float(page_box.y)
+        if page_h <= 0:
+            return False
+        band = max(page_h * _TITLE_TOP_BAND_RATIO, _TITLE_TOP_BAND_MIN_PT)
+        # Paragraph top (y2) must be inside the top band.
+        return float(box.y2) >= float(page_box.y2) - band
+
+    def update_paragraph_data(
+        self,
+        paragraph: PdfParagraph,
+        update_unicode=False,
+        page: Page | None = None,
+    ):
         if not paragraph.pdf_paragraph_composition:
             return
 
@@ -261,7 +307,7 @@ class ParagraphFinder:
         _normalize_first_line_indent(paragraph)
 
         # Reverse-paint decorative titles (WHO HAS ORGASMS? → ?SMSrgao SahWho).
-        # Title-label only — plain text is never reordered (figure golden).
+        # Title/section_header always; plain text only in page top band (PR-B).
         from babeldoc.format.pdf.document_il.utils.layout_helper import (
             _is_decorative_text,
             compute_decorative_tracking,
@@ -270,12 +316,16 @@ class ParagraphFinder:
             maybe_reorder_reversed_stream,
         )
 
+        page = page if page is not None else getattr(self, "_current_page", None)
         layout_label = getattr(paragraph, "layout_label", None)
+        in_top = self.paragraph_in_title_top_band(page, paragraph)
         for composition in paragraph.pdf_paragraph_composition:
             if composition.pdf_line and composition.pdf_line.pdf_character:
                 line_chars = composition.pdf_line.pdf_character
                 reordered = maybe_reorder_reversed_stream(
-                    line_chars, layout_label=layout_label
+                    line_chars,
+                    layout_label=layout_label,
+                    in_page_top_band=in_top,
                 )
                 if reordered is not line_chars:
                     composition.pdf_line.pdf_character = reordered
@@ -389,6 +439,7 @@ class ParagraphFinder:
         )
 
     def process_page(self, page: Page):
+        self._current_page = page
         layout_index, layout_map = build_layout_index(page)
         # 预处理公式布局的标签
         self._preprocess_formula_layouts(page)
@@ -449,8 +500,11 @@ class ParagraphFinder:
         if getattr(self.translation_config, "merge_alternating_line_numbers", True):
             self.merge_alternating_line_number_paragraphs(paragraphs)
 
+        # PR-B: Chapter N + short title line → one paragraph (top band only)
+        self.merge_chapter_title_paragraphs(page, paragraphs)
+
         for paragraph in paragraphs:
-            self.update_paragraph_data(paragraph, update_unicode=True)
+            self.update_paragraph_data(paragraph, update_unicode=True, page=page)
 
         if self.translation_config.ocr_workaround:
             self.add_text_fill_background(page)
@@ -549,6 +603,86 @@ class ParagraphFinder:
             and c.xobj_id is not None
             and a.xobj_id == c.xobj_id
         )
+
+    def _paragraph_unicode_or_ascii(self, p: PdfParagraph) -> str:
+        u = getattr(p, "unicode", None)
+        if u:
+            return u
+        return self._paragraph_text_ascii(p)
+
+    def _is_chapter_line_paragraph(self, p: PdfParagraph) -> bool:
+        text = self._paragraph_unicode_or_ascii(p).strip()
+        if not text:
+            return False
+        # After space_chapter_number: "Chapter 1"; before: "Chapter1"
+        if _CHAPTER_LINE_RE.match(text):
+            return True
+        compact = re.sub(r"\s+", "", text)
+        return bool(re.match(r"(?i)^chapter\d{1,3}$", compact))
+
+    def merge_chapter_title_paragraphs(
+        self, page: Page, paragraphs: list[PdfParagraph]
+    ) -> None:
+        """Merge top-band ``Chapter N`` + short title into one paragraph.
+
+        Guards:
+          - both paragraphs in page title top band
+          - first matches Chapter + digits only
+          - second is short (not body) and not another Chapter line
+          - vertical neighbors (second below or same band as first)
+        """
+        if not paragraphs or len(paragraphs) < 2:
+            return
+        i = 0
+        while i < len(paragraphs) - 1:
+            a = paragraphs[i]
+            b = paragraphs[i + 1]
+            if not self._is_chapter_line_paragraph(a):
+                i += 1
+                continue
+            if not self.paragraph_in_title_top_band(page, a):
+                i += 1
+                continue
+            if not self.paragraph_in_title_top_band(page, b):
+                i += 1
+                continue
+            if self._is_chapter_line_paragraph(b):
+                i += 1
+                continue
+            b_text = self._paragraph_unicode_or_ascii(b).strip()
+            if not b_text or len(b_text) > _CHAPTER_TITLE_MAX_CHARS:
+                i += 1
+                continue
+            # Prefer title-like labels on the second line; allow plain text.
+            b_label = (getattr(b, "layout_label", None) or "").strip().lower()
+            if b_label in (
+                "figure",
+                "table",
+                "formula",
+                "abandon",
+                "isolate_formula",
+            ):
+                i += 1
+                continue
+            # Geometry: b should not sit far below a (not body column).
+            if a.box and b.box and a.box.y is not None and b.box.y2 is not None:
+                # b top should be near a bottom (same header stack)
+                gap = float(a.box.y) - float(b.box.y2)
+                if gap > 36.0:  # more than ~0.5 inch separation
+                    i += 1
+                    continue
+            # Join with a space composition if neither edge is whitespace
+            a.pdf_paragraph_composition.extend(b.pdf_paragraph_composition)
+            # Prefer title label on the merged bar
+            if getattr(a, "layout_label", None) not in ("title", "section_header"):
+                if b_label in ("title", "section_header"):
+                    a.layout_label = b.layout_label
+                else:
+                    a.layout_label = "title"
+            self.update_paragraph_data(a, update_unicode=True, page=page)
+            del paragraphs[i + 1]
+            # stay on i in case of chained short fragments
+            continue
 
     def merge_alternating_line_number_paragraphs(self, paragraphs: list[PdfParagraph]):
         # a 代表正文
