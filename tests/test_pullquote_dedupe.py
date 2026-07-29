@@ -9,16 +9,34 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.utils.pullquote_dedupe import (
     is_pullquote_duplicate_of_body,
 )
+from babeldoc.format.pdf.document_il.utils.pullquote_dedupe import (
+    is_ultra_narrow_side_callout,
+)
 from babeldoc.format.pdf.document_il.utils.pullquote_dedupe import normalize_for_dup
+from babeldoc.format.pdf.document_il.utils.pullquote_dedupe import (
+    should_skip_side_callout_mt,
+)
 
 
-def _para(text: str, *, x: float, x2: float, y: float = 100.0) -> PdfParagraph:
-    return PdfParagraph(
-        box=Box(x=x, y=y, x2=x2, y2=y + 40),
+def _para(
+    text: str,
+    *,
+    x: float,
+    x2: float,
+    y: float = 100.0,
+    y2: float | None = None,
+    layout_label: str | None = None,
+) -> PdfParagraph:
+    top = y2 if y2 is not None else y + 40
+    p = PdfParagraph(
+        box=Box(x=x, y=y, x2=x2, y2=top),
         pdf_style=PdfStyle(font_id="base", font_size=12.0, graphic_state=None),
         pdf_paragraph_composition=[],
         unicode=text,
     )
+    if layout_label is not None:
+        p.layout_label = layout_label
+    return p
 
 
 def _page(*paras: PdfParagraph) -> Page:
@@ -60,3 +78,47 @@ def test_unique_body_not_duplicate():
     b = _para("Something completely different about foreplay.", x=102, x2=500)
     page = _page(a, b)
     assert is_pullquote_duplicate_of_body(a, page) is False
+
+
+def test_ultra_narrow_tall_callout_skipped():
+    """OA p8 red strip ~80×120 at x≈429 on letter — keep EN, do not tower ZH."""
+    callout = _para(
+        "The best way for you to learn the clit-stimulating techniques "
+        "that work best for her is going to be by watching her pleasure herself!",
+        x=429,
+        x2=509,
+        y=361,
+        y2=481,
+        layout_label="plain text",
+    )
+    page = _page(callout)
+    assert is_ultra_narrow_side_callout(callout, page) is True
+    assert should_skip_side_callout_mt(callout, page) is True
+
+
+def test_left_column_body_not_ultra_narrow_callout():
+    """OA p7 left column ~105pt at x≈102 — body beside photo, still translate."""
+    body = _para(
+        "Women like different things, the same as some men enjoy hard touch "
+        "and some soft, some like a little anal play,",
+        x=102,
+        x2=207,
+        y=78,
+        y2=168,
+        layout_label="plain text",
+    )
+    page = _page(body)
+    assert is_ultra_narrow_side_callout(body, page) is False
+
+
+def test_title_not_ultra_narrow_even_if_narrow_box():
+    title = _para(
+        "WHO HAS ORGASMS?",
+        x=430,
+        x2=510,
+        y=300,
+        y2=420,
+        layout_label="title",
+    )
+    page = _page(title)
+    assert is_ultra_narrow_side_callout(title, page) is False

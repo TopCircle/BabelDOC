@@ -43,7 +43,7 @@ from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
     is_placeholder_only_paragraph,
 )
 from babeldoc.format.pdf.document_il.utils.pullquote_dedupe import (
-    is_pullquote_duplicate_of_body,
+    should_skip_side_callout_mt,
 )
 from babeldoc.format.pdf.document_il.utils.style_marker_recover import StyleSpan
 from babeldoc.format.pdf.document_il.utils.style_marker_recover import (
@@ -1663,10 +1663,11 @@ class ILTranslator:
                 if self.use_as_fallback:
                     # il translator llm only modifies unicode in some situations
                     paragraph.unicode = get_paragraph_unicode(paragraph)
-                # Side callout that duplicates body quote → keep source (no 2nd MT)
-                if is_pullquote_duplicate_of_body(paragraph, page):
+                # Side callout: near-duplicate of body, or ultra-narrow tall
+                # strip that cannot fit CJK (OA p8 red figure callout) → keep EN
+                if should_skip_side_callout_mt(paragraph, page):
                     logger.debug(
-                        "skip pull-quote MT (near-duplicate of body): id=%s text=%r",
+                        "skip side-callout MT: id=%s text=%r",
                         paragraph.debug_id,
                         (paragraph.unicode or "")[:60],
                     )

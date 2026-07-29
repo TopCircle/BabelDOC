@@ -5,15 +5,21 @@ callout.  Translating both independently doubles DeepLX damage and wastes
 quota.  If the callout's alphanumeric skeleton is contained in a longer
 same-page paragraph, skip translating the callout.
 
+Also: ultra-narrow tall side callouts (Orgasmic Addiction p8 red strip
+~80pt wide next to a photo) cannot fit CJK after translation even with
+box expansion (figure blocks the right).  Skipping MT keeps the source
+layout readable instead of a one-glyph-per-line ZH tower.
+
 **Product note:** skip keeps the callout in the *source language* (usually
 EN).  It does not copy the body ZH translation onto the side panel.  Mono
 pages therefore show ZH body + EN callout for those duplicates — a
 deliberate lightweight tradeoff, not full bilingual callout sync.
 
-Owns only the near-duplicate test; callers decide skip policy.
+Owns only the near-duplicate / ultra-narrow tests; callers decide skip policy.
 
 Geometry thresholds (``width_ratio < 0.55``, ``left_ratio > 0.35``) match
 Day6-style right callouts (~x=360 on letter); they are not universal.
+Ultra-narrow uses ``width_ratio < 0.18`` and ``height/width > 0.9``.
 """
 
 from __future__ import annotations
@@ -24,6 +30,12 @@ from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 
 _ALNUM = re.compile(r"[^a-z0-9]+")
+
+# Ultra-narrow side strip (OA p8 red callout ~80pt on 612 ≈ 0.13)
+_ULTRA_NARROW_WIDTH_RATIO = 0.18
+_ULTRA_NARROW_MIN_HEIGHT_RATIO = 0.9  # tall column, not a single short line
+_ULTRA_NARROW_MIN_CHARS = 30
+_ULTRA_NARROW_LEFT_RATIO = 0.45  # mostly right-half of the page
 
 
 def normalize_for_dup(text: str | None) -> str:
@@ -65,6 +77,59 @@ def is_pullquote_duplicate_of_body(
         if quote in host:
             return True
     return False
+
+
+def is_ultra_narrow_side_callout(
+    paragraph: PdfParagraph,
+    page: Page | None,
+) -> bool:
+    """True for tall, ultra-narrow side strips that cannot fit CJK.
+
+    Orgasmic Addiction p8: red figure-adjacent callout box ~80×120pt.
+    Translating into that box yields a vertical Chinese tower.  Keeping
+    the English source preserves the designed layout.
+
+    Does **not** match left-column body text beside a full-bleed photo
+    (those have width_ratio ≳ 0.17 but left_ratio low, e.g. x≈100).
+    """
+    if page is None:
+        return False
+    label = (getattr(paragraph, "layout_label", None) or "").lower()
+    if label in ("title", "section_header", "abandon", "fallback_line"):
+        return False
+    text = (getattr(paragraph, "unicode", None) or "").strip()
+    if len(text) < _ULTRA_NARROW_MIN_CHARS:
+        return False
+    box = getattr(paragraph, "box", None)
+    if not box or box.x is None or box.x2 is None or box.y is None or box.y2 is None:
+        return False
+    page_box = _page_box(page)
+    if page_box is None or page_box.x2 <= page_box.x:
+        return False
+    page_width = page_box.x2 - page_box.x
+    para_w = box.x2 - box.x
+    para_h = box.y2 - box.y
+    if para_w <= 0 or para_h <= 0:
+        return False
+    width_ratio = para_w / page_width
+    left_ratio = (box.x - page_box.x) / page_width
+    if width_ratio >= _ULTRA_NARROW_WIDTH_RATIO:
+        return False
+    if left_ratio < _ULTRA_NARROW_LEFT_RATIO:
+        return False
+    if para_h / para_w < _ULTRA_NARROW_MIN_HEIGHT_RATIO:
+        return False
+    return True
+
+
+def should_skip_side_callout_mt(
+    paragraph: PdfParagraph,
+    page: Page | None,
+) -> bool:
+    """Unified skip: duplicate pull-quote **or** ultra-narrow tall callout."""
+    if is_pullquote_duplicate_of_body(paragraph, page):
+        return True
+    return is_ultra_narrow_side_callout(paragraph, page)
 
 
 def _page_box(page: Page):

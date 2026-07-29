@@ -3346,48 +3346,6 @@ class Typesetting:
             reference_widths = self._extract_original_line_widths(paragraph)
         layout_line_idx = 0
 
-        # === DIAGNOSTIC: 写入独立 log 文件 ===
-        _diag_text = paragraph.unicode or ""
-        if "在这些" in _diag_text:
-            import os as _os
-            _diag_path = _os.environ.get("BABELDOC_DIAG_LOG", "/tmp/babeldoc_diag.log")
-            with open(_diag_path, "a", encoding="utf-8") as _f:
-                _f.write("=== DIAG typesetting_units ===\n")
-                _f.write(f"  debug_id={getattr(paragraph, 'debug_id', None)}\n")
-                _f.write(f"  unicode={_diag_text!r}\n")
-                _f.write(f"  box=[{box.x:.1f},{box.y:.1f}]-[{box.x2:.1f},{box.y2:.1f}]\n")
-                _f.write(f"  scale={scale}\n")
-                _f.write(f"  break_points={break_points}\n")
-                for _di, _du in enumerate(typesetting_units):
-                    _du_unicode = _du.try_get_unicode() or "?"
-                    _f.write(
-                        f"  Unit[{_di}]: unicode={_du_unicode!r}, "
-                        f"width={_du.width:.2f}, "
-                        f"is_cjk={_du.is_cjk_char}, "
-                        f"can_break={_du.can_break_line}, "
-                        f"is_space={_du.is_space}\n"
-                    )
-                _f.write("=== END DIAG ===\n\n")
-        # === END DIAGNOSTIC ===
-
-        # === DIAGNOSTIC: 打印 zone_index 中的 zones ===
-        if "在这些" in (paragraph.unicode or ""):
-            _zone_index = getattr(self, "_current_zone_index", None)
-            import os as _os
-            _diag_path = _os.environ.get("BABELDOC_DIAG_LOG", "/tmp/babeldoc_diag.log")
-            with open(_diag_path, "a", encoding="utf-8") as _f:
-                _f.write("=== DIAG zone_index ===\n")
-                if _zone_index and _zone_index.zones:
-                    for _zi, _z in enumerate(_zone_index.zones):
-                        _f.write(
-                            f"  Zone[{_zi}]: box=[{_z.box.x:.1f},{_z.box.y:.1f}]-[{_z.box.x2:.1f},{_z.box.y2:.1f}] "
-                            f"kind={_z.kind} priority={_z.priority}\n"
-                        )
-                else:
-                    _f.write("  (no zones)\n")
-                _f.write("=== END DIAG ===\n\n")
-        # === END DIAGNOSTIC ===
-
         # 计算字号众数
         font_sizes = []
         for unit in typesetting_units:
@@ -3738,27 +3696,6 @@ class Typesetting:
                         )
                     interval_idx = 0
                     available_x, available_x2 = intervals[0]
-                    # === DIAGNOSTIC: 每次换行时记录 available 范围 ===
-                    if "在这些" in (paragraph.unicode or ""):
-                        _prev_chars = "".join(
-                            (typesetting_units[k].try_get_unicode() or "?")
-                            for k in range(max(0, i - 3), i)
-                        )
-                        _next_chars = "".join(
-                            (typesetting_units[k].try_get_unicode() or "?")
-                            for k in range(i, min(len(typesetting_units), i + 3))
-                        )
-                        import os as _os
-                        _diag_path = _os.environ.get(
-                            "BABELDOC_DIAG_LOG", "/tmp/babeldoc_diag.log"
-                        )
-                        with open(_diag_path, "a", encoding="utf-8") as _f:
-                            _f.write(
-                                f"  LINE_BREAK y={current_y:.1f} "
-                                f"intervals={[(round(a,1), round(b,1)) for a, b in intervals]} "
-                                f"prev={_prev_chars!r} next={_next_chars!r}\n"
-                            )
-                    # === END DIAGNOSTIC ===
                     current_x = available_x
                     line_available_x = intervals[0][0]
                     line_available_x2 = intervals[0][1]

@@ -260,6 +260,23 @@ class ParagraphFinder:
         # 向后兼容：旧 XML 中 FirstLineIndent 可能是 bool 或字符串 "true"
         _normalize_first_line_indent(paragraph)
 
+        # Repair reverse-paint decorative titles (e.g. WHO HAS ORGASMS? painted
+        # right-to-left → "?SMSrgao SahWho") by sorting each line LTR when the
+        # stream is reverse-dominant. Safe for normal LTR body (ratio ≈ 0).
+        from babeldoc.format.pdf.document_il.utils.layout_helper import (
+            is_stream_visually_reversed,
+            sort_chars_visual_order,
+        )
+
+        for composition in paragraph.pdf_paragraph_composition:
+            if composition.pdf_line and composition.pdf_line.pdf_character:
+                line_chars = composition.pdf_line.pdf_character
+                if is_stream_visually_reversed(line_chars):
+                    composition.pdf_line.pdf_character = sort_chars_visual_order(
+                        line_chars
+                    )
+                    self.update_line_data(composition.pdf_line)
+
         chars = []
         for composition in paragraph.pdf_paragraph_composition:
             if composition.pdf_line:
