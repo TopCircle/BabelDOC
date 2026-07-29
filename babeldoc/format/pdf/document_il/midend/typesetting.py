@@ -3822,11 +3822,53 @@ class Typesetting:
 
         @cache
         def get_font(font_id: str, xobj_id: int | None):
-            if xobj_id in fonts:
-                font = fonts[xobj_id][font_id]
-            else:
-                font = fonts[font_id]
-            return font
+            """Resolve style font_id without KeyError on missing IDs (e.g. F33).
+
+            Design PDFs sometimes reference a page/xobj font that was not
+            registered on ``page.pdf_font`` (stripped subset, orphan style).
+            Hard ``fonts[font_id]`` aborted the whole job mid-Typesetting.
+            Fall back: xobj map → page map → any PdfFont on the page →
+            synthetic PdfFont so FontMapper still has a style probe.
+            """
+            # 1) XObject-local map (dict[str, PdfFont])
+            if xobj_id is not None and xobj_id in fonts:
+                font_map = fonts[xobj_id]
+                if isinstance(font_map, dict):
+                    if font_id in font_map:
+                        return font_map[font_id]
+                    # miss on xobj — try page-level below
+            # 2) Page-level or BabelDOC-injected font id
+            hit = fonts.get(font_id) if font_id is not None else None
+            if hit is not None and not isinstance(hit, dict):
+                return hit
+            # 3) Any real PdfFont already on the page
+            for v in fonts.values():
+                if isinstance(v, il_version_1.PdfFont):
+                    logger.warning(
+                        "typesetting: font_id %r missing (xobj=%s); "
+                        "fallback to page font %r",
+                        font_id,
+                        xobj_id,
+                        v.font_id,
+                    )
+                    return v
+            # 4) Synthetic style probe — FontMapper.map uses bold/serif only
+            logger.warning(
+                "typesetting: font_id %r missing (xobj=%s); "
+                "using synthetic PdfFont (no page fonts available)",
+                font_id,
+                xobj_id,
+            )
+            return il_version_1.PdfFont(
+                name=font_id or "unknown",
+                font_id=font_id or "base",
+                xref_id=0,
+                encoding_length=2,
+                bold=False,
+                italic=False,
+                monospace=False,
+                serif=True,
+            )
 
         for composition in paragraph.pdf_paragraph_composition:
             if composition is None:
