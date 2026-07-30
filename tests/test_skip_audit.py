@@ -56,6 +56,8 @@ def test_skip_reason_stable_values():
     assert SkipReason.FIGURE_TEXT.value == "figure_text"
     assert SkipReason.HEADER.value == "header"
     assert SkipReason.FOOTER.value == "footer"
+    assert SkipReason.URL_CHROME.value == "url_chrome"
+    assert SkipReason.PAGE_NUMBER.value == "page_number"
     assert SkipReason.ULTRA_NARROW.value == "ultra_narrow"
     assert SkipReason.PULLQUOTE.value == "pullquote"
     assert SkipReason.PURE_NUMERIC.value == "pure_numeric"

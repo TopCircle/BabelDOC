@@ -46,16 +46,16 @@ def test_who_has_orgasms_reverse_stream_detected():
     stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
 
     assert is_stream_visually_reversed(stream) is True
-    # Without title label — must not reorder (body safety)
-    assert maybe_reorder_reversed_stream(stream) is stream
-    assert maybe_reorder_reversed_stream(stream, layout_label="plain text") is stream
-    ordered = maybe_reorder_reversed_stream(stream, layout_label="title")
-    assert ordered is not stream  # new list when reordered
-    text = get_char_unicode_string(ordered)
+    # Plain or title: decorative reverse reorders (geometry gate)
+    for label in ("plain text", "title", None):
+        ordered = maybe_reorder_reversed_stream(stream, layout_label=label)
+        assert ordered is not stream
+        assert "".join(c.char_unicode for c in ordered) == "Who haS orgaSMS?"
+    text = get_char_unicode_string(
+        maybe_reorder_reversed_stream(stream, layout_label="title")
+    )
     assert _alnum(text).startswith("who")
     assert "orgasms" in _alnum(text)
-    # Exact visual order (decorative caps preserved)
-    assert "".join(c.char_unicode for c in ordered) == "Who haS orgaSMS?"
 
 
 def test_ltr_body_not_reversed():
@@ -105,9 +105,8 @@ def test_1chapter_misplaced_digit_becomes_chapter_1():
     xs_ch = [44.0 + i * 9 for i in range(len(chapter))]
     stream = [_ch("1", 199.0)] + [_ch(c, x) for c, x in zip(chapter, xs_ch)]
     assert "".join(c.char_unicode for c in stream) == "1Chapter"
-    # plain text must not fix 1Chapter (title-only policy)
-    assert maybe_reorder_reversed_stream(stream, layout_label="plain text") is stream
-    ordered = maybe_reorder_reversed_stream(stream, layout_label="title")
+    # plain or title: misplaced digit + decorative short run
+    ordered = maybe_reorder_reversed_stream(stream, layout_label="plain text")
     assert ordered is not stream
     assert "".join(c.char_unicode for c in ordered) == "Chapter1"
     text = get_char_unicode_string(ordered)
@@ -117,36 +116,32 @@ def test_1chapter_misplaced_digit_becomes_chapter_1():
     assert not alnum.startswith("1chapter")
 
 
-def test_plain_text_mid_page_identity_via_api():
-    """API gate: mid-page plain identity; ParagraphFinder promotes separately."""
+def test_plain_decorative_reverse_reorders_single_policy():
+    """Geometry+label policy: plain mid-page decorative reverse reorders once."""
     letters = list("Who haS orgaSMS?")
     xs = list(range(100, 100 + 10 * len(letters), 10))
     stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
     assert is_stream_visually_reversed(stream) is True
-    for label in (None, "", "plain text", "paragraph", "text", "abandon"):
-        assert maybe_reorder_reversed_stream(stream, layout_label=label) is stream
+    for label in (None, "", "plain text", "paragraph", "text", "title"):
+        ordered = maybe_reorder_reversed_stream(
+            stream, layout_label=label, in_page_top_band=False
+        )
+        assert ordered is not stream
+        assert "".join(c.char_unicode for c in ordered) == "Who haS orgaSMS?"
+    # abandon / figure never
+    for label in ("abandon", "figure", "table"):
         assert (
             maybe_reorder_reversed_stream(
-                stream, layout_label=label, in_page_top_band=False
+                stream, layout_label=label, in_page_top_band=True
             )
             is stream
         )
-    assert (
-        maybe_reorder_reversed_stream(
-            stream, layout_label="abandon", in_page_top_band=True
-        )
-        is stream
-    )
 
 
-def test_title_promote_reorders_decorative_reverse():
-    """ParagraphFinder second-chance uses title label for OA mid-page titles."""
-    letters = list("Who haS orgaSMS?")
-    xs = list(range(100, 100 + 10 * len(letters), 10))
-    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
-    ordered = maybe_reorder_reversed_stream(stream, layout_label="title")
-    assert ordered is not stream
-    assert "".join(c.char_unicode for c in ordered) == "Who haS orgaSMS?"
+def test_long_ltr_body_identity():
+    word = "prepare for the best syndrome analysis path"
+    chars = [_ch(ch, 50 + i * 6) for i, ch in enumerate(word)]
+    assert maybe_reorder_reversed_stream(chars, layout_label="plain text") is chars
 
 
 def test_descender_glyphs_stay_on_same_line_as_peers():

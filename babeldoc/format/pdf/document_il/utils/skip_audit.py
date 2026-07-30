@@ -29,6 +29,8 @@ class SkipReason(str, Enum):
     FIGURE_TEXT = "figure_text"
     HEADER = "header"
     FOOTER = "footer"
+    URL_CHROME = "url_chrome"
+    PAGE_NUMBER = "page_number"
     ULTRA_NARROW = "ultra_narrow"
     PULLQUOTE = "pullquote"
     PURE_NUMERIC = "pure_numeric"

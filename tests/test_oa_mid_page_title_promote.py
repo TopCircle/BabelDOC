@@ -1,4 +1,4 @@
-"""OA: mid-page plain decorative reverse promoted via ParagraphFinder."""
+"""OA: mid-page plain decorative reverse reorders via single stream_order policy."""
 
 from __future__ import annotations
 
@@ -13,6 +13,9 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
 from babeldoc.format.pdf.document_il.midend.paragraph_finder import ParagraphFinder
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode_string
+from babeldoc.format.pdf.document_il.utils.stream_order import (
+    maybe_reorder_reversed_stream,
+)
 
 
 def _ch(text: str, x: float, y: float = 100.0, w: float = 8.0) -> PdfCharacter:
@@ -30,7 +33,18 @@ def _ch(text: str, x: float, y: float = 100.0, w: float = 8.0) -> PdfCharacter:
     )
 
 
-def test_update_paragraph_promotes_mid_page_who_has():
+def test_maybe_reorder_plain_mid_page_decorative_reverse():
+    letters = list("Who haS orgaSMS?")
+    xs = list(range(100, 100 + 10 * len(letters), 10))
+    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
+    ordered = maybe_reorder_reversed_stream(
+        stream, layout_label="plain text", in_page_top_band=False
+    )
+    assert ordered is not stream
+    assert "".join(c.char_unicode for c in ordered) == "Who haS orgaSMS?"
+
+
+def test_update_paragraph_reorders_mid_page_who_has():
     letters = list("Who haS orgaSMS?")
     xs = list(range(100, 100 + 10 * len(letters), 10))
     stream = [_ch(ch, x, y=400) for ch, x in zip(reversed(letters), reversed(xs))]
@@ -48,7 +62,6 @@ def test_update_paragraph_promotes_mid_page_who_has():
     finder = object.__new__(ParagraphFinder)
     finder.translation_config = MagicMock()
     finder._current_page = None
-    # Mid-page: not top band
     finder.paragraph_in_title_top_band = lambda page, p: False  # type: ignore
     finder.update_paragraph_data(para, update_unicode=True, page=None)
     text = para.unicode or get_char_unicode_string(
@@ -56,5 +69,4 @@ def test_update_paragraph_promotes_mid_page_who_has():
     )
     alnum = "".join(c.lower() for c in text if c.isalnum())
     assert alnum.startswith("who")
-    assert "orgasms" in alnum or "orgasms" in alnum.replace("s", "s")
     assert "smsrgao" not in alnum

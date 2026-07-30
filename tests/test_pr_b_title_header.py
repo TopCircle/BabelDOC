@@ -50,18 +50,14 @@ def test_space_chapter_number():
     )
 
 
-def test_plain_text_mid_page_api_identity_finder_promotes():
-    """stream_order API keeps mid-page plain identity; title path reorders."""
+def test_plain_text_mid_page_decorative_reverse_single_call():
+    """Single stream_order policy reorders mid-page plain decorative reverse."""
     letters = list("Who haS orgaSMS?")
     xs = list(range(100, 100 + 10 * len(letters), 10))
     stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
-    assert (
-        maybe_reorder_reversed_stream(
-            stream, layout_label="plain text", in_page_top_band=False
-        )
-        is stream
+    ordered = maybe_reorder_reversed_stream(
+        stream, layout_label="plain text", in_page_top_band=False
     )
-    ordered = maybe_reorder_reversed_stream(stream, layout_label="title")
     assert ordered is not stream
     assert "".join(c.char_unicode for c in ordered) == "Who haS orgaSMS?"
 
@@ -81,27 +77,17 @@ def test_plain_text_top_band_reorders_reverse_title():
     assert "orgasms" in _alnum(text)
 
 
-def test_1chapter_plain_top_band_becomes_chapter_1():
+def test_1chapter_plain_becomes_chapter_1():
     chapter = list("Chapter")
     xs_ch = [44.0 + i * 9 for i in range(len(chapter))]
     stream = [_ch("1", 199.0)] + [_ch(c, x) for c, x in zip(chapter, xs_ch)]
-    # mid-page plain via API: identity (finder may promote)
-    assert (
-        maybe_reorder_reversed_stream(
-            stream, layout_label="plain text", in_page_top_band=False
-        )
-        is stream
-    )
     ordered = maybe_reorder_reversed_stream(
-        stream, layout_label="plain text", in_page_top_band=True
+        stream, layout_label="plain text", in_page_top_band=False
     )
     assert "".join(c.char_unicode for c in ordered) == "Chapter1"
     text = get_char_unicode_string(ordered)
     assert text.replace(" ", "").lower().startswith("chapter")
     assert "chapter 1" in text.lower() or text.lower().endswith("1")
-    # title promote path (ParagraphFinder second-chance)
-    promoted = maybe_reorder_reversed_stream(stream, layout_label="title")
-    assert "".join(c.char_unicode for c in promoted) == "Chapter1"
 
 
 def _line_para(

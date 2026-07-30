@@ -169,5 +169,11 @@ def test_figure_il_invariants_unit_plain_text_gate():
     xs = list(range(100, 100 + 10 * len(letters), 10))
     stream = [ch(c, x) for c, x in zip(reversed(letters), reversed(xs))]
     assert is_stream_visually_reversed(stream)
-    assert maybe_reorder_reversed_stream(stream, layout_label="plain text") is stream
+    # Plain decorative reverse reorders (geometry gate); abandon never.
+    assert maybe_reorder_reversed_stream(stream, layout_label="plain text") is not stream
     assert maybe_reorder_reversed_stream(stream, layout_label="title") is not stream
+    assert maybe_reorder_reversed_stream(stream, layout_label="abandon") is stream
+    # Long LTR body identity (figure golden safety)
+    body = "prepare for the best syndrome analysis"
+    ltr = [ch(c, 50 + i * 6) for i, c in enumerate(body)]
+    assert maybe_reorder_reversed_stream(ltr, layout_label="plain text") is ltr

@@ -15,10 +15,19 @@ with orphan ``p`` — wrecking the figure golden dual.
 Line clustering therefore uses the **top** of the glyph box (``y2``), which
 is stable across descenders on the same baseline.
 
-Owns only geometry/order; callers decide when to apply.
+Policy (single entry :func:`maybe_reorder_reversed_stream`):
+  1. Decorative short-run geometry
+  2. Reverse-paint **or** misplaced leading digit
+  3. Label is title/section_header **or** plain-text family
+     (not abandon/figure/table)
+
+Long LTR body fails (1) or (2).  OA mid-page plain decorative reverse passes
+all three without fake ``layout_label="title"`` promote.
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
@@ -30,18 +39,15 @@ _DEFAULT_MIN_PAIRS = 4
 # Guard: only reorder short decorative-like runs, not long body lines.
 _MAX_REORDER_CHARS = 64
 _MIN_SINGLE_LETTER_RATIO = 0.55
-# Reading-order repair is title-like by default.  arXiv / body "plain text"
-# must not reorder via this API alone (figure golden unit gate).
-# OA mid-page decorative reverse is promoted in ParagraphFinder (second-chance
-# call with layout_label=title) after decorative+reverse probes pass.
+
 _REORDER_ALLOWED_LABELS = frozenset(
     {
         "title",
         "section_header",
     }
 )
-# Mis-labeled chapter titles (DocLayout → plain text) in the page top band.
-_REORDER_PLAIN_TOP_LABELS = frozenset(
+# Plain-text family may reorder only after decorative+reverse gates pass.
+_REORDER_PLAIN_LABELS = frozenset(
     {
         "",
         "plain text",
@@ -50,6 +56,12 @@ _REORDER_PLAIN_TOP_LABELS = frozenset(
         "paragraph_hybrid",
     }
 )
+# Backward-compatible name (top-band no longer required for plain).
+_REORDER_PLAIN_TOP_LABELS = _REORDER_PLAIN_LABELS
+
+# Multi-line stream climb (bottom→top emit) → sort lines top-first.
+_LINE_Y_EPS_PT = 2.0
+_LINE_CLIMB_MIN_STEPS = 2
 
 
 def _resolve_char_box(char: PdfCharacter) -> Box | None:
@@ -121,7 +133,7 @@ def is_stream_visually_reversed(
     return (decreasing / total) >= reverse_ratio
 
 
-def _looks_like_decorative_run(chars: list[PdfCharacter]) -> bool:
+def looks_like_decorative_run(chars: list[PdfCharacter]) -> bool:
     """True for short, mostly single-letter runs (typical reverse-paint titles)."""
     pdf_chars = [c for c in chars if isinstance(c, PdfCharacter)]
     if not pdf_chars or len(pdf_chars) > _MAX_REORDER_CHARS:
@@ -140,7 +152,11 @@ def _looks_like_decorative_run(chars: list[PdfCharacter]) -> bool:
     return (single / letters) >= _MIN_SINGLE_LETTER_RATIO
 
 
-def _is_misplaced_leading_digit(chars: list[PdfCharacter]) -> bool:
+# Private alias kept for any external private imports during transition.
+_looks_like_decorative_run = looks_like_decorative_run
+
+
+def is_misplaced_leading_digit(chars: list[PdfCharacter]) -> bool:
     """Stream starts with a digit whose x is right of the following word (1Chapter)."""
     pdf_chars = [c for c in chars if isinstance(c, PdfCharacter)]
     if len(pdf_chars) < 3:
@@ -168,6 +184,9 @@ def _is_misplaced_leading_digit(chars: list[PdfCharacter]) -> bool:
     if len(rest_x) < 2:
         return False
     return xy0[0] > (min(rest_x) + 20.0)
+
+
+_is_misplaced_leading_digit = is_misplaced_leading_digit
 
 
 def sort_chars_visual_order(
@@ -213,16 +232,18 @@ def label_allows_stream_reorder(
     *,
     in_page_top_band: bool = False,
 ) -> bool:
-    """Whether *layout_label* may use reverse-paint reorder.
+    """Whether *layout_label* may reorder after geometry gates pass.
 
-    - Always: ``title`` / ``section_header``
-    - Plain-text family **only** when *in_page_top_band* (PR-B)
-    - Mid-page plain: use ParagraphFinder second-chance (title promote)
+    - ``title`` / ``section_header``: always
+    - plain-text family: always (geometry already blocked long LTR body)
+    - ``in_page_top_band`` retained for API compatibility; unused for gating
+    - abandon / figure / table: never
     """
+    _ = in_page_top_band  # API compat (PR-B callers)
     label = (layout_label or "").strip().lower()
     if label in _REORDER_ALLOWED_LABELS:
         return True
-    if in_page_top_band and label in _REORDER_PLAIN_TOP_LABELS:
+    if label in _REORDER_PLAIN_LABELS:
         return True
     return False
 
@@ -233,30 +254,70 @@ def maybe_reorder_reversed_stream(
     layout_label: str | None = None,
     in_page_top_band: bool = False,
 ) -> list[PdfCharacter]:
-    """Reorder reverse-paint / misplaced-digit runs on **title-like** runs.
+    """Reorder reverse-paint / misplaced-digit runs (single policy entry).
 
-    Hard rules (all required):
-      1. Label is title/section_header, **or** plain-text family in page top band
-      2. Short single-letter decorative geometry
-      3. Reverse-paint ratio high **or** misplaced leading digit (1Chapter)
+    Order of checks (all required):
+      1. Short single-letter decorative geometry
+      2. Reverse-paint ratio high **or** misplaced leading digit
+      3. Label is title/section_header **or** plain-text family
 
-    Does **not** reorder merely because visual sort differs — that path
-    scrambled arXiv body (descenders → false second line → ``seudo``).
-    Mid-page plain text: identity here; ParagraphFinder may promote.
+    Does **not** reorder merely because visual sort differs.
+    Long LTR body fails (1) or (2).  Mid-page plain decorative reverse
+    (OA Who has / Are You Lost) passes without fake title promote.
     """
     if not chars:
         return chars
-    if not label_allows_stream_reorder(
-        layout_label, in_page_top_band=in_page_top_band
-    ):
-        return chars
-    if not _looks_like_decorative_run(chars):
+    # Geometry first — figure-golden long LTR never reaches label policy.
+    if not looks_like_decorative_run(chars):
         return chars
     if not (
-        is_stream_visually_reversed(chars) or _is_misplaced_leading_digit(chars)
+        is_stream_visually_reversed(chars) or is_misplaced_leading_digit(chars)
+    ):
+        return chars
+    if not label_allows_stream_reorder(
+        layout_label, in_page_top_band=in_page_top_band
     ):
         return chars
     ordered = sort_chars_visual_order(chars)
     if _same_order(ordered, chars):
         return chars
     return ordered
+
+
+def sort_line_compositions_if_stream_climbs(
+    compositions: list[Any],
+) -> list[Any] | None:
+    """If stream walks up the page between consecutive lines, return top-first order.
+
+    Only runs when **every** composition is a ``pdf_line`` with a box (no
+    formula interleave).  Returns None when no change (caller keeps original).
+    """
+    if len(compositions) < 2:
+        return None
+    line_y2: list[float] = []
+    for comp in compositions:
+        line = getattr(comp, "pdf_line", None)
+        if line is None:
+            return None  # mixed composition — do not reorder
+        box = getattr(line, "box", None)
+        if box is None or box.y2 is None:
+            return None
+        line_y2.append(float(box.y2))
+
+    climbs = 0
+    drops = 0
+    for a, b in zip(line_y2, line_y2[1:]):
+        if b > a + _LINE_Y_EPS_PT:
+            climbs += 1
+        elif b < a - _LINE_Y_EPS_PT:
+            drops += 1
+    if climbs < _LINE_CLIMB_MIN_STEPS or climbs <= drops:
+        return None
+
+    return sorted(
+        compositions,
+        key=lambda c: (
+            -(c.pdf_line.box.y2 or 0.0),
+            c.pdf_line.box.x if c.pdf_line.box.x is not None else 0.0,
+        ),
+    )

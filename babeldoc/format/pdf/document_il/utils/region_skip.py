@@ -1,10 +1,10 @@
-"""Safer header/footer and figure skip bounds (PR-C2).
+"""Safer header/footer skip bounds (PR-C2) + always-on site chrome skip.
 
 Shared by ``ILTranslator`` and ``ParagraphFinder`` so white-fill and MT skip
 cannot drift.
 
-Also: site URL / bare page-number chrome always excluded from MT while
-keeping source spans visible (do not delete from PDF).
+URL / bare page-number chrome: always exclude from MT; source spans stay
+visible (not deleted from the PDF).
 """
 
 from __future__ import annotations
@@ -21,8 +21,9 @@ _URL_CHROME_RE = re.compile(
 )
 # Bare page number only (running footer digits).
 _PAGE_NUM_ONLY_RE = re.compile(r"^\d{1,3}$")
+# Fallback band when config heights are not applied to chrome-only checks.
+_CHROME_BAND_FALLBACK_PT = 48.0
 
-# Always translate — document content, not running chrome.
 HEADER_EXEMPT_LABELS = frozenset(
     {
         "title",
@@ -30,7 +31,6 @@ HEADER_EXEMPT_LABELS = frozenset(
     }
 )
 
-# Body-like labels that may sit geometrically in a tall header band.
 BODY_LAYOUT_LABELS = frozenset(
     {
         "",
@@ -41,9 +41,7 @@ BODY_LAYOUT_LABELS = frozenset(
     }
 )
 
-# Long enough that this is unlikely to be a running header string.
 HEADER_BODY_MIN_CHARS = 48
-# Tall block in the top band (multi-line body, not a single chrome line).
 HEADER_BODY_MIN_HEIGHT_PT = 28.0
 HEADER_BODY_MIN_CHARS_TALL = 24
 
@@ -132,55 +130,19 @@ def is_url_site_chrome(paragraph: PdfParagraph) -> bool:
 def is_bare_page_number_chrome(
     paragraph: PdfParagraph,
     page: Page | None = None,
+    *,
+    header_height: float = _CHROME_BAND_FALLBACK_PT,
+    footer_height: float = _CHROME_BAND_FALLBACK_PT,
 ) -> bool:
     """True for a lone 1–3 digit page number in the footer/header band."""
     text = (getattr(paragraph, "unicode", None) or "").strip()
     if not _PAGE_NUM_ONLY_RE.match(text):
         return False
     if page is None:
-        return False  # require geometry — bare "1" mid-body is not chrome
-    if in_footer_band(page, paragraph, footer_height=48.0):
-        return True
-    if in_header_band(page, paragraph, header_height=48.0):
-        return True
-    return False
-
-
-def should_skip_header_footer(
-    page: Page,
-    paragraph: PdfParagraph,
-    *,
-    skip_header: bool,
-    skip_footer: bool,
-    header_height: float,
-    footer_height: float,
-    ocr_workaround: bool = False,
-) -> bool:
-    """Whether to skip MT for header/footer chrome (PR-C2 safer bounds).
-
-    Never skips title/section_header or body-like long prose in the band.
-    Always skips bare URL chrome (source stays visible, not deleted).
-    """
-    if is_url_site_chrome(paragraph):
-        return True
-    if is_bare_page_number_chrome(paragraph, page):
-        return True
-    if is_header_chrome_exempt(paragraph):
         return False
-    if ocr_workaround:
-        return False
-    if not (skip_header or skip_footer):
-        return False
-    if not getattr(paragraph, "box", None):
-        return False
-
-    if skip_header and in_header_band(
-        page, paragraph, header_height=header_height
-    ):
+    if in_footer_band(page, paragraph, footer_height=footer_height):
         return True
-    if skip_footer and in_footer_band(
-        page, paragraph, footer_height=footer_height
-    ):
+    if in_header_band(page, paragraph, header_height=header_height):
         return True
     return False
 
@@ -195,21 +157,29 @@ def classify_header_footer_skip(
     footer_height: float,
     ocr_workaround: bool = False,
 ) -> str | None:
-    """Return ``header`` / ``footer`` or None (same predicates as should_skip)."""
+    """Single decision point: skip reason code or None.
+
+    Reasons: ``url_chrome`` | ``page_number`` | ``header`` | ``footer``.
+    """
     if is_url_site_chrome(paragraph):
-        return "header"
-    if is_bare_page_number_chrome(paragraph, page):
-        return "footer"
-    if not should_skip_header_footer(
-        page,
+        return "url_chrome"
+    if is_bare_page_number_chrome(
         paragraph,
-        skip_header=skip_header,
-        skip_footer=skip_footer,
-        header_height=header_height,
-        footer_height=footer_height,
-        ocr_workaround=ocr_workaround,
+        page,
+        header_height=header_height or _CHROME_BAND_FALLBACK_PT,
+        footer_height=footer_height or _CHROME_BAND_FALLBACK_PT,
     ):
+        return "page_number"
+
+    if is_header_chrome_exempt(paragraph):
         return None
+    if ocr_workaround:
+        return None
+    if not (skip_header or skip_footer):
+        return None
+    if not getattr(paragraph, "box", None):
+        return None
+
     if skip_header and in_header_band(
         page, paragraph, header_height=header_height
     ):
@@ -218,4 +188,29 @@ def classify_header_footer_skip(
         page, paragraph, footer_height=footer_height
     ):
         return "footer"
-    return "header"
+    return None
+
+
+def should_skip_header_footer(
+    page: Page,
+    paragraph: PdfParagraph,
+    *,
+    skip_header: bool,
+    skip_footer: bool,
+    header_height: float,
+    footer_height: float,
+    ocr_workaround: bool = False,
+) -> bool:
+    """Whether to skip MT for header/footer/site chrome."""
+    return (
+        classify_header_footer_skip(
+            page,
+            paragraph,
+            skip_header=skip_header,
+            skip_footer=skip_footer,
+            header_height=header_height,
+            footer_height=footer_height,
+            ocr_workaround=ocr_workaround,
+        )
+        is not None
+    )

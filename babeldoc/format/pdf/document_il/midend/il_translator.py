@@ -492,11 +492,14 @@ class ILTranslator:
                 getattr(self.translation_config, "ocr_workaround", False)
             ),
         )
-        if band == "header":
-            return SkipReason.HEADER
-        if band == "footer":
-            return SkipReason.FOOTER
-        return None
+        if band is None:
+            return None
+        return {
+            "header": SkipReason.HEADER,
+            "footer": SkipReason.FOOTER,
+            "url_chrome": SkipReason.URL_CHROME,
+            "page_number": SkipReason.PAGE_NUMBER,
+        }.get(band)
 
     def translate(self, docs: Document):
         self.docs = docs
