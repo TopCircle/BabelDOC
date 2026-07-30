@@ -117,12 +117,8 @@ def test_1chapter_misplaced_digit_becomes_chapter_1():
     assert not alnum.startswith("1chapter")
 
 
-def test_plain_text_never_reorders_even_if_fully_reversed():
-    """Hard gate: mid-page plain text identity regardless of reverse geometry.
-
-    PR-B: top-band plain text may reorder (see test_pr_b_title_header);
-    default ``in_page_top_band=False`` keeps figure-golden safety.
-    """
+def test_plain_text_mid_page_identity_via_api():
+    """API gate: mid-page plain identity; ParagraphFinder promotes separately."""
     letters = list("Who haS orgaSMS?")
     xs = list(range(100, 100 + 10 * len(letters), 10))
     stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
@@ -135,13 +131,22 @@ def test_plain_text_never_reorders_even_if_fully_reversed():
             )
             is stream
         )
-    # abandon never reorders even in top band
     assert (
         maybe_reorder_reversed_stream(
             stream, layout_label="abandon", in_page_top_band=True
         )
         is stream
     )
+
+
+def test_title_promote_reorders_decorative_reverse():
+    """ParagraphFinder second-chance uses title label for OA mid-page titles."""
+    letters = list("Who haS orgaSMS?")
+    xs = list(range(100, 100 + 10 * len(letters), 10))
+    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
+    ordered = maybe_reorder_reversed_stream(stream, layout_label="title")
+    assert ordered is not stream
+    assert "".join(c.char_unicode for c in ordered) == "Who haS orgaSMS?"
 
 
 def test_descender_glyphs_stay_on_same_line_as_peers():

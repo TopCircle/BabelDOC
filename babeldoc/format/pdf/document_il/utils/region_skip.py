@@ -2,12 +2,25 @@
 
 Shared by ``ILTranslator`` and ``ParagraphFinder`` so white-fill and MT skip
 cannot drift.
+
+Also: site URL / bare page-number chrome always excluded from MT while
+keeping source spans visible (do not delete from PDF).
 """
 
 from __future__ import annotations
 
+import re
+
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
+
+# Bare site chrome — never machine-translate (leave EN visible).
+_URL_CHROME_RE = re.compile(
+    r"^(?:https?://|www\.)\S+$",
+    re.IGNORECASE,
+)
+# Bare page number only (running footer digits).
+_PAGE_NUM_ONLY_RE = re.compile(r"^\d{1,3}$")
 
 # Always translate — document content, not running chrome.
 HEADER_EXEMPT_LABELS = frozenset(
@@ -108,6 +121,31 @@ def in_footer_band(
     return float(paragraph_top) <= float(page_bottom) + float(footer_height)
 
 
+def is_url_site_chrome(paragraph: PdfParagraph) -> bool:
+    """True for bare URL / www. host lines (keep EN, skip MT)."""
+    text = (getattr(paragraph, "unicode", None) or "").strip()
+    if not text or len(text) > 80:
+        return False
+    return bool(_URL_CHROME_RE.match(text))
+
+
+def is_bare_page_number_chrome(
+    paragraph: PdfParagraph,
+    page: Page | None = None,
+) -> bool:
+    """True for a lone 1–3 digit page number in the footer/header band."""
+    text = (getattr(paragraph, "unicode", None) or "").strip()
+    if not _PAGE_NUM_ONLY_RE.match(text):
+        return False
+    if page is None:
+        return False  # require geometry — bare "1" mid-body is not chrome
+    if in_footer_band(page, paragraph, footer_height=48.0):
+        return True
+    if in_header_band(page, paragraph, header_height=48.0):
+        return True
+    return False
+
+
 def should_skip_header_footer(
     page: Page,
     paragraph: PdfParagraph,
@@ -121,7 +159,12 @@ def should_skip_header_footer(
     """Whether to skip MT for header/footer chrome (PR-C2 safer bounds).
 
     Never skips title/section_header or body-like long prose in the band.
+    Always skips bare URL chrome (source stays visible, not deleted).
     """
+    if is_url_site_chrome(paragraph):
+        return True
+    if is_bare_page_number_chrome(paragraph, page):
+        return True
     if is_header_chrome_exempt(paragraph):
         return False
     if ocr_workaround:
@@ -153,6 +196,10 @@ def classify_header_footer_skip(
     ocr_workaround: bool = False,
 ) -> str | None:
     """Return ``header`` / ``footer`` or None (same predicates as should_skip)."""
+    if is_url_site_chrome(paragraph):
+        return "header"
+    if is_bare_page_number_chrome(paragraph, page):
+        return "footer"
     if not should_skip_header_footer(
         page,
         paragraph,

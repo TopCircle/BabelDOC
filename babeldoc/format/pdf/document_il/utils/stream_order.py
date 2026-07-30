@@ -31,9 +31,9 @@ _DEFAULT_MIN_PAIRS = 4
 _MAX_REORDER_CHARS = 64
 _MIN_SINGLE_LETTER_RATIO = 0.55
 # Reading-order repair is title-like by default.  arXiv / body "plain text"
-# lines are almost always single-glyph runs and would match decorative
-# heuristics — reordering them smashed figure golden (pseudo → seudo).
-# Allow-list always; plain text only with explicit top-band flag (PR-B).
+# must not reorder via this API alone (figure golden unit gate).
+# OA mid-page decorative reverse is promoted in ParagraphFinder (second-chance
+# call with layout_label=title) after decorative+reverse probes pass.
 _REORDER_ALLOWED_LABELS = frozenset(
     {
         "title",
@@ -216,8 +216,8 @@ def label_allows_stream_reorder(
     """Whether *layout_label* may use reverse-paint reorder.
 
     - Always: ``title`` / ``section_header``
-    - Plain-text family **only** when *in_page_top_band* (PR-B OA chapter titles)
-    - Mid-page plain text: never (figure golden)
+    - Plain-text family **only** when *in_page_top_band* (PR-B)
+    - Mid-page plain: use ParagraphFinder second-chance (title promote)
     """
     label = (layout_label or "").strip().lower()
     if label in _REORDER_ALLOWED_LABELS:
@@ -242,7 +242,7 @@ def maybe_reorder_reversed_stream(
 
     Does **not** reorder merely because visual sort differs — that path
     scrambled arXiv body (descenders → false second line → ``seudo``).
-    Mid-page plain text never reorders even when reverse-looking.
+    Mid-page plain text: identity here; ParagraphFinder may promote.
     """
     if not chars:
         return chars

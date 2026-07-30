@@ -278,6 +278,62 @@ class ParagraphFinder:
         # Paragraph top (y2) must be inside the top band.
         return float(box.y2) >= float(page_box.y2) - band
 
+    def _maybe_sort_lines_visual_reading_order(
+        self, paragraph: PdfParagraph
+    ) -> None:
+        """If stream walks *up* the page between consecutive lines, re-sort top-first.
+
+        Design PDFs sometimes emit column lines bottom→top in the content
+        stream.  Sorting by glyph-line top (y2 desc) restores reading order
+        for MT without touching LTR body columns (stream already top→bottom).
+        """
+        comps = list(paragraph.pdf_paragraph_composition or [])
+        if len(comps) < 2:
+            return
+        line_idxs: list[int] = []
+        line_y2: list[float] = []
+        for i, comp in enumerate(comps):
+            line = getattr(comp, "pdf_line", None)
+            if line is None:
+                continue
+            box = getattr(line, "box", None)
+            if box is None or box.y2 is None:
+                continue
+            line_idxs.append(i)
+            line_y2.append(float(box.y2))
+        if len(line_idxs) < 2:
+            return
+        climbs = 0
+        drops = 0
+        for a, b in zip(line_y2, line_y2[1:]):
+            if b > a + 2.0:
+                climbs += 1  # next line higher on page than previous in stream
+            elif b < a - 2.0:
+                drops += 1
+        # Only reorder when stream clearly climbs the page (bottom→top emit).
+        if climbs < 2 or climbs <= drops:
+            return
+        # Stable partition: sort only pdf_line compositions by y2 desc; keep
+        # non-line comps in relative slots after lines they follow is hard —
+        # for OA body columns all comps are lines. Sort all line comps and
+        # append non-line at end.
+        lines: list = []
+        non_lines: list = []
+        for comp in comps:
+            if getattr(comp, "pdf_line", None) is not None and getattr(
+                comp.pdf_line, "box", None
+            ) is not None:
+                lines.append(comp)
+            else:
+                non_lines.append(comp)
+        lines.sort(
+            key=lambda c: (
+                -(c.pdf_line.box.y2 or 0.0),
+                c.pdf_line.box.x if c.pdf_line.box.x is not None else 0.0,
+            )
+        )
+        paragraph.pdf_paragraph_composition = lines + non_lines
+
     def update_paragraph_data(
         self,
         paragraph: PdfParagraph,
@@ -303,6 +359,15 @@ class ParagraphFinder:
         page = page if page is not None else getattr(self, "_current_page", None)
         layout_label = getattr(paragraph, "layout_label", None)
         in_top = self.paragraph_in_title_top_band(page, paragraph)
+        from babeldoc.format.pdf.document_il.utils.stream_order import (
+            _is_misplaced_leading_digit,
+            _looks_like_decorative_run,
+            is_stream_visually_reversed,
+        )
+
+        _plain_labels = frozenset(
+            {"", "plain text", "text", "paragraph", "paragraph_hybrid"}
+        )
         for composition in paragraph.pdf_paragraph_composition:
             if composition.pdf_line and composition.pdf_line.pdf_character:
                 line_chars = composition.pdf_line.pdf_character
@@ -311,9 +376,34 @@ class ParagraphFinder:
                     layout_label=layout_label,
                     in_page_top_band=in_top,
                 )
+                # OA mid-page decorative reverse (Who has / Are You Lost) is
+                # often labeled plain text outside the top band. Promote to
+                # title path only when decorative+reverse probes pass — long
+                # LTR body stays identity (figure golden).
+                if reordered is line_chars:
+                    lab = (layout_label or "").strip().lower()
+                    if (
+                        lab in _plain_labels
+                        and _looks_like_decorative_run(line_chars)
+                        and (
+                            is_stream_visually_reversed(line_chars)
+                            or _is_misplaced_leading_digit(line_chars)
+                        )
+                    ):
+                        reordered = maybe_reorder_reversed_stream(
+                            line_chars,
+                            layout_label="title",
+                            in_page_top_band=False,
+                        )
                 if reordered is not line_chars:
                     composition.pdf_line.pdf_character = reordered
                     self.update_line_data(composition.pdf_line)
+
+        # Within-line reverse is handled above. Also sort line compositions by
+        # visual top (y2 desc) when stream order walks bottom→top of a column
+        # (OA left-sidebar narrative painted low y first would need the
+        # opposite — only flip when consecutive stream lines climb the page).
+        self._maybe_sort_lines_visual_reading_order(paragraph)
 
         chars = []
         for composition in paragraph.pdf_paragraph_composition:

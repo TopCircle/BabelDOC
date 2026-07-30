@@ -173,6 +173,26 @@ def test_spatial_figure_still_matches_short_label():
     assert is_figure_text_paragraph(label, page) is True
 
 
+def test_url_chrome_always_skipped_without_skip_header():
+    from babeldoc.format.pdf.document_il.utils.region_skip import is_url_site_chrome
+
+    page = _page()
+    url = _para(
+        "www.GabrielleMoore.com",
+        label="plain text",
+        box=Box(x=42, y=740, x2=200, y2=760),
+    )
+    assert is_url_site_chrome(url) is True
+    assert should_skip_header_footer(
+        page,
+        url,
+        skip_header=False,
+        skip_footer=False,
+        header_height=50,
+        footer_height=40,
+    )
+
+
 def test_translator_region_skip_uses_c2():
     cfg = TranslationConfig(
         translator=FixedMapTranslator(),
