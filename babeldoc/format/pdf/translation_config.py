@@ -227,8 +227,8 @@ class TranslationConfig:
         quote_indent_threshold: float = 0.15,
         quote_right_margin_threshold: float = 0.05,
         # PR-D: ultra-narrow side callout product policy
-        # keep_en | expand | translate_body_column
-        narrow_callout_mode: str = "keep_en",
+        # keep_en | expand | translate_body_column (default expand for OA dual)
+        narrow_callout_mode: str = "expand",
     ):
         self.translator = translator
         self.term_extraction_translator = term_extraction_translator or translator

@@ -428,12 +428,13 @@ def create_parser():
         "--narrow-callout-mode",
         type=str,
         choices=["keep_en", "expand", "translate_body_column"],
-        default="keep_en",
+        default="expand",
         help=(
             "Ultra-narrow side callout (e.g. OA p8 red strip ~80pt): "
-            "'keep_en' (default) skips MT and keeps source language; "
-            "'expand' / 'translate_body_column' translate and expand the box "
-            "down-first. Pull-quote duplicates always keep EN."
+            "'expand' (default) translates and expands the box down-first; "
+            "'translate_body_column' same for MT; "
+            "'keep_en' skips MT and keeps source language. "
+            "Pull-quote duplicates always keep EN."
         ),
     )
     # service option argument group
@@ -797,7 +798,7 @@ async def main():
             footer_height=args.footer_height,
             enable_post_layout_optimization=args.enable_post_layout_optimization,
             narrow_callout_mode=getattr(
-                args, "narrow_callout_mode", "keep_en"
+                args, "narrow_callout_mode", "expand"
             ),
         )
 

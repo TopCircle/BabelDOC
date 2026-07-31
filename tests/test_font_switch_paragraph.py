@@ -345,8 +345,8 @@ class TestClosestFaceFromName:
         assert "sans" in fid
         assert "bold" not in fid
 
-    def test_trajan_maps_to_serif(self):
-        """OA chapter number: TrajanPro → Source Han Serif."""
+    def test_trajan_maps_to_serif_bold(self):
+        """OA chapter number: TrajanPro → Source Han Serif Bold (display weight)."""
         cfg = _config()
         mapper = FontMapper(cfg)
         trajan = PdfFont(
@@ -363,9 +363,10 @@ class TestClosestFaceFromName:
         fid = mapped.font_id.lower()
         assert "serif" in fid
         assert "sans" not in fid
+        assert "bold" in fid
 
-    def test_microstyle_display_maps_to_sans(self):
-        """OA display title: MicrostyleATT geometric → Sans stand-in (not body Serif)."""
+    def test_microstyle_display_maps_to_sans_bold(self):
+        """OA display title: MicrostyleATT → Sans Bold (not body Serif Regular)."""
         cfg = _config()
         mapper = FontMapper(cfg)
         micro = PdfFont(
@@ -381,6 +382,7 @@ class TestClosestFaceFromName:
         assert mapped is not None
         fid = mapped.font_id.lower()
         assert "sans" in fid
+        assert "bold" in fid
 
     def test_myriad_cond_callout_maps_to_sans(self):
         cfg = _config()

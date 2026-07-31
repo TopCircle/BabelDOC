@@ -32,7 +32,9 @@ NarrowCalloutMode = Literal["keep_en", "expand", "translate_body_column"]
 NARROW_CALLOUT_MODES = frozenset(
     {"keep_en", "expand", "translate_body_column"}
 )
-DEFAULT_NARROW_CALLOUT_MODE: NarrowCalloutMode = "keep_en"
+# Default expand: translate + box expand (OA dual left callouts were stuck
+# in raw EN under keep_en). Pass keep_en explicitly to preserve design EN.
+DEFAULT_NARROW_CALLOUT_MODE: NarrowCalloutMode = "expand"
 
 # Day6-style right callout (~x=360, w~200 on letter 612)
 _PULLQUOTE_WIDTH_RATIO = 0.55
@@ -51,7 +53,7 @@ _SKIP_ULTRA_NARROW_LABELS = frozenset({"title", "section_header"})
 
 
 def normalize_narrow_callout_mode(mode: str | None) -> NarrowCalloutMode:
-    """Coerce config/CLI value to a valid mode; unknown → keep_en."""
+    """Coerce config/CLI value to a valid mode; unknown → expand (default)."""
     if not mode:
         return DEFAULT_NARROW_CALLOUT_MODE
     m = str(mode).strip().lower().replace("-", "_")
@@ -199,7 +201,7 @@ def should_skip_side_callout_mt(
 
     Args:
         mode: ``keep_en`` | ``expand`` | ``translate_body_column``.
-            Default ``keep_en``. Pull-quote duplicates always skip.
+            Default ``expand``. Pull-quote duplicates always skip.
             Ultra-narrow skips only under ``keep_en``.
     """
     if is_pullquote_duplicate_of_body(paragraph, page):

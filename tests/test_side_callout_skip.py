@@ -94,7 +94,8 @@ def test_ultra_narrow_tall_callout_skipped():
     )
     page = _page(callout)
     assert is_ultra_narrow_side_callout(callout, page) is True
-    assert should_skip_side_callout_mt(callout, page) is True
+    # Default mode is expand → do not skip; keep_en still skips
+    assert should_skip_side_callout_mt(callout, page) is False
     assert should_skip_side_callout_mt(callout, page, mode="keep_en") is True
 
 
@@ -121,7 +122,8 @@ def test_ultra_narrow_expand_mode_does_not_skip():
         is False
     )
     assert normalize_narrow_callout_mode("EXPAND") == "expand"
-    assert normalize_narrow_callout_mode("bogus") == "keep_en"
+    assert normalize_narrow_callout_mode("bogus") == "expand"
+    assert normalize_narrow_callout_mode("keep_en") == "keep_en"
 
 
 def test_pullquote_always_skips_even_in_expand_mode():
@@ -199,4 +201,6 @@ def test_compat_reexport_from_pullquote_dedupe():
     )
     page = _page(callout)
     assert pq.is_ultra_narrow_side_callout(callout, page) is True
-    assert pq.should_skip_side_callout_mt(callout, page) is True
+    # default expand → translate; keep_en still skips
+    assert pq.should_skip_side_callout_mt(callout, page) is False
+    assert pq.should_skip_side_callout_mt(callout, page, mode="keep_en") is True

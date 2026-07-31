@@ -288,10 +288,13 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
     Returns:
         str: 处理后的 Unicode 字符串
     """
-    # Decorative text detection: skip space insertion for art layouts
-    # like "G e n t l y" where gaps are intentionally large.
-    skip_space_insertion = _is_decorative_text(
-        [c for c in chars if isinstance(c, PdfCharacter)]
+    # Decorative letter-spacing ("G e n t l y"): skip *letter* space insert,
+    # but still split on clear *word* gaps (bimodal) so OA titles keep
+    # "Who has orgasms?" instead of "WhohaSorgaSMS".
+    pdf_only = [c for c in chars if isinstance(c, PdfCharacter)]
+    is_decorative = _is_decorative_text(pdf_only)
+    decorative_word_gap = (
+        _decorative_word_gap_threshold(pdf_only) if is_decorative else None
     )
 
     # 构建 unicode 字符串，根据间距插入空格
@@ -360,7 +363,15 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
                     if unicode_chars and unicode_chars[-1] in "-‐‑":
                         unicode_chars.pop()
                     continue  # no space; next char appends directly
-            if not skip_space_insertion and (is_nl or gap_is_word_boundary):
+            if is_decorative:
+                # Letter tracking: no space. Word gap outlier: insert space.
+                insert = is_nl or (
+                    decorative_word_gap is not None
+                    and distance >= decorative_word_gap
+                )
+            else:
+                insert = is_nl or gap_is_word_boundary
+            if insert:
                 # Avoid CJK line-wrap spaces (source Chinese has no inter-word space).
                 if is_nl and _is_cjk_char(chars[i].char_unicode) and _is_cjk_char(
                     next_ch.char_unicode
@@ -662,6 +673,46 @@ def _is_decorative_text(chars: list[PdfCharacter]) -> bool:
     return True
 
 
+def _decorative_word_gap_threshold(chars: list[PdfCharacter]) -> float | None:
+    """Gap size (pt) at/above which a decorative run has a *word* boundary.
+
+    Letter-spaced titles use a tight mode of gaps (tracking). Real word
+    spaces are outliers (≳ 1.75× median positive gap, and at least ~1.2×
+    mean char width). Uniform ``G e n t l y`` spacing has no outliers →
+    no word spaces. Bimodal ``Who···has···orgasms`` inserts at the large
+    gaps only.
+    """
+    pdf_chars = [c for c in chars if isinstance(c, PdfCharacter) and c.visual_bbox]
+    if len(pdf_chars) < 3:
+        return None
+    gaps: list[float] = []
+    widths: list[float] = []
+    for i in range(len(pdf_chars) - 1):
+        c1, c2 = pdf_chars[i], pdf_chars[i + 1]
+        gap = c2.visual_bbox.box.x - c1.visual_bbox.box.x2
+        if gap <= 0:
+            continue
+        gaps.append(gap)
+        w1 = c1.visual_bbox.box.x2 - c1.visual_bbox.box.x
+        w2 = c2.visual_bbox.box.x2 - c2.visual_bbox.box.x
+        widths.append(max(w1, w2))
+    if len(gaps) < 2:
+        return None
+    ordered = sorted(gaps)
+    mid = len(ordered) // 2
+    median = (
+        ordered[mid]
+        if len(ordered) % 2 == 1
+        else (ordered[mid - 1] + ordered[mid]) / 2
+    )
+    avg_w = sum(widths) / len(widths) if widths else 0.0
+    # Uniform tracking: max ≈ median → no word threshold (return huge)
+    if ordered[-1] < median * 1.35 + 0.5:
+        return None
+    thr = max(median * 1.75, avg_w * 1.2 if avg_w > 0 else 0.0, 2.0)
+    return thr
+
+
 def compute_decorative_tracking(chars: list[PdfCharacter]) -> float | None:
     """Compute average letter-spacing (tracking) for decorative text.
 
@@ -696,12 +747,13 @@ def _add_space_dummy_chars_to_list(chars: list[PdfCharacter]) -> None:
     if not chars:
         return
 
-    # Decorative text detection: "G e n t l y", "C O N T E N T S", "D A Y"
-    # Pattern: most characters are single letters with gaps >> char width.
-    # If detected, skip space insertion entirely — these are art layouts,
-    # not word boundaries.
+    # Decorative letter-spacing: skip letter gaps; still insert dummy spaces
+    # at word-gap outliers (same policy as get_char_unicode_string).
+    decorative_word_gap = None
     if _is_decorative_text(chars):
-        return
+        decorative_word_gap = _decorative_word_gap_threshold(chars)
+        if decorative_word_gap is None:
+            return
 
     i = 0
     while i < len(chars) - 1:
@@ -718,9 +770,12 @@ def _add_space_dummy_chars_to_list(chars: list[PdfCharacter]) -> None:
         distance = next_char.box.x - curr_char.box.x2
         curr_w = curr_char.box.x2 - curr_char.box.x
         is_nl = Layout.is_newline(curr_char, next_char)
-        gap_is_word_boundary = _gap_is_word_boundary(
-            curr_char, next_char, distance
-        )
+        if decorative_word_gap is not None:
+            gap_is_word_boundary = distance >= decorative_word_gap
+        else:
+            gap_is_word_boundary = _gap_is_word_boundary(
+                curr_char, next_char, distance
+            )
         # distance <= 0 is normal at line wrap (next char returns to left margin).
         # Previously we `continue`d here and never hit is_newline → "Isit"/"ofGrey".
         if not (is_nl or gap_is_word_boundary):

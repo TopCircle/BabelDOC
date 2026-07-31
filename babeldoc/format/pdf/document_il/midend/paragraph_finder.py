@@ -489,8 +489,11 @@ class ParagraphFinder:
         if getattr(self.translation_config, "merge_alternating_line_numbers", True):
             self.merge_alternating_line_number_paragraphs(paragraphs)
 
-        # PR-B: Chapter N + short title line → one paragraph (top band only)
-        self.merge_chapter_title_paragraphs(page, paragraphs)
+        # PR-B originally merged Chapter N + title for MT. That collapsed
+        # red Trajan chapter + black Microstyle title into one face/color
+        # (``Chapter1 爱与性`` all black). Keep them separate so styles map
+        # independently (Trajan→Serif red, Microstyle→Sans black).
+        # merge_chapter_title_paragraphs is retained for tests/opt-in only.
 
         for paragraph in paragraphs:
             self.update_paragraph_data(paragraph, update_unicode=True, page=page)

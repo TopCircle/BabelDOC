@@ -44,10 +44,23 @@ def test_space_chapter_number():
     assert space_chapter_number("Chapter1") == "Chapter 1"
     assert space_chapter_number("CHAPTER12") == "CHAPTER 12"
     assert space_chapter_number("Chapter 1") == "Chapter 1"  # already spaced
-    assert space_chapter_number("Chapter1爱与性") == "Chapter 1爱与性"
+    assert space_chapter_number("Chapter1爱与性") == "Chapter 1 爱与性"
+    assert space_chapter_number("Chapter 1爱与性") == "Chapter 1 爱与性"
     assert "Chapter 1" in get_char_unicode_string(
         [_ch(c, 10 + i * 8) for i, c in enumerate("Chapter1")]
     )
+
+
+def test_normalize_decorative_title_case():
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        normalize_decorative_title_case,
+        recover_latin_word_fragments,
+    )
+
+    assert normalize_decorative_title_case("Who haS orgaSMS?") == "who has orgasms?"
+    assert "who has orgasms" in recover_latin_word_fragments("Who haS orgaSMS?")
+    # normal prose left alone
+    assert normalize_decorative_title_case("Hello world") == "Hello world"
 
 
 def test_plain_text_mid_page_decorative_reverse_single_call():

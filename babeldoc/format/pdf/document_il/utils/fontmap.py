@@ -53,6 +53,15 @@ _SANS_FAMILY_HINTS: tuple[str, ...] = (
     "prosemicn",
     "semcn",
 )
+# Display / all-caps design faces: prefer Bold CJK for title hierarchy
+# (Regular Microstyle/Trajan reads weak next to body).
+_DISPLAY_WEIGHT_HINTS: tuple[str, ...] = (
+    "microstyle",
+    "impact",
+    "trajan",
+    "copperplate",
+    "engravers",
+)
 _SERIF_FAMILY_HINTS: tuple[str, ...] = (
     "times",
     "garamond",
@@ -159,6 +168,10 @@ def infer_face_traits_from_name(
         serif = False
     elif any(h in key for h in _SERIF_FAMILY_HINTS):
         serif = True
+
+    # Display faces (chapter/section titles): Bold CJK for visual weight
+    if not bold and any(h in key for h in _DISPLAY_WEIGHT_HINTS):
+        bold = True
 
     return bold, italic, monospaced, serif
 

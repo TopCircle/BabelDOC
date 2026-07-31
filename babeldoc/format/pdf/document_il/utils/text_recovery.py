@@ -472,6 +472,10 @@ def rejoin_known_split_latin_words(text: str) -> str:
 _CHAPTER_DIGIT_RE = regex.compile(
     r"(?i)\b(chapter)(\d{1,3})(?!\d)"
 )
+# After "Chapter 1" glue a space before CJK (``Chapter 1爱`` → ``Chapter 1 爱``).
+_CHAPTER_CJK_RE = regex.compile(
+    r"(?i)\b(chapter\s+\d{1,3})([\u4e00-\u9fff\u3400-\u4dbf])"
+)
 
 
 def space_chapter_number(text: str) -> str:
@@ -480,7 +484,7 @@ def space_chapter_number(text: str) -> str:
     Safe on body text: only matches the word Chapter immediately followed by
     1–3 digits (typical chapter index). Idempotent when already spaced
     (``Chapter 1`` has a non-digit gap). Also splits before CJK
-    (``Chapter1爱`` → ``Chapter 1爱``).
+    (``Chapter1爱`` → ``Chapter 1 爱``).
     """
     if not text or "hapter" not in text.lower():
         return text
@@ -488,7 +492,37 @@ def space_chapter_number(text: str) -> str:
     def _sub(m: regex.Match) -> str:
         return f"{m.group(1)} {m.group(2)}"
 
-    return _CHAPTER_DIGIT_RE.sub(_sub, text)
+    text = _CHAPTER_DIGIT_RE.sub(_sub, text)
+    text = _CHAPTER_CJK_RE.sub(r"\1 \2", text)
+    return text
+
+
+def normalize_decorative_title_case(text: str) -> str:
+    """Normalize design-font mixed case for MT readability.
+
+    Microstyle / reverse-paint titles often yield ``Who haS orgaSMS?`` which
+    DeepLX mangles into ``WhohaSorgaSMS``. Lowercase short Latin titles that
+    show mid-word capitals so MT sees ``who has orgasms?``.
+
+    Guards: length ≤ 80, mostly ASCII letters, mid-word capitals or internal
+    ALLCAPS run; does not touch normal prose (``iPhone`` alone is not enough
+    without other decorative signals when length is long).
+    """
+    if not text or len(text) > 80:
+        return text
+    letters = [c for c in text if c.isalpha()]
+    if len(letters) < 4:
+        return text
+    ascii_letters = [c for c in letters if ord(c) < 128]
+    if len(ascii_letters) < max(4, int(0.8 * len(letters))):
+        return text
+    # Mid-word capital (haS) or internal multi-cap run (orgaSMS / SMS)
+    has_mid_cap = bool(regex.search(r"[a-z][A-Z]", text))
+    has_inner_caps = bool(regex.search(r"[A-Za-z][A-Z]{2,}", text))
+    if not has_mid_cap and not has_inner_caps:
+        return text
+    # Preserve trailing punctuation; lowercase body.
+    return text.lower()
 
 
 def recover_latin_word_fragments(text: str) -> str:
@@ -504,5 +538,6 @@ def recover_latin_word_fragments(text: str) -> str:
     text = rejoin_ligature_space_splits(text)
     text = rejoin_known_split_latin_words(text)
     text = space_chapter_number(text)
+    text = normalize_decorative_title_case(text)
     text = expand_latin_ligatures(text)
     return text
