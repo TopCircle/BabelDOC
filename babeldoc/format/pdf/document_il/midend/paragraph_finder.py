@@ -293,6 +293,7 @@ class ParagraphFinder:
             compute_decorative_tracking,
         )
         from babeldoc.format.pdf.document_il.utils.stream_order import (
+            maybe_reorder_multiline_stream_climb,
             maybe_reorder_reversed_stream,
             sort_line_compositions_if_stream_climbs,
         )
@@ -335,6 +336,15 @@ class ParagraphFinder:
                     "after the translation is completed.",
                 )
                 continue
+
+        # OA callout / design columns: multi-line bottom→top paint → visual order
+        # before MT (else "the program… In order" reversed salad).
+        para_w = None
+        if paragraph.box and paragraph.box.x is not None and paragraph.box.x2 is not None:
+            para_w = float(paragraph.box.x2 - paragraph.box.x)
+        climbed = maybe_reorder_multiline_stream_climb(chars, para_width=para_w)
+        if climbed is not chars and climbed is not None:
+            chars = climbed
 
         # Detect decorative text and compute tracking for re-layout
         if chars and _is_decorative_text(chars):

@@ -321,3 +321,101 @@ def sort_line_compositions_if_stream_climbs(
             c.pdf_line.box.x if c.pdf_line.box.x is not None else 0.0,
         ),
     )
+
+
+# Narrow callout / design columns (OA TAKING CHARGE ~190pt wide).
+# Full-width body must not be visually reordered (figure golden).
+_MULTILINE_CLIMB_MAX_WIDTH = 240.0
+_MULTILINE_CLIMB_MIN_LINES = 3
+
+
+def _cluster_stream_line_keys(
+    chars: list[PdfCharacter],
+    *,
+    y_tol: float = _DEFAULT_Y_TOL,
+) -> list[tuple[float, list[PdfCharacter]]]:
+    """Group chars into visual lines in **stream order** of first appearance.
+
+    Returns list of ``(y_line, chars_on_line)`` in the order lines are first
+    encountered in the stream (not sorted by y).
+    """
+    lines: list[tuple[float, list[PdfCharacter]]] = []
+    for ch in chars:
+        if not isinstance(ch, PdfCharacter):
+            continue
+        xy = char_visual_xy(ch)
+        if xy is None:
+            continue
+        y_line, x = xy[1], xy[0]
+        placed = False
+        for i, (ly, bucket) in enumerate(lines):
+            if abs(ly - y_line) <= y_tol:
+                bucket.append(ch)
+                # refresh representative y toward mean top
+                lines[i] = ((ly * (len(bucket) - 1) + y_line) / len(bucket), bucket)
+                placed = True
+                break
+        if not placed:
+            lines.append((y_line, [ch]))
+    return lines
+
+
+def is_multiline_stream_climbing(
+    chars: list[PdfCharacter],
+    *,
+    y_tol: float = _DEFAULT_Y_TOL,
+    min_lines: int = _MULTILINE_CLIMB_MIN_LINES,
+) -> bool:
+    """True when successive stream lines move up the page (bottom→top paint).
+
+    OA p19 TAKING CHARGE body is painted tip-first (bottom line first), so
+    MT sees ``the program… In order to…`` reversed.  Detect climb without
+    requiring decorative single-letter geometry.
+    """
+    lines = _cluster_stream_line_keys(chars, y_tol=y_tol)
+    if len(lines) < min_lines:
+        return False
+    climbs = 0
+    drops = 0
+    for (y_a, _), (y_b, _) in zip(lines, lines[1:]):
+        if y_b > y_a + _LINE_Y_EPS_PT:
+            climbs += 1
+        elif y_b < y_a - _LINE_Y_EPS_PT:
+            drops += 1
+    return climbs >= _LINE_CLIMB_MIN_STEPS and climbs > drops
+
+
+def maybe_reorder_multiline_stream_climb(
+    chars: list[PdfCharacter],
+    *,
+    para_width: float | None = None,
+    max_width: float = _MULTILINE_CLIMB_MAX_WIDTH,
+) -> list[PdfCharacter]:
+    """Reorder chars top→bottom when stream paints lines bottom→top.
+
+    Gated by paragraph width so full-page LTR body (figure dual) is untouched.
+    """
+    if not chars or len(chars) < 8:
+        return chars
+    if para_width is not None and para_width > max_width:
+        return chars
+    # Infer width from glyphs when caller has no box yet
+    if para_width is None:
+        xs: list[float] = []
+        x2s: list[float] = []
+        for ch in chars:
+            box = _resolve_char_box(ch)
+            if box is None:
+                continue
+            if box.x is not None:
+                xs.append(float(box.x))
+            if box.x2 is not None:
+                x2s.append(float(box.x2))
+        if xs and x2s and (max(x2s) - min(xs)) > max_width:
+            return chars
+    if not is_multiline_stream_climbing(chars):
+        return chars
+    ordered = sort_chars_visual_order(chars)
+    if _same_order(ordered, list(chars)):
+        return chars
+    return ordered

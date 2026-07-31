@@ -945,6 +945,28 @@ class ILTranslator:
                     paragraph, page_font_map, True, page=page
                 )
 
+        # Narrow multi-line callouts may paint bottom→top; reorder for MT.
+        if chars and all(
+            not isinstance(c, str) for c in chars
+        ):
+            from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
+            from babeldoc.format.pdf.document_il.utils.stream_order import (
+                maybe_reorder_multiline_stream_climb,
+            )
+
+            if all(isinstance(c, PdfCharacter) for c in chars):
+                para_w = None
+                box = getattr(paragraph, "box", None)
+                if (
+                    box is not None
+                    and box.x is not None
+                    and box.x2 is not None
+                ):
+                    para_w = float(box.x2 - box.x)
+                chars = maybe_reorder_multiline_stream_climb(
+                    chars, para_width=para_w
+                )
+
         text = get_char_unicode_string(chars)
         translate_input = self.TranslateInput(text, placeholders, paragraph.pdf_style)
         translate_input.set_original_placeholder_tokens(original_placeholder_tokens)

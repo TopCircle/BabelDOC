@@ -68,3 +68,36 @@ def test_no_sort_when_mixed_non_line_composition():
         _line("b", y=140),
     ]
     assert sort_line_compositions_if_stream_climbs(comps) is None
+
+
+def test_multiline_stream_climb_reorders_callout_body():
+    """OA TAKING CHARGE: paint bottom line first → MT must see top line first."""
+    from babeldoc.format.pdf.document_il.utils.stream_order import (
+        maybe_reorder_multiline_stream_climb,
+        is_multiline_stream_climbing,
+    )
+
+    # Stream order: tip (low y) first, then climb (PDF y-up)
+    lines_bottom_first = [
+        ("the program.", 100.0),
+        ("plans and stick", 115.0),
+        ("the work make", 130.0),
+        ("man who is prepared", 145.0),
+        ("intimacy await", 160.0),
+        ("Mind-blowing orgasms", 175.0),
+        ("start directing flow", 190.0),
+        ("you will need to take", 205.0),
+        ("In order to work through", 220.0),
+    ]
+    chars: list = []
+    for text, y in lines_bottom_first:
+        for i, c in enumerate(text):
+            chars.append(_ch(c, 300 + i * 6, y=y))
+    assert is_multiline_stream_climbing(chars)
+    # Narrow width (~200pt) allows reorder
+    ordered = maybe_reorder_multiline_stream_climb(chars, para_width=200.0)
+    assert ordered is not chars
+    head = "".join(c.char_unicode for c in ordered[: len("In order")])
+    assert head.startswith("In order")
+    # Wide body must not reorder
+    assert maybe_reorder_multiline_stream_climb(chars, para_width=400.0) is chars
