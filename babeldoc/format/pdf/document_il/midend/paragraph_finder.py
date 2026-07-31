@@ -45,13 +45,10 @@ _DEFAULT_INDENT = 12.0
 # Cap first-line indent so a bad detection cannot shove text far right
 _MAX_FIRST_LINE_INDENT = 48.0
 
-# PR-B: page top band for decorative title reverse-reorder / Chapter merge.
+# PR-B: page top band for decorative title reverse-reorder.
 # Fraction of page height, floored at 72pt (1 inch).
 _TITLE_TOP_BAND_RATIO = 0.12
 _TITLE_TOP_BAND_MIN_PT = 72.0
-# Short title line after "Chapter N" (chars)
-_CHAPTER_TITLE_MAX_CHARS = 80
-_CHAPTER_LINE_RE = re.compile(r"^\s*chapter\s*\d{1,3}\s*$", re.IGNORECASE)
 
 
 def _normalize_first_line_indent(paragraph):
@@ -489,11 +486,8 @@ class ParagraphFinder:
         if getattr(self.translation_config, "merge_alternating_line_numbers", True):
             self.merge_alternating_line_number_paragraphs(paragraphs)
 
-        # PR-B originally merged Chapter N + title for MT. That collapsed
-        # red Trajan chapter + black Microstyle title into one face/color
-        # (``Chapter1 爱与性`` all black). Keep them separate so styles map
-        # independently (Trajan→Serif red, Microstyle→Sans black).
-        # merge_chapter_title_paragraphs is retained for tests/opt-in only.
+        # Chapter N + title stay separate paragraphs so red Trajan and black
+        # display faces map independently (do not merge).
 
         for paragraph in paragraphs:
             self.update_paragraph_data(paragraph, update_unicode=True, page=page)
@@ -595,86 +589,6 @@ class ParagraphFinder:
             and c.xobj_id is not None
             and a.xobj_id == c.xobj_id
         )
-
-    def _paragraph_unicode_or_ascii(self, p: PdfParagraph) -> str:
-        u = getattr(p, "unicode", None)
-        if u:
-            return u
-        return self._paragraph_text_ascii(p)
-
-    def _is_chapter_line_paragraph(self, p: PdfParagraph) -> bool:
-        text = self._paragraph_unicode_or_ascii(p).strip()
-        if not text:
-            return False
-        # After space_chapter_number: "Chapter 1"; before: "Chapter1"
-        if _CHAPTER_LINE_RE.match(text):
-            return True
-        compact = re.sub(r"\s+", "", text)
-        return bool(re.match(r"(?i)^chapter\d{1,3}$", compact))
-
-    def merge_chapter_title_paragraphs(
-        self, page: Page, paragraphs: list[PdfParagraph]
-    ) -> None:
-        """Merge top-band ``Chapter N`` + short title into one paragraph.
-
-        Guards:
-          - both paragraphs in page title top band
-          - first matches Chapter + digits only
-          - second is short (not body) and not another Chapter line
-          - vertical neighbors (second below or same band as first)
-        """
-        if not paragraphs or len(paragraphs) < 2:
-            return
-        i = 0
-        while i < len(paragraphs) - 1:
-            a = paragraphs[i]
-            b = paragraphs[i + 1]
-            if not self._is_chapter_line_paragraph(a):
-                i += 1
-                continue
-            if not self.paragraph_in_title_top_band(page, a):
-                i += 1
-                continue
-            if not self.paragraph_in_title_top_band(page, b):
-                i += 1
-                continue
-            if self._is_chapter_line_paragraph(b):
-                i += 1
-                continue
-            b_text = self._paragraph_unicode_or_ascii(b).strip()
-            if not b_text or len(b_text) > _CHAPTER_TITLE_MAX_CHARS:
-                i += 1
-                continue
-            # Prefer title-like labels on the second line; allow plain text.
-            b_label = (getattr(b, "layout_label", None) or "").strip().lower()
-            if b_label in (
-                "figure",
-                "table",
-                "formula",
-                "abandon",
-                "isolate_formula",
-            ):
-                i += 1
-                continue
-            # Geometry: b should not sit far below a (not body column).
-            if a.box and b.box and a.box.y is not None and b.box.y2 is not None:
-                # b top should be near a bottom (same header stack)
-                gap = float(a.box.y) - float(b.box.y2)
-                if gap > 36.0:  # more than ~0.5 inch separation
-                    i += 1
-                    continue
-            # Join with a space composition if neither edge is whitespace
-            a.pdf_paragraph_composition.extend(b.pdf_paragraph_composition)
-            # Prefer title label on the merged bar
-            if getattr(a, "layout_label", None) not in ("title", "section_header"):
-                if b_label in ("title", "section_header"):
-                    a.layout_label = b.layout_label
-                else:
-                    a.layout_label = "title"
-            self.update_paragraph_data(a, update_unicode=True, page=page)
-            del paragraphs[i + 1]
-            # stay on i in case of chained short fragments
-            continue
 
     def merge_alternating_line_number_paragraphs(self, paragraphs: list[PdfParagraph]):
         # a 代表正文

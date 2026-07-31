@@ -1,7 +1,6 @@
 import enum
 import functools
 import logging
-import re
 from pathlib import Path
 
 import pymupdf
@@ -9,171 +8,21 @@ import pymupdf
 from babeldoc.assets import assets
 from babeldoc.format.pdf.document_il import PdfFont
 from babeldoc.format.pdf.document_il import il_version_1
+from babeldoc.format.pdf.document_il.utils.face_traits import (
+    infer_face_traits_from_name,
+    normalize_ps_font_name,
+)
 from babeldoc.format.pdf.translation_config import TranslationConfig
 
+# Re-export for callers/tests that imported from fontmap.
+__all__ = [
+    "FontMapper",
+    "PrimaryFontFamily",
+    "infer_face_traits_from_name",
+    "normalize_ps_font_name",
+]
+
 logger = logging.getLogger(__name__)
-
-# PostScript / TrueType family tokens → closest CJK stand-in traits.
-# OS/2 flags in PDF fonts are often wrong (e.g. MyriadPro flagged serif);
-# when the name clearly indicates a family, prefer the name.
-_SANS_FAMILY_HINTS: tuple[str, ...] = (
-    "myriad",
-    "helvetica",
-    "arial",
-    "calibri",
-    "gotham",
-    "futura",
-    "montserrat",
-    "frutiger",
-    "univers",
-    "franklin",
-    "roboto",
-    "inter",
-    "sourcesans",
-    "notosans",
-    "din",
-    "proxima",
-    "avenir",
-    "optima",
-    "gilroy",
-    "lato",
-    "opensans",
-    "segoe",
-    "verdana",
-    "tahoma",
-    "trebuchet",
-    "gill",
-    "neutra",
-    "microstyle",  # geometric display → sans stand-in
-    "impact",
-    "arialnarrow",
-    "condensed",
-    # common condensed markers without full family (MyriadPro-Cond)
-    "procond",
-    "prosemicn",
-    "semcn",
-)
-# Display / all-caps design faces: prefer Bold CJK for title hierarchy
-# (Regular Microstyle/Trajan reads weak next to body).
-_DISPLAY_WEIGHT_HINTS: tuple[str, ...] = (
-    "microstyle",
-    "impact",
-    "trajan",
-    "copperplate",
-    "engravers",
-)
-_SERIF_FAMILY_HINTS: tuple[str, ...] = (
-    "times",
-    "garamond",
-    "georgia",
-    "palatino",
-    "minion",
-    "baskerville",
-    "caslon",
-    "trajan",  # classical roman capitals
-    "bodoni",
-    "didot",
-    "cambria",
-    "constantia",
-    "sourceserif",
-    "notoserif",
-    "bookman",
-    "century",
-    "sabon",
-    "janson",
-    "bembo",
-    "libertine",
-    "charter",
-    "merriweather",
-    "ptserif",
-    "garalde",
-    "cochin",
-    "hoefler",
-)
-_BOLD_NAME_HINTS: tuple[str, ...] = (
-    "bold",
-    "heavy",
-    "black",
-    "semibold",
-    "extrabold",
-    "demibold",
-    "demi",
-    "medium",  # Medium → Bold stand-in (only Regular/Bold CJK)
-)
-_MONO_NAME_HINTS: tuple[str, ...] = (
-    "courier",
-    "mono",
-    "consolas",
-    "menlo",
-    "monaco",
-    "inconsolata",
-    "sourcecode",
-    "jetbrains",
-    "fira code",
-    "firacode",
-)
-
-
-def normalize_ps_font_name(font_name: str | None) -> str:
-    """Strip subset prefix and normalize for family matching."""
-    if not font_name:
-        return ""
-    name = font_name.strip()
-    if "+" in name:
-        name = name.split("+", 1)[1]
-    # Keep alnum only for token search (MyriadPro-Cond → myriadprocond)
-    return re.sub(r"[^a-z0-9]+", "", name.lower())
-
-
-def infer_face_traits_from_name(
-    font_name: str | None,
-    *,
-    bold: bool,
-    italic: bool,
-    monospaced: bool,
-    serif: bool,
-) -> tuple[bool, bool, bool, bool]:
-    """Refine bold/italic/mono/serif from the original face name.
-
-    Returns (bold, italic, monospaced, serif). Unknown names leave flags
-    unchanged. Known families override OS/2 when they disagree so CJK maps
-    to the closest bundled face (e.g. Myriad → Source Han Sans, Trajan →
-    Source Han Serif).
-    """
-    key = normalize_ps_font_name(font_name)
-    if not key:
-        return bold, italic, monospaced, serif
-
-    # Weight / slant from name (separate-weight fonts often lack OS/2 bits)
-    if not bold and any(h in key for h in _BOLD_NAME_HINTS):
-        bold = True
-    # "Light" / "Thin" are never bold
-    if any(h in key for h in ("light", "thin", "ultralight", "extralight", "hairline")):
-        bold = False
-    if not italic:
-        if "italic" in key or "oblique" in key:
-            italic = True
-        elif re.search(
-            r"(light|bold|regular|medium|black|semi|book|roman|extra)it$",
-            key,
-        ):
-            # MyriadPro-LightIt / BoldIt short suffix (avoid bare …it ends)
-            italic = True
-
-    if not monospaced and any(h in key for h in _MONO_NAME_HINTS):
-        monospaced = True
-
-    # Family → serif/sans (name wins over wrong OS/2)
-    if any(h in key for h in _SANS_FAMILY_HINTS):
-        serif = False
-    elif any(h in key for h in _SERIF_FAMILY_HINTS):
-        serif = True
-
-    # Display faces (chapter/section titles): Bold CJK for visual weight
-    if not bold and any(h in key for h in _DISPLAY_WEIGHT_HINTS):
-        bold = True
-
-    return bold, italic, monospaced, serif
 
 
 class PrimaryFontFamily(enum.IntEnum):

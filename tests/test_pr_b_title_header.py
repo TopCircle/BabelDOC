@@ -58,8 +58,10 @@ def test_normalize_decorative_title_case():
     )
 
     assert normalize_decorative_title_case("Who haS orgaSMS?") == "who has orgasms?"
-    assert "who has orgasms" in recover_latin_word_fragments("Who haS orgaSMS?")
-    # normal prose left alone
+    # Global recovery must NOT lower body brands (B1)
+    assert recover_latin_word_fragments("The iPhone works today.") == (
+        "The iPhone works today."
+    )
     assert normalize_decorative_title_case("Hello world") == "Hello world"
 
 
@@ -139,14 +141,14 @@ def _finder() -> ParagraphFinder:
     return finder
 
 
-def test_merge_chapter_title_paragraphs():
+def test_chapter_and_title_stay_separate_paragraphs():
+    """Chapter N + title are not merged (preserve Trajan vs display styles)."""
     finder = _finder()
     page = Page(
         page_number=0,
         mediabox=Box(x=0, y=0, x2=612, y2=792),
         cropbox=SimpleNamespace(box=Box(x=0, y=0, x2=612, y2=792)),
     )
-    # Top band (~y2=750 on 792 page)
     ch = _line_para("Chapter 1", y=730, y2=760, layout_label="plain text")
     title = _line_para("Love and Sex", y=700, y2=728, layout_label="title")
     body = _line_para(
@@ -156,24 +158,9 @@ def test_merge_chapter_title_paragraphs():
         layout_label="plain text",
     )
     paras = [ch, title, body]
-    finder.merge_chapter_title_paragraphs(page, paras)
-    assert len(paras) == 2
-    merged_u = (paras[0].unicode or "").lower()
-    assert "chapter" in merged_u
-    assert "love" in merged_u or "sex" in (paras[0].unicode or "").lower()
-    # body untouched
-    assert "anatomy" in (paras[1].unicode or "")
-
-
-def test_merge_skips_mid_page_chapter_like():
-    finder = _finder()
-    page = Page(
-        page_number=0,
-        mediabox=Box(x=0, y=0, x2=612, y2=792),
-        cropbox=SimpleNamespace(box=Box(x=0, y=0, x2=612, y2=792)),
-    )
-    ch = _line_para("Chapter 2", y=400, y2=430, layout_label="plain text")
-    title = _line_para("Something", y=360, y2=390, layout_label="title")
-    paras = [ch, title]
-    finder.merge_chapter_title_paragraphs(page, paras)
-    assert len(paras) == 2  # not in top band
+    # No merge step in process path; compositions stay three paragraphs.
+    assert len(paras) == 3
+    assert "chapter" in (paras[0].unicode or "").lower()
+    assert "love" in (paras[1].unicode or "").lower()
+    assert "anatomy" in (paras[2].unicode or "")
+    assert not hasattr(finder, "merge_chapter_title_paragraphs")

@@ -538,6 +538,7 @@ def recover_latin_word_fragments(text: str) -> str:
     text = rejoin_ligature_space_splits(text)
     text = rejoin_known_split_latin_words(text)
     text = space_chapter_number(text)
-    text = normalize_decorative_title_case(text)
+    # Decorative mixed-case titles: apply normalize_decorative_title_case at
+    # the call site when geometry/label is decorative (see layout_helper).
     text = expand_latin_ligatures(text)
     return text
