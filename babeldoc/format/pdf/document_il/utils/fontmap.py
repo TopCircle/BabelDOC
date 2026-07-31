@@ -13,6 +13,155 @@ from babeldoc.format.pdf.translation_config import TranslationConfig
 
 logger = logging.getLogger(__name__)
 
+# PostScript / TrueType family tokens → closest CJK stand-in traits.
+# OS/2 flags in PDF fonts are often wrong (e.g. MyriadPro flagged serif);
+# when the name clearly indicates a family, prefer the name.
+_SANS_FAMILY_HINTS: tuple[str, ...] = (
+    "myriad",
+    "helvetica",
+    "arial",
+    "calibri",
+    "gotham",
+    "futura",
+    "montserrat",
+    "frutiger",
+    "univers",
+    "franklin",
+    "roboto",
+    "inter",
+    "sourcesans",
+    "notosans",
+    "din",
+    "proxima",
+    "avenir",
+    "optima",
+    "gilroy",
+    "lato",
+    "opensans",
+    "segoe",
+    "verdana",
+    "tahoma",
+    "trebuchet",
+    "gill",
+    "neutra",
+    "microstyle",  # geometric display → sans stand-in
+    "impact",
+    "arialnarrow",
+    "condensed",
+    # common condensed markers without full family (MyriadPro-Cond)
+    "procond",
+    "prosemicn",
+    "semcn",
+)
+_SERIF_FAMILY_HINTS: tuple[str, ...] = (
+    "times",
+    "garamond",
+    "georgia",
+    "palatino",
+    "minion",
+    "baskerville",
+    "caslon",
+    "trajan",  # classical roman capitals
+    "bodoni",
+    "didot",
+    "cambria",
+    "constantia",
+    "sourceserif",
+    "notoserif",
+    "bookman",
+    "century",
+    "sabon",
+    "janson",
+    "bembo",
+    "libertine",
+    "charter",
+    "merriweather",
+    "ptserif",
+    "garalde",
+    "cochin",
+    "hoefler",
+)
+_BOLD_NAME_HINTS: tuple[str, ...] = (
+    "bold",
+    "heavy",
+    "black",
+    "semibold",
+    "extrabold",
+    "demibold",
+    "demi",
+    "medium",  # Medium → Bold stand-in (only Regular/Bold CJK)
+)
+_MONO_NAME_HINTS: tuple[str, ...] = (
+    "courier",
+    "mono",
+    "consolas",
+    "menlo",
+    "monaco",
+    "inconsolata",
+    "sourcecode",
+    "jetbrains",
+    "fira code",
+    "firacode",
+)
+
+
+def normalize_ps_font_name(font_name: str | None) -> str:
+    """Strip subset prefix and normalize for family matching."""
+    if not font_name:
+        return ""
+    name = font_name.strip()
+    if "+" in name:
+        name = name.split("+", 1)[1]
+    # Keep alnum only for token search (MyriadPro-Cond → myriadprocond)
+    return re.sub(r"[^a-z0-9]+", "", name.lower())
+
+
+def infer_face_traits_from_name(
+    font_name: str | None,
+    *,
+    bold: bool,
+    italic: bool,
+    monospaced: bool,
+    serif: bool,
+) -> tuple[bool, bool, bool, bool]:
+    """Refine bold/italic/mono/serif from the original face name.
+
+    Returns (bold, italic, monospaced, serif). Unknown names leave flags
+    unchanged. Known families override OS/2 when they disagree so CJK maps
+    to the closest bundled face (e.g. Myriad → Source Han Sans, Trajan →
+    Source Han Serif).
+    """
+    key = normalize_ps_font_name(font_name)
+    if not key:
+        return bold, italic, monospaced, serif
+
+    # Weight / slant from name (separate-weight fonts often lack OS/2 bits)
+    if not bold and any(h in key for h in _BOLD_NAME_HINTS):
+        bold = True
+    # "Light" / "Thin" are never bold
+    if any(h in key for h in ("light", "thin", "ultralight", "extralight", "hairline")):
+        bold = False
+    if not italic:
+        if "italic" in key or "oblique" in key:
+            italic = True
+        elif re.search(
+            r"(light|bold|regular|medium|black|semi|book|roman|extra)it$",
+            key,
+        ):
+            # MyriadPro-LightIt / BoldIt short suffix (avoid bare …it ends)
+            italic = True
+
+    if not monospaced and any(h in key for h in _MONO_NAME_HINTS):
+        monospaced = True
+
+    # Family → serif/sans (name wins over wrong OS/2)
+    if any(h in key for h in _SANS_FAMILY_HINTS):
+        serif = False
+    elif any(h in key for h in _SERIF_FAMILY_HINTS):
+        serif = True
+
+    return bold, italic, monospaced, serif
+
 
 class PrimaryFontFamily(enum.IntEnum):
     SERIF = 1
@@ -166,51 +315,11 @@ class FontMapper:
             italic = original_font.is_italic
             monospaced = original_font.is_monospaced
             serif = original_font.is_serif
-
-            # Fallback: infer bold/italic from font name when metadata is absent
-            if not bold or not italic:
-                font_name = getattr(original_font, "name", "")
-                if not font_name:
-                    font_name = getattr(original_font, "font_id", "")
-                if font_name:
-                    name_lower = font_name.lower()
-                    if "+" in name_lower:
-                        name_lower = name_lower.split("+", 1)[1]
-                    if not bold and any(
-                        kw in name_lower
-                        for kw in ("bold", "heavy", "black", "semibold", "extrabold")
-                    ):
-                        bold = True
-                    if not italic and any(
-                        kw in name_lower
-                        for kw in ("italic", "oblique")
-                    ):
-                        italic = True
         elif isinstance(original_font, PdfFont):
             bold = original_font.bold
             italic = original_font.italic
             monospaced = original_font.monospace
             serif = original_font.serif
-
-            # Fallback: many PDFs use a separate-weight font (e.g.,
-            # "Arial-BoldMT") that is visually bold but whose OS/2 table
-            # doesn't set the bold flag.  Check the font name.
-            if not bold and original_font.name:
-                name_lower = original_font.name.lower()
-                # Strip subset prefix like "ABCDEE+"
-                if "+" in name_lower:
-                    name_lower = name_lower.split("+", 1)[1]
-                if any(
-                    kw in name_lower
-                    for kw in ("bold", "heavy", "black", "semibold", "extrabold")
-                ):
-                    bold = True
-                    logger.warning(
-                        "FontMapper: PdfFont bold inferred from name=%s id=%s (bold was %s)",
-                        original_font.name,
-                        original_font.font_id,
-                        original_font.bold,
-                    )
         else:
             logger.error(
                 f"Unknown font type: {type(original_font)}. "
@@ -219,37 +328,30 @@ class FontMapper:
             )
             return None
 
-        # Infer monospaced from font name when metadata is missing (subset
-        # Courier often has no reliable is_monospaced bit).
-        font_name_for_mono = (
+        # Closest CJK face: refine traits from original PostScript/TrueType name
+        # when available (OS/2 serif bit is unreliable for Myriad/Microstyle/…).
+        face_name = (
             getattr(original_font, "name", None)
             or getattr(original_font, "font_id", None)
             or ""
         )
-        if not monospaced and font_name_for_mono:
-            name_lower = font_name_for_mono.lower()
-            if "+" in name_lower:
-                name_lower = name_lower.split("+", 1)[1]
-            if any(
-                kw in name_lower
-                for kw in (
-                    "courier",
-                    "mono",
-                    "consolas",
-                    "menlo",
-                    "monaco",
-                    "inconsolata",
-                    "sourcecode",
-                    "jetbrains",
-                    "fira code",
-                    "firacode",
-                )
-            ):
-                monospaced = True
+        bold_before = bold
+        bold, italic, monospaced, serif = infer_face_traits_from_name(
+            face_name,
+            bold=bool(bold),
+            italic=bool(italic),
+            monospaced=bool(monospaced),
+            serif=bool(serif),
+        )
+        if bold and not bold_before and isinstance(original_font, PdfFont):
+            logger.debug(
+                "FontMapper: bold inferred from name=%s id=%s",
+                getattr(original_font, "name", None),
+                getattr(original_font, "font_id", None),
+            )
 
-        # Log bold detection
         if bold:
-            logger.warning(
+            logger.debug(
                 "font_mapper: BOLD font=%s id=%s char=%r",
                 getattr(original_font, "name", "?"),
                 getattr(original_font, "font_id", "?"),

@@ -321,3 +321,97 @@ class TestMonoFontMapping:
         mapped = mapper.map(times, "中")
         assert mapped is not None
         assert "serif" in mapped.font_id.lower()
+
+
+class TestClosestFaceFromName:
+    """Original face name → closest bundled CJK (serif/sans/weight)."""
+
+    def test_myriad_wrong_os2_serif_maps_to_sans(self):
+        """OA body: MyriadPro often flagged serif in OS/2 — name wins → Sans."""
+        cfg = _config()
+        mapper = FontMapper(cfg)
+        myriad = PdfFont(
+            font_id="KSPF52",
+            name="MYMKHM+MyriadPro-Light",
+            xref_id=1,
+            bold=False,
+            italic=False,
+            monospace=False,
+            serif=True,  # wrong OS/2, common in commercial PDFs
+        )
+        mapped = mapper.map(myriad, "爱")
+        assert mapped is not None
+        fid = mapped.font_id.lower()
+        assert "sans" in fid
+        assert "bold" not in fid
+
+    def test_trajan_maps_to_serif(self):
+        """OA chapter number: TrajanPro → Source Han Serif."""
+        cfg = _config()
+        mapper = FontMapper(cfg)
+        trajan = PdfFont(
+            font_id="KSPF45",
+            name="POULUG+TrajanPro-Regular",
+            xref_id=1,
+            bold=False,
+            italic=False,
+            monospace=False,
+            serif=True,
+        )
+        mapped = mapper.map(trajan, "章")
+        assert mapped is not None
+        fid = mapped.font_id.lower()
+        assert "serif" in fid
+        assert "sans" not in fid
+
+    def test_microstyle_display_maps_to_sans(self):
+        """OA display title: MicrostyleATT geometric → Sans stand-in (not body Serif)."""
+        cfg = _config()
+        mapper = FontMapper(cfg)
+        micro = PdfFont(
+            font_id="KSPF42",
+            name="ODZJFZ+MicrostyleATT",
+            xref_id=1,
+            bold=False,
+            italic=False,
+            monospace=False,
+            serif=True,  # OS/2 often wrong
+        )
+        mapped = mapper.map(micro, "性")
+        assert mapped is not None
+        fid = mapped.font_id.lower()
+        assert "sans" in fid
+
+    def test_myriad_cond_callout_maps_to_sans(self):
+        cfg = _config()
+        mapper = FontMapper(cfg)
+        cond = PdfFont(
+            font_id="KSPF56",
+            name="QJAJEB+MyriadPro-Cond",
+            xref_id=1,
+            bold=False,
+            italic=False,
+            monospace=False,
+            serif=True,
+        )
+        mapped = mapper.map(cond, "中")
+        assert mapped is not None
+        assert "sans" in mapped.font_id.lower()
+
+    def test_arial_bold_name_maps_to_sans_bold(self):
+        cfg = _config()
+        mapper = FontMapper(cfg)
+        arial = PdfFont(
+            font_id="F1",
+            name="Arial-BoldMT",
+            xref_id=1,
+            bold=False,  # flag missing; name has Bold
+            italic=False,
+            monospace=False,
+            serif=False,
+        )
+        mapped = mapper.map(arial, "中")
+        assert mapped is not None
+        fid = mapped.font_id.lower()
+        assert "sans" in fid
+        assert "bold" in fid
