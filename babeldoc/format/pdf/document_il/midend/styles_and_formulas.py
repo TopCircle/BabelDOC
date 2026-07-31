@@ -774,8 +774,14 @@ class StylesAndFormulas:
         _prose_numbers.coalesce_prose_number_style_spans(page)
 
     def _calculate_base_style(self, paragraph) -> PdfStyle:
-        """计算段落的基准样式（除公式外所有文字样式的交集）"""
-        styles = []
+        """计算段落的基准样式（除公式外；drop-cap 离群字号/字体剔除）。
+
+        实现见 ``style_base.calculate_base_style``（PR-1）。
+        """
+        from babeldoc.format.pdf.document_il.utils import style_base
+
+        styles: list = []
+        unicodes: list = []
         for comp in paragraph.pdf_paragraph_composition:
             if isinstance(comp, PdfFormula):
                 continue
@@ -783,23 +789,13 @@ class StylesAndFormulas:
                 continue
             for char in comp.pdf_line.pdf_character:
                 styles.append(char.pdf_style)
+                unicodes.append(getattr(char, "char_unicode", None))
 
-        if not styles:
-            return None
-
-        # 返回所有样式的交集
-        base_style = styles[0]
-        for style in styles[1:]:
-            # 更新基准样式为所有样式的交集
-            base_style = self._merge_styles(base_style, style)
-
-        # 如果 font_id 或 font_size 为 None，则使用众数
-        if base_style.font_id is None:
-            base_style.font_id = self._get_mode_value([s.font_id for s in styles])
-        if base_style.font_size is None:
-            base_style.font_size = self._get_mode_value([s.font_size for s in styles])
-
-        return base_style
+        return style_base.calculate_base_style(
+            styles,
+            layout_label=getattr(paragraph, "layout_label", None),
+            char_unicodes=unicodes,
+        )
 
     def _get_mode_value(self, values):
         """计算列表中的众数"""
