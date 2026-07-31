@@ -20,6 +20,10 @@ from babeldoc.format.pdf.document_il.utils.decorative_spacing import (
     gap_is_decorative_word_boundary,
     is_decorative_text,
 )
+from babeldoc.format.pdf.document_il.utils.drop_cap import (
+    rejoin_drop_cap_in_text,
+    should_suppress_space_after_drop_cap,
+)
 
 # Back-compat aliases (paragraph_finder imports private names).
 _is_decorative_text = is_decorative_text
@@ -371,6 +375,9 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
                     if unicode_chars and unicode_chars[-1] in "-‐‑":
                         unicode_chars.pop()
                     continue  # no space; next char appends directly
+            # Drop-cap: never insert space between large ``I`` and ``f you…``
+            if should_suppress_space_after_drop_cap(chars[i], next_ch):
+                continue
             if is_decorative:
                 insert = is_nl or gap_is_decorative_word_boundary(
                     distance, decorative_word_gap
@@ -397,6 +404,8 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
     result = result.replace("​", "")   # ZERO-WIDTH SPACE (remove)
     result = result.replace(" ", " ")  # NARROW NO-BREAK SPACE
     result = result.replace(" ", " ")  # MEDIUM MATHEMATICAL SPACE
+    # Drop-cap text cleanup then ligature / soft-hyphen recovery
+    result = rejoin_drop_cap_in_text(result)
     # Soft hyphens, ligature gaps, known mid-word splits (OA di/ff, cli toral)
     result = text_recovery.recover_latin_word_fragments(result)
     # Decorative mixed-case titles only (not global body: iPhone / eBay safe)

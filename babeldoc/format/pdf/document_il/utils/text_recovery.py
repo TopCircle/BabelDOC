@@ -529,10 +529,16 @@ def recover_latin_word_fragments(text: str) -> str:
     """Full post-pass: ligatures, soft hyphens, known mid-word space splits.
 
     Call after assembling paragraph unicode and before MT.
+    Drop-cap ``I f`` rejoins run in ``drop_cap.rejoin_drop_cap_in_text``
+    (usually before this, from ``get_char_unicode_string``).
     """
     if not text:
         return text
+    # Late safety if callers skip layout_helper drop-cap pass
+    from babeldoc.format.pdf.document_il.utils.drop_cap import rejoin_drop_cap_in_text
+
     text = expand_latin_ligatures(text)
+    text = rejoin_drop_cap_in_text(text)
     text = rejoin_soft_hyphens_in_text(text)
     text = rejoin_soft_hyphen_tight(text)
     text = rejoin_ligature_space_splits(text)
