@@ -5,8 +5,14 @@ line MT loses discourse context and typesetting keeps the inverted-triangle
 geometry (one CJK char per tip line).
 
 Merge vertically stacked narrow strips (same column) so unicode is one block
-and typesetting can reflow in the union box.  Matching is by **visual y** (not
-list adjacency) so stream-scrambled page order still merges.
+and typesetting can reflow in the union box.
+
+Strategy (0.6.4.49):
+  1. List-adjacent chain merge (safe; matches stream/discovery order).
+  2. Optional y-sorted merge only for remaining **ultra-narrow** tips that are
+     not list-adjacent but sit in a clear vertical stack (no intervening para
+     in the same column band).  Whole-page y-sort of every width≤220 strip
+     over-merged body/subheads in 0.6.4.48 and wrecked dual layout.
 """
 
 from __future__ import annotations
@@ -21,6 +27,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _MAX_LINE_WIDTH = 220.0
+# Non-list-adjacent y-merge only for tip-like fragments (OA tip ~50–100pt).
+_ULTRA_NARROW_Y_MERGE = 120.0
 _MAX_VERTICAL_GAP = 22.0
 # Triangle tip indents far right of the first line (OA ~100pt+).
 _MAX_X_DELTA = 160.0
@@ -46,13 +54,6 @@ def _y2(p: PdfParagraph) -> float:
 
 def _same_xobj(a: PdfParagraph, b: PdfParagraph) -> bool:
     return getattr(a, "xobj_id", None) == getattr(b, "xobj_id", None)
-
-
-def _is_narrow_candidate(p: PdfParagraph) -> bool:
-    b = _box(p)
-    if b is None or b.x is None or b.x2 is None or b.y is None or b.y2 is None:
-        return False
-    return _width(p) <= _MAX_LINE_WIDTH
 
 
 def _can_merge(upper: PdfParagraph, lower: PdfParagraph) -> bool:
@@ -96,6 +97,7 @@ def _composition_sort_key(comp: Any) -> tuple[float, float]:
 
 
 def _sort_compositions_visual(paragraph: PdfParagraph) -> None:
+    """Top-first composition order after merge (tip-first stream → reading order)."""
     comps = list(paragraph.pdf_paragraph_composition or [])
     if len(comps) < 2:
         return
@@ -121,43 +123,112 @@ def _merge_lower_into_upper(upper: PdfParagraph, lower: PdfParagraph) -> None:
     _sort_compositions_visual(upper)
 
 
-def merge_stacked_narrow_callout_paragraphs(
-    paragraphs: list[PdfParagraph],
-    page: Page | None = None,
-) -> int:
-    """In-place merge of stacked narrow callout lines. Returns merge count.
+def _column_band(a: PdfParagraph, b: PdfParagraph) -> tuple[float, float]:
+    ba, bb = _box(a), _box(b)
+    x0 = min(float(ba.x), float(bb.x))
+    x1 = max(float(ba.x2), float(bb.x2))
+    return x0, x1
 
-    Narrow candidates are sorted by visual y2 (top-first) and chain-merged when
-    consecutive in that order satisfy geometry — not only list-adjacent pairs.
-    """
-    _ = page
-    if len(paragraphs) < 2:
-        return 0
+
+def _has_intervening_paragraph(
+    upper: PdfParagraph,
+    lower: PdfParagraph,
+    paragraphs: list[PdfParagraph],
+) -> bool:
+    """True if another para sits between upper/lower in y within their x-band."""
+    bu, bl = _box(upper), _box(lower)
+    if bu is None or bl is None:
+        return True
+    y_hi = min(float(bu.y2 or 0), float(bl.y2 or 0))  # noqa: not used for gap
+    # Vertical interior between the two stacks (exclusive)
+    top = float(bu.y)  # bottom edge of upper
+    bot = float(bl.y2)  # top edge of lower
+    if top <= bot:
+        return False
+    x0, x1 = _column_band(upper, lower)
+    for p in paragraphs:
+        if p is upper or p is lower:
+            continue
+        b = _box(p)
+        if b is None or b.x is None or b.x2 is None or b.y is None or b.y2 is None:
+            continue
+        # center y of p in the open gap?
+        cy = 0.5 * (float(b.y) + float(b.y2))
+        if not (bot < cy < top):
+            continue
+        # x overlap with column band
+        if float(b.x2) < x0 or float(b.x) > x1:
+            continue
+        return True
+    return False
+
+
+def _merge_list_adjacent(paragraphs: list[PdfParagraph]) -> int:
     merges = 0
-    # Repeat until a full pass finds no mergeable y-neighbors.
+    i = 0
+    while i < len(paragraphs) - 1:
+        a = paragraphs[i]
+        b = paragraphs[i + 1]
+        ba, bb = _box(a), _box(b)
+        if ba is None or bb is None:
+            i += 1
+            continue
+        if (ba.y2 or 0) >= (bb.y2 or 0):
+            upper, lower = a, b
+        else:
+            upper, lower = b, a
+        if not _can_merge(upper, lower):
+            i += 1
+            continue
+        _merge_lower_into_upper(upper, lower)
+        paragraphs.remove(lower)
+        merges += 1
+        # stay on i to chain-merge further lines into the same stack
+    return merges
+
+
+def _merge_y_sorted_ultra_narrow(paragraphs: list[PdfParagraph]) -> int:
+    """Second pass: non-list-adjacent ultra-narrow tips only."""
+    merges = 0
     while True:
-        candidates = [p for p in paragraphs if _is_narrow_candidate(p)]
+        candidates = [
+            p
+            for p in paragraphs
+            if _box(p) is not None and 0 < _width(p) <= _ULTRA_NARROW_Y_MERGE
+        ]
         if len(candidates) < 2:
             break
-        # Top-first (higher y2 first)
         candidates.sort(key=_y2, reverse=True)
         merged_this_pass = False
         for i in range(len(candidates) - 1):
             upper = candidates[i]
             lower = candidates[i + 1]
-            if upper is lower:
-                continue
             if upper not in paragraphs or lower not in paragraphs:
                 continue
             if not _can_merge(upper, lower):
+                continue
+            if _has_intervening_paragraph(upper, lower, paragraphs):
                 continue
             _merge_lower_into_upper(upper, lower)
             paragraphs.remove(lower)
             merges += 1
             merged_this_pass = True
-            break  # restart with updated boxes / list
+            break
         if not merged_this_pass:
             break
+    return merges
+
+
+def merge_stacked_narrow_callout_paragraphs(
+    paragraphs: list[PdfParagraph],
+    page: Page | None = None,
+) -> int:
+    """In-place merge of stacked narrow callout lines. Returns merge count."""
+    _ = page
+    if len(paragraphs) < 2:
+        return 0
+    merges = _merge_list_adjacent(paragraphs)
+    merges += _merge_y_sorted_ultra_narrow(paragraphs)
     if merges:
         logger.debug("callout_merge: merged %d stacked narrow lines", merges)
     return merges

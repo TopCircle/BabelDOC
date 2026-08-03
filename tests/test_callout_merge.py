@@ -60,23 +60,21 @@ def test_merge_triangle_callout_lines():
         assert y2s == sorted(y2s, reverse=True)
 
 
-def test_merge_non_list_adjacent_stack():
-    """B3: merge by visual y even when a wide body splits the list."""
+def test_merge_non_list_adjacent_ultra_narrow_tips():
+    """Y-pass merges ultra-narrow tips even when a wide body splits the list."""
     tip = _line_para("the program.", x=450, y=100, w=80)
-    mid = _line_para("plans and stick", x=420, y=120, w=110)
-    top = _line_para("In order to work", x=320, y=140, w=180)
+    mid = _line_para("plans and stick", x=420, y=120, w=100)
     body = _line_para(
         "Wide body paragraph that must stay separate.",
         x=50,
         y=300,
         w=400,
     )
-    # Stream order: tip, body, mid, top — list-adjacent merge would miss stack
-    paras = [tip, body, mid, top]
+    # tip/mid not list-adjacent; both ultra-narrow ≤120
+    paras = [tip, body, mid]
     n = merge_stacked_narrow_callout_paragraphs(paras)
-    assert n >= 2
+    assert n >= 1
     assert len(paras) == 2
-    # body preserved; callout is the other
     texts = []
     for p in paras:
         for c in p.pdf_paragraph_composition or []:
@@ -86,5 +84,17 @@ def test_merge_non_list_adjacent_stack():
                 )
     joined = " ".join(texts)
     assert "Wide body" in joined
-    assert "In order to work" in joined
     assert "the program." in joined
+    assert "plans and stick" in joined
+
+
+def test_does_not_y_merge_medium_width_across_page():
+    """0.6.4.48 regression: width≤220 y-sort merged unrelated short paras."""
+    a = _line_para("As they say, actions speak.", x=50, y=300, w=200)
+    b = _line_para("Short quote line two here.", x=50, y=280, w=200)
+    blocker = _line_para("BLOCKER wide body text xxxx", x=50, y=500, w=400)
+    # Not list-adjacent; medium width → y-pass must not merge
+    paras = [a, blocker, b]
+    n = merge_stacked_narrow_callout_paragraphs(paras)
+    assert n == 0
+    assert len(paras) == 3

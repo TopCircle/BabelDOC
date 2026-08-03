@@ -172,3 +172,43 @@ def test_try_pre_expand_skips_when_content_fits():
         )
         is None
     )
+
+
+def test_callout_left_expand_capped_not_page_wide():
+    """Right-side callout must not left-expand to page margin (0.6.4.48 dual)."""
+    from babeldoc.format.pdf.document_il.utils.box_expand import try_expand_left
+
+    # OA-like tip on the right over a figure
+    box = _box(x=420, y=200, x2=500, y2=320)  # 80pt
+    # get_max_left claims free all the way to page margin
+    out = try_expand_left(
+        box,
+        lambda b: 40.0,
+        need_width=150.0,
+        max_expand=100.0,
+    )
+    assert out is not None
+    # need 150 → desired x = 500-150 = 350; cap at 420-100 = 320 → max(40, 320, 350) = 350
+    assert out.x == 350.0
+    assert out.x2 == 500.0
+    # Must not reach page-left free edge
+    assert out.x > 100.0
+
+
+def test_medium_width_left_body_not_force_callout_left():
+    """Short left body line (width<230) must not force left expand path."""
+    # 200pt wide body fragment on the left — right has room
+    box = _box(x=50, y=400, x2=250, y2=420)
+    out = try_pre_expand_for_content(
+        box,
+        content_w=280.0,  # slightly over
+        text="short body",
+        layout_label="plain text",
+        get_max_right=lambda b: 500,
+        get_max_bottom=lambda b: 40,
+        get_max_left=lambda b: 10.0,
+    )
+    # Should expand right, not jump left to margin
+    assert out is not None
+    assert out.x == box.x
+    assert out.x2 > box.x2

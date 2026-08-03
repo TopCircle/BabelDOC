@@ -137,22 +137,43 @@ def try_expand_right(
     return Box(x=box.x, y=box.y, x2=max_x, y2=box.y2)
 
 
+# Hard cap: callouts sit on figures; unlimited left expand crosses the page
+# into the body column (OA p19 dual 0.6.4.48 regression).
+_MAX_LEFT_EXPAND_PT = 100.0
+
+
 def try_expand_left(
     box: Box,
     get_max_left: GetMaxLeft,
     *,
     margin: float = 5.0,
+    need_width: float | None = None,
+    max_expand: float = _MAX_LEFT_EXPAND_PT,
 ) -> Box | None:
-    """Return a box extended left toward free space (callout → body column)."""
+    """Extend box left for CJK reflow — only as far as content needs, capped.
+
+    Unlimited expand to ``get_max_left`` (often the page margin) pulls right-side
+    callouts across photos into the body column and wrecks dual layout.
+    """
     if box is None or box.x is None or box.x2 is None:
         return None
+    cur_w = box_width(box)
+    if cur_w <= 0:
+        return None
+    # Only expand when content is wider than the box (or need_width given).
+    if need_width is None or need_width <= cur_w + 1.0:
+        return None
     try:
-        min_x = get_max_left(box) + margin
+        min_x_free = get_max_left(box) + margin
     except Exception:
         return None
-    if min_x >= box.x - 1:
+    desired_x = float(box.x2) - float(need_width)
+    min_x_cap = float(box.x) - float(max_expand)
+    # Rightmost of the lower bounds = least aggressive left edge we may use.
+    new_x = max(min_x_free, min_x_cap, desired_x)
+    if new_x >= float(box.x) - 1.0:
         return None
-    return Box(x=min_x, y=box.y, x2=box.x2, y2=box.y2)
+    return Box(x=new_x, y=box.y, x2=box.x2, y2=box.y2)
 
 
 def try_expand_down(
@@ -210,14 +231,26 @@ def try_pre_expand_for_content(
     if box_w <= 0 or content_w <= 0:
         return None
     ratio_need = content_expand_ratio_need(text, layout_label, box)
-    # Callout columns: always attempt expand for CJK reflow
-    force_callout = is_ultra_narrow_column(box) or is_callout_column(box)
+    # Right-side design callouts (tip / merged triangle): left then down.
+    # Do NOT treat every width<230 box as a callout — short body/subheads would
+    # force full-page left expand and destroy dual layout.
+    right_blocked = is_right_blocked(box, get_max_right)
+    force_callout = is_ultra_narrow_column(box) or (
+        is_callout_column(box) and right_blocked
+    )
+    # Even callouts: no expand when content already fits the box.
+    if content_w <= box_w + 1.0:
+        return None
     if not force_callout and content_w < box_w * ratio_need:
         return None
 
-    # Ultra-narrow / design callouts: left (body), then right, then down.
+    # Ultra-narrow / right-blocked callout column: modest left, then right, down.
     if force_callout:
-        left = try_expand_left(box, get_max_left) if get_max_left is not None else None
+        left = (
+            try_expand_left(box, get_max_left, need_width=content_w)
+            if get_max_left is not None
+            else None
+        )
         work = left if left is not None else box
         right = try_expand_right(work, get_max_right)
         if right is not None:
