@@ -99,5 +99,37 @@ def test_multiline_stream_climb_reorders_callout_body():
     assert ordered is not chars
     head = "".join(c.char_unicode for c in ordered[: len("In order")])
     assert head.startswith("In order")
-    # Wide body must not reorder
-    assert maybe_reorder_multiline_stream_climb(chars, para_width=400.0) is chars
+    # Wide body: strong climb (≥4 lines, high ratio) still reorders (OA p19 intro)
+    wide = maybe_reorder_multiline_stream_climb(chars, para_width=400.0)
+    assert wide is not chars
+    assert "".join(c.char_unicode for c in wide[:8]).startswith("In order")
+
+
+def test_wide_body_with_drop_cap_reorders():
+    """OA p19 intro: wide column + drop-cap still gets visual order for MT."""
+    from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode_string
+    from babeldoc.format.pdf.document_il.utils.stream_order import (
+        maybe_reorder_multiline_stream_climb,
+    )
+
+    lines = [
+        ("something about it!", 100.0, 12.5),
+        ("love and maintaining passion", 120.0, 12.5),
+        ("is smiles and hearts and roses", 140.0, 12.5),
+        ("beyond the so-called honeymoon", 160.0, 12.5),
+        ("f you want to get some action", 180.0, 12.5),
+    ]
+    chars: list = []
+    for text, y, sz in lines:
+        for i, c in enumerate(text):
+            ch = _ch(c, 100 + i * 6, y=y, w=6)
+            ch.pdf_style = PdfStyle(font_id="base", font_size=sz, graphic_state=None)
+            chars.append(ch)
+    drop = _ch("I", 102, y=200, w=18)
+    drop.pdf_style = PdfStyle(font_id="Trajan", font_size=35.4, graphic_state=None)
+    chars.append(drop)
+    ordered = maybe_reorder_multiline_stream_climb(chars, para_width=320.0)
+    assert ordered is not chars
+    text = get_char_unicode_string(ordered)
+    assert "If you want" in text or text.replace(" ", "").startswith("Ifyou")
+    assert "I love" not in text

@@ -78,3 +78,18 @@ def test_nbsp_drop_cap_i():
 def test_no_false_join_sentence_i():
     """Standalone pronoun I before a full word stays."""
     assert rejoin_drop_cap_in_text("I love maintaining") == "I love maintaining"
+
+
+def test_place_drop_cap_non_adjacent():
+    """Drop-cap I after body stream still moves before f… for MT."""
+    from babeldoc.format.pdf.document_il.utils.drop_cap import (
+        place_drop_caps_before_continuations,
+    )
+
+    body = [_ch(c, 120 + i * 6, size=12.5, y=180.0) for i, c in enumerate("f you")]
+    drop = _ch("I", 102.0, size=35.4, w=18.0, y=200.0, font_id="Trajan")
+    # Stream: body first, drop-cap last (bottom→top paint remnant)
+    stream = body + [drop]
+    placed = place_drop_caps_before_continuations(stream)
+    assert placed[0].char_unicode == "I"
+    assert placed[1].char_unicode == "f"

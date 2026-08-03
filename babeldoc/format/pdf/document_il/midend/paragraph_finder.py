@@ -346,6 +346,13 @@ class ParagraphFinder:
         if climbed is not chars and climbed is not None:
             chars = climbed
 
+        # Drop-cap may still be non-adjacent after climb; place before continuation
+        from babeldoc.format.pdf.document_il.utils.drop_cap import (
+            place_drop_caps_before_continuations,
+        )
+
+        chars = place_drop_caps_before_continuations(chars)
+
         # Detect decorative text and compute tracking for re-layout
         if chars and _is_decorative_text(chars):
             tracking = compute_decorative_tracking(chars)
@@ -498,6 +505,13 @@ class ParagraphFinder:
 
         # Chapter N + title stay separate paragraphs so red Trajan and black
         # display faces map independently (do not merge).
+
+        # OA callout triangle: merge stacked narrow lines → one MT unit + reflow box
+        from babeldoc.format.pdf.document_il.utils.callout_merge import (
+            merge_stacked_narrow_callout_paragraphs,
+        )
+
+        merge_stacked_narrow_callout_paragraphs(paragraphs, page)
 
         for paragraph in paragraphs:
             self.update_paragraph_data(paragraph, update_unicode=True, page=page)

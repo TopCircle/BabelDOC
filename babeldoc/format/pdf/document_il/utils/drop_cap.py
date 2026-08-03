@@ -84,3 +84,80 @@ def rejoin_drop_cap_in_text(text: str | None) -> str:
     if not text:
         return "" if text is None else text
     return _DROP_CAP_TEXT_RE.sub(r"\1\2", text)
+
+
+def _char_xy(ch: PdfCharacter) -> tuple[float, float] | None:
+    box = getattr(ch, "visual_bbox", None)
+    box = box.box if box is not None and getattr(box, "box", None) else getattr(ch, "box", None)
+    if box is None or box.x is None:
+        return None
+    y = float(box.y2) if box.y2 is not None else (float(box.y) if box.y is not None else None)
+    if y is None:
+        return None
+    return float(box.x), y
+
+
+def place_drop_caps_before_continuations(
+    chars: list[PdfCharacter],
+) -> list[PdfCharacter]:
+    """Move large drop-cap letters immediately before their word remainder.
+
+    When stream order is bottom→top, ``I`` may appear far from ``f you…`` even
+    after line sort.  Pair by geometry: large capital + nearest smaller
+    **word-start** lowercase to its right on a nearby baseline.
+    """
+    if not chars or len(chars) < 2:
+        return chars
+
+    result = list(chars)
+    for _ in range(4):
+        moved = False
+        for i, ch in enumerate(result):
+            if not is_drop_cap_letter(ch):
+                continue
+            # Already immediately before a size-ok continuation
+            if i + 1 < len(result) and is_drop_cap_pair(ch, result[i + 1]):
+                continue
+            ps = _font_size(ch) or 0.0
+            xy = _char_xy(ch)
+            if xy is None:
+                continue
+            cx, cy = xy
+            best_j: int | None = None
+            best_score = 1e18
+            for j, other in enumerate(result):
+                if j == i:
+                    continue
+                if not is_drop_cap_continuation(other):
+                    continue
+                # Prefer word starts: previous glyph not a letter
+                if j > 0 and j - 1 != i:
+                    prev_u = (result[j - 1].char_unicode or "").strip()
+                    if prev_u and prev_u[-1].isalpha() and ord(prev_u[-1]) < 128:
+                        continue
+                ns = _font_size(other)
+                if ns is not None and ps > 0 and ps < ns * DROP_CAP_SIZE_RATIO:
+                    continue
+                oxy = _char_xy(other)
+                if oxy is None:
+                    continue
+                ox, oy = oxy
+                if ox < cx - 2:
+                    continue
+                # Drop-cap baseline often sits below the first body line band.
+                if abs(oy - cy) > 55.0:
+                    continue
+                score = abs(oy - cy) * 50.0 + (ox - cx)
+                if score < best_score:
+                    best_score = score
+                    best_j = j
+            if best_j is None or best_j == i + 1:
+                continue
+            item = result.pop(i)
+            insert_at = best_j if best_j < i else best_j - 1
+            result.insert(insert_at, item)
+            moved = True
+            break
+        if not moved:
+            break
+    return result

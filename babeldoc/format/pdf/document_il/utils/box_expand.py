@@ -20,6 +20,8 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 NARROW_COLUMN_MAX_WIDTH = 150.0
 # Ultra-narrow callout strip (OA p8 ~80pt) — expand sooner under expand mode.
 ULTRA_NARROW_COLUMN_MAX_WIDTH = 100.0
+# Design callout column after line-merge (OA TAKING CHARGE ~180–220pt).
+CALLOUT_COLUMN_MAX_WIDTH = 230.0
 
 # Content-width / box-width thresholds before we attempt expansion.
 RATIO_SHORT_HEADING = 1.15
@@ -27,9 +29,10 @@ RATIO_NARROW_COLUMN = 1.2
 RATIO_ULTRA_NARROW = 1.05  # PR-D: almost any CJK overflow triggers expand
 RATIO_BODY = 1.5
 
-Axis = Literal["right", "down"]
+Axis = Literal["right", "down", "left"]
 GetMaxRight = Callable[[Box], float]
 GetMaxBottom = Callable[[Box], float]
+GetMaxLeft = Callable[[Box], float]
 
 
 def box_width(box: Box | None) -> float:
@@ -47,6 +50,12 @@ def is_ultra_narrow_column(box: Box | None) -> bool:
     """Tighter than :func:`is_narrow_column` (OA p8 callout ~80pt)."""
     w = box_width(box)
     return 0 < w < ULTRA_NARROW_COLUMN_MAX_WIDTH
+
+
+def is_callout_column(box: Box | None) -> bool:
+    """Merged inverted-triangle / side callout column (wider tip, still narrow)."""
+    w = box_width(box)
+    return 0 < w < CALLOUT_COLUMN_MAX_WIDTH
 
 
 def is_short_heading_text(text: str | None, layout_label: str | None) -> bool:
@@ -128,6 +137,24 @@ def try_expand_right(
     return Box(x=box.x, y=box.y, x2=max_x, y2=box.y2)
 
 
+def try_expand_left(
+    box: Box,
+    get_max_left: GetMaxLeft,
+    *,
+    margin: float = 5.0,
+) -> Box | None:
+    """Return a box extended left toward free space (callout → body column)."""
+    if box is None or box.x is None or box.x2 is None:
+        return None
+    try:
+        min_x = get_max_left(box) + margin
+    except Exception:
+        return None
+    if min_x >= box.x - 1:
+        return None
+    return Box(x=min_x, y=box.y, x2=box.x2, y2=box.y2)
+
+
 def try_expand_down(
     box: Box,
     get_max_bottom: GetMaxBottom,
@@ -169,10 +196,12 @@ def try_pre_expand_for_content(
     layout_label: str | None,
     get_max_right: GetMaxRight,
     get_max_bottom: GetMaxBottom,
+    get_max_left: GetMaxLeft | None = None,
 ) -> Box | None:
     """Pre-scale expand when content is clearly wider than the original box.
 
     Order: right first; if blocked and (narrow column or short heading), down.
+    Callout columns: left (into body) then down then right.
     Returns the expanded box, or None when no change is possible.
     """
     if box is None:
@@ -181,15 +210,22 @@ def try_pre_expand_for_content(
     if box_w <= 0 or content_w <= 0:
         return None
     ratio_need = content_expand_ratio_need(text, layout_label, box)
-    if content_w < box_w * ratio_need:
+    # Callout columns: always attempt expand for CJK reflow
+    force_callout = is_ultra_narrow_column(box) or is_callout_column(box)
+    if not force_callout and content_w < box_w * ratio_need:
         return None
 
-    # Ultra-narrow callouts: down first (figure blocks right).
-    if is_ultra_narrow_column(box):
-        down = try_expand_down(box, get_max_bottom)
+    # Ultra-narrow / design callouts: left (body), then right, then down.
+    if force_callout:
+        left = try_expand_left(box, get_max_left) if get_max_left is not None else None
+        work = left if left is not None else box
+        right = try_expand_right(work, get_max_right)
+        if right is not None:
+            return right
+        down = try_expand_down(work, get_max_bottom)
         if down is not None:
             return down
-        return try_expand_right(box, get_max_right)
+        return left  # may be None
 
     right = try_expand_right(box, get_max_right)
     if right is not None:

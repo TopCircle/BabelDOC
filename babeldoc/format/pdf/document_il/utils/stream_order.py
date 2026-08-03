@@ -324,8 +324,10 @@ def sort_line_compositions_if_stream_climbs(
 
 
 # Narrow callout / design columns (OA TAKING CHARGE ~190pt wide).
-# Full-width body must not be visually reordered (figure golden).
 _MULTILINE_CLIMB_MAX_WIDTH = 240.0
+# Wide body may still bottom→top paint (OA p19 intro); require stronger climb.
+_MULTILINE_CLIMB_STRONG_RATIO = 0.70
+_MULTILINE_CLIMB_STRONG_MIN_LINES = 4
 _MULTILINE_CLIMB_MIN_LINES = 3
 
 
@@ -360,6 +362,25 @@ def _cluster_stream_line_keys(
     return lines
 
 
+def _climb_drop_counts(
+    chars: list[PdfCharacter],
+    *,
+    y_tol: float = _DEFAULT_Y_TOL,
+) -> tuple[int, int, int]:
+    """Return ``(climbs, drops, n_lines)`` for stream line sequence."""
+    lines = _cluster_stream_line_keys(chars, y_tol=y_tol)
+    if len(lines) < 2:
+        return 0, 0, len(lines)
+    climbs = 0
+    drops = 0
+    for (y_a, _), (y_b, _) in zip(lines, lines[1:]):
+        if y_b > y_a + _LINE_Y_EPS_PT:
+            climbs += 1
+        elif y_b < y_a - _LINE_Y_EPS_PT:
+            drops += 1
+    return climbs, drops, len(lines)
+
+
 def is_multiline_stream_climbing(
     chars: list[PdfCharacter],
     *,
@@ -372,17 +393,19 @@ def is_multiline_stream_climbing(
     MT sees ``the program… In order to…`` reversed.  Detect climb without
     requiring decorative single-letter geometry.
     """
-    lines = _cluster_stream_line_keys(chars, y_tol=y_tol)
-    if len(lines) < min_lines:
+    climbs, drops, n_lines = _climb_drop_counts(chars, y_tol=y_tol)
+    if n_lines < min_lines:
         return False
-    climbs = 0
-    drops = 0
-    for (y_a, _), (y_b, _) in zip(lines, lines[1:]):
-        if y_b > y_a + _LINE_Y_EPS_PT:
-            climbs += 1
-        elif y_b < y_a - _LINE_Y_EPS_PT:
-            drops += 1
     return climbs >= _LINE_CLIMB_MIN_STEPS and climbs > drops
+
+
+def _has_drop_cap_glyph(chars: list[PdfCharacter]) -> bool:
+    from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_letter
+
+    for ch in chars:
+        if is_drop_cap_letter(ch):
+            return True
+    return False
 
 
 def maybe_reorder_multiline_stream_climb(
@@ -393,14 +416,15 @@ def maybe_reorder_multiline_stream_climb(
 ) -> list[PdfCharacter]:
     """Reorder chars top→bottom when stream paints lines bottom→top.
 
-    Gated by paragraph width so full-page LTR body (figure dual) is untouched.
+    * Narrow (≤ *max_width*): reorder on normal climb evidence.
+    * Wide body: only when climb is **strong** (≥70% steps up, ≥4 lines)
+      **or** a drop-cap glyph is present (OA p19 intro) — avoids figure LTR.
     """
     if not chars or len(chars) < 8:
         return chars
-    if para_width is not None and para_width > max_width:
-        return chars
-    # Infer width from glyphs when caller has no box yet
-    if para_width is None:
+
+    width = para_width
+    if width is None:
         xs: list[float] = []
         x2s: list[float] = []
         for ch in chars:
@@ -411,10 +435,25 @@ def maybe_reorder_multiline_stream_climb(
                 xs.append(float(box.x))
             if box.x2 is not None:
                 x2s.append(float(box.x2))
-        if xs and x2s and (max(x2s) - min(xs)) > max_width:
-            return chars
-    if not is_multiline_stream_climbing(chars):
+        if xs and x2s:
+            width = max(x2s) - min(xs)
+
+    climbs, drops, n_lines = _climb_drop_counts(chars)
+    if n_lines < _MULTILINE_CLIMB_MIN_LINES:
         return chars
+    if climbs < _LINE_CLIMB_MIN_STEPS or climbs <= drops:
+        return chars
+
+    total = climbs + drops
+    ratio = climbs / total if total else 0.0
+    narrow = width is None or width <= max_width
+    strong = (
+        ratio >= _MULTILINE_CLIMB_STRONG_RATIO
+        and n_lines >= _MULTILINE_CLIMB_STRONG_MIN_LINES
+    )
+    if not narrow and not strong and not _has_drop_cap_glyph(chars):
+        return chars
+
     ordered = sort_chars_visual_order(chars)
     if _same_order(ordered, list(chars)):
         return chars

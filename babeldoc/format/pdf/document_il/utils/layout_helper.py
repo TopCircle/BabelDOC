@@ -304,16 +304,20 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
     """
     # Decorative letter-spacing: letter gaps skipped; word outliers still split.
     pdf_only = [c for c in chars if isinstance(c, PdfCharacter)]
-    # Pure-char path: fix multi-line bottom→top paint (OA callout) for MT.
+    # Pure-char path: fix multi-line bottom→top paint + drop-cap adjacency for MT.
     if pdf_only and len(pdf_only) == len(chars):
+        from babeldoc.format.pdf.document_il.utils.drop_cap import (
+            place_drop_caps_before_continuations,
+        )
         from babeldoc.format.pdf.document_il.utils.stream_order import (
             maybe_reorder_multiline_stream_climb,
         )
 
         climbed = maybe_reorder_multiline_stream_climb(pdf_only)
         if climbed is not pdf_only:
-            chars = climbed
             pdf_only = climbed
+        pdf_only = place_drop_caps_before_continuations(pdf_only)
+        chars = pdf_only
     is_decorative = is_decorative_text(pdf_only)
     decorative_word_gap = (
         decorative_word_gap_threshold(pdf_only) if is_decorative else None

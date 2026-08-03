@@ -2187,6 +2187,7 @@ class Typesetting:
             layout_label=getattr(paragraph, "layout_label", None),
             get_max_right=lambda b: self.get_max_right_space(b, page),
             get_max_bottom=lambda b: self.get_max_bottom_space(b, page),
+            get_max_left=lambda b: self.get_max_left_space(b, page),
         )
         if expanded is None:
             return box
@@ -4026,6 +4027,40 @@ class Typesetting:
                     max_x = min(max_x, zone.box.x)
 
         return max_x
+
+    def get_max_left_space(self, current_box: Box, page) -> float:
+        """Leftmost x the box may expand to (callout into body column)."""
+        min_x = page.cropbox.box.x * 1.05 if page.cropbox and page.cropbox.box else 36.0
+
+        for para in page.pdf_paragraph:
+            if para.box == current_box or para.box is None:
+                continue
+            if para.box.x2 < current_box.x and not (
+                para.box.y >= current_box.y2 or para.box.y2 <= current_box.y
+            ):
+                min_x = max(min_x, para.box.x2)
+        for char in page.pdf_character:
+            if char.box is None:
+                continue
+            if char.box.x2 < current_box.x and not (
+                char.box.y >= current_box.y2 or char.box.y2 <= current_box.y
+            ):
+                min_x = max(min_x, char.box.x2)
+        for figure in page.pdf_figure:
+            if figure.box is None:
+                continue
+            if figure.box.x2 < current_box.x and not (
+                figure.box.y >= current_box.y2 or figure.box.y2 <= current_box.y
+            ):
+                min_x = max(min_x, figure.box.x2)
+        zone_index = getattr(self, "_current_zone_index", None)
+        if zone_index:
+            for zone in zone_index.zones:
+                if zone.box.x2 < current_box.x and not (
+                    zone.box.y >= current_box.y2 or zone.box.y2 <= current_box.y
+                ):
+                    min_x = max(min_x, zone.box.x2)
+        return min_x
 
     def get_max_bottom_space(self, current_box: Box, page: il_version_1.Page) -> float:
         """获取段落下方最大可用空间
