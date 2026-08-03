@@ -110,3 +110,42 @@ def test_no_shift_when_gap_already_enough():
     page = Page(page_number=0, pdf_paragraph=[title, body])
     n = enforce_title_body_gaps(page, min_gap=14.0)
     assert n == 0
+
+
+def test_chrome_footer_not_shifted():
+    """Skipped site chrome (footer/URL/abandon) must never be moved by the
+    title→body gap pass (OA p19 footer was dragged to PDF y=-56)."""
+    title = _para(
+        [_ch("标", 50, 661.5, size=56.0), _ch("题", 100, 661.5, size=56.0)],
+        label="title",
+    )
+    body = _para([_ch("正", 100, 620.0, size=12.0) for _ in range(6)], label="plain text")
+    footer = _para([_ch("w", 100, 41.3, size=11.0)], label="abandon")
+    footer.unicode = "www.GabrielleMoore.com"
+    page = Page(
+        page_number=0,
+        mediabox=Box(x=0, y=0, x2=612, y2=792),
+        pdf_paragraph=[title, body, footer],
+    )
+    y0 = footer.pdf_paragraph_composition[0].pdf_character.box.y
+    enforce_title_body_gaps(page)
+    assert footer.pdf_paragraph_composition[0].pdf_character.box.y == y0
+
+
+def test_subtitle_inside_title_band_not_gapped():
+    """A subtitle fully inside a display title's ink band is a designed
+    overlay — never enforce a gap on it (that cascaded the chapter head down,
+    OA p19 dy=-45.3)."""
+    title = _para([_ch("章", 50, 661.5, size=32.0)], label="title")
+    subtitle = _para([_ch("副", 50, 668.6, size=15.0)], label="title")
+    body = _para([_ch("正", 100, 620.0, size=12.0)], label="plain text")
+    page = Page(
+        page_number=0,
+        mediabox=Box(x=0, y=0, x2=612, y2=792),
+        pdf_paragraph=[title, subtitle, body],
+    )
+    y0 = subtitle.pdf_paragraph_composition[0].pdf_character.box.y
+    n = enforce_title_body_gaps(page)
+    # body already ≥ min_gap below the title → nothing to shift
+    assert n == 0
+    assert subtitle.pdf_paragraph_composition[0].pdf_character.box.y == y0

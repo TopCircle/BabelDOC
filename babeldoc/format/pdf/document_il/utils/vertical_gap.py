@@ -18,6 +18,10 @@ from typing import Any
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
+from babeldoc.format.pdf.document_il.utils.region_skip import (
+    is_chrome_paragraph,
+    is_layout_debug_stub,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +131,15 @@ def enforce_title_body_gaps(
 
     Returns number of paragraphs shifted.
     """
-    paras = [p for p in (page.pdf_paragraph or []) if p.pdf_paragraph_composition]
+    paras = [
+        p
+        for p in (page.pdf_paragraph or [])
+        if p.pdf_paragraph_composition
+        # LayoutParser label stubs (unicode == class name / debug
+        # composition) are diagnostic boxes — never titles, bodies or
+        # followers. xobj_id is NOT the signal (page-level text uses -1 too).
+        and not is_layout_debug_stub(p)
+    ]
     if len(paras) < 2:
         return 0
 
@@ -156,9 +168,22 @@ def enforce_title_body_gaps(
                 continue  # not below
             if not _x_overlap(tbox, cbox):
                 continue
+            # Designed overlay: the candidate sits ENTIRELY inside the title's
+            # ink band (subtitle stacked on a chapter head, OA p19 "Chapter 3"
+            # + 15pt subtitle: 668.6..692.8 within 661.5..693.5). Not a real
+            # body below — never enforce a gap on it or the cascade drags the
+            # big heading down with it. A body whose bottom pokes below the
+            # title's bottom edge (title ink pressing into body) is a genuine
+            # collision and still gets the gap.
+            if (cbox.y or 0) >= (tbox.y or 0) - 0.5 and (
+                cbox.y2 or 0
+            ) <= (tbox.y2 or 0) + 0.5:
+                continue
             if is_display_title(cand) and max_font_size(cand) >= max_font_size(title) * 0.85:
                 # another big title — skip pairing into it as "body"
                 continue
+            if is_chrome_paragraph(cand, page):
+                continue  # site chrome is never a body
             body = cand
             break
         if body is None:
@@ -182,6 +207,14 @@ def enforce_title_body_gaps(
             if (cbox.y2 or 0) > body_top + 1:
                 continue  # above body top
             if not _x_overlap(bbox, cbox):
+                continue
+            if is_display_title(cand):
+                # independent display titles have their own gap pass; dragging
+                # them as followers cascades the whole chapter head down
+                continue
+            if is_chrome_paragraph(cand, page):
+                # skipped footer/header/URL chrome must stay put — the skip
+                # contract is "leave EN visible at the original position"
                 continue
             to_shift.append(cand)
 

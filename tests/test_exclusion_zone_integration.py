@@ -293,3 +293,35 @@ class TestGetIntervalsAt:
         zone = self._make_zone(150, 500, 350, 700)
         index = ExclusionZoneIndex([zone])
         assert index.get_intervals_at(100, 200, 0, 612) == [(0, 612)]
+
+
+class TestArtisticOverlaySelfQuote:
+    """B3: artistic overlay must drop only the paragraph's own high-IoU quote
+    zone, never an unrelated containing quote zone."""
+
+    def _index(self):
+        para_box = il_version_1.Box(x=375.9, y=234.9, x2=569.5, y2=284.9)
+        own_quote = ExclusionZone(
+            box=il_version_1.Box(x=347.9, y=227.0, x2=569.5, y2=292.8),
+            kind=ZONE_QUOTE,
+        )
+        unrelated_quote = ExclusionZone(
+            box=il_version_1.Box(x=375.9, y=234.9, x2=569.5, y2=500.0),
+            kind=ZONE_QUOTE,
+        )
+        figure = ExclusionZone(
+            box=il_version_1.Box(x=-13.1, y=-11.5, x2=594.0, y2=383.0),
+            kind=ZONE_FIGURE,
+        )
+        return ExclusionZoneIndex([own_quote, unrelated_quote, figure]), para_box
+
+    def test_drops_self_quote_keeps_unrelated(self):
+        idx, para_box = self._index()
+        out = idx.filter_for_paragraph(para_box)
+        quotes = [
+            (round(z.box.x, 1), round(z.box.x2, 1))
+            for z in out.zones
+            if z.kind == ZONE_QUOTE
+        ]
+        assert (347.9, 569.5) not in quotes  # own self-quote dropped
+        assert (375.9, 569.5) in quotes  # unrelated quote kept

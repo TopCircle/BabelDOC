@@ -26,6 +26,7 @@ from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
 from babeldoc.format.pdf.document_il.utils.formular_helper import update_formula_data
 from babeldoc.format.pdf.document_il.midend.line_break_optimizer import optimal_line_break
 from babeldoc.format.pdf.document_il.utils.layout_helper import box_to_tuple
+from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
 from babeldoc.format.pdf.document_il.utils import list_marker_repair as _list_markers
 from babeldoc.format.pdf.document_il.utils.cjk_dict import (
     is_cjk_three_char_word,
@@ -2168,6 +2169,21 @@ class Typesetting:
         if not box or not typesetting_units:
             return box
 
+        # Figure-wrap columns follow the original taper (reference widths);
+        # an aggressive left-expand over the side photo would move CJK
+        # off-column and crush it (OA p19 TAKING CHARGE needle strip).
+        # Keep the original box and let the scale search + reference caps
+        # reproduce the wrap instead.
+        rm = getattr(paragraph, "reference_metrics", None)
+        if rm is not None:
+            from babeldoc.format.pdf.document_il.utils.figure_wrap import (
+                is_figure_wrap_taper,
+            )
+
+            _widths = getattr(rm, "per_line_widths", None) or []
+            if is_figure_wrap_taper(_widths):
+                return box
+
         content_w = 0.0
         for u in typesetting_units:
             try:
@@ -2714,6 +2730,9 @@ class Typesetting:
                     p1, p2 = paragraphs[i], paragraphs[j]
                     if p1.xobj_id != p2.xobj_id:
                         continue
+                    if is_chrome_paragraph(p1, page) or is_chrome_paragraph(p2, page):
+                        # never shrink / retypeset skipped site chrome
+                        continue
                     b1 = rendered_boxes.get(id(p1))
                     b2 = rendered_boxes.get(id(p2))
                     if b1 is None or b2 is None:
@@ -2936,6 +2955,16 @@ class Typesetting:
         usable = [float(w) for w in reference_widths if w is not None and float(w) >= 12.0]
         if not usable:
             return reference_widths
+        # Genuine figure-wrap taper (OA p19 TAKING CHARGE [194,174,143,67]):
+        # the paragraph wraps around a photo with 3+ distinct, monotonically
+        # narrower lines. Preserve the original taper so CJK follows the wrap
+        # instead of spilling one rectangle into the photo.
+        from babeldoc.format.pdf.document_il.utils.figure_wrap import (
+            is_figure_wrap_taper,
+        )
+
+        if is_figure_wrap_taper(usable):
+            return [float(w) for w in reference_widths if w is not None]
         peak = max(usable)
         fullish = [w for w in usable if w >= peak * fullish_ratio]
         measure = max(fullish) if fullish else peak

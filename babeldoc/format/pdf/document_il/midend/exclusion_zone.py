@@ -33,6 +33,8 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.utils.layout_helper import box_to_tuple
+from babeldoc.format.pdf.document_il.utils.layout_helper import calculate_box_iou
+from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_adaptive_image_padding
 
 logger = logging.getLogger(__name__)
@@ -137,6 +139,15 @@ def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZ
 
     for para in page.pdf_paragraph or []:
         if para.box is None:
+            continue
+        # LayoutParser label stubs (unicode == layout class name / debug
+        # composition) are diagnostic boxes, not real content. They must not
+        # create exclusion zones: a stub box covering a whole text block
+        # falsely becomes a "quote" and needle-crushes the real paragraph
+        # beside a photo (OA p19 fallback_line stub at x=395..572 blocked
+        # TAKING CHARGE). xobj_id is NOT the signal — page-level paragraphs
+        # use -1 too.
+        if is_layout_debug_stub(para):
             continue
 
         box = para.box
@@ -439,6 +450,7 @@ class ExclusionZoneIndex:
 
         kept: list[ExclusionZone] = []
         dropped = 0
+        artistic_overlay = False
         for zone in self.zones:
             if zone.kind != ZONE_FIGURE:
                 kept.append(zone)
@@ -461,6 +473,7 @@ class ExclusionZoneIndex:
             # (EN lines on Orgasms p.3 end near x=400 while figure starts ~231.)
             if para_box.x2 > z.x + 8.0:
                 dropped += 1
+                artistic_overlay = True
                 logger.debug(
                     "Dropping figure zone: paragraph extends into figure "
                     "(para.x2=%.0f > zone.x=%.0f); use original line metrics "
@@ -489,7 +502,26 @@ class ExclusionZoneIndex:
             # Clean side-by-side: body left of figure with room to wrap
             kept.append(zone)
 
-        if dropped == 0:
+        if artistic_overlay and kept:
+            # The paragraph is an artistic overlay (text designed into a photo).
+            # Its OWN quote zone (built from the same box + adaptive margins,
+            # IoU ~0.55-0.7) would self-block an expanded box and crush CJK
+            # into a needle strip (OA p19 TAKING CHARGE). Any quote zone with
+            # IoU >= 0.5 against the paragraph box IS effectively the
+            # paragraph itself (the own zone is the smallest containing
+            # zone); unrelated zones that merely contain it (real pull-quotes
+            # nearby) have far lower IoU and stay, so other paragraphs still
+            # wrap around them.
+            kept = [
+                z
+                for z in kept
+                if not (
+                    z.kind == ZONE_QUOTE
+                    and calculate_box_iou(z.box, para_box) >= 0.5
+                )
+            ]
+
+        if dropped == 0 and not artistic_overlay:
             return self
         return ExclusionZoneIndex(kept)
 

@@ -1538,6 +1538,12 @@ def compute_reference_metrics(para: PdfParagraph, page=None):
         para.alignment = "left"
 
 
+from babeldoc.format.pdf.document_il.utils.figure_wrap import (
+    is_figure_wrap_paragraph,
+    is_figure_wrap_taper,
+)
+
+
 def is_quote_block(
     para: PdfParagraph,
     page_width: float,
@@ -1585,6 +1591,15 @@ def is_quote_block(
     width_ratio = para_width / page_width
     if width_ratio >= narrow_threshold:
         return False
+
+    # 规则 1.5: 锥形绕图列（右缘贴页边 + 多行左缘步进）不是 Quote
+    # 绕图正文列（图片在左、正文右缘贴页边）几何上"窄 + 深缩进 + 少量留白"，
+    # 容易命中规则 1/2/3 被误判为 pull-quote（OA p19 TAKING CHARGE）。
+    # 右缘贴页边本身不足以排除（右侧 pull-quote 同样深缩进且右缘靠页边），
+    # 因此同时要求"多行左缘步进 + 右缘固定"的锥形签名。
+    if box.x2 is not None and box.x2 > page_width * 0.9:
+        if is_figure_wrap_paragraph(para):
+            return False
 
     # 规则 2: 左侧有明显缩进（须显著大于正文页边距）
     left_indent = box.x

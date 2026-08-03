@@ -147,6 +147,94 @@ def is_bare_page_number_chrome(
     return False
 
 
+_CHROME_LABELS = frozenset({"abandon", "header", "footer"})
+
+# LayoutParser / AddDebugInformation label stubs: unicode is the layout
+# class name and the composition is a debug PdfSameStyleUnicodeCharacters.
+_LAYOUT_STUB_UNICODE = frozenset(
+    {
+        "title",
+        "section_header",
+        "plain text",
+        "tiny text",
+        "fallback_line",
+        "abandon",
+        "figure",
+        "figure_text",
+        "figure_caption",
+        "figure_title",
+        "table",
+        "table_caption",
+        "table_title",
+        "table_footnote",
+        "table_text",
+        "header",
+        "footer",
+        "seal",
+        "formula",
+        "isolate_formula",
+        "formula_caption",
+        "abstract",
+        "paragraph_title",
+        "content",
+        "doc_title",
+        "author_info_hybrid",
+        "reference",
+    }
+)
+
+
+def is_layout_debug_stub(paragraph: PdfParagraph) -> bool:
+    """True for LayoutParser / AddDebugInformation label stub paragraphs.
+
+    Stubs carry the layout class name as their unicode (e.g. "fallback_line",
+    "title") and/or a debug ``PdfSameStyleUnicodeCharacters`` composition.
+    They are diagnostic boxes, not real content: they must not create
+    exclusion zones nor participate in title→body gap cascades.
+
+    ``xobj_id`` is deliberately NOT used — page-level paragraphs and tests
+    use -1 for real content too.
+    """
+    uni = (getattr(paragraph, "unicode", None) or "").strip()
+    if uni in _LAYOUT_STUB_UNICODE:
+        return True
+    # AddDebugInformation labels ("paragraph[abc12]-[title]", "pagenumber: 19")
+    # — the debug composition may already be replaced by rendered chars by
+    # the time vertical-gap/overlap passes run, so the unicode pattern is the
+    # surviving signal.
+    if re.match(r"^(?:paragraph\[|pagenumber[: ])", uni):
+        return True
+    for comp in getattr(paragraph, "pdf_paragraph_composition", None) or []:
+        ss = comp.pdf_same_style_unicode_characters
+        if ss is not None and getattr(ss, "debug_info", False):
+            return True
+    return False
+
+
+def is_chrome_paragraph(
+    paragraph: PdfParagraph,
+    page: Page | None = None,
+) -> bool:
+    """True for site chrome that is never MT'd and must never be moved by
+    layout passes (header/footer skip, URL, page number, abandon labels).
+
+    ``enforce_title_body_gaps`` / post-typesetting overlap fixing shift whole
+    follower chains; without this guard a skipped footer/header gets dragged
+    off-page (OA p19 footer moved to PDF y=-56).
+
+    Composes the canonical helpers so band rules cannot diverge:
+    ``is_url_site_chrome`` and ``is_bare_page_number_chrome``.
+    """
+    label = (getattr(paragraph, "layout_label", None) or "").strip().lower()
+    if label in _CHROME_LABELS:
+        return True
+    if is_url_site_chrome(paragraph):
+        return True
+    if page is not None and is_bare_page_number_chrome(paragraph, page):
+        return True
+    return False
+
+
 def classify_header_footer_skip(
     page: Page,
     paragraph: PdfParagraph,
