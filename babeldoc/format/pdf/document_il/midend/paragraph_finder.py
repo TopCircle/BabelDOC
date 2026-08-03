@@ -288,12 +288,12 @@ class ParagraphFinder:
         _normalize_first_line_indent(paragraph)
 
         # Reverse-paint / misplaced-digit repair (single policy in stream_order).
+        # MT climb + drop-cap live only in get_char_unicode_string → prepare_chars_for_mt.
         from babeldoc.format.pdf.document_il.utils.layout_helper import (
             _is_decorative_text,
             compute_decorative_tracking,
         )
         from babeldoc.format.pdf.document_il.utils.stream_order import (
-            maybe_reorder_multiline_stream_climb,
             maybe_reorder_reversed_stream,
             sort_line_compositions_if_stream_climbs,
         )
@@ -337,22 +337,6 @@ class ParagraphFinder:
                 )
                 continue
 
-        # OA callout / design columns: multi-line bottom→top paint → visual order
-        # before MT (else "the program… In order" reversed salad).
-        para_w = None
-        if paragraph.box and paragraph.box.x is not None and paragraph.box.x2 is not None:
-            para_w = float(paragraph.box.x2 - paragraph.box.x)
-        climbed = maybe_reorder_multiline_stream_climb(chars, para_width=para_w)
-        if climbed is not chars and climbed is not None:
-            chars = climbed
-
-        # Drop-cap may still be non-adjacent after climb; place before continuation
-        from babeldoc.format.pdf.document_il.utils.drop_cap import (
-            place_drop_caps_before_continuations,
-        )
-
-        chars = place_drop_caps_before_continuations(chars)
-
         # Detect decorative text and compute tracking for re-layout
         if chars and _is_decorative_text(chars):
             tracking = compute_decorative_tracking(chars)
@@ -360,7 +344,14 @@ class ParagraphFinder:
                 paragraph.decorative_tracking = tracking
 
         if update_unicode and chars:
-            paragraph.unicode = get_char_unicode_string(chars)
+            para_w = None
+            if (
+                paragraph.box
+                and paragraph.box.x is not None
+                and paragraph.box.x2 is not None
+            ):
+                para_w = float(paragraph.box.x2 - paragraph.box.x)
+            paragraph.unicode = get_char_unicode_string(chars, para_width=para_w)
         if not chars:
             return
         # 更新边界框

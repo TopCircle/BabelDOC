@@ -53,3 +53,38 @@ def test_merge_triangle_callout_lines():
     assert len(paras) < 3
     # Union should be relatively wide
     assert paras[0].box.x2 - paras[0].box.x > 100
+    # Compositions top-first after merge
+    comps = paras[0].pdf_paragraph_composition
+    if len(comps) >= 2:
+        y2s = [c.pdf_line.box.y2 for c in comps]
+        assert y2s == sorted(y2s, reverse=True)
+
+
+def test_merge_non_list_adjacent_stack():
+    """B3: merge by visual y even when a wide body splits the list."""
+    tip = _line_para("the program.", x=450, y=100, w=80)
+    mid = _line_para("plans and stick", x=420, y=120, w=110)
+    top = _line_para("In order to work", x=320, y=140, w=180)
+    body = _line_para(
+        "Wide body paragraph that must stay separate.",
+        x=50,
+        y=300,
+        w=400,
+    )
+    # Stream order: tip, body, mid, top — list-adjacent merge would miss stack
+    paras = [tip, body, mid, top]
+    n = merge_stacked_narrow_callout_paragraphs(paras)
+    assert n >= 2
+    assert len(paras) == 2
+    # body preserved; callout is the other
+    texts = []
+    for p in paras:
+        for c in p.pdf_paragraph_composition or []:
+            if c.pdf_line:
+                texts.append(
+                    "".join(ch.char_unicode for ch in c.pdf_line.pdf_character)
+                )
+    joined = " ".join(texts)
+    assert "Wide body" in joined
+    assert "In order to work" in joined
+    assert "the program." in joined

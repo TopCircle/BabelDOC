@@ -284,7 +284,37 @@ def strip_ascii_controls(text: str | None) -> str:
     return "".join(out)
 
 
-def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
+def prepare_chars_for_mt(
+    chars: list[PdfCharacter],
+    *,
+    para_width: float | None = None,
+) -> list[PdfCharacter]:
+    """Single MT prep: multi-line climb reorder, then drop-cap adjacency.
+
+    Call sites that need visual reading order for translation should go through
+    this helper (via ``get_char_unicode_string``) rather than re-applying climb
+    / place_drop_caps independently.
+    """
+    if not chars:
+        return chars
+    from babeldoc.format.pdf.document_il.utils.drop_cap import (
+        place_drop_caps_before_continuations,
+    )
+    from babeldoc.format.pdf.document_il.utils.stream_order import (
+        maybe_reorder_multiline_stream_climb,
+    )
+
+    climbed = maybe_reorder_multiline_stream_climb(chars, para_width=para_width)
+    if climbed is not None and climbed is not chars:
+        chars = climbed
+    return place_drop_caps_before_continuations(chars)
+
+
+def get_char_unicode_string(
+    chars: list[PdfCharacter | str],
+    *,
+    para_width: float | None = None,
+) -> str:
     """
     将字符列表转换为 Unicode 字符串，根据字符间距自动插入空格。
     有些 PDF 不会显式编码空格，这时需要根据间距自动插入空格。
@@ -296,27 +326,21 @@ def get_char_unicode_string(chars: list[PdfCharacter | str]) -> str:
     2pt) pulling the threshold too low next to wide chars (like 'e' at 5pt),
     which previously split words like "There" → "The re".
 
+    Pure PdfCharacter lists are first prepared for MT (stream climb + drop-cap
+    placement).  Optional *para_width* enables the wide-body climb gate.
+
     Args:
         chars: 字符列表，可以是 PdfCharacter 对象或字符串
+        para_width: optional paragraph width for climb width gating
 
     Returns:
         str: 处理后的 Unicode 字符串
     """
     # Decorative letter-spacing: letter gaps skipped; word outliers still split.
     pdf_only = [c for c in chars if isinstance(c, PdfCharacter)]
-    # Pure-char path: fix multi-line bottom→top paint + drop-cap adjacency for MT.
+    # Pure-char path: single prep entry for climb + drop-cap (B1).
     if pdf_only and len(pdf_only) == len(chars):
-        from babeldoc.format.pdf.document_il.utils.drop_cap import (
-            place_drop_caps_before_continuations,
-        )
-        from babeldoc.format.pdf.document_il.utils.stream_order import (
-            maybe_reorder_multiline_stream_climb,
-        )
-
-        climbed = maybe_reorder_multiline_stream_climb(pdf_only)
-        if climbed is not pdf_only:
-            pdf_only = climbed
-        pdf_only = place_drop_caps_before_continuations(pdf_only)
+        pdf_only = prepare_chars_for_mt(pdf_only, para_width=para_width)
         chars = pdf_only
     is_decorative = is_decorative_text(pdf_only)
     decorative_word_gap = (
