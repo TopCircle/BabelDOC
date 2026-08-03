@@ -2612,6 +2612,20 @@ class Typesetting:
                 f"{page.page_number}: {e}"
             )
 
+        # CJK display titles are taller than EN at the same nominal size; body
+        # stays at EN y → title/body overlap (OA dual p19). Enforce EN-like gap.
+        try:
+            from babeldoc.format.pdf.document_il.utils.vertical_gap import (
+                enforce_title_body_gaps,
+            )
+
+            enforce_title_body_gaps(page)
+        except Exception as e:
+            logger.warning(
+                f"Failed to enforce title-body gaps on page "
+                f"{page.page_number}: {e}"
+            )
+
     def _recompute_rendered_box(
         self, paragraph: il_version_1.PdfParagraph
     ) -> Box | None:
