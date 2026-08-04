@@ -1355,13 +1355,20 @@ class Typesetting:
             reference_widths = self._extract_original_line_widths(paragraph)
             # Layout-first (CJK dual): uniform full measure — not EN tail
             # widths, not word-level micro-tuning. ATU p22–23 长短参差.
-            # P2: when wrap_shape is active, line geometry comes from intent
-            # (right-pin), not CJK rectangular collapse of EN reference widths.
-            if (
-                self.is_cjk
-                and reference_widths
-                and not self._layout_intent_wrap_active(paragraph)
+            # P2: active wrap owns line geometry (right-pin); drop ref widths
+            # so uniform flatten / reference cap never fight the pin path.
+            from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+                get_active_wrap,
+                layout_intent_wrap_enabled,
+            )
+
+            if get_active_wrap(
+                paragraph,
+                enabled=layout_intent_wrap_enabled(self.translation_config),
+                layout_box=box,
             ):
+                reference_widths = None
+            elif self.is_cjk and reference_widths:
                 reference_widths = Typesetting._uniform_cjk_reference_widths(
                     reference_widths
                 )
@@ -1713,11 +1720,18 @@ class Typesetting:
                     if getattr(self.translation_config, "ocr_workaround", False)
                     else self._extract_original_line_widths(paragraph)
                 )
-                if (
-                    self.is_cjk
-                    and force_ref
-                    and not self._layout_intent_wrap_active(paragraph)
+                from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+                    get_active_wrap,
+                    layout_intent_wrap_enabled,
+                )
+
+                if get_active_wrap(
+                    paragraph,
+                    enabled=layout_intent_wrap_enabled(self.translation_config),
+                    layout_box=box,
                 ):
+                    force_ref = None
+                elif self.is_cjk and force_ref:
                     force_ref = Typesetting._uniform_cjk_reference_widths(force_ref)
                 force_units, _ = self._layout_typesetting_units(
                     typesetting_units,
@@ -2179,28 +2193,19 @@ class Typesetting:
         if not box or not typesetting_units:
             return box
 
-        # Figure-wrap columns: never left-expand over the side photo (OA p19
-        # TAKING CHARGE needle strip). P2 prefers layout_intent WRAP_COLUMN /
-        # wrap_shape; taper-metrics check remains as safety when intent is
-        # missing or enable_layout_intent_wrap is off.
-        # Call via Typesetting.* so stub selfs in unit tests still work.
-        if Typesetting._layout_intent_wrap_active(self, paragraph):
-            return box
-        intent = getattr(paragraph, "layout_intent", None)
-        if intent is not None:
-            role = getattr(intent, "role", None)
-            role_val = getattr(role, "value", role)
-            if role_val == "wrap_column":
-                return box
-        rm = getattr(paragraph, "reference_metrics", None)
-        if rm is not None:
-            from babeldoc.format.pdf.document_il.utils.figure_wrap import (
-                is_figure_wrap_taper,
-            )
+        # Figure-wrap: never left-expand over the side photo (OA p19).
+        # Single policy in wrap_shape.should_skip_pre_expand_for_wrap.
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            layout_intent_wrap_enabled,
+            should_skip_pre_expand_for_wrap,
+        )
 
-            _widths = getattr(rm, "per_line_widths", None) or []
-            if is_figure_wrap_taper(_widths):
-                return box
+        cfg = getattr(self, "translation_config", None)
+        if should_skip_pre_expand_for_wrap(
+            paragraph,
+            wrap_enabled=layout_intent_wrap_enabled(cfg),
+        ):
+            return box
 
         content_w = 0.0
         for u in typesetting_units:
@@ -3009,61 +3014,6 @@ class Typesetting:
                 return list(intervals)
         return [(box.x, box.x2)]
 
-    def _layout_intent_wrap_active(
-        self, paragraph: il_version_1.PdfParagraph | None
-    ) -> bool:
-        """True when P2 wrap_shape consumption should drive line geometry.
-
-        Requires ``enable_layout_intent_wrap`` (default True) and a non-empty
-        ``layout_intent.wrap_shape``. Missing config defaults to on so unit
-        tests that construct Typesetting without a full TranslationConfig
-        still exercise the intent path when shape is attached.
-        """
-        if paragraph is None:
-            return False
-        cfg = getattr(self, "translation_config", None)
-        if cfg is not None and not getattr(cfg, "enable_layout_intent_wrap", True):
-            return False
-        intent = getattr(paragraph, "layout_intent", None)
-        if intent is None:
-            return False
-        shape = getattr(intent, "wrap_shape", None)
-        return bool(shape)
-
-    @staticmethod
-    def _typeset_wrap_line(
-        design_box: Box,
-        wrap_shape: list[tuple[float, float]],
-        line_idx: int,
-    ) -> tuple[float, float]:
-        """Right edge pinned at ``design_box.x2``; left = right − width.
-
-        This is the EN figure-wrap geometry (left-edge steps right as the
-        column narrows around a photo). Do **not** implement mirror taper
-        (fixed left, shrinking right) — that is what
-        ``_cap_available_with_reference`` does with reference widths alone.
-
-        ``wrap_shape`` entries are ``(left_offset, width)`` as stored by the
-        extractor; P2 placement uses **width only** with the design right pin.
-        Lines past the shape reuse the last entry's width (narrow bottom of
-        the taper).
-        """
-        if design_box is None or not wrap_shape:
-            if design_box is None:
-                return 0.0, 0.0
-            return float(design_box.x), float(design_box.x2)
-        idx = 0 if line_idx < 0 else line_idx
-        if idx >= len(wrap_shape):
-            _off, width = wrap_shape[-1]
-        else:
-            _off, width = wrap_shape[idx]
-        width = float(width)
-        if width < 8.0:
-            width = 8.0
-        right = float(design_box.x2)
-        left = right - width
-        return left, right
-
     def _resolve_line_intervals(
         self,
         y_bottom: float,
@@ -3077,17 +3027,23 @@ class Typesetting:
     ) -> list[tuple[float, float]]:
         """Line residual pockets with Layout-First P2 replace matrix.
 
-        | path | behavior |
-        | wrap_shape active | single interval from ``_typeset_wrap_line``
-          (intent over zones; skip ``_cap_available_with_reference``) |
-        | no wrap_shape | zone query + leftmost EN reference cap (status quo) |
+        Wrap geometry lives in ``utils.wrap_shape``; this method only wires it.
         """
-        if self._layout_intent_wrap_active(paragraph):
-            intent = paragraph.layout_intent
-            design = intent.design_box if intent.design_box is not None else box
-            return [
-                Typesetting._typeset_wrap_line(design, intent.wrap_shape, line_idx)
-            ]
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            get_active_wrap,
+            layout_intent_wrap_enabled,
+            typeset_wrap_line,
+        )
+
+        cfg = getattr(self, "translation_config", None)
+        active = get_active_wrap(
+            paragraph,
+            enabled=layout_intent_wrap_enabled(cfg),
+            layout_box=box,
+        )
+        if active is not None:
+            design, shape = active
+            return [typeset_wrap_line(design, shape, line_idx)]
         intervals = self._query_line_intervals(y_bottom, y_top, box)
         return self._cap_leftmost_interval_with_reference(
             box,

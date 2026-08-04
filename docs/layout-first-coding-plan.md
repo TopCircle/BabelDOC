@@ -197,22 +197,16 @@ tests/repro/
   - OA 抽样：`docs/p1_acceptance_oa.md` — dual_layout **7/7 pass**（0.6.4.50 同页 2/7 pass）
   - 命令：`python -m babeldoc.tools.p1_ink_gap_accept --pdf <dual.pdf> --pages 3,7,12,19,33,40,73`
 
-### 3.2 wrap_shape 消费（P2）— ✅ 0.6.4.53
+### 3.2 wrap_shape 消费（P2）— ✅ 0.6.4.53（结构收口后）
 
-- 入口：`Typesetting._typeset_wrap_line(design_box, wrap_shape, line_idx) -> (left, right)`
-  - 右缘钉 `design_box.x2`；左缘 = 右缘 − width（左缘步进，**不镜像**）
-  - 超长行复用 shape 末行 width
-- 统一替换矩阵经 `_resolve_line_intervals`：
-
-| 函数 | 有 wrap_shape（且 `enable_layout_intent_wrap`） | 无 wrap_shape |
-|---|---|---|
-| `_uniform_cjk_reference_widths` | **不调用**（wrap 路径拥有行形） | 现状 |
-| `_query_line_intervals` | **跳过**；意图单区间优先于 zone | 现状多区间 |
-| `_cap_available_with_reference` | **不走**；改 `_typeset_wrap_line` | 现状 |
-| `_pre_expand_narrow_box` | wrap_shape / WRAP_COLUMN **禁用**（保留 taper 安全网） | 现状 |
-
-- 开关：`TranslationConfig.enable_layout_intent_wrap: bool = True`（P2 默认开）
-- 验收：`tests/test_figure_wrap_policy.py` — `test_wrap_line_pins_right_edge`、`test_wrap_line_left_steps_not_mirror`、`test_replace_matrix_no_wrap_shape_unchanged`、wrap 覆盖 reference cap、flag off 回退
+- **规范家**：`utils/wrap_shape.py`（纯函数；typesetting 只接线）
+  - `typeset_wrap_line`：右钉 `design_box.x2`，左 = 右 − width
+  - `resolve_wrap_shape` / `get_active_wrap`：intent shape，或 WRAP_COLUMN 无 shape 时从 `per_line_widths` 合成
+  - `should_skip_pre_expand_for_wrap`：**单闸**（active wrap ∨ `is_figure_wrap_paragraph`）
+- 接线：`Typesetting._resolve_line_intervals`；CJK 有 active wrap → `reference_widths=None`
+- Extractor：WRAP_COLUMN 无 multi-line boxes 时 `shape_from_widths`
+- 开关：`enable_layout_intent_wrap=True`
+- 验收：`tests/test_figure_wrap_policy.py`（pin/step/role-only synth/flag-off/单闸）
 
 ### 3.3 双盒写回（P0 定死）
 

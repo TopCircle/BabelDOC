@@ -230,11 +230,24 @@ class LayoutIntentExtractor:
             bottom_inset = float(ink.y - design_box.y)
 
         wrap_shape = None
-        if role is LayoutIntentRole.WRAP_COLUMN and len(meta["lines"]) >= 2:
-            wrap_shape = [
-                (float(line.x - design_box.x), float(line.x2 - line.x))
-                for line in meta["lines"]
-            ]
+        if role is LayoutIntentRole.WRAP_COLUMN:
+            if len(meta["lines"]) >= 2:
+                wrap_shape = [
+                    (float(line.x - design_box.x), float(line.x2 - line.x))
+                    for line in meta["lines"]
+                ]
+            else:
+                # No multi-line boxes (noisy/post-cluster): synthesize from
+                # reference widths so P2 pin path still has a shape.
+                from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+                    shape_from_widths,
+                )
+
+                rm = getattr(para, "reference_metrics", None)
+                widths = (
+                    getattr(rm, "per_line_widths", None) if rm is not None else None
+                )
+                wrap_shape = shape_from_widths(widths)
 
         expansion_policy, expansion_limits, overflow_policy = self._project_policy(
             role

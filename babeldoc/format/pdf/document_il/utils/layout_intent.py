@@ -12,12 +12,11 @@ this module has no runtime dependency on ``il_version_1``; in turn
 ``get_type_hints``) without creating an import cycle.
 
 ``wrap_shape`` stores EN-measured ``(left_offset, width)`` with
-``left_offset = line.x - design_box.x``. P2 consumption
-(``Typesetting._typeset_wrap_line``) pins the right edge at
-``design_box.x2`` and sets ``left = design.x2 - width`` (left-edge step).
-Placement uses **width only**; left_offset is forensic/debug. When EN
-right edges are not exactly at ``design_box.x2``, pin-right can diverge
-slightly from original EN ink — that is intentional (avoid mirror taper).
+``left_offset = line.x - design_box.x``. P2 consumption lives in
+``utils.wrap_shape.typeset_wrap_line``: pin right at ``design_box.x2``,
+``left = design.x2 - width``. Placement uses **width only**; left_offset
+is forensic. Missing multi-line boxes: extractor / ``resolve_wrap_shape``
+synthesize from ``per_line_widths``.
 
 ``text_on_photo`` / subtitle overlay signals are uncalibrated on real OA
 pages until P1+; treat as advisory for consumers.

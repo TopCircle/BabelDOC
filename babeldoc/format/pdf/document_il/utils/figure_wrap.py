@@ -65,9 +65,9 @@ def is_figure_wrap_paragraph(para: il_version_1.PdfParagraph) -> bool:
         # reference widths are possible for fallback-clustered tails)
 
     lines = []
-    for comp in para.pdf_paragraph_composition or []:
-        line = comp.pdf_line
-        if line is None or line.box is None:
+    for comp in getattr(para, "pdf_paragraph_composition", None) or []:
+        line = getattr(comp, "pdf_line", None)
+        if line is None or getattr(line, "box", None) is None:
             continue
         if line.box.x is None or line.box.x2 is None:
             continue

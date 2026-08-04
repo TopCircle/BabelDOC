@@ -165,41 +165,74 @@ class TestPreExpandSkipsFigureWrap:
 
 
 class TestTypesetWrapLine:
-    """Layout-First P2: right pin + left-edge step (not mirror taper)."""
-
-    DESIGN = None  # filled in tests via Box
+    """Layout-First P2: pure wrap_shape API + typesetting wire."""
 
     def test_wrap_line_pins_right_edge(self):
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import typeset_wrap_line
+
         design = il_version_1.Box(x=375.9, y=234.9, x2=569.5, y2=284.9)
-        # OA p19-style: left steps in, right stays pinned near page margin.
         shape = [(4.0, 194.0), (20.0, 174.0), (50.0, 143.0), (126.0, 67.0)]
         for i in range(len(shape)):
-            _left, right = Typesetting._typeset_wrap_line(design, shape, i)
+            _left, right = typeset_wrap_line(design, shape, i)
             assert right == 569.5
 
     def test_wrap_line_left_steps_not_mirror(self):
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import typeset_wrap_line
+
         design = il_version_1.Box(x=375.9, y=234.9, x2=569.5, y2=284.9)
         shape = [(4.0, 194.0), (20.0, 174.0), (50.0, 143.0), (126.0, 67.0)]
         lefts = []
         for i, (_off, width) in enumerate(shape):
-            left, right = Typesetting._typeset_wrap_line(design, shape, i)
+            left, right = typeset_wrap_line(design, shape, i)
             assert left == right - width
             lefts.append(left)
-        # Left edge steps right as width shrinks — not fixed-left mirror taper.
         assert lefts[0] < lefts[1] < lefts[2] < lefts[3]
-        # Mirror would keep left at design.x and shrink right; we never do that.
-        rights = [
-            Typesetting._typeset_wrap_line(design, shape, i)[1]
-            for i in range(len(shape))
-        ]
+        rights = [typeset_wrap_line(design, shape, i)[1] for i in range(len(shape))]
         assert len(set(rights)) == 1
 
     def test_wrap_line_extra_idx_reuses_last_width(self):
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import typeset_wrap_line
+
         design = il_version_1.Box(x=100.0, y=0.0, x2=300.0, y2=50.0)
         shape = [(0.0, 200.0), (40.0, 160.0)]
-        left, right = Typesetting._typeset_wrap_line(design, shape, 5)
+        left, right = typeset_wrap_line(design, shape, 5)
         assert right == 300.0
         assert left == 300.0 - 160.0
+
+    def test_wrap_line_rejects_none_design_box(self):
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import typeset_wrap_line
+
+        import pytest
+
+        with pytest.raises(TypeError):
+            typeset_wrap_line(None, [(0.0, 100.0)], 0)  # type: ignore[arg-type]
+
+    def test_role_only_synthesizes_shape_from_widths(self):
+        """WRAP_COLUMN + wrap_shape=None still pins via reference widths."""
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            get_active_wrap,
+            resolve_wrap_shape,
+            typeset_wrap_line,
+        )
+
+        design = il_version_1.Box(x=375.9, y=234.9, x2=569.5, y2=284.9)
+        para = TestFigureWrapParagraph._para(widths=[194, 174, 143, 67])
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.WRAP_COLUMN,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+            wrap_shape=None,
+        )
+        shape = resolve_wrap_shape(para)
+        assert shape == [(0.0, 194.0), (0.0, 174.0), (0.0, 143.0), (0.0, 67.0)]
+        active = get_active_wrap(para, enabled=True)
+        assert active is not None
+        left, right = typeset_wrap_line(active[0], active[1], 2)
+        assert right == 569.5
+        assert left == 569.5 - 143.0
 
     def test_replace_matrix_no_wrap_shape_unchanged(self):
         """Without wrap_shape, resolve falls through to zone + reference cap."""
@@ -216,7 +249,6 @@ class TestTypesetWrapLine:
             reference_widths=[150.0, 150.0],
             alignment="left",
         )
-        # Cap from available start: width 150 from box.x → (100, 250)
         assert intervals == [(100.0, 250.0)]
 
     def test_replace_matrix_wrap_shape_overrides_reference_cap(self):
@@ -234,7 +266,6 @@ class TestTypesetWrapLine:
             bottom_inset=0.0,
             wrap_shape=[(4.0, 194.0), (20.0, 174.0)],
         )
-        # Even with a large box and large reference widths, wrap path wins.
         box = il_version_1.Box(x=0.0, y=0.0, x2=600.0, y2=300.0)
         intervals = ts._resolve_line_intervals(
             250.0,
@@ -249,6 +280,33 @@ class TestTypesetWrapLine:
         left, right = intervals[0]
         assert right == 569.5
         assert left == 569.5 - 174.0
+
+    def test_replace_matrix_role_only_no_shape_still_pins(self):
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+
+        ts = Typesetting.__new__(Typesetting)
+        ts._current_zone_index = None
+        design = il_version_1.Box(x=375.9, y=234.9, x2=569.5, y2=284.9)
+        para = TestFigureWrapParagraph._para(widths=[194, 174, 143, 67])
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.WRAP_COLUMN,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+            wrap_shape=None,
+        )
+        box = il_version_1.Box(x=0.0, y=0.0, x2=600.0, y2=300.0)
+        intervals = ts._resolve_line_intervals(
+            250.0,
+            270.0,
+            box,
+            paragraph=para,
+            line_idx=3,
+            reference_widths=[500.0],
+            alignment="left",
+        )
+        assert intervals == [(569.5 - 67.0, 569.5)]
 
     def test_flag_off_ignores_wrap_shape(self):
         from types import SimpleNamespace
@@ -279,6 +337,26 @@ class TestTypesetWrapLine:
             alignment="left",
         )
         assert intervals == [(100.0, 250.0)]
+
+    def test_should_skip_pre_expand_single_predicate(self):
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            should_skip_pre_expand_for_wrap,
+        )
+
+        taper = TestFigureWrapParagraph._para(widths=[194, 174, 143, 67])
+        assert should_skip_pre_expand_for_wrap(taper, wrap_enabled=False) is True
+        body = TestFigureWrapParagraph._para(widths=[467, 467, 258])
+        assert should_skip_pre_expand_for_wrap(body, wrap_enabled=True) is False
+        body.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.WRAP_COLUMN,
+            design_box=il_version_1.Box(x=0, y=0, x2=100, y2=10),
+            top_inset=0.0,
+            bottom_inset=0.0,
+            wrap_shape=[(0.0, 80.0)],
+        )
+        assert should_skip_pre_expand_for_wrap(body, wrap_enabled=True) is True
 
 
 class TestLayoutDebugStubPatterns:
