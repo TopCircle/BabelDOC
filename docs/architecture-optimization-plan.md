@@ -974,6 +974,13 @@ flowchart TD
 
 ---
 
+## 9.1 关联文档（反向链接）
+
+- [`layout-first-plan.md`](layout-first-plan.md)（Layout-First 排版优先方案）：
+  - 是 Phase 2（LayoutContext/ConstraintIndex）的具体化落地文档；
+  - **LayoutIntent ≠ LayoutContext**：LayoutIntent 是**段级** IL 运行时字段（派生投影，additive-only）；LayoutContext 是**页级** Not-on-IL 上下文（本文 827 行）。两者并存，LayoutIntent 是排版器消费的设计意图，LayoutContext/ConstraintIndex 是几何约束提供者。
+  - MVP 切片 M3–M6 由该方案的 P1–P3 吸收；M7/PR-08 机械抽取按该方案 god-file 策略执行。
+
 ## References
 
 - Pipeline: [`babeldoc/format/pdf/high_level.py`](babeldoc/format/pdf/high_level.py)
