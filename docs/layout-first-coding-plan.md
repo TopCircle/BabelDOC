@@ -181,29 +181,17 @@ tests/repro/
 
 ## 3. P1–P5 接口预留
 
-### 3.1 gap_contract 消费（P1）
+### 3.1 gap_contract 消费（P1）— **已落地（0.6.4.52）**
 
-- 调用点：`Typesetting.render_page` 首遍落位 `_layout_typesetting_units`（typesetting.py:3313）**之前**插页级规划：
-
-```python
-def _apply_gap_contract_first_pass(self, page: Page) -> None: ...
-# 读 intent.gap_contract/top_inset：首行 ink top = 上一块 ink bottom − gap_contract，换算段 y 预置；
-# 块间不互移；P1 过渡态仅允许单跳 dy≤24、级联≤1
-```
-
-- `enforce_title_body_gaps`（vertical_gap.py:125）改审计+受限修复，输出仿 skip_report.json：
-
-```python
-@dataclass(slots=True)
-class LayoutAuditReport:
-    violations: list[dict]   # {debug_id, kind: gap|overlap, delta_pt, policy}
-    shifts: int
-    max_shift_pt: float
-    cascade_len: int         # P1 允许 ≤1
-    target_rule: str = "ink_gap_relative"  # |zh_ink_gap − en_ink_gap| ≤ ε；禁绝对 25.7pt
-```
-
-- 验收：`tests/test_vertical_gap.py` 增 `test_gap_contract_first_pass_no_follower_shift`、`test_enforce_single_jump_dy_le_24`、`test_audit_report_json_shape`；旧行为保留 `_legacy` 对拍。
+- **新文件**（主体逻辑不进 typesetting）：
+  - `utils/layout_audit.py` — `LayoutAuditReport`（**actions=预留** / **violations=修复** / shifts / cascade_len）
+  - `utils/gap_contract_pass.py` — first-pass：只改下一正文 `paragraph.box`；**仅 dy&lt;0 下移**；无 follower 级联
+  - `utils/layout_gap_hooks.py` — `pre_typeset_gap_pass` / `post_typeset_gap_pass`（typesetting 两行钩子）
+- **共享**：`vertical_gap.boxes_x_overlap` / `find_content_below` / `resolve_en_gap_contract` / `gap_deficit`（title 或 stack 底可读 EN gap）
+- **钩子**：`render_page` → pre → glyphs → `fix_overlapping` → post
+- **`enforce_title_body_gaps`**：单跳 `|dy|≤24`、cascade≤1；目标=`gap_deficit`（相对 EN）
+- **`enforce_title_body_gaps_legacy`**：旧级联保留
+- 验收：first-pass 不下移 follower / 不上移、clamp 24、stack-bottom gap 解析、audit shape、gap_deficit
 
 ### 3.2 wrap_shape 消费（P2）
 

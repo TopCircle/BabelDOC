@@ -1,23 +1,29 @@
-"""Enforce visual gap between large titles and following body (dual layout).
+"""Title→body vertical gap (Layout-First P1).
 
-CJK display titles (e.g. Source Han 56pt) often have taller ink boxes than the
-English Microstyle title at the same nominal size. Body paragraphs stay at the
-original EN y, so title and first body **overlap** on the ZH half of dual PDFs
-(OA p19: title.y1 past body.y0). English keeps ~12–18pt clearance.
+P1 transition (layout-first-plan §6):
+- End state: zero mutual paragraph shifts after typesetting.
+- **P1 allows** post-typeset emergency repair: single hop, ``|dy| ≤ 24pt``,
+  cascade length ≤ 1, never chrome / display-title / subtitle_overlay.
+- Target gap is **relative EN ink gap** from ``layout_intent.gap_contract``
+  (resolved on title **or** nearest upper stack-bottom that carries it).
 
-After typesetting, shift the body (and x-overlapping followers) down so:
+Shared geometry helpers (:func:`boxes_x_overlap`, :func:`find_content_below`,
+:func:`resolve_en_gap_contract`, :func:`gap_deficit`) are the single source
+for first-pass reservation and post-pass repair.
 
-    body.ink_top <= title.ink_bottom - min_gap   (PDF y-up: y2 is top, y is bottom)
+Legacy unrestricted cascade lives in :func:`enforce_title_body_gaps_legacy`
+for Δ comparison until P3.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
+from babeldoc.format.pdf.document_il.utils.layout_audit import LayoutAuditReport
+from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.region_skip import (
     is_chrome_paragraph,
     is_layout_debug_stub,
@@ -25,11 +31,16 @@ from babeldoc.format.pdf.document_il.utils.region_skip import (
 
 logger = logging.getLogger(__name__)
 
-# Match OA EN title→body clearance (~11–18pt).
+# Fallback when no gap_contract is resolvable.
 DEFAULT_MIN_GAP_PT = 14.0
+# P1 post-pass single-jump clamp (plan §6 / coding-plan §3.1).
+MAX_SINGLE_JUMP_DY_PT = 24.0
+# Relative acceptance epsilon for gap_deficit.
+RELATIVE_GAP_EPS_PT = 2.0
 # Treat as display title when max rendered size reaches this.
 DISPLAY_TITLE_SIZE_PT = 28.0
 _TITLE_LABELS = frozenset({"title", "section_header"})
+_X_OVERLAP_SLACK = 8.0
 
 
 def _iter_chars(paragraph: PdfParagraph):
@@ -92,8 +103,14 @@ def is_display_title(paragraph: PdfParagraph) -> bool:
     return False
 
 
-def _x_overlap(a: Box, b: Box, *, slack: float = 8.0) -> bool:
+def boxes_x_overlap(a: Box, b: Box, *, slack: float = _X_OVERLAP_SLACK) -> bool:
+    """Public x-overlap test (slack default matches historical vertical_gap)."""
     return a.x < b.x2 + slack and a.x2 > b.x - slack
+
+
+# Back-compat alias used inside this module and older call sites.
+def _x_overlap(a: Box, b: Box, *, slack: float = _X_OVERLAP_SLACK) -> bool:
+    return boxes_x_overlap(a, b, slack=slack)
 
 
 def shift_paragraph_y(paragraph: PdfParagraph, dy: float) -> None:
@@ -122,23 +139,304 @@ def shift_paragraph_y(paragraph: PdfParagraph, dy: float) -> None:
             b.y2 = float(b.y2) + dy
 
 
+def measured_ink_gap(upper: PdfParagraph, lower: PdfParagraph) -> float | None:
+    """Ink-to-ink gap: upper.ink.y − lower.ink.y2 (positive = clearance)."""
+    u = ink_box(upper)
+    lo = ink_box(lower)
+    if u is None or lo is None:
+        return None
+    return float(u.y) - float(lo.y2)
+
+
+def gap_deficit(
+    zh_gap: float,
+    en_gap: float | None,
+    *,
+    fallback: float = DEFAULT_MIN_GAP_PT,
+    eps: float = RELATIVE_GAP_EPS_PT,
+) -> float:
+    """How many pt of additional clearance ZH still needs (0 = ok).
+
+    Single source for relative-EN acceptance:
+    ``need = max(en_gap, 0)`` when EN is known, else ``fallback``.
+    Deficit = max(0, need - eps - zh_gap).
+    """
+    if en_gap is None:
+        need = float(fallback)
+    else:
+        need = max(float(en_gap), 0.0)
+    return max(0.0, need - float(eps) - float(zh_gap))
+
+
+def relative_gap_ok(
+    zh_gap: float,
+    en_gap: float | None,
+    *,
+    eps: float = RELATIVE_GAP_EPS_PT,
+    fallback: float = DEFAULT_MIN_GAP_PT,
+) -> bool:
+    """True when :func:`gap_deficit` is zero."""
+    return gap_deficit(zh_gap, en_gap, fallback=fallback, eps=eps) <= 0.0
+
+
+def resolve_en_gap_contract(
+    upper: PdfParagraph,
+    page: Page | None = None,
+) -> float | None:
+    """EN ink gap for *upper* → content below.
+
+    Resolution order (review fix: contract may sit on stack-bottom, not title):
+    1. ``upper.layout_intent.gap_contract`` if set
+    2. Walk paragraphs that x-overlap and sit at/above *upper*, prefer those
+       with ``gap_contract`` whose design/ink bottom is nearest above the body
+       (same column). For a display title this finds the stack-bottom carrier.
+    """
+    intent = getattr(upper, "layout_intent", None)
+    if intent is not None and intent.gap_contract is not None:
+        return float(intent.gap_contract)
+
+    if page is None:
+        return None
+
+    upper_box = _layout_box(upper)
+    if upper_box is None:
+        return None
+
+    best: tuple[float, float] | None = None  # (proximity, gap)
+    for cand in page.pdf_paragraph or []:
+        c_intent = getattr(cand, "layout_intent", None)
+        if c_intent is None or c_intent.gap_contract is None:
+            continue
+        cbox = _layout_box(cand)
+        if cbox is None or not boxes_x_overlap(upper_box, cbox):
+            continue
+        # Prefer carriers at/above upper (same stack / title band).
+        if cbox.y2 is not None and upper_box.y2 is not None:
+            if float(cbox.y2) < float(upper_box.y) - 1.0:
+                continue  # clearly below upper — not a carrier for this pair
+        proximity = abs(float(cbox.y or 0) - float(upper_box.y or 0))
+        gap = float(c_intent.gap_contract)
+        if best is None or proximity < best[0]:
+            best = (proximity, gap)
+    return best[1] if best else None
+
+
+def _layout_box(para: PdfParagraph) -> Box | None:
+    intent = getattr(para, "layout_intent", None)
+    if intent is not None and intent.design_box is not None:
+        return intent.design_box
+    return para.box
+
+
+def _is_subtitle_overlay_role(para: PdfParagraph) -> bool:
+    intent = getattr(para, "layout_intent", None)
+    return (
+        intent is not None and intent.role is LayoutIntentRole.SUBTITLE_OVERLAY
+    )
+
+
+def is_gap_protected(para: PdfParagraph, page: Page | None = None) -> bool:
+    """True for segments that must not be moved or used as gap 'body'."""
+    if is_layout_debug_stub(para):
+        return True
+    if page is not None and is_chrome_paragraph(para, page):
+        return True
+    intent = getattr(para, "layout_intent", None)
+    if intent is not None:
+        if intent.is_chrome:
+            return True
+        if intent.role in (
+            LayoutIntentRole.CHROME,
+            LayoutIntentRole.SUBTITLE_OVERLAY,
+            LayoutIntentRole.TITLE,
+        ):
+            return True
+    return False
+
+
+def body_fully_inside_title_band(tbox: Box, cbox: Box) -> bool:
+    return (cbox.y or 0) >= (tbox.y or 0) - 0.5 and (
+        cbox.y2 or 0
+    ) <= (tbox.y2 or 0) + 0.5
+
+
+def find_content_below(
+    page: Page,
+    upper: PdfParagraph,
+    *,
+    upper_box: Box | None = None,
+    ink: dict[int, Box] | None = None,
+    skip_display_title_body: bool = False,
+    upper_font_size: float | None = None,
+) -> PdfParagraph | None:
+    """Nearest non-protected paragraph strictly below *upper* (x-overlap).
+
+    Shared by first-pass reservation and post-pass title→body pairing.
+    When *ink* is provided, uses rendered ink boxes; else layout/design boxes.
+    """
+    ubox = upper_box or (ink.get(id(upper)) if ink else None) or _layout_box(upper)
+    if ubox is None or ubox.y is None:
+        return None
+    upper_bottom = float(ubox.y)
+    upper_top = float(ubox.y2) if ubox.y2 is not None else upper_bottom
+    title_size = (
+        upper_font_size
+        if upper_font_size is not None
+        else max_font_size(upper)
+    )
+
+    best: tuple[float, PdfParagraph] | None = None
+    for cand in page.pdf_paragraph or []:
+        if cand is upper:
+            continue
+        if is_gap_protected(cand, page):
+            continue
+        if skip_display_title_body and is_display_title(cand):
+            if max_font_size(cand) >= title_size * 0.85:
+                continue
+
+        if ink is not None and id(cand) in ink:
+            cbox = ink[id(cand)]
+        else:
+            cbox = _layout_box(cand)
+        if cbox is None or cbox.y2 is None:
+            continue
+        # Strictly below upper top band.
+        if float(cbox.y2) >= upper_top - 0.5:
+            continue
+        # Prefer content that is not fully inside the upper ink band (overlay).
+        if body_fully_inside_title_band(ubox, cbox):
+            continue
+        if not boxes_x_overlap(ubox, cbox):
+            continue
+        if best is None or float(cbox.y2) > best[0]:
+            best = (float(cbox.y2), cand)
+    return best[1] if best else None
+
+
 def enforce_title_body_gaps(
     page: Page,
     *,
     min_gap: float = DEFAULT_MIN_GAP_PT,
-) -> int:
-    """Shift body paragraphs down so they clear large titles by *min_gap*.
+    max_dy: float = MAX_SINGLE_JUMP_DY_PT,
+    report: LayoutAuditReport | None = None,
+) -> LayoutAuditReport:
+    """P1: audit + limited single-hop repair (no follower cascade).
 
-    Returns number of paragraphs shifted.
+    Returns a :class:`LayoutAuditReport`. For the pre-P1 cascade behaviour
+    use :func:`enforce_title_body_gaps_legacy`.
+    """
+    if report is None:
+        report = LayoutAuditReport(target_rule="ink_gap_relative")
+    page_no = getattr(page, "page_number", None)
+    post_shifts_before = report.shifts
+
+    paras = [
+        p
+        for p in (page.pdf_paragraph or [])
+        if p.pdf_paragraph_composition and not is_layout_debug_stub(p)
+    ]
+    if len(paras) < 2:
+        return report
+
+    ink: dict[int, Box] = {}
+    for p in paras:
+        box = ink_box(p)
+        if box is not None:
+            ink[id(p)] = box
+
+    ordered = sorted(
+        [p for p in paras if id(p) in ink],
+        key=lambda p: (-(ink[id(p)].y2 or 0.0), ink[id(p)].x or 0.0),
+    )
+
+    for title in ordered:
+        if not is_display_title(title):
+            continue
+        body = find_content_below(
+            page,
+            title,
+            upper_box=ink[id(title)],
+            ink=ink,
+            skip_display_title_body=True,
+        )
+        if body is None or id(body) not in ink:
+            continue
+        if is_display_title(body) or is_gap_protected(body, page):
+            continue
+
+        tbox = ink[id(title)]
+        bbox = ink[id(body)]
+        en_gap = resolve_en_gap_contract(title, page)
+        title_bottom = float(tbox.y)
+        body_top = float(bbox.y2)
+        zh_gap = title_bottom - body_top
+
+        deficit = gap_deficit(zh_gap, en_gap, fallback=min_gap)
+        if deficit <= 0:
+            continue
+
+        # Move body down by deficit (negative dy in PDF y-up).
+        dy = -deficit
+        raw_dy = dy
+        if abs(dy) > max_dy:
+            dy = -max_dy
+
+        shift_paragraph_y(body, dy)
+        new_ink = ink_box(body)
+        if new_ink is not None:
+            ink[id(body)] = new_ink
+        report.record_shift(dy, cascade=1)
+        report.record_violation(
+            debug_id=getattr(body, "debug_id", None),
+            kind="gap",
+            delta_pt=dy,
+            policy="single_jump_clamp_24",
+            page_number=page_no,
+            extra={
+                "title_debug_id": getattr(title, "debug_id", None),
+                "en_gap": en_gap,
+                "zh_gap_before": round(zh_gap, 3),
+                "deficit": round(deficit, 3),
+                "raw_dy": round(raw_dy, 3),
+                "clamped": abs(raw_dy) > max_dy + 1e-6,
+            },
+        )
+        logger.debug(
+            "title-body gap P1: page=%s dy=%.1f (raw=%.1f) en_gap=%s deficit=%.1f",
+            page_no,
+            dy,
+            raw_dy,
+            en_gap,
+            deficit,
+        )
+
+    if page_no is not None:
+        phase_shifts = report.shifts - post_shifts_before
+        report.pages[str(page_no)] = {
+            **(report.pages.get(str(page_no)) or {}),
+            "post_pass": {
+                "shifts": phase_shifts,
+                "violations": len(report.violations),
+            },
+        }
+    return report
+
+
+def enforce_title_body_gaps_legacy(
+    page: Page,
+    *,
+    min_gap: float = DEFAULT_MIN_GAP_PT,
+) -> int:
+    """Pre-P1 cascade behaviour (follower chains, global min_gap).
+
+    Kept for Δ comparison until P3 zero-mutual-shift lands. Prefer
+    :func:`enforce_title_body_gaps` on the production path.
     """
     paras = [
         p
         for p in (page.pdf_paragraph or [])
-        if p.pdf_paragraph_composition
-        # LayoutParser label stubs (unicode == class name / debug
-        # composition) are diagnostic boxes — never titles, bodies or
-        # followers. xobj_id is NOT the signal (page-level text uses -1 too).
-        and not is_layout_debug_stub(p)
+        if p.pdf_paragraph_composition and not is_layout_debug_stub(p)
     ]
     if len(paras) < 2:
         return 0
@@ -149,7 +447,6 @@ def enforce_title_body_gaps(
         if box is not None:
             ink[id(p)] = box
 
-    # Top-first: higher y2 first
     ordered = sorted(
         [p for p in paras if id(p) in ink],
         key=lambda p: (-(ink[id(p)].y2 or 0.0), ink[id(p)].x or 0.0),
@@ -160,61 +457,44 @@ def enforce_title_body_gaps(
         if not is_display_title(title):
             continue
         tbox = ink[id(title)]
-        # Find next paragraph below (smaller y2) with horizontal overlap
         body = None
         for cand in ordered[i + 1 :]:
             cbox = ink[id(cand)]
             if (cbox.y2 or 0) >= (tbox.y2 or 0) - 0.5:
-                continue  # not below
-            if not _x_overlap(tbox, cbox):
                 continue
-            # Designed overlay: the candidate sits ENTIRELY inside the title's
-            # ink band (subtitle stacked on a chapter head, OA p19 "Chapter 3"
-            # + 15pt subtitle: 668.6..692.8 within 661.5..693.5). Not a real
-            # body below — never enforce a gap on it or the cascade drags the
-            # big heading down with it. A body whose bottom pokes below the
-            # title's bottom edge (title ink pressing into body) is a genuine
-            # collision and still gets the gap.
-            if (cbox.y or 0) >= (tbox.y or 0) - 0.5 and (
-                cbox.y2 or 0
-            ) <= (tbox.y2 or 0) + 0.5:
+            if not boxes_x_overlap(tbox, cbox):
+                continue
+            if body_fully_inside_title_band(tbox, cbox):
                 continue
             if is_display_title(cand) and max_font_size(cand) >= max_font_size(title) * 0.85:
-                # another big title — skip pairing into it as "body"
                 continue
             if is_chrome_paragraph(cand, page):
-                continue  # site chrome is never a body
+                continue
             body = cand
             break
         if body is None:
             continue
 
         bbox = ink[id(body)]
-        # Need body.top (y2) <= title.bottom (y) - min_gap
         title_bottom = float(tbox.y)
         body_top = float(bbox.y2)
         target_top = title_bottom - min_gap
         if body_top <= target_top + 0.5:
-            continue  # already enough gap
+            continue
 
-        dy = target_top - body_top  # negative → move down the page
-        # Also shift followers that would be crossed (same column, below body)
+        dy = target_top - body_top
         to_shift = [body]
         for cand in ordered:
             if cand is body or cand is title:
                 continue
             cbox = ink[id(cand)]
             if (cbox.y2 or 0) > body_top + 1:
-                continue  # above body top
-            if not _x_overlap(bbox, cbox):
+                continue
+            if not boxes_x_overlap(bbox, cbox):
                 continue
             if is_display_title(cand):
-                # independent display titles have their own gap pass; dragging
-                # them as followers cascades the whole chapter head down
                 continue
             if is_chrome_paragraph(cand, page):
-                # skipped footer/header/URL chrome must stay put — the skip
-                # contract is "leave EN visible at the original position"
                 continue
             to_shift.append(cand)
 
@@ -226,13 +506,10 @@ def enforce_title_body_gaps(
             shifted += 1
 
         logger.debug(
-            "title-body gap: page=%s shifted=%d dy=%.1f title_bottom=%.1f body_top=%.1f→%.1f",
+            "title-body gap legacy: page=%s shifted=%d dy=%.1f",
             getattr(page, "page_number", None),
             len(to_shift),
             dy,
-            title_bottom,
-            body_top,
-            body_top + dy,
         )
 
     return shifted

@@ -2612,6 +2612,15 @@ class Typesetting:
             logger.warning(
                 f"Failed to adjust paragraph positions on page {page.page_number}: {e}"
             )
+
+        # Layout-First P1: gap hooks only (utils/layout_gap_hooks).
+        from babeldoc.format.pdf.document_il.utils.layout_gap_hooks import (
+            post_typeset_gap_pass,
+            pre_typeset_gap_pass,
+        )
+
+        page_audit = pre_typeset_gap_pass(page)
+
         # 开始实际的渲染过程
         for paragraph in page.pdf_paragraph:
             self.render_paragraph(paragraph, page, fonts)
@@ -2621,6 +2630,7 @@ class Typesetting:
         # 无法发现引用框/侧栏这类嵌在段落中段、与正文左右或纵向大范围重叠的情况——
         # 这类重叠是中文行距（1.5x）比英文（1.3x）更高、导致译文比原文占用更多纵向
         # 空间后才会出现的，必须在译文实际排版完成后才能检测到。
+        # Post order (plan §4): fix_overlapping → enforce_title_body_gaps.
         try:
             self.fix_overlapping_paragraphs_post_typesetting(page)
         except Exception as e:
@@ -2629,19 +2639,9 @@ class Typesetting:
                 f"{page.page_number}: {e}"
             )
 
-        # CJK display titles are taller than EN at the same nominal size; body
-        # stays at EN y → title/body overlap (OA dual p19). Enforce EN-like gap.
-        try:
-            from babeldoc.format.pdf.document_il.utils.vertical_gap import (
-                enforce_title_body_gaps,
-            )
-
-            enforce_title_body_gaps(page)
-        except Exception as e:
-            logger.warning(
-                f"Failed to enforce title-body gaps on page "
-                f"{page.page_number}: {e}"
-            )
+        post_typeset_gap_pass(
+            page, page_audit, translation_config=self.translation_config
+        )
 
     def _recompute_rendered_box(
         self, paragraph: il_version_1.PdfParagraph
