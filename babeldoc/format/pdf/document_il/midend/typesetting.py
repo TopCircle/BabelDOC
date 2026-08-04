@@ -42,6 +42,10 @@ from babeldoc.format.pdf.document_il.utils.cjk_kinsoku import (
     is_cjk_line_end_forbidden,
     is_cjk_line_start_forbidden,
 )
+from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
+from babeldoc.format.pdf.document_il.utils.wrap_shape import layout_intent_wrap_enabled
+from babeldoc.format.pdf.document_il.utils.wrap_shape import should_skip_pre_expand_for_wrap
+from babeldoc.format.pdf.document_il.utils.wrap_shape import typeset_wrap_line
 from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.format.pdf.translation_config import WatermarkOutputMode
 
@@ -1357,16 +1361,7 @@ class Typesetting:
             # widths, not word-level micro-tuning. ATU p22–23 长短参差.
             # P2: active wrap owns line geometry (right-pin); drop ref widths
             # so uniform flatten / reference cap never fight the pin path.
-            from babeldoc.format.pdf.document_il.utils.wrap_shape import (
-                get_active_wrap,
-                layout_intent_wrap_enabled,
-            )
-
-            if get_active_wrap(
-                paragraph,
-                enabled=layout_intent_wrap_enabled(self.translation_config),
-                layout_box=box,
-            ):
+            if self._active_wrap(paragraph, box):
                 reference_widths = None
             elif self.is_cjk and reference_widths:
                 reference_widths = Typesetting._uniform_cjk_reference_widths(
@@ -1720,16 +1715,7 @@ class Typesetting:
                     if getattr(self.translation_config, "ocr_workaround", False)
                     else self._extract_original_line_widths(paragraph)
                 )
-                from babeldoc.format.pdf.document_il.utils.wrap_shape import (
-                    get_active_wrap,
-                    layout_intent_wrap_enabled,
-                )
-
-                if get_active_wrap(
-                    paragraph,
-                    enabled=layout_intent_wrap_enabled(self.translation_config),
-                    layout_box=box,
-                ):
+                if self._active_wrap(paragraph, box):
                     force_ref = None
                 elif self.is_cjk and force_ref:
                     force_ref = Typesetting._uniform_cjk_reference_widths(force_ref)
@@ -2195,15 +2181,11 @@ class Typesetting:
 
         # Figure-wrap: never left-expand over the side photo (OA p19).
         # Single policy in wrap_shape.should_skip_pre_expand_for_wrap.
-        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
-            layout_intent_wrap_enabled,
-            should_skip_pre_expand_for_wrap,
-        )
-
-        cfg = getattr(self, "translation_config", None)
         if should_skip_pre_expand_for_wrap(
             paragraph,
-            wrap_enabled=layout_intent_wrap_enabled(cfg),
+            wrap_enabled=layout_intent_wrap_enabled(
+                getattr(self, "translation_config", None)
+            ),
         ):
             return box
 
@@ -3014,6 +2996,20 @@ class Typesetting:
                 return list(intervals)
         return [(box.x, box.x2)]
 
+    def _active_wrap(
+        self,
+        paragraph: il_version_1.PdfParagraph | None,
+        layout_box: Box | None = None,
+    ):
+        """P2 pin context ``(design_box, wrap_shape)`` or None (flag + resolve)."""
+        return get_active_wrap(
+            paragraph,
+            enabled=layout_intent_wrap_enabled(
+                getattr(self, "translation_config", None)
+            ),
+            layout_box=layout_box,
+        )
+
     def _resolve_line_intervals(
         self,
         y_bottom: float,
@@ -3029,18 +3025,7 @@ class Typesetting:
 
         Wrap geometry lives in ``utils.wrap_shape``; this method only wires it.
         """
-        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
-            get_active_wrap,
-            layout_intent_wrap_enabled,
-            typeset_wrap_line,
-        )
-
-        cfg = getattr(self, "translation_config", None)
-        active = get_active_wrap(
-            paragraph,
-            enabled=layout_intent_wrap_enabled(cfg),
-            layout_box=box,
-        )
+        active = self._active_wrap(paragraph, box)
         if active is not None:
             design, shape = active
             return [typeset_wrap_line(design, shape, line_idx)]

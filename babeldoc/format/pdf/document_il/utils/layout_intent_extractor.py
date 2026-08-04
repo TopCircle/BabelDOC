@@ -41,6 +41,7 @@ from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragrap
 from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
 from babeldoc.format.pdf.document_il.utils.vertical_gap import is_display_title
 from babeldoc.format.pdf.document_il.utils.vertical_gap import max_font_size
+from babeldoc.format.pdf.document_il.utils.wrap_shape import shape_from_widths
 
 if TYPE_CHECKING:
     from babeldoc.format.pdf.document_il.il_version_1 import Document
@@ -239,10 +240,6 @@ class LayoutIntentExtractor:
             else:
                 # No multi-line boxes (noisy/post-cluster): synthesize from
                 # reference widths so P2 pin path still has a shape.
-                from babeldoc.format.pdf.document_il.utils.wrap_shape import (
-                    shape_from_widths,
-                )
-
                 rm = getattr(para, "reference_metrics", None)
                 widths = (
                     getattr(rm, "per_line_widths", None) if rm is not None else None
