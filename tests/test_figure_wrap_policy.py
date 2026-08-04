@@ -234,6 +234,38 @@ class TestTypesetWrapLine:
         assert right == 569.5
         assert left == 569.5 - 143.0
 
+    def test_resolve_shape_without_intent_via_figure_wrap(self):
+        """Extract skip: taper metrics alone still yield a pin shape."""
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
+
+        para = TestFigureWrapParagraph._para(widths=[194, 174, 143, 67])
+        assert para.layout_intent is None
+        assert resolve_wrap_shape(para) == [
+            (0.0, 194.0),
+            (0.0, 174.0),
+            (0.0, 143.0),
+            (0.0, 67.0),
+        ]
+
+    def test_right_align_flush_short_line_to_pin(self):
+        """Underfilled wrap lines must end at available_x2 (design right)."""
+
+        class _U:
+            def __init__(self):
+                self.box = il_version_1.Box(x=315.0, y=100.0, x2=447.0, y2=112.0)
+
+            def shift_x(self, dx: float) -> None:
+                self.box.x += dx
+                self.box.x2 += dx
+
+        unit = _U()
+        # Envelope [314, 573]; short ink 132pt placed LTR → flush right after align.
+        Typesetting._apply_line_horizontal_alignment(
+            [unit], 0, 1, 314.0, 572.6, "right"
+        )
+        assert abs(unit.box.x2 - 572.6) < 0.05
+        assert abs(unit.box.x - (572.6 - 132.0)) < 0.05
+
     def test_replace_matrix_no_wrap_shape_unchanged(self):
         """Without wrap_shape, resolve falls through to zone + reference cap."""
         ts = Typesetting.__new__(Typesetting)

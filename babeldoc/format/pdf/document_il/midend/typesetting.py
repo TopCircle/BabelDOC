@@ -1380,6 +1380,11 @@ class Typesetting:
         # OCR: do not crush below this for body readability; prefer expand box.
         if ocr_mode:
             min_scale = max(min_scale, self._OCR_MIN_SCALE)
+        # Figure-wrap (OA p19): crushing to ~0.55 leaves 9pt mid-photo fragments.
+        # Keep a higher floor so pin geometry stays legible; vertical overflow
+        # is preferred over needle-scale type.
+        if self._active_wrap(paragraph, box):
+            min_scale = max(min_scale, 0.88)
         expand_space_flag = 0
         final_typeset_units = None
         last_typeset_units = None  # last layout attempt (may overflow box)
@@ -3442,6 +3447,12 @@ class Typesetting:
             ocr_workaround=ocr_mode,
             is_cjk=bool(self.is_cjk),
         )
+        # Figure-wrap is right-edge pinned. Placement is LTR inside each
+        # envelope; underfilled CJK lines would sit mid-photo unless we
+        # flush them to design.x2 (EN lines nearly fill the envelope so
+        # left-align looks right-pinned; CJK often does not).
+        if self._active_wrap(paragraph, box) is not None:
+            alignment = "right"
         query_h0 = avg_height if avg_height > 0 else 1.0
         intervals = self._resolve_line_intervals(
             current_y,

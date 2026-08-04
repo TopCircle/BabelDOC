@@ -51,13 +51,25 @@ def shape_from_widths(
     return out or None
 
 
+def _widths_from_paragraph(
+    paragraph: PdfParagraph,
+) -> list[float] | None:
+    rm = getattr(paragraph, "reference_metrics", None)
+    if rm is not None:
+        widths = getattr(rm, "per_line_widths", None)
+        if widths:
+            return list(widths)
+    return None
+
+
 def resolve_wrap_shape(
     paragraph: PdfParagraph | None,
 ) -> list[tuple[float, float]] | None:
     """Best available wrap_shape: intent, then synthesized from ref widths.
 
     Covers WRAP_COLUMN with ``wrap_shape=None`` (e.g. post-MT, no pdf_line
-    boxes at extract time) so the pin path still fires.
+    boxes at extract time) so the pin path still fires. Also synthesizes when
+    ``is_figure_wrap_paragraph`` is true but intent is missing (extract skip).
     """
     if paragraph is None:
         return None
@@ -68,11 +80,12 @@ def resolve_wrap_shape(
             return list(shape)
         role = getattr(intent, "role", None)
         if role is LayoutIntentRole.WRAP_COLUMN:
-            rm = getattr(paragraph, "reference_metrics", None)
-            widths = getattr(rm, "per_line_widths", None) if rm is not None else None
-            synth = shape_from_widths(widths)
+            synth = shape_from_widths(_widths_from_paragraph(paragraph))
             if synth:
                 return synth
+    # Extract failed / no intent: still pin when taper/geometry detection hits.
+    if is_figure_wrap_paragraph(paragraph):
+        return shape_from_widths(_widths_from_paragraph(paragraph))
     return None
 
 
