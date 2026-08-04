@@ -1025,6 +1025,17 @@ def _do_translate_single(
             translation_config.get_working_file_path("styles_and_formulas.json"),
         )
 
+    # Layout-First P0: intent 提取（Styles 后、翻译前）。只读；失败仅告警不阻断。
+    try:
+        from babeldoc.format.pdf.document_il.utils.layout_intent_extractor import (
+            LayoutIntentExtractor,
+        )
+        LayoutIntentExtractor(translation_config).extract(docs)
+    except Exception:
+        logger.warning(
+            "layout_intent extraction failed; continuing without intent", exc_info=True
+        )
+
     # Generate Flow Debug SVG files for layout analysis visualization
     if translation_config.debug:
         from babeldoc.format.pdf.document_il.midend.flow_debug_svg import FlowDebugSvg
