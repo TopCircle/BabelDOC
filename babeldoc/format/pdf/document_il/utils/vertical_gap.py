@@ -221,11 +221,16 @@ def resolve_en_gap_contract(
     return best[1] if best else None
 
 
-def _layout_box(para: PdfParagraph) -> Box | None:
+def layout_box(para: PdfParagraph) -> Box | None:
+    """design_box when present, else paragraph.box (shared layout geometry)."""
     intent = getattr(para, "layout_intent", None)
     if intent is not None and intent.design_box is not None:
         return intent.design_box
     return para.box
+
+
+# Back-compat private alias
+_layout_box = layout_box
 
 
 def _is_subtitle_overlay_role(para: PdfParagraph) -> bool:
@@ -236,10 +241,17 @@ def _is_subtitle_overlay_role(para: PdfParagraph) -> bool:
 
 
 def is_gap_protected(para: PdfParagraph, page: Page | None = None) -> bool:
-    """True for segments that must not be moved or used as gap 'body'."""
+    """True for segments that must not be moved or used as gap 'body'.
+
+    Covers chrome/stubs, subtitle_overlay/title roles, **and** geometric
+    display titles (``is_display_title``) so large section headers are never
+    treated as the next body by first-pass or post-pass (external P1 review).
+    """
     if is_layout_debug_stub(para):
         return True
     if page is not None and is_chrome_paragraph(para, page):
+        return True
+    if is_display_title(para):
         return True
     intent = getattr(para, "layout_intent", None)
     if intent is not None:
@@ -249,6 +261,7 @@ def is_gap_protected(para: PdfParagraph, page: Page | None = None) -> bool:
             LayoutIntentRole.CHROME,
             LayoutIntentRole.SUBTITLE_OVERLAY,
             LayoutIntentRole.TITLE,
+            LayoutIntentRole.SECTION_HEADER,
         ):
             return True
     return False
@@ -266,24 +279,17 @@ def find_content_below(
     *,
     upper_box: Box | None = None,
     ink: dict[int, Box] | None = None,
-    skip_display_title_body: bool = False,
-    upper_font_size: float | None = None,
 ) -> PdfParagraph | None:
     """Nearest non-protected paragraph strictly below *upper* (x-overlap).
 
     Shared by first-pass reservation and post-pass title→body pairing.
+    Display titles / chrome / stubs are excluded via :func:`is_gap_protected`.
     When *ink* is provided, uses rendered ink boxes; else layout/design boxes.
     """
     ubox = upper_box or (ink.get(id(upper)) if ink else None) or _layout_box(upper)
     if ubox is None or ubox.y is None:
         return None
-    upper_bottom = float(ubox.y)
-    upper_top = float(ubox.y2) if ubox.y2 is not None else upper_bottom
-    title_size = (
-        upper_font_size
-        if upper_font_size is not None
-        else max_font_size(upper)
-    )
+    upper_top = float(ubox.y2) if ubox.y2 is not None else float(ubox.y)
 
     best: tuple[float, PdfParagraph] | None = None
     for cand in page.pdf_paragraph or []:
@@ -291,9 +297,6 @@ def find_content_below(
             continue
         if is_gap_protected(cand, page):
             continue
-        if skip_display_title_body and is_display_title(cand):
-            if max_font_size(cand) >= title_size * 0.85:
-                continue
 
         if ink is not None and id(cand) in ink:
             cbox = ink[id(cand)]
@@ -358,11 +361,10 @@ def enforce_title_body_gaps(
             title,
             upper_box=ink[id(title)],
             ink=ink,
-            skip_display_title_body=True,
         )
         if body is None or id(body) not in ink:
             continue
-        if is_display_title(body) or is_gap_protected(body, page):
+        if is_gap_protected(body, page):
             continue
 
         tbox = ink[id(title)]

@@ -360,6 +360,163 @@ def test_gap_deficit_single_source():
 
 
 def test_legacy_still_cascades_for_delta_compare():
+    # Stronger checks live in test_legacy_follower_cascade_moves_second_body.
+    title = _para(
+        [_ch(c, 50 + i * 40, 580, size=56.0, w=38.0) for i, c in enumerate("标题字")],
+        label="title",
+    )
+    body = _para(
+        [
+            _ch(c, 100 + i * 12, 590 - 12, size=12.0, w=11.0)
+            for i, c in enumerate("正文开始在这里足够长")
+        ],
+        label="plain text",
+    )
+    page = Page(
+        page_number=0,
+        mediabox=Box(x=0, y=0, x2=612, y2=792),
+        pdf_paragraph=[title, body],
+    )
+    n = enforce_title_body_gaps_legacy(page, min_gap=14.0)
+    assert isinstance(n, int)
+    assert n >= 1
+
+
+def test_measured_ink_gap():
+    title = _para([_ch("T", 50, 600, size=56.0)], label="title")
+    body = _para([_ch("B", 50, 500, size=12.0)], label="plain text")
+    g = measured_ink_gap(title, body)
+    assert g is not None
+    assert g > 50
+
+
+def test_gap_contract_first_pass_no_display_title_shift():
+    """Large section header must not be first-pass body (is_display_title)."""
+    title = _para(
+        [_ch(c, 50 + i * 40, 650, size=56.0, w=38.0) for i, c in enumerate("章标题")],
+        label="title",
+    )
+    # 32pt section header below — geometric display title, not TITLE role.
+    section = _para(
+        [_ch(c, 50 + i * 20, 580, size=32.0, w=18.0) for i, c in enumerate("节标题大")],
+        label="section_header",
+    )
+    body = _para(
+        [
+            _ch(c, 100 + i * 12, 520, size=12.0, w=11.0)
+            for i, c in enumerate("真正正文段落")
+        ],
+        label="plain text",
+    )
+    _attach_intent(title, role=LayoutIntentRole.TITLE, gap_contract=40.0)
+    _attach_intent(section, role=LayoutIntentRole.SECTION_HEADER)
+    _attach_intent(body, role=LayoutIntentRole.BODY)
+    page = Page(
+        page_number=0,
+        mediabox=Box(x=0, y=0, x2=612, y2=792),
+        pdf_paragraph=[title, section, body],
+    )
+    sec_y0 = section.box.y
+    apply_gap_contract_first_pass(page)
+    assert abs(section.box.y - sec_y0) < 0.05
+
+
+def test_gap_contract_first_pass_clamps_dy_to_24():
+    """First-pass |dy| ≤ 24 even when EN contract demands more (plan §3.1)."""
+    title = _para(
+        [_ch(c, 50 + i * 40, 600, size=56.0, w=38.0) for i, c in enumerate("大标题")],
+        label="title",
+    )
+    body = _para(
+        [
+            _ch(c, 100 + i * 12, 590 - 12, size=12.0, w=11.0)
+            for i, c in enumerate("正文重叠需要大位移")
+        ],
+        label="plain text",
+    )
+    # contract 80 → raw dy roughly -80-ish from near-overlap; clamp 24
+    _attach_intent(title, role=LayoutIntentRole.TITLE, gap_contract=80.0)
+    _attach_intent(body, role=LayoutIntentRole.BODY)
+    page = Page(
+        page_number=0,
+        mediabox=Box(x=0, y=0, x2=612, y2=792),
+        pdf_paragraph=[title, body],
+    )
+    y0 = body.box.y2
+    report = apply_gap_contract_first_pass(page)
+    assert report.shifts >= 1
+    assert report.max_shift_pt <= MAX_SINGLE_JUMP_DY_PT + 0.05
+    assert y0 - body.box.y2 <= MAX_SINGLE_JUMP_DY_PT + 0.05
+    assert report.actions and report.actions[0].get("clamped") is True
+
+
+def test_gap_contract_first_pass_no_candidate():
+    title = _para(
+        [_ch(c, 50 + i * 40, 600, size=56.0, w=38.0) for i, c in enumerate("大标题")],
+        label="title",
+    )
+    _attach_intent(title, role=LayoutIntentRole.TITLE, gap_contract=20.0)
+    page = Page(
+        page_number=0,
+        mediabox=Box(x=0, y=0, x2=612, y2=792),
+        pdf_paragraph=[title],
+    )
+    report = apply_gap_contract_first_pass(page)
+    assert report.shifts == 0
+    assert not report.actions
+
+
+def test_gap_contract_first_pass_negative_gap_skipped():
+    title = _para(
+        [_ch(c, 50 + i * 40, 600, size=56.0, w=38.0) for i, c in enumerate("大标题")],
+        label="title",
+    )
+    body = _para(
+        [_ch(c, 100 + i * 12, 560, size=12.0, w=11.0) for i, c in enumerate("正文")],
+        label="plain text",
+    )
+    _attach_intent(title, role=LayoutIntentRole.TITLE, gap_contract=-5.0)
+    _attach_intent(body, role=LayoutIntentRole.BODY)
+    page = Page(
+        page_number=0,
+        mediabox=Box(x=0, y=0, x2=612, y2=792),
+        pdf_paragraph=[title, body],
+    )
+    y0 = body.box.y
+    report = apply_gap_contract_first_pass(page)
+    assert report.shifts == 0
+    assert body.box.y == y0
+
+
+def test_gap_contract_first_pass_skips_chrome_and_subtitle_overlay():
+    title = _para(
+        [_ch(c, 50 + i * 40, 650, size=56.0, w=38.0) for i, c in enumerate("章标题")],
+        label="title",
+    )
+    chrome = _para([_ch("w", 100, 600, size=11.0)], label="footer")
+    chrome.unicode = "www.example.com"
+    overlay = _para([_ch("副", 50, 640, size=15.0)], label="plain text")
+    body = _para(
+        [_ch(c, 100 + i * 12, 520, size=12.0, w=11.0) for i, c in enumerate("真正正文")],
+        label="plain text",
+    )
+    _attach_intent(title, role=LayoutIntentRole.TITLE, gap_contract=40.0)
+    _attach_intent(chrome, role=LayoutIntentRole.CHROME)
+    _attach_intent(overlay, role=LayoutIntentRole.SUBTITLE_OVERLAY)
+    _attach_intent(body, role=LayoutIntentRole.BODY)
+    page = Page(
+        page_number=0,
+        mediabox=Box(x=0, y=0, x2=612, y2=792),
+        pdf_paragraph=[title, chrome, overlay, body],
+    )
+    c_y0, o_y0 = chrome.box.y, overlay.box.y
+    apply_gap_contract_first_pass(page)
+    assert chrome.box.y == c_y0
+    assert overlay.box.y == o_y0
+
+
+def test_legacy_follower_cascade_moves_second_body():
+    """Legacy path may shift x-overlapping followers (Δ 对照用)."""
     title = _para(
         [_ch(c, 50 + i * 40, 580, size=56.0, w=38.0) for i, c in enumerate("标题字")],
         label="title",
@@ -383,14 +540,8 @@ def test_legacy_still_cascades_for_delta_compare():
         mediabox=Box(x=0, y=0, x2=612, y2=792),
         pdf_paragraph=[title, body, follower],
     )
+    f_y0 = follower.pdf_paragraph_composition[0].pdf_character.box.y
     n = enforce_title_body_gaps_legacy(page, min_gap=14.0)
-    assert isinstance(n, int)
-    assert n >= 1
-
-
-def test_measured_ink_gap():
-    title = _para([_ch("T", 50, 600, size=56.0)], label="title")
-    body = _para([_ch("B", 50, 500, size=12.0)], label="plain text")
-    g = measured_ink_gap(title, body)
-    assert g is not None
-    assert g > 50
+    assert n >= 2  # body + follower
+    f_y1 = follower.pdf_paragraph_composition[0].pdf_character.box.y
+    assert f_y1 < f_y0  # moved down

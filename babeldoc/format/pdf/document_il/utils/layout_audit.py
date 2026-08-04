@@ -20,6 +20,27 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _entry(
+    *,
+    debug_id: str | None,
+    kind: str,
+    delta_pt: float,
+    policy: str,
+    page_number: int | None = None,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "debug_id": debug_id,
+        "kind": kind,
+        "delta_pt": round(float(delta_pt), 3),
+        "policy": policy,
+        "page_number": page_number,
+    }
+    if extra:
+        entry.update(extra)
+    return entry
+
+
 @dataclass(slots=True)
 class LayoutAuditReport:
     """Page- or document-level layout repair audit.
@@ -47,16 +68,16 @@ class LayoutAuditReport:
         extra: dict[str, Any] | None = None,
     ) -> None:
         """Intentional layout step (e.g. first-pass gap reservation)."""
-        entry: dict[str, Any] = {
-            "debug_id": debug_id,
-            "kind": kind,
-            "delta_pt": round(float(delta_pt), 3),
-            "policy": policy,
-            "page_number": page_number,
-        }
-        if extra:
-            entry.update(extra)
-        self.actions.append(entry)
+        self.actions.append(
+            _entry(
+                debug_id=debug_id,
+                kind=kind,
+                delta_pt=delta_pt,
+                policy=policy,
+                page_number=page_number,
+                extra=extra,
+            )
+        )
 
     def record_violation(
         self,
@@ -69,16 +90,16 @@ class LayoutAuditReport:
         extra: dict[str, Any] | None = None,
     ) -> None:
         """Contract miss / emergency repair."""
-        entry: dict[str, Any] = {
-            "debug_id": debug_id,
-            "kind": kind,
-            "delta_pt": round(float(delta_pt), 3),
-            "policy": policy,
-            "page_number": page_number,
-        }
-        if extra:
-            entry.update(extra)
-        self.violations.append(entry)
+        self.violations.append(
+            _entry(
+                debug_id=debug_id,
+                kind=kind,
+                delta_pt=delta_pt,
+                policy=policy,
+                page_number=page_number,
+                extra=extra,
+            )
+        )
 
     def record_shift(self, dy: float, *, cascade: int = 1) -> None:
         if abs(dy) < 0.05:
@@ -98,7 +119,6 @@ class LayoutAuditReport:
             if existing is None:
                 self.pages[k] = dict(v)
             else:
-                # Preserve phase keys (first_pass / post_pass) when both present.
                 merged = dict(existing)
                 merged.update(v)
                 self.pages[k] = merged

@@ -185,9 +185,9 @@ tests/repro/
 
 - **新文件**（主体逻辑不进 typesetting）：
   - `utils/layout_audit.py` — `LayoutAuditReport`（**actions=预留** / **violations=修复** / shifts / cascade_len）
-  - `utils/gap_contract_pass.py` — first-pass：只改下一正文 `paragraph.box`；**仅 dy&lt;0 下移**；无 follower 级联
+  - `utils/gap_contract_pass.py` — first-pass：只改下一正文 `paragraph.box`；**仅 dy&lt;0 下移**；**|dy|≤24 与 post 一致**；`is_display_title` 不可当 body
   - `utils/layout_gap_hooks.py` — `pre_typeset_gap_pass` / `post_typeset_gap_pass`（typesetting 两行钩子）
-- **共享**：`vertical_gap.boxes_x_overlap` / `find_content_below` / `resolve_en_gap_contract` / `gap_deficit`（title 或 stack 底可读 EN gap）
+- **共享**：`layout_box` / `boxes_x_overlap` / `find_content_below` / `is_gap_protected`（含 display title）/ `resolve_en_gap_contract` / `gap_deficit`
 - **钩子**：`render_page` → pre → glyphs → `fix_overlapping` → post
 - **`enforce_title_body_gaps`**：单跳 `|dy|≤24`、cascade≤1；目标=`gap_deficit`（相对 EN）
 - **`enforce_title_body_gaps_legacy`**：旧级联保留

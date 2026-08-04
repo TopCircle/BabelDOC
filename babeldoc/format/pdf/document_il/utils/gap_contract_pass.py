@@ -10,9 +10,12 @@ first-line ink top lands at::
 **Only downward moves** (``dy < 0``): P1 reserves room for taller CJK titles;
 never pull body upward into title/figure space.
 
+**|dy| ≤ MAX_SINGLE_JUMP_DY_PT (24)** — same clamp as post-pass (plan §3.1 /
+external review). Display titles are never first-pass targets
+(:func:`is_gap_protected` includes ``is_display_title``).
+
 Uses intent design_box + top/bottom_inset only (never mutates design_box).
-Single next body only (cascade_len ≤ 1). First-pass dy is **not** clamped to
-24pt — that cap is for post-typeset emergency repair only.
+Single next body only (cascade_len ≤ 1).
 """
 
 from __future__ import annotations
@@ -24,8 +27,10 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.utils.layout_audit import LayoutAuditReport
 from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
 from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
+from babeldoc.format.pdf.document_il.utils.vertical_gap import MAX_SINGLE_JUMP_DY_PT
 from babeldoc.format.pdf.document_il.utils.vertical_gap import find_content_below
 from babeldoc.format.pdf.document_il.utils.vertical_gap import is_gap_protected
+from babeldoc.format.pdf.document_il.utils.vertical_gap import layout_box
 
 if TYPE_CHECKING:
     from babeldoc.format.pdf.document_il.il_version_1 import Page
@@ -38,17 +43,10 @@ def _intent(para: PdfParagraph):
     return getattr(para, "layout_intent", None)
 
 
-def _design_or_box(para: PdfParagraph) -> Box | None:
-    intent = _intent(para)
-    if intent is not None and intent.design_box is not None:
-        return intent.design_box
-    return para.box
-
-
 def _ink_bottom_est(para: PdfParagraph) -> float | None:
     """Estimated ink bottom (y min) from design_box + bottom_inset."""
     intent = _intent(para)
-    box = _design_or_box(para)
+    box = layout_box(para)
     if box is None or box.y is None:
         return None
     if intent is not None:
@@ -59,7 +57,7 @@ def _ink_bottom_est(para: PdfParagraph) -> float | None:
 def _ink_top_est(para: PdfParagraph) -> float | None:
     """Estimated ink top (y2 max) from design_box + top_inset."""
     intent = _intent(para)
-    box = _design_or_box(para)
+    box = layout_box(para)
     if box is None or box.y2 is None:
         return None
     if intent is not None:
@@ -99,10 +97,9 @@ def apply_gap_contract_first_pass(page: Page) -> LayoutAuditReport:
         ):
             continue
 
-        upper_box = _design_or_box(para)
+        upper_box = layout_box(para)
         if upper_box is None:
             continue
-        # Use ink-bottom estimate for both pairing threshold and target (review).
         upper_ink_bottom = _ink_bottom_est(para)
         if upper_ink_bottom is None:
             continue
@@ -135,6 +132,10 @@ def apply_gap_contract_first_pass(page: Page) -> LayoutAuditReport:
         if dy >= -0.5:
             continue
 
+        raw_dy = dy
+        if abs(dy) > MAX_SINGLE_JUMP_DY_PT:
+            dy = -MAX_SINGLE_JUMP_DY_PT
+
         _shift_box_y(nxt, dy)
         report.record_shift(dy, cascade=1)
         phase_shifts += 1
@@ -142,20 +143,23 @@ def apply_gap_contract_first_pass(page: Page) -> LayoutAuditReport:
             debug_id=getattr(nxt, "debug_id", None),
             kind="gap_contract_reservation",
             delta_pt=dy,
-            policy="first_pass_down_only",
+            policy="first_pass_down_only_clamp_24",
             page_number=page_no,
             extra={
                 "upper_debug_id": getattr(para, "debug_id", None),
                 "gap_contract": gap_contract,
                 "target_ink_top": round(target_ink_top, 3),
+                "raw_dy": round(raw_dy, 3),
+                "clamped": abs(raw_dy) > MAX_SINGLE_JUMP_DY_PT + 1e-6,
             },
         )
         logger.debug(
-            "gap_contract first-pass: page=%s upper=%s next=%s dy=%.2f gap=%.2f",
+            "gap_contract first-pass: page=%s upper=%s next=%s dy=%.2f raw=%.2f gap=%.2f",
             page_no,
             getattr(para, "debug_id", None),
             getattr(nxt, "debug_id", None),
             dy,
+            raw_dy,
             gap_contract,
         )
 
