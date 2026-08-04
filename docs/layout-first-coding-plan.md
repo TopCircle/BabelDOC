@@ -54,15 +54,19 @@ class LayoutIntent:
 
 ### 1.3 PdfParagraph.layout_intent（runtime-only，仿 reference_metrics）
 
-`il_version_1.py:1271`（reference_metrics 之后）追加：
+`il_version_1.py`（reference_metrics 之后）追加：
 
 ```python
-    # Runtime-only layout intent (Layout-First): populated by LayoutIntentExtractor
-    # after StylesAndFormulas, read by Typesetting/PostLayout. Never serialized.
-    layout_intent: "LayoutIntent | None" = field(default=None)
+    # Runtime-only; xsdata type="Ignore" is required so a set LayoutIntent
+    # is never emitted as an XML element (unlike bare reference_metrics/alignment).
+    layout_intent: "LayoutIntent | None" = field(
+        default=None, metadata={"type": "Ignore"}
+    )
 ```
 
-文件顶部加 `if TYPE_CHECKING: from ...utils.layout_intent import LayoutIntent`（该文件无 `from __future__ import annotations`，须字符串注解；layout_intent.py 单向 import il_version_1 的 Box，不成环）。无 metadata ⇒ xml_converter 自动忽略，与 alignment/reference_metrics 同模式。
+文件顶部须 **运行时** `from ...utils.layout_intent import LayoutIntent`（xsdata
+`get_type_hints` 要解析注解；该文件无 `from __future__ import annotations`）。
+`layout_intent.py` 对 `Box` 仅 TYPE_CHECKING import ⇒ 不成环。
 
 ### 1.4 LayoutIntentExtractor.extract
 
@@ -85,7 +89,8 @@ class LayoutIntentExtractor:
   6. 墨迹 y 区间与 TITLE 重叠 ≥0.5×行高、字号<标题字号、非 title 类标签 → SUBTITLE_OVERLAY（overlays_band=该 TITLE 的 debug_id）
   7. `is_quote_block(para, page_width)`（layout_helper 既有启发式）→ PULL_QUOTE（P0 单源；P2 才切消费端）
   8. label=="callout" 或 `is_callout_column(box)`（box_expand 既有）→ CALLOUT
-  9. 其余 → BODY；`is_layout_debug_stub`（region_skip.py:187）不参与 role 特判（默认 BODY），但**排除**出 gap/stack/photo 判定
+  9. 其余 → BODY
+  - **stub 短路（先于 1–9）**：`is_layout_debug_stub` → 固定 BODY（禁止再走 callout/quote 启发式）；并**排除** gap/stack/photo
 - **_ink_rect(para)**：首选 `visual_bbox.box`，缺失回退 char box（理由见决策点 1）；**insets**：首行=墨迹 y2 最大、末行=墨迹 y 最小；**_line_boxes**：comp.pdf_line.box 优先，退化按 char y2 聚类（容差 max(font_size)×0.25）。
 - **wrap_shape**：仅 role==WRAP_COLUMN 且 ≥2 行：每行 `(line.x − design_box.x, line.x2 − line.x)`。
 - **gap_contract**（页级一次算）：候选=墨迹在本段下方（`ink.y2 < 本段 ink.y`）且 x 重叠（slack=8，仿 vertical_gap._x_overlap:95）的非 chrome/非 stub 段，取 ink.y2 最大者；`gap = 本段 ink.y − 候选 ink.y2`；同 stack 仅组底（ink.y 最小）计算，候选须低于整组底；无候选→None。

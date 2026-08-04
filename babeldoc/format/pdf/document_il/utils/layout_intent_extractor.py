@@ -12,10 +12,15 @@ Role classification follows the strict 9-rule order from
     chrome → formula → wrap_column → figure_caption →
     section_header/title → subtitle_overlay → pull_quote → callout → body
 
-``is_layout_debug_stub`` paragraphs default to BODY but are excluded from
-gap/stack/photo judgments.  All geometry helpers are read-only ports of the
-single-source utilities (figure_wrap / region_skip / vertical_gap /
-layout_helper / box_expand) so behavior cannot drift.
+``is_layout_debug_stub`` paragraphs **always** get role BODY (no quote/callout
+heuristics) and are excluded from gap/stack/photo judgments.  All geometry
+helpers are read-only ports of the single-source utilities (figure_wrap /
+region_skip / vertical_gap / layout_helper / box_expand) so behavior cannot
+drift.
+
+``text_on_photo`` / ``subtitle_overlay`` thresholds are uncalibrated on OA
+(coding-plan §4); consumers must not treat them as hard layout policy until
+P1+ calibration.
 """
 
 from __future__ import annotations
@@ -170,7 +175,15 @@ class LayoutIntentExtractor:
         para: PdfParagraph,
         page: Page,
     ) -> LayoutIntentRole | None:
-        """Rules 1-5; returns ``None`` when the paragraph falls through."""
+        """Rules 1-5 (+ stub short-circuit); ``None`` falls through to secondary.
+
+        LayoutParser debug stubs (``is_layout_debug_stub``) always return BODY
+        immediately — they must not pick up callout/quote geometry heuristics
+        (coding-plan §1.4).
+        """
+        # Diagnostic stubs: fixed BODY, no further role rules.
+        if is_layout_debug_stub(para):
+            return LayoutIntentRole.BODY
         # Rule 1 — site chrome (header/footer/URL/page number/abandon).
         if is_chrome_paragraph(para, page):
             return LayoutIntentRole.CHROME
@@ -227,8 +240,9 @@ class LayoutIntentExtractor:
             role
         )
         is_chrome = role is LayoutIntentRole.CHROME
+        # Chrome + debug stubs never participate in text_on_photo (coding-plan §1.4).
         text_on_photo = False
-        if not is_chrome:
+        if not is_chrome and not is_layout_debug_stub(para):
             text_on_photo = self._is_on_photo(ink, photo_boxes)
 
         return LayoutIntent(
@@ -441,16 +455,19 @@ class LayoutIntentExtractor:
 
     @staticmethod
     def _photo_boxes(page: Page) -> list[Box]:
-        """Figure / image-form boxes that can host overlaid text."""
+        """Figure / image-form boxes that can host overlaid text.
+
+        Matches exclusion_zone: only ``PdfForm`` with ``form_type == "image"``
+        (not vector/other forms).
+        """
         boxes: list[Box] = []
         for figure in page.pdf_figure or []:
             if figure.box is not None:
                 boxes.append(figure.box)
         for form in page.pdf_form or []:
-            if form.box is not None:
+            if getattr(form, "form_type", None) == "image" and form.box is not None:
                 boxes.append(form.box)
         return boxes
-
     @staticmethod
     def _page_width(page: Page) -> float:
         """cropbox (fallback mediabox) width, mirroring exclusion_zone."""

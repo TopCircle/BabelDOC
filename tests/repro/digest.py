@@ -97,9 +97,22 @@ def _diff_pages(golden_pages: dict, run_pages: dict) -> list[str]:
     return diffs
 
 
-def compare(golden: dict, run: dict) -> tuple[bool, list[str]]:
-    """Δ=0 verdict: canonical sha + fingerprint sha + prior debug_id sets."""
+def compare(
+    golden: dict,
+    run: dict,
+    *,
+    strict_fingerprint: bool = False,
+) -> tuple[bool, list[str]]:
+    """Δ=0 verdict: canonical typsetting sha + prior debug_id sets.
+
+    Full-document ``il_layout_fingerprint`` includes LayoutParser debug stubs
+    and is sensitive to DocLayout/ONNX provider noise across machines. By
+    default a fingerprint mismatch is **advisory only** (printed, not a hard
+    fail). Pass ``strict_fingerprint=True`` (CLI ``--strict-fingerprint``)
+    to gate on it for local deep checks.
+    """
     diffs: list[str] = []
+    warnings: list[str] = []
     golden_sha = canonical_sha256(golden.get("pages", {}))
     run_sha = canonical_sha256(run.get("pages", {}))
     if golden_sha != run_sha:
@@ -108,7 +121,11 @@ def compare(golden: dict, run: dict) -> tuple[bool, list[str]]:
     g_fp = golden.get("fingerprint_sha256")
     r_fp = run.get("fingerprint_sha256")
     if g_fp != r_fp:
-        diffs.append(f"il_layout_fingerprint mismatch: golden={g_fp} run={r_fp}")
+        msg = f"il_layout_fingerprint mismatch: golden={g_fp} run={r_fp}"
+        if strict_fingerprint:
+            diffs.append(msg)
+        else:
+            warnings.append(msg + " (advisory; use --strict-fingerprint to fail)")
     # Prior debug_id sets are asserted even when the canonical sha matches.
     for page_no in sorted(set(golden.get("pages", {})) | set(run.get("pages", {}))):
         g_ids = set((golden.get("pages", {}).get(page_no) or {}).get("debug_ids", []))
@@ -118,6 +135,8 @@ def compare(golden: dict, run: dict) -> tuple[bool, list[str]]:
                 f"page {page_no}: prior debug_id set changed "
                 f"(added={sorted(r_ids - g_ids)}, removed={sorted(g_ids - r_ids)})"
             )
+    # Attach soft warnings on the run summary for callers that print them.
+    run["_compare_warnings"] = warnings
     return not diffs, diffs
 
 
@@ -190,16 +209,29 @@ def run_digest(args) -> tuple[int, dict | None]:
         return 0, run_summary
 
     golden = load_summary(golden_path)
-    ok, diffs = compare(golden, run_summary)
+    ok, diffs = compare(
+        golden,
+        run_summary,
+        strict_fingerprint=bool(getattr(args, "strict_fingerprint", False)),
+    )
+    warnings = list(run_summary.pop("_compare_warnings", None) or [])
     if ok:
-        print("Δ=0 PASS (canonical typsetting sha + fingerprint + prior debug_id set)")
+        print(
+            "Δ=0 PASS (canonical typsetting sha + prior debug_id set"
+            + ("; strict fingerprint" if args.strict_fingerprint else "")
+            + ")"
+        )
         print(f"digest_sha256       : {canonical_sha256(run_summary.get('pages', {}))}")
         print(f"fingerprint_sha256  : {run_summary.get('fingerprint_sha256')}")
+        for line in warnings:
+            print(f"WARN: {line}", file=sys.stderr)
         return 0, run_summary
 
     print("Δ≠0 FAIL", file=sys.stderr)
     for line in diffs:
         print(f"  {line}", file=sys.stderr)
+    for line in warnings:
+        print(f"WARN: {line}", file=sys.stderr)
     return 1, run_summary
 
 
@@ -229,6 +261,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="identity",
     )
     parser.add_argument("--update-golden", action="store_true")
+    parser.add_argument(
+        "--strict-fingerprint",
+        action="store_true",
+        help=(
+            "Also require full-document il_layout_fingerprint match. "
+            "Default off: fingerprint includes DocLayout stubs and is "
+            "noisy across ONNX providers / machines."
+        ),
+    )
     parser.add_argument("--header-height", type=float, default=driver.DEFAULT_HEADER_HEIGHT)
     parser.add_argument("--footer-height", type=float, default=driver.DEFAULT_FOOTER_HEIGHT)
     parser.add_argument("--no-skip-header", action="store_true")

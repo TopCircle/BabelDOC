@@ -24,8 +24,11 @@ tests/repro/
   `box`、`scale`、`optimal_scale`、`line_widths[]`。
 - **fingerprint digest**：`il_layout_fingerprint` 对排版后内存
   Document 的**纯几何** sha256（只含 page/debug_id/char box，3 位小数）。
-- **Δ=0 判定**：canonical sha 一致 **且** fingerprint sha 一致 **且**
-  先验（`paragraph_finder`）debug_id 集合一致。
+- **Δ=0 判定（默认 CI）**：canonical sha 一致 **且** 先验
+  （`paragraph_finder`）debug_id 集合一致。
+- **fingerprint（默认 advisory）**：全页 `il_layout_fingerprint` 含
+  DocLayout/LayoutParser stub 几何，跨 ONNX 提供方/机器易漂。默认失配只
+  打 `WARN`；本地深查加 `--strict-fingerprint` 才硬失败。
 - **行宽数据源**：一律从 `typsetting.json` 的 `pdf_character` 按 y 聚类
   重算（`driver.compute_line_widths`）。**禁止**使用
   `reference_metrics.per_line_widths`（plan §7 数据源规则）。

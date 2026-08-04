@@ -10,6 +10,16 @@ xml_converter skips it even when set.
 this module has no runtime dependency on ``il_version_1``; in turn
 ``il_version_1`` imports ``LayoutIntent`` at runtime (required by xsdata's
 ``get_type_hints``) without creating an import cycle.
+
+P0 storage vs P2 consumption: ``wrap_shape`` stores EN-measured
+``(left_offset, width)`` with ``left_offset = line.x - design_box.x``.
+P2 may re-play lines with a pinned design right edge (``left = design.x2 -
+width``); those strategies can diverge when EN right edges are not exactly
+at ``design_box.x2``. Do not assume they are identical without a P2 design
+note.
+
+``text_on_photo`` / subtitle overlay signals are uncalibrated on real OA
+pages until P1+; treat as advisory for consumers.
 """
 
 from __future__ import annotations

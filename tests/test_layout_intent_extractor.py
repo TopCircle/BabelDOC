@@ -218,6 +218,26 @@ def test_role_pull_quote_single_source(monkeypatch):
     assert not_quote.layout_intent.role is not LayoutIntentRole.PULL_QUOTE
 
 
+def test_role_debug_stub_is_body_not_callout(monkeypatch):
+    """LayoutParser stubs stay BODY even when callout/quote heuristics fire."""
+    # Narrow box would otherwise look like a callout column.
+    stub = _para(
+        Box(x=47, y=38.9, x2=153, y2=46),
+        unicode_="abandon",
+        lines=[_line(47, 153, 38.9, 46, font_size=4)],
+        font_size=4,
+    )
+    # Force both heuristics true — stub short-circuit must win first.
+    monkeypatch.setattr(layout_intent_extractor, "is_quote_block", lambda _p, _w: True)
+    monkeypatch.setattr(
+        layout_intent_extractor, "is_callout_column", lambda _b: True
+    )
+    _extract(_page([stub]))
+    assert stub.layout_intent.role is LayoutIntentRole.BODY
+    assert stub.layout_intent.is_chrome is False
+    assert stub.layout_intent.text_on_photo is False
+
+
 # ------------------------------------------------------------ intent fields
 
 
@@ -335,10 +355,57 @@ def test_text_on_photo_iou():
         label="footer",
         lines=[_line(0, 200, 0, 200)],
     )
-    _extract(_page([on_photo, off_photo, chrome_on_photo], figures=[photo]))
+    stub_on_photo = _para(
+        Box(x=0, y=0, x2=200, y2=200),
+        unicode_="fallback_line",
+        lines=[_line(0, 200, 0, 200)],
+    )
+    _extract(
+        _page(
+            [on_photo, off_photo, chrome_on_photo, stub_on_photo],
+            figures=[photo],
+        )
+    )
     assert on_photo.layout_intent.text_on_photo is True
     assert off_photo.layout_intent.text_on_photo is False
     assert chrome_on_photo.layout_intent.text_on_photo is False
+    assert stub_on_photo.layout_intent.role is LayoutIntentRole.BODY
+    assert stub_on_photo.layout_intent.text_on_photo is False
+
+
+def test_non_image_form_not_photo_zone():
+    """Only form_type=='image' forms count as photo boxes (exclusion_zone parity)."""
+    image_form = il_version_1.PdfForm(
+        box=Box(x=0, y=0, x2=200, y2=200),
+        form_type="image",
+        graphic_state=None,
+        pdf_matrix=None,
+        pdf_affine_transform=None,
+        pdf_form_subtype=None,
+    )
+    other_form = il_version_1.PdfForm(
+        box=Box(x=300, y=300, x2=500, y2=500),
+        form_type="form",
+        graphic_state=None,
+        pdf_matrix=None,
+        pdf_affine_transform=None,
+        pdf_form_subtype=None,
+    )
+    on_image = _para(
+        Box(x=0, y=0, x2=200, y2=200),
+        label="text",
+        lines=[_line(0, 200, 0, 200)],
+    )
+    on_other = _para(
+        Box(x=300, y=300, x2=500, y2=500),
+        label="text",
+        lines=[_line(300, 500, 300, 500)],
+    )
+    _extract(
+        _page([on_image, on_other], forms=[image_form, other_form])
+    )
+    assert on_image.layout_intent.text_on_photo is True
+    assert on_other.layout_intent.text_on_photo is False
 
 
 # ------------------------------------------------------- robustness / dump
@@ -404,3 +471,18 @@ def test_fingerprint_ignores_layout_intent():
     layout_intent_extractor.LayoutIntentExtractor(_config()).extract(doc)
     after = il_layout_fingerprint(doc)
     assert before == after
+
+
+def test_extract_does_not_mutate_paragraph_geometry():
+    """Direct behavior-invariance: extract is read-only on box/composition."""
+    line = _line(10, 200, 10, 40)
+    para = _para(Box(x=10, y=10, x2=200, y2=40), lines=[line])
+    box_before = (para.box.x, para.box.y, para.box.x2, para.box.y2)
+    line_before = (line.box.x, line.box.y, line.box.x2, line.box.y2)
+    ch = line.pdf_character[0]
+    ch_before = (ch.box.x, ch.box.y, ch.box.x2, ch.box.y2)
+    _extract(_page([para]))
+    assert (para.box.x, para.box.y, para.box.x2, para.box.y2) == box_before
+    assert (line.box.x, line.box.y, line.box.x2, line.box.y2) == line_before
+    assert (ch.box.x, ch.box.y, ch.box.x2, ch.box.y2) == ch_before
+    assert para.layout_intent is not None
