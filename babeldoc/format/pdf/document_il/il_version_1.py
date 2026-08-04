@@ -1,5 +1,18 @@
 from dataclasses import dataclass
 from dataclasses import field
+from typing import TYPE_CHECKING
+
+# Runtime import (not just TYPE_CHECKING): xsdata's XmlSerializer builds
+# binding metadata via get_type_hints() on every serialized class, so the
+# string annotation "LayoutIntent | None" on PdfParagraph must resolve in
+# this module's globals. Cycle-free: layout_intent.py imports nothing from
+# this module at runtime (its Box import is TYPE_CHECKING-only).
+from babeldoc.format.pdf.document_il.utils.layout_intent import (
+    LayoutIntent,  # noqa: F401
+)
+
+if TYPE_CHECKING:
+    from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 
 
 @dataclass(slots=True)
@@ -1269,6 +1282,13 @@ class PdfParagraph:
     # Captured from original geometry before translation; not serialized to XML.
     alignment: str | None = field(default=None)
     reference_metrics: ReferenceMetrics | None = field(default=None)
+    # Runtime-only layout intent (Layout-First): populated by LayoutIntentExtractor
+    # after StylesAndFormulas, read by Typesetting/PostLayout. Never serialized.
+    # metadata type="Ignore" makes xsdata skip the field even when set; a bare
+    # metadata-less field is serialized as an element once it is non-None.
+    layout_intent: "LayoutIntent | None" = field(
+        default=None, metadata={"type": "Ignore"}
+    )
 
 
 @dataclass(slots=True)
