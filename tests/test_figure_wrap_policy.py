@@ -144,6 +144,142 @@ class TestPreExpandSkipsFigureWrap:
         out = ts._pre_expand_narrow_box(box, para, page, [object()], apply_layout=True)
         assert out is box  # content_w unknown for [object()]; must not crash
 
+    def test_wrap_column_intent_skips_without_taper_metrics(self):
+        """P2: WRAP_COLUMN / wrap_shape disables pre-expand even if no taper rm."""
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+
+        ts = Typesetting.__new__(Typesetting)
+        box = il_version_1.Box(x=375.9, y=234.9, x2=569.5, y2=284.9)
+        para = TestFigureWrapParagraph._para(widths=[467, 467, 258])
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.WRAP_COLUMN,
+            design_box=il_version_1.Box(x=375.9, y=234.9, x2=569.5, y2=284.9),
+            top_inset=0.0,
+            bottom_inset=0.0,
+            wrap_shape=[(0.0, 193.6), (19.6, 174.0)],
+        )
+        page = il_version_1.Page(page_number=0)
+        out = ts._pre_expand_narrow_box(box, para, page, [object()], apply_layout=True)
+        assert out is box
+
+
+class TestTypesetWrapLine:
+    """Layout-First P2: right pin + left-edge step (not mirror taper)."""
+
+    DESIGN = None  # filled in tests via Box
+
+    def test_wrap_line_pins_right_edge(self):
+        design = il_version_1.Box(x=375.9, y=234.9, x2=569.5, y2=284.9)
+        # OA p19-style: left steps in, right stays pinned near page margin.
+        shape = [(4.0, 194.0), (20.0, 174.0), (50.0, 143.0), (126.0, 67.0)]
+        for i in range(len(shape)):
+            _left, right = Typesetting._typeset_wrap_line(design, shape, i)
+            assert right == 569.5
+
+    def test_wrap_line_left_steps_not_mirror(self):
+        design = il_version_1.Box(x=375.9, y=234.9, x2=569.5, y2=284.9)
+        shape = [(4.0, 194.0), (20.0, 174.0), (50.0, 143.0), (126.0, 67.0)]
+        lefts = []
+        for i, (_off, width) in enumerate(shape):
+            left, right = Typesetting._typeset_wrap_line(design, shape, i)
+            assert left == right - width
+            lefts.append(left)
+        # Left edge steps right as width shrinks — not fixed-left mirror taper.
+        assert lefts[0] < lefts[1] < lefts[2] < lefts[3]
+        # Mirror would keep left at design.x and shrink right; we never do that.
+        rights = [
+            Typesetting._typeset_wrap_line(design, shape, i)[1]
+            for i in range(len(shape))
+        ]
+        assert len(set(rights)) == 1
+
+    def test_wrap_line_extra_idx_reuses_last_width(self):
+        design = il_version_1.Box(x=100.0, y=0.0, x2=300.0, y2=50.0)
+        shape = [(0.0, 200.0), (40.0, 160.0)]
+        left, right = Typesetting._typeset_wrap_line(design, shape, 5)
+        assert right == 300.0
+        assert left == 300.0 - 160.0
+
+    def test_replace_matrix_no_wrap_shape_unchanged(self):
+        """Without wrap_shape, resolve falls through to zone + reference cap."""
+        ts = Typesetting.__new__(Typesetting)
+        ts._current_zone_index = None
+        box = il_version_1.Box(x=100.0, y=0.0, x2=400.0, y2=50.0)
+        para = il_version_1.PdfParagraph()  # no layout_intent
+        intervals = ts._resolve_line_intervals(
+            10.0,
+            20.0,
+            box,
+            paragraph=para,
+            line_idx=0,
+            reference_widths=[150.0, 150.0],
+            alignment="left",
+        )
+        # Cap from available start: width 150 from box.x → (100, 250)
+        assert intervals == [(100.0, 250.0)]
+
+    def test_replace_matrix_wrap_shape_overrides_reference_cap(self):
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+
+        ts = Typesetting.__new__(Typesetting)
+        ts._current_zone_index = None
+        design = il_version_1.Box(x=375.9, y=234.9, x2=569.5, y2=284.9)
+        para = il_version_1.PdfParagraph()
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.WRAP_COLUMN,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+            wrap_shape=[(4.0, 194.0), (20.0, 174.0)],
+        )
+        # Even with a large box and large reference widths, wrap path wins.
+        box = il_version_1.Box(x=0.0, y=0.0, x2=600.0, y2=300.0)
+        intervals = ts._resolve_line_intervals(
+            250.0,
+            270.0,
+            box,
+            paragraph=para,
+            line_idx=1,
+            reference_widths=[500.0, 500.0],
+            alignment="left",
+        )
+        assert len(intervals) == 1
+        left, right = intervals[0]
+        assert right == 569.5
+        assert left == 569.5 - 174.0
+
+    def test_flag_off_ignores_wrap_shape(self):
+        from types import SimpleNamespace
+
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+
+        ts = Typesetting.__new__(Typesetting)
+        ts.translation_config = SimpleNamespace(enable_layout_intent_wrap=False)
+        ts._current_zone_index = None
+        design = il_version_1.Box(x=375.9, y=234.9, x2=569.5, y2=284.9)
+        para = il_version_1.PdfParagraph()
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.WRAP_COLUMN,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+            wrap_shape=[(4.0, 194.0)],
+        )
+        box = il_version_1.Box(x=100.0, y=0.0, x2=400.0, y2=50.0)
+        intervals = ts._resolve_line_intervals(
+            10.0,
+            20.0,
+            box,
+            paragraph=para,
+            line_idx=0,
+            reference_widths=[150.0],
+            alignment="left",
+        )
+        assert intervals == [(100.0, 250.0)]
+
 
 class TestLayoutDebugStubPatterns:
     def test_add_debug_information_labels(self):

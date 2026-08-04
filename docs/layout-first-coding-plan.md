@@ -2,8 +2,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| 状态 | Draft v1（架构师设计；待主线程拍板 §4 决策点后开工） |
-| 基线 | `5cf4962` / 0.6.4.50 |
+| 状态 | P0 ✅ · P1 ✅ · **P2 in progress (0.6.4.53)** |
+| 基线 | `2fe458f` / 0.6.4.52（P1 close）→ P2 `0.6.4.53` |
 | 上游 | [`layout-first-plan.md`](layout-first-plan.md) v2.1 + [`layout-first-plan-review.md`](layout-first-plan-review.md) |
 | 硬约束 | **P0 只加字段+提取，禁止改 typesetting/box_expand/vertical_gap 行为路径**；P1–P5 接口本次定死，防止 P0 画死角 |
 
@@ -197,27 +197,22 @@ tests/repro/
   - OA 抽样：`docs/p1_acceptance_oa.md` — dual_layout **7/7 pass**（0.6.4.50 同页 2/7 pass）
   - 命令：`python -m babeldoc.tools.p1_ink_gap_accept --pdf <dual.pdf> --pages 3,7,12,19,33,40,73`
 
-### 3.2 wrap_shape 消费（P2）
+### 3.2 wrap_shape 消费（P2）— ✅ 0.6.4.53
 
-- `_cap_available_with_reference`（typesetting.py:3250）替换点签名：
+- 入口：`Typesetting._typeset_wrap_line(design_box, wrap_shape, line_idx) -> (left, right)`
+  - 右缘钉 `design_box.x2`；左缘 = 右缘 − width（左缘步进，**不镜像**）
+  - 超长行复用 shape 末行 width
+- 统一替换矩阵经 `_resolve_line_intervals`：
 
-```python
-def _typeset_wrap_line(
-    design_box: Box, wrap_shape: list[tuple[float, float]], line_idx: int,
-) -> tuple[float, float]:
-    """右缘钉 design_box.x2，左缘 = design_box.x2 − width（左缘步进，不镜像）。"""
-```
-
-- 替换矩阵（先写死再改码，评审阻断 8）：
-
-| 函数（行号） | 有 wrap_shape（wrap_column） | 无 wrap_shape |
+| 函数 | 有 wrap_shape（且 `enable_layout_intent_wrap`） | 无 wrap_shape |
 |---|---|---|
-| `_uniform_cjk_reference_widths`（typesetting.py:2935） | 忽略或仅作 min 钳 | 现状 |
-| `_query_line_intervals`（:2973） | 意图优先于 zone？（P2 设计笔记定） | 现状多区间 |
-| `_cap_available_with_reference`（:3250） | **不走**；改 `_typeset_wrap_line` | 现状 |
-| `try_pre_expand_for_content`（box_expand.py:212） | WRAP_COLUMN **禁用** | policy 驱动 |
+| `_uniform_cjk_reference_widths` | **不调用**（wrap 路径拥有行形） | 现状 |
+| `_query_line_intervals` | **跳过**；意图单区间优先于 zone | 现状多区间 |
+| `_cap_available_with_reference` | **不走**；改 `_typeset_wrap_line` | 现状 |
+| `_pre_expand_narrow_box` | wrap_shape / WRAP_COLUMN **禁用**（保留 taper 安全网） | 现状 |
 
-- 验收：`tests/test_figure_wrap_policy.py` 增 `test_wrap_line_pins_right_edge`、`test_wrap_line_left_steps_not_mirror`、`test_replace_matrix_no_wrap_shape_unchanged`。
+- 开关：`TranslationConfig.enable_layout_intent_wrap: bool = True`（P2 默认开）
+- 验收：`tests/test_figure_wrap_policy.py` — `test_wrap_line_pins_right_edge`、`test_wrap_line_left_steps_not_mirror`、`test_replace_matrix_no_wrap_shape_unchanged`、wrap 覆盖 reference cap、flag off 回退
 
 ### 3.3 双盒写回（P0 定死）
 
@@ -229,7 +224,7 @@ def _typeset_wrap_line(
 
 ### 3.5 特征开关
 
-- `TranslationConfig.enable_layout_intent_wrap: bool = False`：P0/P1 默认关（提取常开，消费不生效）；P2 合入时切默认 True。
+- `TranslationConfig.enable_layout_intent_wrap: bool = True`：P2 合入后默认开；`False` 回退 reference-width cap。
 - `TranslationConfig.enable_legacy_quote_geometry: bool = False`：P2 完成后默认关（旧 quote 几何路径回退用，防双轨并存）；命名仿 `enable_post_layout_optimization` 模式。
 
 ---

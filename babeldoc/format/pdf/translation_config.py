@@ -229,6 +229,9 @@ class TranslationConfig:
         # PR-D: ultra-narrow side callout product policy
         # keep_en | expand | translate_body_column (default expand for OA dual)
         narrow_callout_mode: str = "expand",
+        # Layout-First P2: consume layout_intent.wrap_shape (right pin, left step).
+        # Default True once P2 lands; set False to fall back to reference-width cap.
+        enable_layout_intent_wrap: bool = True,
     ):
         self.translator = translator
         self.term_extraction_translator = term_extraction_translator or translator
@@ -402,6 +405,7 @@ class TranslationConfig:
             0.0,
         )
         self.enable_post_layout_optimization = enable_post_layout_optimization
+        self.enable_layout_intent_wrap = enable_layout_intent_wrap
         self.quote_narrow_threshold = max(
             min(float(quote_narrow_threshold if quote_narrow_threshold is not None else 0.8), 1.0),
             0.1,
