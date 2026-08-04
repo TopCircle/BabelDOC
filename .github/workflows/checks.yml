@@ -59,3 +59,35 @@ jobs:
             --files examples/ci/test.pdf \
             --only-parse-generate-pdf \
             --skip-scanned-detection
+
+  # Optional layout regression gate (Layout-First P0, design doc §2):
+  # workflow_dispatch or a PR carrying the `layout` label only. Reuses the
+  # same assets cache as `checks`; runs the synthetic-page digest against the
+  # committed golden and fails on Δ≠0. Not part of the default CI path.
+  layout-repro:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'layout') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Cache BabelDOC assets
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/babeldoc
+          key: babeldoc-assets-${{ hashFiles('babeldoc/assets/embedding_assets_metadata.py') }}
+
+      - name: Setup uv with Python 3.12
+        uses: astral-sh/setup-uv@85856786d1ce8acfbcc2f13a5f3fbd6b938f9f41 # v7.1.2
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+          activate-environment: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Layout repro digest (synthetic page, Δ=0)
+        run: uv run python tests/repro/digest.py --golden tests/repro/golden/synth_layout.json
