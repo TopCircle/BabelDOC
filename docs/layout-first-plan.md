@@ -168,7 +168,8 @@ Parse → ParagraphFinder → compute_reference_metrics → StylesAndFormulas
 | 阶段 | 内容 | 验收（OA 页） | 回归闸 |
 |------|------|--------------|--------|
 | **P0** | LayoutIntent 骨架（**新文件 `utils/layout_intent*.py`**；role/design_box/chrome/text_on_photo/gap_contract/top_inset 提取 + dump + 审计空壳；**挂点 = StylesAndFormulas 之后**）；行为不变 | 全页位置 Δ=0（对照入库 golden） | 全量 pytest + repro digest Δ=0 + 指纹不变 |
-| **P1** | gap_contract(ink/top_inset) 进排版；`enforce_title_body_gaps` 改为 **审计+受限修复**（非纯审计）：单跳、dy≤24pt、级联长度≤1、不碰 chrome/display-title/subtitle_overlay；`test_vertical_gap` 迁移（旧行为保留 `_legacy` 供 P3 前 Δ 对比）；**过渡态标注**：终态零互移，P1 允许单跳 dy≤24（分页写明） | **\|zh_ink_gap − en_ink_gap\| ≤ ε（相对 EN ink 间距）**，不写死绝对值 | test_vertical_gap 新语义 + LayoutAuditReport 违例计数 |
+| **P1** | gap_contract(ink/top_inset) 进排版；`enforce_title_body_gaps` 改为 **审计+受限修复**（非纯审计）：单跳、dy≤24pt、级联长度≤1、不碰 chrome/display-title/subtitle_overlay；`test_vertical_gap` 迁移（旧行为保留 `_legacy` 供 P3 前 Δ 对比）；**过渡态标注**：终态零互移，P1 允许单跳 dy≤24（分页写明） | **\|zh_ink_gap − en_ink_gap\| 相对 EN**：`deficit = max(0, en−ε−zh) ≤ 0`（zh 不紧于 EN）；抽样页见 `docs/p1_acceptance_oa.md` | test_vertical_gap + `python -m babeldoc.tools.p1_ink_gap_accept` |
+| **P1 状态（0.6.4.52）** | **实现 Done**（main）；**验收 Done（抽样 7 页 pass）** — dual_layout vs dual_0.6.4.50：5 页 fail→0 fail | 工具：`p1_ink_gap_accept`；JSON：`docs/p1_ink_gap_accept_oa_dual_layout.json` | 可进 **P2** |
 | **P2** | wrap_shape `(left_offset, width)` 消费端改造；`_uniform_cjk_reference_widths` / `_query_line_intervals` / `_cap_available_with_reference` 一并入范围；`paragraph.box` 冻结（design_box 只读，扩轴仅经 expansion_policy 写布局结果） | p19 绕图段左缘步进序列与 EN 一致（±2pt），右缘钉设计右缘 | test_figure_wrap_policy + 行缘坐标断言 |
 | **P2**（前置：消费端替换矩阵） | wrap_shape `(left_offset, width)` 消费端改造；先写死替换矩阵再改码 | 见矩阵 | — |
 | **P3** | 首遍无碰撞；`fix_overlapping` 局部化；retypeset/PostLayoutProcessor 消费 intent；**多页（≥2 页）与 dual smoke 纳入验收** | p19 页脚/页码永不动 + 第 7/8 页抽样 | test_vertical_gap + dual smoke |

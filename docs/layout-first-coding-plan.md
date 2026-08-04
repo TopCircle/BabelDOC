@@ -181,17 +181,21 @@ tests/repro/
 
 ## 3. P1–P5 接口预留
 
-### 3.1 gap_contract 消费（P1）— **已落地（0.6.4.52）**
+### 3.1 gap_contract 消费（P1）— **实现 + 抽样验收 Done（0.6.4.52）**
 
 - **新文件**（主体逻辑不进 typesetting）：
   - `utils/layout_audit.py` — `LayoutAuditReport`（**actions=预留** / **violations=修复** / shifts / cascade_len）
   - `utils/gap_contract_pass.py` — first-pass：只改下一正文 `paragraph.box`；**仅 dy&lt;0 下移**；**|dy|≤24 与 post 一致**；`is_display_title` 不可当 body
   - `utils/layout_gap_hooks.py` — `pre_typeset_gap_pass` / `post_typeset_gap_pass`（typesetting 两行钩子）
+  - `tools/p1_ink_gap_accept.py` — dual 左右半 title→body ink gap 验收（`deficit≤0`）
 - **共享**：`layout_box` / `boxes_x_overlap` / `find_content_below` / `is_gap_protected`（含 display title）/ `resolve_en_gap_contract` / `gap_deficit`
 - **钩子**：`render_page` → pre → glyphs → `fix_overlapping` → post
 - **`enforce_title_body_gaps`**：单跳 `|dy|≤24`、cascade≤1；目标=`gap_deficit`（相对 EN）
 - **`enforce_title_body_gaps_legacy`**：旧级联保留
-- 验收：first-pass 不下移 follower / 不上移、clamp 24、stack-bottom gap 解析、audit shape、gap_deficit
+- **验收**：
+  - 单测：`test_vertical_gap` + `test_p1_ink_gap_accept`
+  - OA 抽样：`docs/p1_acceptance_oa.md` — dual_layout **7/7 pass**（0.6.4.50 同页 2/7 pass）
+  - 命令：`python -m babeldoc.tools.p1_ink_gap_accept --pdf <dual.pdf> --pages 3,7,12,19,33,40,73`
 
 ### 3.2 wrap_shape 消费（P2）
 
