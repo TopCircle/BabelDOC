@@ -113,42 +113,59 @@ def test_get_char_unicode_string_rejoins_cross_run_ligature_gap():
     assert "ﬀ" not in text
 
 
-def test_orphan_ligature_stem_fferent_becomes_different():
+def test_orphan_tail_derived_from_known_words():
     from babeldoc.format.pdf.document_il.utils.text_recovery import (
-        repair_orphan_ligature_stems,
+        _ORPHAN_TAIL_TO_WORD,
+        repair_orphan_split_tails,
     )
 
-    assert repair_orphan_ligature_stems("ﬀerent every night") == (
-        "different every night"
-    )
-    assert repair_orphan_ligature_stems("fferent every night") == (
-        "different every night"
-    )
-    # Must not rewrite real short words / ambiguous short tails
-    assert repair_orphan_ligature_stems("low effort") == "low effort"
-    assert repair_orphan_ligature_stems("the ffer is bad") == "the ffer is bad"
+    # Derived from _KNOWN_SPLIT_WORDS − short prefixes (not a second whitelist)
+    assert _ORPHAN_TAIL_TO_WORD.get("fferent") == "different"
+    assert _ORPHAN_TAIL_TO_WORD.get("fficult") == "difficult"
+    assert repair_orphan_split_tails("ﬀerent every night") == "different every night"
+    assert repair_orphan_split_tails("fferent every night") == "different every night"
+    # Exceptionally − e → xceptionally (OCR missing first letter, still derived)
+    assert repair_orphan_split_tails("xceptionally rare") == "exceptionally rare"
+    # Must not rewrite real short / ambiguous tails
+    assert repair_orphan_split_tails("low effort") == "low effort"
+    assert repair_orphan_split_tails("the ffer is bad") == "the ffer is bad"
 
 
-def test_mid_word_cap_tokens_for_oa_slogans():
+def test_ligature_space_only_joins_known_words():
     from babeldoc.format.pdf.document_il.utils.text_recovery import (
-        normalize_mid_word_cap_tokens,
+        rejoin_ligature_space_splits,
     )
 
-    assert normalize_mid_word_cap_tokens("trIgaSMIc Sex IS the anSWer") == (
-        "trigasmic Sex IS the answer"
-    )
-    assert normalize_mid_word_cap_tokens("ALL IN acrobatIc") == "ALL IN acrobatic"
-    # Ordinary Title Case preserved
-    assert normalize_mid_word_cap_tokens("Women like different things") == (
-        "Women like different things"
+    assert rejoin_ligature_space_splits("di fferent") == "different"
+    # Full word left of space must not glue
+    assert rejoin_ligature_space_splits("like fferent") == "like fferent"
+    # Orphan pass still repairs after known-split path in recover
+    assert recover_latin_word_fragments("like ﬀerent things") == (
+        "like different things"
     )
 
 
-def test_full_recover_oa_mixed_case_and_orphan():
+def test_decorative_mid_caps_predicate_and_title_path():
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        has_decorative_mid_caps,
+        normalize_decorative_title_case,
+    )
+
+    assert has_decorative_mid_caps("anSWer")
+    assert has_decorative_mid_caps("Who haS orgaSMS")
+    assert not has_decorative_mid_caps("Women")
+    assert not has_decorative_mid_caps("THIS")
+    assert normalize_decorative_title_case("Who haS orgaSMS?") == "who has orgasms?"
+    # Body recover must NOT smash brands (geometry-gated title path only)
+    assert "iPhone" in recover_latin_word_fragments("The iPhone works today.")
+
+
+def test_full_recover_orphan_without_body_mid_cap():
     out = recover_latin_word_fragments(
-        "trIgaSMIc Sex IS the anSWer. Women like ﬀerent things."
+        "Women like ﬀerent things and di fficult tasks."
     )
-    assert "trigasmic" in out
-    assert "answer" in out
     assert "different" in out
+    assert "difficult" in out
     assert "ﬀ" not in out
+    # Mid-cap body slogans stay for decorative call sites, not recover
+    assert "anSWer" in recover_latin_word_fragments("this is the anSWer")
