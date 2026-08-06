@@ -529,22 +529,33 @@ end
 end"""
 
 
-def make_tounicode(cmap, used):
-    # Ensure space (glyph 1 on most CJK OTFs) maps to U+0020 even if the
-    # original ToUnicode stream omitted or corrupted it.
-    if isinstance(cmap, dict) and 1 not in cmap:
+def make_tounicode(cmap, used=None):
+    """Build a ToUnicode CMap stream from *cmap* (gid → unicode).
+
+    Always NFKC-normalizes export codes (no U+F9xx). Emits **all** cmap
+    entries — do **not** intersect with a freetype ``used`` glyph scan.
+
+    Historical ``used`` filtering dropped valid CID→unicode rows after subset
+    (glyph index vs CID mismatch), so extractors fell back to raw CIDs and
+    Chinese text became mojibake (``书`` → ``⊞``) while only F9xx looked
+    “fixed”. *used* is kept as an optional arg for call-site compatibility
+    (space-glyph force still consults it when provided).
+    """
+    if not isinstance(cmap, dict):
+        cmap = dict(cmap or {})
+    else:
         cmap = dict(cmap)
+
+    # Ensure space (glyph 1 on most CJK OTFs) maps to U+0020.
+    if 1 not in cmap:
         cmap[1] = 0x0020
-    short = []
-    for x in used:
-        if x in cmap:
-            # Re-normalize on emit so callers that built cmap without
-            # apply_normalization still cannot export F9xx.
-            short.append((x, normalize_export_unicode(cmap[x])))
-    # If glyph 1 is used but still missing (empty used filter), force it
-    used_set = set(used)
-    if 1 in used_set and not any(g == 1 for g, _ in short):
-        short.append((1, cmap.get(1, 0x0020)))
+    elif used is not None and 1 in set(used) and 1 not in cmap:
+        cmap[1] = 0x0020
+
+    short = [
+        (gid, normalize_export_unicode(code))
+        for gid, code in sorted(cmap.items())
+    ]
     line = [TOUNICODE_HEAD]
     for block in batched(short, 100):
         line.append(f"{len(block)} beginbfchar")

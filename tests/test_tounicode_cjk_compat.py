@@ -113,12 +113,37 @@ def _left_compat_count(doc: pymupdf.Document, page_index: int = 2) -> tuple[int,
     return f9, bu
 
 
+def _p3_left_has_chars(doc: pymupdf.Document, needles: list[str]) -> dict[str, bool]:
+    page = doc[2]
+    mid = page.rect.width / 2
+    chars: list[str] = []
+    for b in page.get_text("rawdict").get("blocks", []):
+        if b.get("type") != 0:
+            continue
+        for line in b.get("lines", []):
+            for s in line.get("spans", []):
+                if s["bbox"][0] >= mid:
+                    continue
+                for ch in s.get("chars") or []:
+                    c = ch.get("c") or ""
+                    if c:
+                        chars.append(c)
+    text = "".join(chars)
+    return {n: n in text for n in needles}
+
+
 @pytest.mark.skipif(not OA_DUAL.is_file(), reason="OA dual PDF not present")
 class TestReproduceCmapFixesOaCompat:
-    def test_reproduce_cmap_reduces_left_f9xx(self, tmp_path):
+    def test_reproduce_cmap_reduces_left_f9xx_preserves_hanzi(self, tmp_path):
+        """F9xx→unified without mojibake (书 must survive)."""
         doc = pymupdf.open(OA_DUAL)
         before_f9, before_bu = _left_compat_count(doc)
-        assert before_f9 > 0, "fixture dual should still show F9xx before fix"
+        before_chars = _p3_left_has_chars(doc, ["书", "义", "意义"])
+        # 0.6.4.57 fixture has F9xx; if already clean, still assert integrity
+        if before_f9 == 0 and before_chars.get("书"):
+            doc.close()
+            pytest.skip("fixture already clean")
+        assert before_chars.get("书"), "fixture p3 should contain 书 before cmap rewrite"
 
         reproduce_cmap(doc)
         out = tmp_path / "oa_cmap_fixed.pdf"
@@ -127,10 +152,11 @@ class TestReproduceCmapFixesOaCompat:
 
         fixed = pymupdf.open(out)
         after_f9, after_bu = _left_compat_count(fixed)
+        after_chars = _p3_left_has_chars(fixed, ["书", "义", "意义", "不"])
         fixed.close()
 
-        assert after_f9 < before_f9, (
-            f"F9xx not reduced: before={before_f9} after={after_f9}"
+        assert after_f9 == 0, f"F9xx remaining: {after_f9}"
+        assert after_bu > 0, "unified 不 should appear"
+        assert after_chars.get("书") and after_chars.get("义"), (
+            f"hanzi corrupted after cmap rewrite: {after_chars}"
         )
-        # Prefer unified 不 appearing after fix
-        assert after_bu > before_bu or after_f9 == 0
