@@ -48,3 +48,30 @@ class TestNormalizeTranslatedText:
         assert sanitize_mt_output("{1cH00FFFFi1}x") == normalize_translated_text(
             "{1cH00FFFFi1}x"
         )
+
+    def test_cjk_compatibility_ideographs_nfkc(self):
+        """OA dual P0-1: U+F9xx must not survive into typeset text layer."""
+        # 不刺更力什行量里 → 不刺更力什行量里
+        dirty = "你就再也不会有借口，刺激与更多努力，为什么要行动，量与里"
+        out = normalize_translated_text(dirty)
+        assert out is not None
+        assert not any(0xF900 <= ord(c) <= 0xFAFF for c in out)
+        assert "不" in out and "刺" in out and "更" in out
+        assert "力" in out and "什" in out and "行" in out
+        assert "量" in out and "里" in out
+        # Fullwidth CJK comma must survive (full-string NFKC would fold it)
+        assert "，" in out
+        # Idempotent
+        assert normalize_translated_text(out) == out
+
+    def test_nfkc_preserves_normal_cjk_and_ascii(self):
+        s = "通过美妙的性爱，让你活得更精彩。"
+        assert normalize_translated_text(s) == s
+
+    def test_nfkc_compat_helper_only_touches_f9xx(self):
+        from babeldoc.format.pdf.document_il.utils.mt_token_sanitize import (
+            nfkc_compatibility_codepoints,
+        )
+
+        assert nfkc_compatibility_codepoints("，：。") == "，：。"
+        assert nfkc_compatibility_codepoints("不") == "不"
