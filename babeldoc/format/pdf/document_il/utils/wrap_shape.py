@@ -168,3 +168,53 @@ def should_skip_pre_expand_for_wrap(
     if wrap_enabled and get_active_wrap(paragraph, enabled=True) is not None:
         return True
     return is_figure_wrap_paragraph(paragraph)
+
+
+def wrap_line_budget(wrap_shape: list[tuple[float, float]] | None) -> int:
+    """Max layout lines allowed under pin geometry before block fallback.
+
+    EN wrap columns are short (3–6 lines). Long CJK reflow under the same
+    taper (OA p82) produces dozens of needle lines that crowd the page and
+    no longer mirror EN. Cap = shape length + slack, with a floor.
+    """
+    if not wrap_shape:
+        return 10
+    return max(len(wrap_shape) + 4, 10)
+
+
+def count_typeset_baselines(typeset_units) -> int:
+    """Distinct y baselines in a typeset unit list (approx line count)."""
+    if not typeset_units:
+        return 0
+    ys: set[float] = set()
+    for u in typeset_units:
+        y = getattr(u, "y", None)
+        if y is None:
+            y = getattr(u, "box", None)
+            if y is not None:
+                y = getattr(y, "y", None)
+        if y is not None:
+            ys.add(round(float(y), 1))
+    return len(ys)
+
+
+def should_fallback_wrap_to_block(
+    *,
+    wrap_shape: list[tuple[float, float]] | None,
+    typeset_units,
+    all_units_fit: bool,
+) -> bool:
+    """True when CJK should abandon pin wrap and use full design width.
+
+    Triggers when pin layout never fits, or fits only by overflowing into
+    far more lines than the EN wrap shape implies.
+    """
+    if not wrap_shape:
+        return False
+    budget = wrap_line_budget(wrap_shape)
+    n_lines = count_typeset_baselines(typeset_units)
+    if not all_units_fit and (typeset_units is None or n_lines >= budget):
+        return True
+    if n_lines > budget:
+        return True
+    return False
