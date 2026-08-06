@@ -20,6 +20,7 @@ import re
 import unicodedata
 
 from babeldoc.format.pdf.document_il.utils.layout_helper import strip_ascii_controls
+from babeldoc.format.pdf.document_il.utils.text_recovery import expand_latin_ligatures
 
 # Style/color debris inside braces (H is not hex). Skip short {v1}/{v12}.
 _HEX_BRACE_TOKEN_RE = re.compile(
@@ -56,26 +57,28 @@ def _scrub_mt_debris(text: str) -> str:
     return out
 
 
-def nfkc_compatibility_codepoints(text: str) -> str:
-    """NFKC only CJK Compatibility Ideographs / Latin presentation forms.
+def _nfkc_cjk_compatibility(text: str) -> str:
+    """NFKC only CJK Compatibility Ideographs (U+F900–U+FAFF).
 
     Full-string ``unicodedata.normalize('NFKC', text)`` also folds fullwidth
-    CJK punctuation (``，``→``,``、``：``→``:``), which breaks Chinese
-    typesetting. Restrict NFKC to:
+    CJK punctuation (``，``→``,``), which breaks Chinese typesetting.
 
-    * U+F900–U+FAFF — CJK Compatibility Ideographs (OA dual P0-1)
-    * U+FB00–U+FB06 — Latin ligatures ﬁ/ﬂ/ﬀ/… if any survive into MT out
+    Latin presentation ligatures (U+FB00–U+FB06) use the canonical
+    :func:`expand_latin_ligatures` instead of a second NFKC path.
     """
     if not text:
         return text
     out: list[str] = []
     for ch in text:
-        o = ord(ch)
-        if 0xF900 <= o <= 0xFAFF or 0xFB00 <= o <= 0xFB06:
+        if 0xF900 <= ord(ch) <= 0xFAFF:
             out.append(unicodedata.normalize("NFKC", ch))
         else:
             out.append(ch)
     return "".join(out)
+
+
+# Public alias kept for tests / call sites that imported the old name.
+nfkc_compatibility_codepoints = _nfkc_cjk_compatibility
 
 
 def normalize_translated_text(text: str | None) -> str | None:
@@ -95,7 +98,8 @@ def normalize_translated_text(text: str | None) -> str | None:
     out = _scrub_mt_debris(out)
     if out and "〖B" in out:
         out = _STYLE_MARKER_RE.sub("", out)
-    out = nfkc_compatibility_codepoints(out)
+    out = expand_latin_ligatures(out)
+    out = _nfkc_cjk_compatibility(out)
     return out
 
 

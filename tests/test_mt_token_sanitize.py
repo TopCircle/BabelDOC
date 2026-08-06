@@ -70,8 +70,13 @@ class TestNormalizeTranslatedText:
 
     def test_nfkc_compat_helper_only_touches_f9xx(self):
         from babeldoc.format.pdf.document_il.utils.mt_token_sanitize import (
-            nfkc_compatibility_codepoints,
+            _nfkc_cjk_compatibility,
         )
 
-        assert nfkc_compatibility_codepoints("，：。") == "，：。"
-        assert nfkc_compatibility_codepoints("不") == "不"
+        assert _nfkc_cjk_compatibility("，：。") == "，：。"
+        assert _nfkc_cjk_compatibility("不") == "不"
+
+    def test_post_mt_expands_residual_latin_ligatures(self):
+        # Canonical expand_latin_ligatures — not a second NFKC FB path
+        assert "find" in (normalize_translated_text("请 ﬁnd 答案") or "")
+        assert "ﬁ" not in (normalize_translated_text("请 ﬁnd 答案") or "")
