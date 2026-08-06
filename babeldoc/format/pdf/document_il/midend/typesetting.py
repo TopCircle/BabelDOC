@@ -1131,7 +1131,9 @@ class Typesetting:
             or ("HK" in self.lang_code)
             or ("TW" in self.lang_code)
         )
-        self._drop_all_figures_for_paragraph = False
+        # Call-scoped wrap switch for the active _find_optimal_scale_and_layout
+        # frame (None → read enable_layout_intent_wrap from config).
+        self._wrap_enabled: bool | None = None
 
     def _quote_zone_config(self):
         """Build QuoteZoneConfig from TranslationConfig (main-path + retypeset).
@@ -1284,6 +1286,9 @@ class Typesetting:
         use_english_line_break: bool = True,
         apply_layout: bool = False,
         line_skip: float | None = None,
+        *,
+        wrap_enabled: bool | None = None,
+        drop_figure_zones: bool = False,
     ) -> tuple[float, list[TypesettingUnit] | None]:
         """查找最优缩放因子并可选择性地执行布局
 
@@ -1294,12 +1299,21 @@ class Typesetting:
             initial_scale: 初始缩放因子
             use_english_line_break: 是否使用英文换行规则
             apply_layout: 是否应用布局到 paragraph（True 时执行实际排版）
+            wrap_enabled: pin wrap on/off for this attempt; None → config default.
+                CJK wrap→block fallback re-enters with False (no instance flag).
+            drop_figure_zones: ignore figure exclusion zones for this attempt;
+                re-entered True when residual strips leave text unfittable.
 
         Returns:
             tuple[float, list[TypesettingUnit] | None]: (最终缩放因子，排版后的单元列表或 None)
         """
         if not paragraph.box:
             return initial_scale, None
+
+        if wrap_enabled is None:
+            wrap_enabled = layout_intent_wrap_enabled(
+                getattr(self, "translation_config", None)
+            )
 
         # Ignore DocLayout figure zones that spill over this paragraph's own
         # box (false positives crush body text to unreadable scale).
@@ -1308,12 +1322,13 @@ class Typesetting:
         if page_zones is not None and paragraph.box is not None:
             filtered_zones = page_zones.filter_for_paragraph(
                 paragraph.box,
-                drop_all_figures=getattr(
-                    self, "_drop_all_figures_for_paragraph", False
-                ),
+                drop_all_figures=drop_figure_zones,
             )
         prev_zones = page_zones
+        prev_wrap = getattr(self, "_wrap_enabled", None)
         self._current_zone_index = filtered_zones
+        # Call-scoped for _active_wrap / line-interval consumers in this frame.
+        self._wrap_enabled = wrap_enabled
         try:
             return self._find_optimal_scale_and_layout_inner(
                 paragraph,
@@ -1323,9 +1338,12 @@ class Typesetting:
                 use_english_line_break,
                 apply_layout,
                 line_skip,
+                wrap_enabled=wrap_enabled,
+                drop_figure_zones=drop_figure_zones,
             )
         finally:
             self._current_zone_index = prev_zones
+            self._wrap_enabled = prev_wrap
 
     def _find_optimal_scale_and_layout_inner(
         self,
@@ -1336,6 +1354,9 @@ class Typesetting:
         use_english_line_break: bool = True,
         apply_layout: bool = False,
         line_skip: float | None = None,
+        *,
+        wrap_enabled: bool = True,
+        drop_figure_zones: bool = False,
     ) -> tuple[float, list[TypesettingUnit] | None]:
         """Core scale search + layout (zone index already filtered)."""
         self._ocr_normalize_paragraph_geometry(paragraph)
@@ -1681,13 +1702,15 @@ class Typesetting:
                 use_english_line_break=False,
                 apply_layout=apply_layout,
                 line_skip=line_skip,
+                wrap_enabled=wrap_enabled,
+                drop_figure_zones=drop_figure_zones,
             )
 
-        # One more try: drop all figure exclusion zones and re-search.
+        # Drop figure exclusion zones and re-search (parameterized, no flag).
         # Needle-thin residual strips (or false figures) can still leave text
         # unfittable at MIN_READABLE_SCALE; full width is better than empty.
         if (
-            not getattr(self, "_drop_all_figures_for_paragraph", False)
+            not drop_figure_zones
             and getattr(self, "_current_zone_index", None) is not None
             and any(
                 z.kind == "figure"
@@ -1698,63 +1721,21 @@ class Typesetting:
                 "Scale floor reached with figure zones still active; "
                 "retrying without figure exclusion for this paragraph"
             )
-            self._drop_all_figures_for_paragraph = True
-            try:
-                # Re-enter outer wrapper so filter_for_paragraph runs again
-                return self._find_optimal_scale_and_layout(
-                    paragraph,
-                    page,
-                    typesetting_units,
-                    initial_scale,
-                    use_english_line_break=True,
-                    apply_layout=apply_layout,
-                    line_skip=line_skip,
-                )
-            finally:
-                self._drop_all_figures_for_paragraph = False
-
-        # CJK wrap→block fallback (layout align LA-1): pin geometry + long ZH
-        # produces needle overflow (OA p82). Prefer full design width once.
-        if (
-            self.is_cjk
-            and not getattr(self, "_disable_wrap_for_paragraph", False)
-            and paragraph is not None
-        ):
-            shape = resolve_wrap_shape(paragraph)
-            # Only when wrap would have been active (not already disabled)
-            would_wrap = get_active_wrap(
+            # Re-enter outer wrapper so filter_for_paragraph runs again
+            return self._find_optimal_scale_and_layout(
                 paragraph,
-                enabled=layout_intent_wrap_enabled(
-                    getattr(self, "translation_config", None)
-                ),
-                layout_box=box,
+                page,
+                typesetting_units,
+                initial_scale,
+                use_english_line_break=True,
+                apply_layout=apply_layout,
+                line_skip=line_skip,
+                wrap_enabled=wrap_enabled,
+                drop_figure_zones=True,
             )
-            if would_wrap is not None and should_fallback_wrap_to_block(
-                wrap_shape=shape or would_wrap[1],
-                typeset_units=last_typeset_units,
-                all_units_fit=False,
-            ):
-                logger.info(
-                    "CJK wrap→block fallback (lines overflow pin budget; "
-                    "debug_id=%s)",
-                    getattr(paragraph, "debug_id", None),
-                )
-                self._disable_wrap_for_paragraph = True
-                try:
-                    return self._find_optimal_scale_and_layout(
-                        paragraph,
-                        page,
-                        typesetting_units,
-                        initial_scale,
-                        use_english_line_break=True,
-                        apply_layout=apply_layout,
-                        line_skip=line_skip,
-                    )
-                finally:
-                    self._disable_wrap_for_paragraph = False
 
-        # Force-apply at readable floor even if text overflows the box.
-        # Never leave composition empty after apply_layout cleared it.
+        # Force-layout candidate (apply path only) — also feeds wrap fallback.
+        force_units = None
         if apply_layout and final_typeset_units is None:
             force_units = last_typeset_units
             if not force_units:
@@ -1778,53 +1759,63 @@ class Typesetting:
                     use_english_line_break=False,
                     reference_widths=force_ref,
                 )
-            # If force layout under wrap still needles, one last block retry
-            if (
-                force_units
-                and self.is_cjk
-                and not getattr(self, "_disable_wrap_for_paragraph", False)
-                and self._active_wrap(paragraph, box) is not None
+
+        # Single CJK wrap→block fallback (layout align LA-1): pin + long ZH
+        # produces needle overflow (OA p82). Re-enter with wrap_enabled=False.
+        if wrap_enabled and self.is_cjk and paragraph is not None:
+            shape = resolve_wrap_shape(paragraph)
+            would_wrap = get_active_wrap(
+                paragraph,
+                enabled=True,
+                layout_box=box,
+            )
+            decision_units = (
+                force_units if force_units is not None else last_typeset_units
+            )
+            if would_wrap is not None and should_fallback_wrap_to_block(
+                wrap_shape=shape or would_wrap[1],
+                typeset_units=decision_units,
+                all_units_fit=False,
             ):
-                shape = resolve_wrap_shape(paragraph)
-                active = self._active_wrap(paragraph, box)
-                if should_fallback_wrap_to_block(
-                    wrap_shape=shape or (active[1] if active else None),
-                    typeset_units=force_units,
-                    all_units_fit=False,
-                ):
-                    self._disable_wrap_for_paragraph = True
-                    try:
-                        return self._find_optimal_scale_and_layout(
-                            paragraph,
-                            page,
-                            typesetting_units,
-                            initial_scale,
-                            use_english_line_break=True,
-                            apply_layout=apply_layout,
-                            line_skip=line_skip,
-                        )
-                    finally:
-                        self._disable_wrap_for_paragraph = False
-            if force_units:
-                paragraph.scale = min_scale
-                paragraph.pdf_paragraph_composition = []
-                for unit in force_units:
-                    chars, curves, forms = unit.render()
-                    for char in chars:
-                        paragraph.pdf_paragraph_composition.append(
-                            PdfParagraphComposition(pdf_character=char),
-                        )
-                    for curve in curves:
-                        page.pdf_curve.append(curve)
-                    for form in forms:
-                        page.pdf_form.append(form)
-                final_typeset_units = force_units
-                logger.warning(
-                    "Applied layout at min readable scale %.2f with possible "
-                    "overflow (paragraph debug_id=%s)",
-                    min_scale,
+                logger.info(
+                    "CJK wrap→block fallback (lines overflow pin budget; "
+                    "debug_id=%s)",
                     getattr(paragraph, "debug_id", None),
                 )
+                return self._find_optimal_scale_and_layout(
+                    paragraph,
+                    page,
+                    typesetting_units,
+                    initial_scale,
+                    use_english_line_break=True,
+                    apply_layout=apply_layout,
+                    line_skip=line_skip,
+                    wrap_enabled=False,
+                    drop_figure_zones=drop_figure_zones,
+                )
+
+        # Force-apply at readable floor even if text overflows the box.
+        # Never leave composition empty after apply_layout cleared it.
+        if apply_layout and final_typeset_units is None and force_units:
+            paragraph.scale = min_scale
+            paragraph.pdf_paragraph_composition = []
+            for unit in force_units:
+                chars, curves, forms = unit.render()
+                for char in chars:
+                    paragraph.pdf_paragraph_composition.append(
+                        PdfParagraphComposition(pdf_character=char),
+                    )
+                for curve in curves:
+                    page.pdf_curve.append(curve)
+                for form in forms:
+                    page.pdf_form.append(form)
+            final_typeset_units = force_units
+            logger.warning(
+                "Applied layout at min readable scale %.2f with possible "
+                "overflow (paragraph debug_id=%s)",
+                min_scale,
+                getattr(paragraph, "debug_id", None),
+            )
 
         return min_scale, final_typeset_units
 
@@ -3086,18 +3077,20 @@ class Typesetting:
         paragraph: il_version_1.PdfParagraph | None,
         layout_box: Box | None = None,
     ):
-        """P2 pin context ``(design_box, wrap_shape)`` or None (flag + resolve).
+        """P2 pin context ``(design_box, wrap_shape)`` or None.
 
-        Honors ``_disable_wrap_for_paragraph`` (CJK wrap→block fallback when
-        pin geometry cannot hold translated text without needle overflow).
+        ``wrap_enabled`` comes from the active ``_find_optimal_scale_and_layout``
+        frame (``self._wrap_enabled``), else the translation config default.
+        Fallback retries pass ``wrap_enabled=False`` — no instance disable flag.
         """
-        if getattr(self, "_disable_wrap_for_paragraph", False):
-            return None
+        enabled = getattr(self, "_wrap_enabled", None)
+        if enabled is None:
+            enabled = layout_intent_wrap_enabled(
+                getattr(self, "translation_config", None)
+            )
         return get_active_wrap(
             paragraph,
-            enabled=layout_intent_wrap_enabled(
-                getattr(self, "translation_config", None)
-            ),
+            enabled=enabled,
             layout_box=layout_box,
         )
 
