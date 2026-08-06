@@ -111,3 +111,61 @@ def test_get_char_unicode_string_rejoins_cross_run_ligature_gap():
     text = get_char_unicode_string(chars)
     assert "different" in text.replace(" ", "") or "different" in text
     assert "ﬀ" not in text
+
+
+def test_orphan_tail_derived_from_known_words():
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        _ORPHAN_TAIL_TO_WORD,
+        repair_orphan_split_tails,
+    )
+
+    # Derived from _KNOWN_SPLIT_WORDS − short prefixes (not a second whitelist)
+    assert _ORPHAN_TAIL_TO_WORD.get("fferent") == "different"
+    assert _ORPHAN_TAIL_TO_WORD.get("fficult") == "difficult"
+    assert repair_orphan_split_tails("ﬀerent every night") == "different every night"
+    assert repair_orphan_split_tails("fferent every night") == "different every night"
+    # Exceptionally − e → xceptionally (OCR missing first letter, still derived)
+    assert repair_orphan_split_tails("xceptionally rare") == "exceptionally rare"
+    # Must not rewrite real short / ambiguous tails
+    assert repair_orphan_split_tails("low effort") == "low effort"
+    assert repair_orphan_split_tails("the ffer is bad") == "the ffer is bad"
+
+
+def test_ligature_space_only_joins_known_words():
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        rejoin_ligature_space_splits,
+    )
+
+    assert rejoin_ligature_space_splits("di fferent") == "different"
+    # Full word left of space must not glue
+    assert rejoin_ligature_space_splits("like fferent") == "like fferent"
+    # Orphan pass still repairs after known-split path in recover
+    assert recover_latin_word_fragments("like ﬀerent things") == (
+        "like different things"
+    )
+
+
+def test_decorative_mid_caps_predicate_and_title_path():
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        has_decorative_mid_caps,
+        normalize_decorative_title_case,
+    )
+
+    assert has_decorative_mid_caps("anSWer")
+    assert has_decorative_mid_caps("Who haS orgaSMS")
+    assert not has_decorative_mid_caps("Women")
+    assert not has_decorative_mid_caps("THIS")
+    assert normalize_decorative_title_case("Who haS orgaSMS?") == "who has orgasms?"
+    # Body recover must NOT smash brands (geometry-gated title path only)
+    assert "iPhone" in recover_latin_word_fragments("The iPhone works today.")
+
+
+def test_full_recover_orphan_without_body_mid_cap():
+    out = recover_latin_word_fragments(
+        "Women like ﬀerent things and di fficult tasks."
+    )
+    assert "different" in out
+    assert "difficult" in out
+    assert "ﬀ" not in out
+    # Mid-cap body slogans stay for decorative call sites, not recover
+    assert "anSWer" in recover_latin_word_fragments("this is the anSWer")

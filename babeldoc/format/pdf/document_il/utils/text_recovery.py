@@ -366,19 +366,13 @@ def rejoin_soft_hyphens_in_text(text: str) -> str:
     return SOFT_HYPHEN_CANDIDATE_RE.sub(_sub, text)
 
 
-# After ligature expand: ``di fferent`` / ``di ﬀerent`` (false word gap).
-_LIGATURE_SPACE_CONT_RE = regex.compile(
-    r"(?<=[A-Za-z])\s+((?:ff|fi|fl|ffi|ffl)[a-z]*)",
-    regex.IGNORECASE,
-)
-
 # Hyphen without space: ``di-fferent`` / ``ap-proximation``.
 _SOFT_HYPHEN_TIGHT_RE = regex.compile(
     r"(?<=[A-Za-z])-([a-z]{2,})"
 )
 
 # Full words often split by PDF gaps / soft hyphens in design ebooks (OA dual).
-# Only join when prefix+suffix exactly matches — avoids ``the cult`` / ``to the``.
+# Single source of truth for space-join, short-stem+ff glue, and orphan tails.
 _KNOWN_SPLIT_WORDS = frozenset(
     {
         "different",
@@ -404,16 +398,104 @@ _KNOWN_SPLIT_WORDS = frozenset(
     }
 )
 
+# Prefixes stripped to derive orphan tails (``di``+``fferent``, lost ``e``+``ffective``).
+# Longer prefixes first so ``self`` wins over ``s`` if both ever match.
+_ORPHAN_STRIP_PREFIXES: tuple[str, ...] = (
+    "self",
+    "pro",
+    "pre",
+    "per",
+    "dis",
+    "di",
+    "de",
+    "su",
+    "ap",
+    "ef",
+    "cli",
+    "e",
+    "a",
+)
+
+# After ligature expand: ``di fferent`` — only short stems, and only when joined
+# form is a known split word (never ``like fferent`` → ``likefferent``).
+_LIGATURE_SPACE_CONT_RE = regex.compile(
+    r"\b([A-Za-z]{1,3})\s+((?:ff|fi|fl|ffi|ffl)[a-z]*)",
+    regex.IGNORECASE,
+)
+
+
+def _build_orphan_tail_map() -> dict[str, str]:
+    """Map lost-stem tails → full word from :data:`_KNOWN_SPLIT_WORDS`.
+
+    E.g. ``different`` − ``di`` → ``fferent``; ``exceptionally`` − ``e`` →
+    ``xceptionally``. One truth source — no parallel OA whitelist.
+
+    On tail collisions prefer the **shorter stripped prefix** (ligature/OCR
+    loss is usually 1–2 letters: ``e``+``fficient`` beats ``su``+``fficient``).
+    """
+    # tail -> (word, prefix_len)
+    best: dict[str, tuple[str, int]] = {}
+    for word in _KNOWN_SPLIT_WORDS:
+        for pref in _ORPHAN_STRIP_PREFIXES:
+            if not word.startswith(pref):
+                continue
+            tail = word[len(pref) :]
+            if len(tail) < 4:
+                continue
+            # Refuse free English words and tails that are already full known words
+            # (``self``+``understanding`` must not map orphan ``understanding``).
+            if is_standalone_en_word(tail) or tail in _KNOWN_SPLIT_WORDS:
+                continue
+            pref_len = len(pref)
+            prev = best.get(tail)
+            if (
+                prev is None
+                or pref_len < prev[1]
+                or (pref_len == prev[1] and len(word) > len(prev[0]))
+            ):
+                best[tail] = (word, pref_len)
+    return {tail: word for tail, (word, _) in best.items()}
+
+
+_ORPHAN_TAIL_TO_WORD: dict[str, str] = _build_orphan_tail_map()
+_ORPHAN_TAIL_RE = (
+    regex.compile(
+        r"(?<![A-Za-z])("
+        + "|".join(
+            sorted(
+                (regex.escape(t) for t in _ORPHAN_TAIL_TO_WORD),
+                key=len,
+                reverse=True,
+            )
+        )
+        + r")(?![A-Za-z])",
+        regex.IGNORECASE,
+    )
+    if _ORPHAN_TAIL_TO_WORD
+    else None
+)
+
+
+def _match_case(template: str, word: str) -> str:
+    """Apply rough casing of *template* onto *word*."""
+    if template.isupper():
+        return word.upper()
+    if template[:1].isupper():
+        return word[:1].upper() + word[1:]
+    return word
+
+
 def rejoin_ligature_space_splits(text: str) -> str:
-    """Glue ``di fferent`` / ``di ﬀerent`` after ligature expand (no hyphen)."""
+    """Glue ``di fferent`` when the joined token is a known split word."""
     if not text:
         return text
     text = expand_latin_ligatures(text)
 
     def _sub(m: regex.Match[str]) -> str:
-        cont = m.group(1)
-        # Keep original match casing of continuation as expanded ascii lower/upper
-        return cont
+        joined = m.group(1) + m.group(2)
+        if joined.lower() in _KNOWN_SPLIT_WORDS:
+            return joined
+        return m.group(0)
 
     return _LIGATURE_SPACE_CONT_RE.sub(_sub, text)
 
@@ -443,7 +525,6 @@ def rejoin_known_split_latin_words(text: str) -> str:
     if not text:
         return text
     text = expand_latin_ligatures(text)
-    # Keep whitespace runs as separate tokens
     parts: list[str] = regex.findall(r"[A-Za-z]+|\s+|[^A-Za-z\s]+", text)
     changed = True
     while changed:
@@ -461,18 +542,56 @@ def rejoin_known_split_latin_words(text: str) -> str:
                 parts[i] = left + right
                 del parts[i + 1 : i + 3]
                 changed = True
-                # restart from i to allow chain joins
                 continue
             i += 1
     return "".join(parts)
 
 
+def repair_orphan_split_tails(text: str) -> str:
+    """Repair ``fferent`` / ``fficult`` when the left stem was lost before MT.
+
+    Tails are derived from :data:`_KNOWN_SPLIT_WORDS` via
+    :func:`_build_orphan_tail_map` — not a second hard-coded word list.
+    """
+    if not text or _ORPHAN_TAIL_RE is None:
+        return text
+    text = expand_latin_ligatures(text)
+
+    def _sub(m: regex.Match[str]) -> str:
+        raw = m.group(1)
+        full = _ORPHAN_TAIL_TO_WORD.get(raw.lower())
+        if not full:
+            return raw
+        return _match_case(raw, full)
+
+    return _ORPHAN_TAIL_RE.sub(_sub, text)
+
+
+# Back-compat alias (older tests / call sites).
+repair_orphan_ligature_stems = repair_orphan_split_tails
+
+
+def has_decorative_mid_caps(text: str) -> bool:
+    """True if *text* shows design-font mid-word capitals (``haS``, ``orgaSMS``).
+
+    Shared predicate for title-case normalization. Requires mixed case so
+    ALLCAPS / pure Title Case (``Women``) stay untouched.
+    """
+    if not text:
+        return False
+    if not any(c.islower() for c in text) or not any(c.isupper() for c in text):
+        return False
+    if regex.search(r"[a-z][A-Z]", text):
+        return True
+    if regex.search(r"[A-Za-z][A-Z]{2,}", text):
+        return True
+    return False
+
+
 # OA / design PDFs: "Chapter1" after digit reorder or tight kerning.
-# Chapter + 1–3 digits not already spaced; stops before a 4th digit.
 _CHAPTER_DIGIT_RE = regex.compile(
     r"(?i)\b(chapter)(\d{1,3})(?!\d)"
 )
-# After "Chapter 1" glue a space before CJK (``Chapter 1爱`` → ``Chapter 1 爱``).
 _CHAPTER_CJK_RE = regex.compile(
     r"(?i)\b(chapter\s+\d{1,3})([\u4e00-\u9fff\u3400-\u4dbf])"
 )
@@ -504,9 +623,9 @@ def normalize_decorative_title_case(text: str) -> str:
     DeepLX mangles into ``WhohaSorgaSMS``. Lowercase short Latin titles that
     show mid-word capitals so MT sees ``who has orgasms?``.
 
-    Guards: length ≤ 80, mostly ASCII letters, mid-word capitals or internal
-    ALLCAPS run; does not touch normal prose (``iPhone`` alone is not enough
-    without other decorative signals when length is long).
+    Guards: length ≤ 80, mostly ASCII letters, :func:`has_decorative_mid_caps`.
+    Call only from decorative/geometry-gated sites — not on full body prose
+    (would smash ``iPhone`` / ``eBay``).
     """
     if not text or len(text) > 80:
         return text
@@ -516,25 +635,23 @@ def normalize_decorative_title_case(text: str) -> str:
     ascii_letters = [c for c in letters if ord(c) < 128]
     if len(ascii_letters) < max(4, int(0.8 * len(letters))):
         return text
-    # Mid-word capital (haS) or internal multi-cap run (orgaSMS / SMS)
-    has_mid_cap = bool(regex.search(r"[a-z][A-Z]", text))
-    has_inner_caps = bool(regex.search(r"[A-Za-z][A-Z]{2,}", text))
-    if not has_mid_cap and not has_inner_caps:
+    if not has_decorative_mid_caps(text):
         return text
-    # Preserve trailing punctuation; lowercase body.
     return text.lower()
 
 
 def recover_latin_word_fragments(text: str) -> str:
-    """Full post-pass: ligatures, soft hyphens, known mid-word space splits.
+    """Pre-MT recovery: ligatures, soft hyphens, known splits, orphan tails.
 
     Call after assembling paragraph unicode and before MT.
     Drop-cap ``I f`` rejoins run in ``drop_cap.rejoin_drop_cap_in_text``
     (usually before this, from ``get_char_unicode_string``).
+
+    Decorative mid-word caps are **not** applied here — use
+    :func:`normalize_decorative_title_case` at geometry-gated call sites.
     """
     if not text:
         return text
-    # Late safety if callers skip layout_helper drop-cap pass
     from babeldoc.format.pdf.document_il.utils.drop_cap import rejoin_drop_cap_in_text
 
     text = expand_latin_ligatures(text)
@@ -543,8 +660,6 @@ def recover_latin_word_fragments(text: str) -> str:
     text = rejoin_soft_hyphen_tight(text)
     text = rejoin_ligature_space_splits(text)
     text = rejoin_known_split_latin_words(text)
+    text = repair_orphan_split_tails(text)
     text = space_chapter_number(text)
-    # Decorative mixed-case titles: apply normalize_decorative_title_case at
-    # the call site when geometry/label is decorative (see layout_helper).
-    text = expand_latin_ligatures(text)
     return text
