@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from babeldoc.format.pdf.document_il.utils.mt_token_sanitize import (
     normalize_translated_text,
 )
@@ -80,3 +82,38 @@ class TestNormalizeTranslatedText:
         # Canonical expand_latin_ligatures — not a second NFKC FB path
         assert "find" in (normalize_translated_text("请 ﬁnd 答案") or "")
         assert "ﬁ" not in (normalize_translated_text("请 ﬁnd 答案") or "")
+
+    def test_scrub_oa_ligature_shards_in_zh(self):
+        s = "你就再也不会有借口 erent 每晚 fffor 无聊的香草性爱了"
+        out = normalize_translated_text(s)
+        assert out is not None
+        assert "erent" not in out.lower()
+        assert "fffor" not in out.lower()
+        assert "借口" in out and "无聊" in out
+
+    def test_scrub_ffdi_and_isolated_ff_di(self):
+        s = "外加两个 ffdi.ff 附带动作，类型的触 摸 di ff 时间尝试"
+        out = normalize_translated_text(s) or ""
+        assert "ffdi" not in out.lower()
+        # isolated di/ff between CJK/space removed
+        assert not re.search(r"(?<![A-Za-z])di(?![A-Za-z])", out, re.I)
+        assert "附带动作" in out
+
+    def test_scrub_answer_slogan_and_whohas(self):
+        s = "三重高潮性爱是一个 anSWer。WhohaSorgaSMS?Q 在我们的文化中"
+        out = normalize_translated_text(s) or ""
+        assert "answer" not in out.lower()
+        assert "WhohaSorgaSMS" not in out
+        assert "答案" in out
+        assert "三重高潮" in out
+
+    def test_chapter_title_indirect_curl_fix(self):
+        s = "第 11 章不正确和不正确"
+        assert normalize_translated_text(s) == "第 11 章间接与卷曲"
+        s2 = "不正确和极端的练习"
+        assert "间接与卷曲" in (normalize_translated_text(s2) or "")
+
+    def test_preserves_legitimate_latin_in_zh(self):
+        s = "刺激她的 G-spot，访问 www.GabrielleMoore.com"
+        out = normalize_translated_text(s)
+        assert out == s
