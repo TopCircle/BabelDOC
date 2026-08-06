@@ -367,8 +367,10 @@ def rejoin_soft_hyphens_in_text(text: str) -> str:
 
 
 # After ligature expand: ``di fferent`` / ``di ﬀerent`` (false word gap).
+# Only short left stems (1–3 letters): ``di``/``pro`` — not full words
+# (``like fferent`` must stay two tokens until orphan repair).
 _LIGATURE_SPACE_CONT_RE = regex.compile(
-    r"(?<=[A-Za-z])\s+((?:ff|fi|fl|ffi|ffl)[a-z]*)",
+    r"\b([A-Za-z]{1,3})\s+((?:ff|fi|fl|ffi|ffl)[a-z]*)",
     regex.IGNORECASE,
 )
 
@@ -411,9 +413,8 @@ def rejoin_ligature_space_splits(text: str) -> str:
     text = expand_latin_ligatures(text)
 
     def _sub(m: regex.Match[str]) -> str:
-        cont = m.group(1)
-        # Keep original match casing of continuation as expanded ascii lower/upper
-        return cont
+        # group1 short stem + group2 ff… tail
+        return m.group(1) + m.group(2)
 
     return _LIGATURE_SPACE_CONT_RE.sub(_sub, text)
 
@@ -465,6 +466,93 @@ def rejoin_known_split_latin_words(text: str) -> str:
                 continue
             i += 1
     return "".join(parts)
+
+
+# When the left stem is lost (formula split / OCR), ligature expansion leaves
+# orphan tails: ``ﬀerent`` → ``fferent``. Map common OA/design-PDF tails back
+# to full words at token boundaries only.
+# High-precision only: short tails like ``low``/``ffer`` are real English
+# words and must not be rewritten at token boundaries.
+_ORPHAN_LIGATURE_STEMS: dict[str, str] = {
+    "fferent": "different",
+    "fficult": "difficult",
+    "fficulty": "difficulty",
+    "fficient": "efficient",
+    "fficiency": "efficiency",
+    "fficiently": "efficiently",
+    "ffective": "effective",
+    "ffectively": "effectively",
+    "xceptionally": "exceptionally",  # lost leading 'e' after OCR
+    "pproximation": "approximation",
+    "rofessional": "professional",
+    "ufficient": "sufficient",
+}
+
+_ORPHAN_STEM_RE = regex.compile(
+    r"(?<![A-Za-z])("
+    + "|".join(
+        sorted((regex.escape(k) for k in _ORPHAN_LIGATURE_STEMS), key=len, reverse=True)
+    )
+    + r")(?![A-Za-z])",
+    regex.IGNORECASE,
+)
+
+
+def repair_orphan_ligature_stems(text: str) -> str:
+    """Repair ``fferent`` / ``fficult`` when the left stem was lost before MT.
+
+    Design PDFs often isolate presentation ligatures into their own run; after
+    expand the tail looks like a free token (``fferent``) and DeepLX leaves
+    ``erent`` / ``ff`` debris in ZH. Only known tails are rewritten.
+    """
+    if not text:
+        return text
+    text = expand_latin_ligatures(text)
+
+    def _sub(m: regex.Match[str]) -> str:
+        raw = m.group(1)
+        key = raw.lower()
+        full = _ORPHAN_LIGATURE_STEMS.get(key)
+        if not full:
+            return raw
+        # Preserve all-caps / title-ish casing loosely
+        if raw.isupper():
+            return full.upper()
+        if raw[0].isupper():
+            return full[0].upper() + full[1:]
+        return full
+
+    return _ORPHAN_STEM_RE.sub(_sub, text)
+
+
+# Mid-word capitals from reverse-paint / microstyle fonts: ``anSWer``,
+# ``acrobatIc``, ``trIgaSM``. Lowercase those tokens so MT sees real words.
+# Requires a lower→Upper or multi-cap interior run (``iPhone`` is also
+# lowercased — acceptable for MT input).
+_MID_CAP_TOKEN_RE = regex.compile(r"\b[A-Za-z]{3,}\b")
+
+
+def normalize_mid_word_cap_tokens(text: str) -> str:
+    """Lowercase Latin tokens that show decorative mid-word capitals.
+
+    Does **not** lowercase ordinary Title Case (``Women``) or ALLCAPS
+    (``THIS``) tokens — only mixed interior shapes typical of design PDFs.
+    """
+    if not text:
+        return text
+
+    def _fix(m: regex.Match[str]) -> str:
+        w = m.group(0)
+        # Require mixed case (both lower and upper) so ALLCAPS / Title Case stay.
+        if not any(c.islower() for c in w) or not any(c.isupper() for c in w):
+            return w
+        has_mid_cap = bool(regex.search(r"[a-z][A-Z]", w))
+        has_inner_caps = bool(regex.search(r"[A-Za-z][A-Z]{2,}", w))
+        if has_mid_cap or has_inner_caps:
+            return w.lower()
+        return w
+
+    return _MID_CAP_TOKEN_RE.sub(_fix, text)
 
 
 # OA / design PDFs: "Chapter1" after digit reorder or tight kerning.
@@ -543,6 +631,8 @@ def recover_latin_word_fragments(text: str) -> str:
     text = rejoin_soft_hyphen_tight(text)
     text = rejoin_ligature_space_splits(text)
     text = rejoin_known_split_latin_words(text)
+    text = repair_orphan_ligature_stems(text)
+    text = normalize_mid_word_cap_tokens(text)
     text = space_chapter_number(text)
     # Decorative mixed-case titles: apply normalize_decorative_title_case at
     # the call site when geometry/label is decorative (see layout_helper).

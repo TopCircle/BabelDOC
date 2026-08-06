@@ -111,3 +111,44 @@ def test_get_char_unicode_string_rejoins_cross_run_ligature_gap():
     text = get_char_unicode_string(chars)
     assert "different" in text.replace(" ", "") or "different" in text
     assert "ﬀ" not in text
+
+
+def test_orphan_ligature_stem_fferent_becomes_different():
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        repair_orphan_ligature_stems,
+    )
+
+    assert repair_orphan_ligature_stems("ﬀerent every night") == (
+        "different every night"
+    )
+    assert repair_orphan_ligature_stems("fferent every night") == (
+        "different every night"
+    )
+    # Must not rewrite real short words / ambiguous short tails
+    assert repair_orphan_ligature_stems("low effort") == "low effort"
+    assert repair_orphan_ligature_stems("the ffer is bad") == "the ffer is bad"
+
+
+def test_mid_word_cap_tokens_for_oa_slogans():
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        normalize_mid_word_cap_tokens,
+    )
+
+    assert normalize_mid_word_cap_tokens("trIgaSMIc Sex IS the anSWer") == (
+        "trigasmic Sex IS the answer"
+    )
+    assert normalize_mid_word_cap_tokens("ALL IN acrobatIc") == "ALL IN acrobatic"
+    # Ordinary Title Case preserved
+    assert normalize_mid_word_cap_tokens("Women like different things") == (
+        "Women like different things"
+    )
+
+
+def test_full_recover_oa_mixed_case_and_orphan():
+    out = recover_latin_word_fragments(
+        "trIgaSMIc Sex IS the anSWer. Women like ﬀerent things."
+    )
+    assert "trigasmic" in out
+    assert "answer" in out
+    assert "different" in out
+    assert "ﬀ" not in out
