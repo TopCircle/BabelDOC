@@ -15,7 +15,6 @@ import freetype
 import pymupdf
 from bitstring import BitStream
 
-from babeldoc.assets.embedding_assets_metadata import FONT_NAMES
 from babeldoc.format.pdf.document_il import PdfOriginalPath
 from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.utils.font_subset import (
@@ -433,17 +432,27 @@ def parse_mapping(text):
     return mapping
 
 
+def normalize_export_unicode(code: int) -> int:
+    """Map codepoints to forms safe for dual PDF text extraction.
+
+    CJK Compatibility Ideographs (U+F900–U+FAFF) share glyphs with unified
+    ideographs in Source Han; extractors then surface ``不`` instead of ``不``
+    even when IL/typeset used the unified form. Force **NFKC** (not NFD-only)
+    so ToUnicode always exports the unified codepoint.
+
+    Also normalizes Kangxi Radicals into the preferred compatibility form.
+    """
+    if code < 0:
+        return code
+    if 0x2F00 <= code <= 0x2FD5 or 0xF900 <= code <= 0xFAFF:
+        norm = unicodedata.normalize("NFKC", chr(code))
+        if norm:
+            return ord(norm[0])
+    return code
+
+
 def apply_normalization(cmap, gid, code):
-    need = False
-    if 0x2F00 <= code <= 0x2FD5:  # Kangxi Radicals
-        need = True
-    if 0xF900 <= code <= 0xFAFF:  # CJK Compatibility Ideographs
-        need = True
-    if need:
-        norm = unicodedata.normalize("NFD", chr(code))
-        cmap[gid] = ord(norm)
-    else:
-        cmap[gid] = code
+    cmap[gid] = normalize_export_unicode(code)
 
 
 def batched(iterable, n, *, strict=False):
@@ -529,7 +538,9 @@ def make_tounicode(cmap, used):
     short = []
     for x in used:
         if x in cmap:
-            short.append((x, cmap[x]))
+            # Re-normalize on emit so callers that built cmap without
+            # apply_normalization still cannot export F9xx.
+            short.append((x, normalize_export_unicode(cmap[x])))
     # If glyph 1 is used but still missing (empty used filter), force it
     used_set = set(used)
     if 1 in used_set and not any(g == 1 for g, _ in short):
@@ -548,6 +559,30 @@ def make_tounicode(cmap, used):
         line.append("endbfchar")
     line.append(TOUNICODE_TAIL)
     return "\n".join(line)
+
+
+def _font_is_babeldoc_embedding_for_cmap(font: tuple) -> bool:
+    """True if page.get_fonts() row is a BabelDOC embedding face.
+
+    After subset, basefont is ``ABCDEF+Source Han Serif CN Bold`` while
+    ``FONT_NAMES`` stores the untagged name — exact ``font[3] in FONT_NAMES``
+    therefore skipped every CJK face (OA dual left-column F9xx never fixed).
+    Use :func:`is_babeldoc_embedding_font_name` which strips subset tags.
+    """
+    if not font or len(font) < 5:
+        return False
+    # ext / type: TrueType embedding path (includes Type0+Identity-H CJK)
+    if font[1] not in ("ttf", "otf"):
+        return False
+    base = font[3] or ""
+    fileish = font[4] or ""
+    if ".ttf" not in fileish.lower() and ".otf" not in fileish.lower():
+        # Some rows put the file name only in base; still try name match
+        if not is_babeldoc_embedding_font_name(base):
+            return False
+    return is_babeldoc_embedding_font_name(base) or is_babeldoc_embedding_font_name(
+        fileish
+    )
 
 
 def reproduce_one_font(doc, index):
@@ -572,7 +607,7 @@ def reproduce_cmap(doc):
         try:
             font_list = page.get_fonts()
             for font in font_list:
-                if font[1] == "ttf" and font[3] in FONT_NAMES and ".ttf" in font[4]:
+                if _font_is_babeldoc_embedding_for_cmap(font):
                     font_set.add(font)
         except Exception as e:
             logger.error(f"Error in getting page fonts: {e}")
