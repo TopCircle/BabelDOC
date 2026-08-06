@@ -44,6 +44,8 @@ from babeldoc.format.pdf.document_il.utils.cjk_kinsoku import (
 )
 from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import layout_intent_wrap_enabled
+from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
+from babeldoc.format.pdf.document_il.utils.wrap_shape import should_fallback_wrap_to_block
 from babeldoc.format.pdf.document_il.utils.wrap_shape import should_skip_pre_expand_for_wrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import typeset_wrap_line
 from babeldoc.format.pdf.translation_config import TranslationConfig
@@ -1711,6 +1713,46 @@ class Typesetting:
             finally:
                 self._drop_all_figures_for_paragraph = False
 
+        # CJK wrap→block fallback (layout align LA-1): pin geometry + long ZH
+        # produces needle overflow (OA p82). Prefer full design width once.
+        if (
+            self.is_cjk
+            and not getattr(self, "_disable_wrap_for_paragraph", False)
+            and paragraph is not None
+        ):
+            shape = resolve_wrap_shape(paragraph)
+            # Only when wrap would have been active (not already disabled)
+            would_wrap = get_active_wrap(
+                paragraph,
+                enabled=layout_intent_wrap_enabled(
+                    getattr(self, "translation_config", None)
+                ),
+                layout_box=box,
+            )
+            if would_wrap is not None and should_fallback_wrap_to_block(
+                wrap_shape=shape or would_wrap[1],
+                typeset_units=last_typeset_units,
+                all_units_fit=False,
+            ):
+                logger.info(
+                    "CJK wrap→block fallback (lines overflow pin budget; "
+                    "debug_id=%s)",
+                    getattr(paragraph, "debug_id", None),
+                )
+                self._disable_wrap_for_paragraph = True
+                try:
+                    return self._find_optimal_scale_and_layout(
+                        paragraph,
+                        page,
+                        typesetting_units,
+                        initial_scale,
+                        use_english_line_break=True,
+                        apply_layout=apply_layout,
+                        line_skip=line_skip,
+                    )
+                finally:
+                    self._disable_wrap_for_paragraph = False
+
         # Force-apply at readable floor even if text overflows the box.
         # Never leave composition empty after apply_layout cleared it.
         if apply_layout and final_typeset_units is None:
@@ -1736,6 +1778,33 @@ class Typesetting:
                     use_english_line_break=False,
                     reference_widths=force_ref,
                 )
+            # If force layout under wrap still needles, one last block retry
+            if (
+                force_units
+                and self.is_cjk
+                and not getattr(self, "_disable_wrap_for_paragraph", False)
+                and self._active_wrap(paragraph, box) is not None
+            ):
+                shape = resolve_wrap_shape(paragraph)
+                active = self._active_wrap(paragraph, box)
+                if should_fallback_wrap_to_block(
+                    wrap_shape=shape or (active[1] if active else None),
+                    typeset_units=force_units,
+                    all_units_fit=False,
+                ):
+                    self._disable_wrap_for_paragraph = True
+                    try:
+                        return self._find_optimal_scale_and_layout(
+                            paragraph,
+                            page,
+                            typesetting_units,
+                            initial_scale,
+                            use_english_line_break=True,
+                            apply_layout=apply_layout,
+                            line_skip=line_skip,
+                        )
+                    finally:
+                        self._disable_wrap_for_paragraph = False
             if force_units:
                 paragraph.scale = min_scale
                 paragraph.pdf_paragraph_composition = []
@@ -3017,7 +3086,13 @@ class Typesetting:
         paragraph: il_version_1.PdfParagraph | None,
         layout_box: Box | None = None,
     ):
-        """P2 pin context ``(design_box, wrap_shape)`` or None (flag + resolve)."""
+        """P2 pin context ``(design_box, wrap_shape)`` or None (flag + resolve).
+
+        Honors ``_disable_wrap_for_paragraph`` (CJK wrap→block fallback when
+        pin geometry cannot hold translated text without needle overflow).
+        """
+        if getattr(self, "_disable_wrap_for_paragraph", False):
+            return None
         return get_active_wrap(
             paragraph,
             enabled=layout_intent_wrap_enabled(
