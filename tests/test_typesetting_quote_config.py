@@ -60,6 +60,8 @@ class TestQuoteZoneConfigFromTranslationConfig:
         assert qc.left_margin == 0.02
         assert qc.top_margin == 0.01
         assert qc.bottom_margin == 0.01
+        # P2: legacy quote geometry off by default
+        assert qc.enable_legacy_quote_geometry is False
 
     def test_build_page_zones_uses_config_thresholds(self):
         """Default thresholds may miss a borderline para; looser ones catch it."""
@@ -87,3 +89,34 @@ class TestQuoteZoneConfigFromTranslationConfig:
         ts = Typesetting(cfg)
         zones = ts._build_page_exclusion_zones(page)
         assert not any(z.kind == ZONE_QUOTE for z in zones)
+
+    def test_wrap_column_intent_never_quote_zone_when_legacy_off(self):
+        """WRAP_COLUMN must not become a quote exclusion (needle strip)."""
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+
+        # Geometry that is_quote_block would accept (narrow + indent).
+        wrap = _para(200, 300, 400, 500)  # indent~0.33, width_ratio~0.33
+        wrap.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.WRAP_COLUMN,
+            design_box=wrap.box,
+            top_inset=0.0,
+            bottom_inset=0.0,
+            wrap_shape=[(0.0, 180.0), (20.0, 160.0)],
+        )
+        page = _page([wrap])
+        cfg = _config(enable_legacy_quote_geometry=False)
+        ts = Typesetting(cfg)
+        zones = ts._build_page_exclusion_zones(page)
+        assert not any(z.kind == ZONE_QUOTE for z in zones)
+
+        # Legacy on: geometric heuristic may still classify (no figure-wrap taper).
+        cfg_legacy = _config(enable_legacy_quote_geometry=True)
+        ts_l = Typesetting(cfg_legacy)
+        # Still blocked by is_figure_wrap when taper metrics exist — attach none;
+        # narrow+indent alone may create a quote under pure geometry.
+        zones_l = ts_l._build_page_exclusion_zones(page)
+        # With WRAP_COLUMN intent, even legacy path hits is_figure_wrap only if
+        # taper metrics exist; without metrics, legacy can quote. Accept either
+        # as long as default path never quotes WRAP_COLUMN.
+        _ = zones_l

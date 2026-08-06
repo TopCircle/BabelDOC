@@ -232,6 +232,10 @@ class TranslationConfig:
         # Layout-First P2: consume layout_intent.wrap_shape (right pin, left step).
         # Default True once P2 lands; set False to fall back to reference-width cap.
         enable_layout_intent_wrap: bool = True,
+        # When False (default after P2): quote exclusion zones prefer
+        # layout_intent.role == PULL_QUOTE and never treat WRAP_COLUMN /
+        # figure-wrap as quote. True restores pure is_quote_block geometry.
+        enable_legacy_quote_geometry: bool = False,
     ):
         self.translator = translator
         self.term_extraction_translator = term_extraction_translator or translator
@@ -406,6 +410,7 @@ class TranslationConfig:
         )
         self.enable_post_layout_optimization = enable_post_layout_optimization
         self.enable_layout_intent_wrap = enable_layout_intent_wrap
+        self.enable_legacy_quote_geometry = enable_legacy_quote_geometry
         self.quote_narrow_threshold = max(
             min(float(quote_narrow_threshold if quote_narrow_threshold is not None else 0.8), 1.0),
             0.1,

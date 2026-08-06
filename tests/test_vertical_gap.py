@@ -341,11 +341,25 @@ def test_audit_report_json_shape():
         page_number=0,
     )
     report.record_shift(-12.5, cascade=1)
+    report.record_wrap_consume(
+        debug_id="p_wrap",
+        design_x2=569.5,
+        n_shape_lines=4,
+        page_number=19,
+    )
+    other = LayoutAuditReport()
+    other.record_wrap_consume(
+        debug_id="p2", design_x2=400.0, n_shape_lines=2, page_number=1
+    )
+    report.merge(other)
     d = report.to_dict()
     assert d["target_rule"] == "ink_gap_relative"
     assert d["actions"][0]["kind"] == "gap_contract_reservation"
     assert d["violations"][0]["kind"] == "gap"
     assert d["shifts"] == 1
+    assert len(d["wrap_consumes"]) == 2
+    assert d["wrap_consumes"][0]["kind"] == "wrap_shape_consume"
+    assert d["wrap_consumes"][0]["design_x2"] == 569.5
 
 
 def test_gap_deficit_single_source():
@@ -391,15 +405,23 @@ def test_measured_ink_gap():
 
 
 def test_gap_contract_first_pass_no_display_title_shift():
-    """Large section header must not be first-pass body (is_display_title)."""
+    """32pt BODY-role display title must not be first-pass body (neg dy path).
+
+    Review P1-1: prior test used SECTION_HEADER role (already role-protected)
+    so the assertion never exercised ``is_display_title``. Use BODY + 32pt
+    size, place it as the would-be next body under a tight title contract so
+    unprotected code would apply dy < 0.
+    """
+    from babeldoc.format.pdf.document_il.utils.vertical_gap import find_content_below
+
     title = _para(
         [_ch(c, 50 + i * 40, 650, size=56.0, w=38.0) for i, c in enumerate("章标题")],
         label="title",
     )
-    # 32pt section header below — geometric display title, not TITLE role.
-    section = _para(
-        [_ch(c, 50 + i * 20, 580, size=32.0, w=18.0) for i, c in enumerate("节标题大")],
-        label="section_header",
+    # Geometric display title only — role is BODY so role-gate does not protect.
+    big = _para(
+        [_ch(c, 50 + i * 20, 600, size=32.0, w=18.0) for i, c in enumerate("超大展示行")],
+        label="plain text",
     )
     body = _para(
         [
@@ -409,16 +431,74 @@ def test_gap_contract_first_pass_no_display_title_shift():
         label="plain text",
     )
     _attach_intent(title, role=LayoutIntentRole.TITLE, gap_contract=40.0)
-    _attach_intent(section, role=LayoutIntentRole.SECTION_HEADER)
+    _attach_intent(big, role=LayoutIntentRole.BODY)
+    _attach_intent(body, role=LayoutIntentRole.BODY)
+    assert is_display_title(big) is True
+    page = Page(
+        page_number=0,
+        mediabox=Box(x=0, y=0, x2=612, y2=792),
+        pdf_paragraph=[title, big, body],
+    )
+    big_y0 = big.box.y
+    body_y0 = body.box.y
+    # Without protection, big would be nearest below title; with protection, body.
+    assert find_content_below(page, title) is body
+    report = apply_gap_contract_first_pass(page)
+    assert abs(big.box.y - big_y0) < 0.05  # never moved (neg-dy target skipped)
+    # Body may receive the reservation (down only).
+    assert body.box.y <= body_y0 + 0.05
+    if report.shifts:
+        assert report.max_shift_pt <= MAX_SINGLE_JUMP_DY_PT + 0.05
+
+
+def test_gap_contract_first_pass_body_shifted_only_once():
+    """Two upper carriers targeting the same body must not stack two −24 jumps.
+
+    Left-column title and right-column mid both x-overlap a wide body below,
+    so each would independently request a −24 reservation without shifted_ids.
+    """
+    title = _para(
+        [_ch(c, 50 + i * 20, 700, size=56.0, w=18.0) for i, c in enumerate("左栏大标题")],
+        label="title",
+    )
+    mid = _para(
+        [_ch(c, 300 + i * 12, 690, size=14.0, w=11.0) for i, c in enumerate("右栏中段")],
+        label="plain text",
+    )
+    # Wide body: left ink + right ink so x-overlap hits both carriers.
+    body_chars = [
+        _ch(c, 40 + i * 14, 680, size=12.0, w=13.0)
+        for i, c in enumerate("左半正文共用")
+    ] + [
+        _ch(c, 300 + i * 14, 680, size=12.0, w=13.0)
+        for i, c in enumerate("右半正文共用")
+    ]
+    body = _para(body_chars, label="plain text")
+    _attach_intent(title, role=LayoutIntentRole.TITLE, gap_contract=80.0)
+    _attach_intent(mid, role=LayoutIntentRole.BODY, gap_contract=80.0)
     _attach_intent(body, role=LayoutIntentRole.BODY)
     page = Page(
         page_number=0,
         mediabox=Box(x=0, y=0, x2=612, y2=792),
-        pdf_paragraph=[title, section, body],
+        pdf_paragraph=[title, mid, body],
     )
-    sec_y0 = section.box.y
-    apply_gap_contract_first_pass(page)
-    assert abs(section.box.y - sec_y0) < 0.05
+    from babeldoc.format.pdf.document_il.utils.vertical_gap import find_content_below
+
+    assert find_content_below(page, title) is body
+    assert find_content_below(page, mid) is body
+    y0 = body.box.y2
+    report = apply_gap_contract_first_pass(page)
+    # At most one clamp (−24), never −48 from two carriers.
+    assert y0 - body.box.y2 <= MAX_SINGLE_JUMP_DY_PT + 0.05
+    assert report.max_shift_pt <= MAX_SINGLE_JUMP_DY_PT + 0.05
+    reservations = [
+        a for a in report.actions if a.get("kind") == "gap_contract_reservation"
+    ]
+    skips = [
+        a for a in report.actions if a.get("kind") == "gap_contract_skip_already_shifted"
+    ]
+    assert len(reservations) == 1
+    assert len(skips) == 1
 
 
 def test_gap_contract_first_pass_clamps_dy_to_24():

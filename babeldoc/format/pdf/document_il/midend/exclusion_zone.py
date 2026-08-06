@@ -120,13 +120,52 @@ class QuoteZoneConfig:
     left_margin: float = 0.02
     top_margin: float = 0.01
     bottom_margin: float = 0.01
+    # False (P2 default): prefer layout_intent PULL_QUOTE; never WRAP_COLUMN.
+    # True: pure is_quote_block geometry (legacy dual path).
+    enable_legacy_quote_geometry: bool = False
+
+
+def _para_is_quote_for_zone(
+    para,
+    page_width: float,
+    config: QuoteZoneConfig,
+) -> bool:
+    """Whether *para* should spawn a quote exclusion zone.
+
+    With ``enable_legacy_quote_geometry=False`` (default after P2):
+    - WRAP_COLUMN / figure-wrap never become quotes
+    - if layout_intent present: only PULL_QUOTE
+    - if no intent: fall back to is_quote_block (extract miss)
+    With flag True: always is_quote_block (pre-intent behaviour).
+    """
+    from babeldoc.format.pdf.document_il.utils.figure_wrap import (
+        is_figure_wrap_paragraph,
+    )
+    from babeldoc.format.pdf.document_il.utils.layout_helper import is_quote_block
+    from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+
+    if is_figure_wrap_paragraph(para):
+        return False
+    intent = getattr(para, "layout_intent", None)
+    if not config.enable_legacy_quote_geometry:
+        if intent is not None:
+            role = getattr(intent, "role", None)
+            if role is LayoutIntentRole.WRAP_COLUMN:
+                return False
+            return role is LayoutIntentRole.PULL_QUOTE
+    return is_quote_block(
+        para,
+        page_width,
+        narrow_threshold=config.narrow_threshold,
+        indent_threshold=config.indent_threshold,
+        right_margin_threshold=config.right_margin_threshold,
+    )
 
 
 def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZone]:
     """收集页面中所有 Quote 块，转换为 ExclusionZone。"""
     from babeldoc.format.pdf.document_il.utils.layout_helper import (
         get_quote_exclusion_margins,
-        is_quote_block,
     )
 
     zones: list[ExclusionZone] = []
@@ -158,13 +197,7 @@ def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZ
         right_margin = page_width - box.x2
         margin_ratio = right_margin / page_width if page_width > 0 else 0.0
 
-        is_quote = is_quote_block(
-            para,
-            page_width,
-            narrow_threshold=config.narrow_threshold,
-            indent_threshold=config.indent_threshold,
-            right_margin_threshold=config.right_margin_threshold,
-        )
+        is_quote = _para_is_quote_for_zone(para, page_width, config)
 
         if not is_quote:
             # 诊断日志：记录为什么不是 Quote

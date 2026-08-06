@@ -51,6 +51,7 @@ class LayoutAuditReport:
 
     actions: list[dict[str, Any]] = field(default_factory=list)
     violations: list[dict[str, Any]] = field(default_factory=list)
+    wrap_consumes: list[dict[str, Any]] = field(default_factory=list)
     shifts: int = 0
     max_shift_pt: float = 0.0
     cascade_len: int = 0  # P1 allows ≤1 (single hop; no follower chains)
@@ -108,9 +109,32 @@ class LayoutAuditReport:
         self.max_shift_pt = max(self.max_shift_pt, abs(float(dy)))
         self.cascade_len = max(self.cascade_len, int(cascade))
 
+    def record_wrap_consume(
+        self,
+        *,
+        debug_id: str | None,
+        design_x2: float,
+        n_shape_lines: int,
+        page_number: int | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        """P2: paragraph used wrap_shape pin geometry (right edge + left step)."""
+        entry: dict[str, Any] = {
+            "debug_id": debug_id,
+            "kind": "wrap_shape_consume",
+            "design_x2": round(float(design_x2), 3),
+            "n_shape_lines": int(n_shape_lines),
+            "page_number": page_number,
+            "policy": "right_pin_left_step",
+        }
+        if extra:
+            entry.update(extra)
+        self.wrap_consumes.append(entry)
+
     def merge(self, other: LayoutAuditReport) -> None:
         self.actions.extend(other.actions)
         self.violations.extend(other.violations)
+        self.wrap_consumes.extend(other.wrap_consumes)
         self.shifts += other.shifts
         self.max_shift_pt = max(self.max_shift_pt, other.max_shift_pt)
         self.cascade_len = max(self.cascade_len, other.cascade_len)
@@ -131,6 +155,7 @@ class LayoutAuditReport:
             "cascade_len": self.cascade_len,
             "actions": list(self.actions),
             "violations": list(self.violations),
+            "wrap_consumes": list(self.wrap_consumes),
             "pages": dict(self.pages),
         }
 

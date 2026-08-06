@@ -83,6 +83,9 @@ def apply_gap_contract_first_pass(page: Page) -> LayoutAuditReport:
     report = LayoutAuditReport(target_rule="ink_gap_relative")
     page_no = getattr(page, "page_number", None)
     phase_shifts = 0
+    # One body may be the "next" of several upper carriers (title + stack
+    # mid). Shift at most once so two × 24pt clamps cannot sum to −48.
+    shifted_ids: set[int] = set()
 
     for para in page.pdf_paragraph or []:
         intent = _intent(para)
@@ -116,6 +119,20 @@ def apply_gap_contract_first_pass(page: Page) -> LayoutAuditReport:
             continue
         if is_gap_protected(nxt, page):
             continue
+        nxt_id = id(nxt)
+        if nxt_id in shifted_ids:
+            report.record_action(
+                debug_id=getattr(nxt, "debug_id", None),
+                kind="gap_contract_skip_already_shifted",
+                delta_pt=0.0,
+                policy="first_pass_body_once",
+                page_number=page_no,
+                extra={
+                    "upper_debug_id": getattr(para, "debug_id", None),
+                    "gap_contract": float(intent.gap_contract),
+                },
+            )
+            continue
 
         next_ink_top = _ink_top_est(nxt)
         if next_ink_top is None:
@@ -137,6 +154,7 @@ def apply_gap_contract_first_pass(page: Page) -> LayoutAuditReport:
             dy = -MAX_SINGLE_JUMP_DY_PT
 
         _shift_box_y(nxt, dy)
+        shifted_ids.add(nxt_id)
         report.record_shift(dy, cascade=1)
         phase_shifts += 1
         report.record_action(
