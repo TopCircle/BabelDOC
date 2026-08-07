@@ -324,3 +324,70 @@ def flags_to_attempt(
     if drop_figure_zones and not wrap_enabled:
         return LayoutAttempt.FULL_MEASURE
     return LayoutAttempt.PRIMARY
+
+
+def full_measure_layout_box(
+    paragraph: PdfParagraph | None,
+    layout_box: Box | None,
+    page: Any = None,
+    *,
+    min_body_width: float = 400.0,
+) -> Box | None:
+    """Widen/snaps ``paragraph.box`` for FULL_MEASURE so intervals are true body measure.
+
+    C3 (docs/line-interval-architecture.md): FULL_MEASURE must change
+    ``layout_box`` width, not only drop figure zones. OA p82.65 still showed
+    x≈5 w≈285 walls because the layout box stayed the residual strip.
+    """
+    if layout_box is None or layout_box.x is None or layout_box.x2 is None:
+        return None
+    intent = getattr(paragraph, "layout_intent", None) if paragraph else None
+    design = getattr(intent, "design_box", None) if intent is not None else None
+    if design is None or design.x is None:
+        design = layout_box
+
+    page_left = 0.0
+    page_right = 612.0
+    if page is not None:
+        crop = getattr(getattr(page, "cropbox", None), "box", None)
+        if crop is not None and crop.x is not None and crop.x2 is not None:
+            page_left = float(crop.x)
+            page_right = float(crop.x2)
+
+    # Left: prefer design.x; if design was residual-snapped near page edge, use
+    # a normal body margin (~56–102pt band).
+    dx = float(design.x)
+    if dx < page_left + 30.0:
+        left = page_left + 56.0
+    else:
+        left = dx
+
+    design_w = max(0.0, float(design.x2) - float(design.x))
+    page_w = max(1.0, page_right - page_left)
+    target_w = max(design_w, min_body_width, min(460.0, page_w * 0.72))
+    right = min(page_right - 16.0, left + target_w)
+    if right <= left + 50.0:
+        right = min(page_right - 16.0, left + min_body_width)
+
+    return Box(
+        x=left,
+        y=float(layout_box.y) if layout_box.y is not None else 0.0,
+        x2=right,
+        y2=float(layout_box.y2) if layout_box.y2 is not None else 0.0,
+    )
+
+
+def layout_box_is_thin_vs_full_measure(
+    layout_box: Box | None,
+    full_box: Box | None,
+    *,
+    ratio: float = 0.65,
+) -> bool:
+    """True when current box is much narrower than FULL_MEASURE target."""
+    if layout_box is None or full_box is None:
+        return False
+    lw = float(layout_box.x2) - float(layout_box.x)
+    fw = float(full_box.x2) - float(full_box.x)
+    if fw <= 1.0:
+        return False
+    return lw < fw * ratio

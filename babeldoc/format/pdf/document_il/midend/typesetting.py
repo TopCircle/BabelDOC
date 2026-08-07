@@ -47,6 +47,12 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     attempt_chain_for_paragraph,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import flags_to_attempt
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    full_measure_layout_box,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    layout_box_is_thin_vs_full_measure,
+)
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import resolve_line_interval_plan
 from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import layout_intent_wrap_enabled
@@ -1362,6 +1368,19 @@ class Typesetting:
         if layout_attempt is LayoutAttempt.FULL_MEASURE:
             wrap_enabled = False
             drop_figure_zones = True
+            # C3: FULL_MEASURE must widen layout_box — drop zones alone leaves
+            # residual-thin boxes (OA p82.65: x≈5 w≈285 wall still "fits").
+            widened = full_measure_layout_box(
+                paragraph, paragraph.box, page
+            )
+            if widened is not None:
+                paragraph.box = widened
+                logger.info(
+                    "FULL_MEASURE layout_box → [%.0f,%.0f] debug_id=%s",
+                    widened.x,
+                    widened.x2,
+                    getattr(paragraph, "debug_id", None),
+                )
         else:
             wrap_enabled = bool(wrap_enabled) and cfg_wrap
             drop_figure_zones = False
@@ -3217,8 +3236,8 @@ class Typesetting:
     ) -> bool:
         """True when pin wrap and/or figure residual should yield full width.
 
-        Combines wrap_shape line budget and residual-strip budget so both the
-        scale-search success path and the floor fallback share one policy.
+        Combines wrap_shape line budget, residual-strip budget, and C3 thin-box
+        vs FULL_MEASURE target (p82.65: ~9 lines in 285pt "fit" under budget).
         """
         if paragraph is None:
             return False
@@ -3251,6 +3270,21 @@ class Typesetting:
                 all_units_fit=all_units_fit,
             ):
                 return True
+            # C3: box much thinner than FULL_MEASURE target → escalate even
+            # when line budget says "ok" (dense wall that still fits).
+            target = full_measure_layout_box(
+                paragraph,
+                box,
+                getattr(self, "_current_page", None),
+            )
+            if layout_box_is_thin_vs_full_measure(box, target):
+                from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+                    count_typeset_baselines,
+                )
+
+                n = count_typeset_baselines(typeset_units)
+                if n >= 5 or not all_units_fit:
+                    return True
         return False
 
     def _resolve_line_intervals(

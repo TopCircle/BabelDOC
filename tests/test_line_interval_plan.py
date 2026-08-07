@@ -9,7 +9,13 @@ from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import LayoutAttempt
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    full_measure_layout_box,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     infer_wrap_mode_from_line_boxes,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    layout_box_is_thin_vs_full_measure,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import resolve_line_interval_plan
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import wrap_interval
@@ -99,3 +105,29 @@ class TestResolvePlan:
         )
         pockets = plan.intervals_at(400, 412, line_idx=0)
         assert pockets == [(102.0, 427.0)]
+
+
+class TestFullMeasureBoxC3:
+    def test_widens_residual_strip(self):
+        # p82.65 style: residual wall box x=5 w=285
+        residual = Box(x=5, y=400, x2=290, y2=700)
+        design = Box(x=102, y=400, x2=427, y2=700)
+        para = PdfParagraph(box=residual, pdf_paragraph_composition=[], unicode="x")
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.WRAP_COLUMN,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+            wrap_shape=[(0.0, 200.0)],
+            wrap_mode=WrapMode.LEFT_FIXED,
+        )
+        page = type(
+            "P",
+            (),
+            {"cropbox": type("C", (), {"box": Box(x=0, y=0, x2=612, y2=792)})()},
+        )()
+        wide = full_measure_layout_box(para, residual, page)
+        assert wide is not None
+        assert wide.x >= 56 - 1e-6  # snapped off x=5
+        assert (wide.x2 - wide.x) >= 400 - 1e-6
+        assert layout_box_is_thin_vs_full_measure(residual, wide) is True
