@@ -21,20 +21,8 @@ _URL_CHROME_RE = re.compile(
 )
 # Bare page number only (running footer digits).
 _PAGE_NUM_ONLY_RE = re.compile(r"^\d{1,3}$")
-# Running header: "Chapter N + title" (e.g. "Chapter 9 the dIrect curL").
-# Flexible casing / spacing: "Chapter 9", "Chapter9", "chapter 9". The title
-# part is arbitrary so the whole header line stays EN (skip MT) whenever the
-# paragraph starts with the chapter marker in the header band.
-_RUNNING_HEADER_RE = re.compile(r"^Chapter\s*\d+", re.IGNORECASE)
 # Fallback band when config heights are not applied to chrome-only checks.
 _CHROME_BAND_FALLBACK_PT = 48.0
-#: Maximum font size (pt) for a "Chapter N + title" running header.
-#:
-#: Chapter-opener pages paint the real chapter title ("Chapter 3", 32pt) at
-#: the top of the page — geometrically inside the header band — and it must
-#: still be machine-translated (第三章). Running headers are small (13-15pt),
-#: so a known size above this ceiling disqualifies the paragraph.
-_RUNNING_HEADER_MAX_FONT_PT = 24.0
 
 HEADER_EXEMPT_LABELS = frozenset(
     {
@@ -159,75 +147,6 @@ def is_bare_page_number_chrome(
     return False
 
 
-def is_running_header(paragraph: PdfParagraph) -> bool:
-    """True for a "Chapter N + title" running header (fancy case tolerated).
-
-    The paragraph text starts with ``Chapter`` + a chapter number, e.g.
-    ``Chapter 9 the dIrect curL``. Book running headers are labelled
-    ``title``/``section_header`` by the layout parser, which the skip logic
-    otherwise exempts from header handling — that exemption must NOT apply to
-    the actual running header: the whole "Chapter N + title" line has to stay
-    in English (acceptance V5, p82 "Chapter9直接卷曲" = FAIL).
-    """
-    text = (getattr(paragraph, "unicode", None) or "").strip()
-    if not text:
-        return False
-    return bool(_RUNNING_HEADER_RE.match(text))
-
-
-def _paragraph_font_size(paragraph: PdfParagraph) -> float | None:
-    """Resolve the paragraph font size (style first, then char median)."""
-    st = getattr(paragraph, "pdf_style", None)
-    if st is not None and getattr(st, "font_size", None) is not None:
-        try:
-            return float(st.font_size)
-        except (TypeError, ValueError):
-            pass
-    sizes: list[float] = []
-    for comp in getattr(paragraph, "pdf_paragraph_composition", None) or []:
-        chs = getattr(comp, "pdf_character", None)
-        if chs is None:
-            line = getattr(comp, "pdf_line", None)
-            if line is not None:
-                chs = getattr(line, "pdf_character", None)
-        for ch in chs or []:
-            cst = getattr(ch, "pdf_style", None)
-            if cst is not None and getattr(cst, "font_size", None) is not None:
-                try:
-                    sizes.append(float(cst.font_size))
-                except (TypeError, ValueError):
-                    pass
-    if not sizes:
-        return None
-    sizes.sort()
-    return sizes[len(sizes) // 2]
-
-
-def is_running_header_in_band(
-    page: Page,
-    paragraph: PdfParagraph,
-    *,
-    header_height: float,
-) -> bool:
-    """True for a running header sitting inside the top header strip.
-
-    A ``Chapter N``-prefixed paragraph in the band is only a running header
-    when its font is small enough (<= 24pt). Chapter-opener titles ("Chapter
-    3", 32pt) live in the same band but must still be translated, so an
-    unknown or oversized font disqualifies them (safe default: do not skip).
-    """
-    if not is_running_header(paragraph):
-        return False
-    if page is None or paragraph is None:
-        return False
-    size = _paragraph_font_size(paragraph)
-    if size is not None and size > _RUNNING_HEADER_MAX_FONT_PT:
-        return False
-    if size is None:
-        return False
-    return in_header_band(page, paragraph, header_height=header_height)
-
-
 _CHROME_LABELS = frozenset({"abandon", "header", "footer"})
 
 # LayoutParser / AddDebugInformation label stubs: unicode is the layout
@@ -339,15 +258,6 @@ def classify_header_footer_skip(
         footer_height=footer_height or _CHROME_BAND_FALLBACK_PT,
     ):
         return "page_number"
-
-    # Running header "Chapter N + title" must stay EN as a whole, even when
-    # the layout parser labelled it ``title``/``section_header`` (which the
-    # exempt check below would otherwise send to MT).
-    if skip_header and is_running_header_in_band(
-        page, paragraph, header_height=header_height or _CHROME_BAND_FALLBACK_PT
-    ):
-        return "header"
-
     if is_header_chrome_exempt(paragraph):
         return None
     if ocr_workaround:

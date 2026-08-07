@@ -201,6 +201,31 @@ def test_no_false_positive_on_normal_body():
     assert ILTranslator.find_consecutive_duplicate_sentences(text) == []
 
 
+def test_fix_untranslated_chapter_markers():
+    # p82 "Chapter9直接卷曲" class residue -> 第九章 直接卷曲 style output.
+    assert ILTranslator.fix_untranslated_chapter_markers(
+        "Chapter9直接卷曲"
+    ) == "第九章直接卷曲"
+    assert ILTranslator.fix_untranslated_chapter_markers(
+        "Chapter 9 the dIrect curL 直接卷曲"
+    ) == "第九章 the dIrect curL 直接卷曲"
+    # Already-translated marker untouched.
+    assert ILTranslator.fix_untranslated_chapter_markers("第九章 直接卷曲") == "第九章 直接卷曲"
+    # Rich-text bold marker splits "Chapter " from "9" in the MT input
+    # (p82 running header); the marker is dropped and the marker normalized.
+    assert ILTranslator.fix_untranslated_chapter_markers(
+        "〖B0〗Chapter 〖/B0〗9 the dIrect curL"
+    ) == "第九章 the dIrect curL"
+    # Chinese-numeral conversion for teens / tens.
+    assert ILTranslator._cn_numeral(3) == "三"
+    assert ILTranslator._cn_numeral(9) == "九"
+    assert ILTranslator._cn_numeral(19) == "十九"
+    assert ILTranslator._cn_numeral(82) == "八十二"
+    assert ILTranslator._cn_numeral(120) == "一百二十"
+    # Non-marker text untouched.
+    assert ILTranslator.fix_untranslated_chapter_markers("这是正文。") == "这是正文。"
+
+
 def test_no_false_positive_on_short_echo():
     # "I love you all. I love you too." is legitimate dialogue, not a merge bug.
     text = "I love you all. I love you too. That is what I said."

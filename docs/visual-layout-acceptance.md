@@ -33,7 +33,7 @@
 ### V5 结构还原
 - callout/侧栏：中文与英文**一一对应**（不重复、不合并丢句）
 - 列表符号/编号保留
-- 页眉/页脚 skip 生效：**running header "Chapter N + 标题" 整体保 EN**（p82"Chapter9直接卷曲"= FAIL）
+- 页眉/页脚 skip 生效：**页眉/页脚 chrome（如 "Learn The Trigasm"、页脚 URL/页码）整体保 EN**；**章节名 "Chapter N + 标题" 是标题，必须翻译为通顺中文**（如 p82 应为 "第九章 直接卷曲"；"Chapter9直接卷曲" 半中半英 = FAIL）
 
 ## 2. 分级
 
@@ -51,8 +51,10 @@
    → 定位 ParagraphFinder/ILTranslator 段落组装（同一 span 多次进 MT）；加"同段输出重复检测"门（≥2 即报警/回退）。
 3. **[P1·绕排]** CJK 孤行保护（单字/双字行尾）
    → wrap 消费端 kinsoku/孤行；"的"/"男人，让"类孤行禁止。
-4. **[P1·skip]** running header "Chapter N + 标题" 整体保 EN
-   → skip_header 识别章号+标题组合（p82"Chapter9直接卷曲"不再混入中文）。
+4. **[P1·MT]** 章节名 "Chapter N + 标题" 必须完整翻译（p82 应为 "第九章 直接卷曲"）
+   → 章节名是标题，**不得被 header skip 保 EN**（p19/p82 一致翻译）；MT 若残留
+   "Chapter N" 英文标记（p82"Chapter9直接卷曲"），由输出侧
+   `fix_untranslated_chapter_markers` 归一为 第N章。
 5. **[P2·验收基建]** 上述 V1–V5 自动化断言进 `tests/repro/digest.py`：
    - 锚点 |Δy|≤4、间距 |Δ|≤2、右缘 ±0.5、无重复行、无孤行、无越栏、字号 ≥ min_scale
    - p19/p82 作为固定验收页（含 golden）。

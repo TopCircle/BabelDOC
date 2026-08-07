@@ -505,6 +505,63 @@ class ILTranslator:
                 out.append((a, "near"))
         return out
 
+    #: Untranslated "Chapter N" marker (chapter names are titles to translate,
+    #: not chrome to keep EN; MT often leaves the marker English, e.g. p82
+    #: "Chapter9直接卷曲").
+    _CHAPTER_MARKER_RE = re.compile(r"\bChapter\s*(\d{1,3})(?!\d)", re.IGNORECASE)
+    #: Rich-text bold markers that split a chapter marker ("Chapter " bold +
+    #: "9" regular) and make MT fuse it into "Chapter9直接卷曲".
+    _RICH_TEXT_MARKER_RE = re.compile(r"[〖\u3016]/?B\d+[〗\u3017]")
+    _CJK_CHAR_RE = re.compile(r"[\u4e00-\u9fff]")
+    _CN_DIGITS = "零一二三四五六七八九"
+
+    @classmethod
+    def _cn_numeral(cls, n: int) -> str:
+        """Convert 1..999 to Chinese numerals (3 -> 三, 19 -> 十九, 120 -> 一百二十)."""
+        if n <= 0 or n >= 1000:
+            return str(n)
+        if n < 10:
+            return cls._CN_DIGITS[n]
+        if n < 20:
+            return "十" + (cls._CN_DIGITS[n - 10] if n % 10 else "")
+        if n < 100:
+            tens, ones = divmod(n, 10)
+            return cls._CN_DIGITS[tens] + "十" + (cls._CN_DIGITS[ones] if ones else "")
+        hundreds = n // 100
+        rest = n % 100
+        out = cls._CN_DIGITS[hundreds] + "百"
+        if not rest:
+            return out
+        if rest < 10:
+            return out + "零" + cls._CN_DIGITS[rest]
+        return out + cls._cn_numeral(rest)
+
+    @classmethod
+    def fix_untranslated_chapter_markers(cls, text: str) -> str:
+        """Replace ``Chapter N`` (plain or rich-text-split) with ``第N章``.
+
+        Chapter names are titles to translate; MT often leaves the marker
+        English (p82 "Chapter9直接卷曲") and rich-text bold markers can split
+        "Chapter " from "9" inside the MT input.  When a replacement happens,
+        the rich-text markers are dropped (the bold run no longer exists), so
+        the engine sees a clean "第N章 ..." input.
+        """
+        if not text:
+            return text
+        cleaned = cls._RICH_TEXT_MARKER_RE.sub("", text)
+
+        def _repl(m: re.Match) -> str:
+            try:
+                n = int(m.group(1))
+            except (TypeError, ValueError):
+                return m.group(0)
+            return "第" + cls._cn_numeral(n) + "章"
+
+        fixed = cls._CHAPTER_MARKER_RE.sub(_repl, cleaned)
+        if fixed == cleaned:
+            return text  # nothing changed: keep markers untouched
+        return fixed
+
     def _maybe_write_skip_report(self) -> None:
         """Write skip_report.json when debug/working_dir (same gate as tracking)."""
         if not (
@@ -1825,6 +1882,10 @@ class ILTranslator:
                         paragraph.debug_id,
                         src_dups[0][0][:60],
                     )
+                # Chapter names are titles to translate (not chrome to keep
+                # EN). Normalize "Chapter N" -> 第N章 on the MT input so a
+                # rich-text-split marker never fuses into "Chapter9直接卷曲".
+                text = self.fix_untranslated_chapter_markers(text)
                 llm_translate_tracker = tracker.new_llm_translate_tracker()
                 # Perform translation
                 if self.support_llm_translate:
@@ -1913,6 +1974,13 @@ class ILTranslator:
                     translated_text = re.sub(
                         r"[. 。…，]{20,}", ".", translated_text
                     )
+                    # Chapter names are titles to translate (not chrome to keep
+                    # EN); MT often leaves the marker English ("Chapter9直接卷曲").
+                    # Normalize any residue to 第N章 on translated output only.
+                    if self._CJK_CHAR_RE.search(translated_text):
+                        translated_text = self.fix_untranslated_chapter_markers(
+                            translated_text
+                        )
                     if self.translation_drops_sentences(text, translated_text):
                         logger.warning(
                             "Translation still drops sentences after retry; "
