@@ -14,6 +14,8 @@ from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.wrap_shape import count_typeset_baselines
+from babeldoc.format.pdf.document_il.utils.wrap_shape import residual_line_budget
+from babeldoc.format.pdf.document_il.utils.wrap_shape import should_fallback_residual_to_block
 from babeldoc.format.pdf.document_il.utils.wrap_shape import should_fallback_wrap_to_block
 from babeldoc.format.pdf.document_il.utils.wrap_shape import wrap_line_budget
 from babeldoc.format.pdf.translation_config import TranslationConfig
@@ -71,6 +73,69 @@ class TestCountBaselines:
         units = [_U(10), _U(10.04), _U(20), _U(20.02)]
         # rounded to 0.1 → 10.0, 10.0, 20.0, 20.0 → 2
         assert count_typeset_baselines(units) == 2
+
+
+class TestResidualLineBudget:
+    def test_near_full_width_uncapped(self):
+        assert residual_line_budget(400, 460) >= 1000
+
+    def test_oa_p82_strip(self):
+        # ~189pt residual / ~460pt para → budget around 10
+        b = residual_line_budget(189, 460)
+        assert 6 <= b <= 14
+
+    def test_narrower_fewer_lines(self):
+        assert residual_line_budget(80, 460) < residual_line_budget(189, 460)
+
+
+class TestShouldFallbackResidualToBlock:
+    def test_short_caption_kept(self):
+        units = [_U(500 - 14 * i) for i in range(4)]
+        assert (
+            should_fallback_residual_to_block(
+                residual_width=189,
+                para_width=460,
+                typeset_units=units,
+                all_units_fit=True,
+            )
+            is False
+        )
+
+    def test_dense_wall_fallback(self):
+        # OA p82: ~14+ lines in ~189pt strip
+        units = [_U(700 - 14 * i) for i in range(16)]
+        assert (
+            should_fallback_residual_to_block(
+                residual_width=189,
+                para_width=460,
+                typeset_units=units,
+                all_units_fit=False,
+            )
+            is True
+        )
+
+    def test_full_width_no_fallback(self):
+        units = [_U(500 - 10 * i) for i in range(20)]
+        assert (
+            should_fallback_residual_to_block(
+                residual_width=450,
+                para_width=460,
+                typeset_units=units,
+                all_units_fit=False,
+            )
+            is False
+        )
+
+    def test_none_residual_no_fallback(self):
+        assert (
+            should_fallback_residual_to_block(
+                residual_width=None,
+                para_width=460,
+                typeset_units=[_U(1)] * 20,
+                all_units_fit=False,
+            )
+            is False
+        )
 
 
 def _cjk_typesetting() -> Typesetting:
