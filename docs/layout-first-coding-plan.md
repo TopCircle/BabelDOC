@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 |------|-----|
-| 状态 | P0 ✅ · P1 ✅ · **P2 in progress (0.6.4.53)** |
+| 状态 | P0 ✅ · P1 ✅ · **P2 partial (right-pin only)** · 水平消费链见 [`line-interval-architecture.md`](line-interval-architecture.md) |
 | 基线 | `2fe458f` / 0.6.4.52（P1 close）→ P2 `0.6.4.53` |
 | 上游 | [`layout-first-plan.md`](layout-first-plan.md) v2.1 + [`layout-first-plan-review.md`](layout-first-plan-review.md) |
 | 硬约束 | **P0 只加字段+提取，禁止改 typesetting/box_expand/vertical_gap 行为路径**；P1–P5 接口本次定死，防止 P0 画死角 |

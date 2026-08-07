@@ -12,14 +12,15 @@ this module has no runtime dependency on ``il_version_1``; in turn
 ``get_type_hints``) without creating an import cycle.
 
 ``wrap_shape`` stores EN-measured ``(left_offset, width)`` with
-``left_offset = line.x - design_box.x``. P2 consumption lives in
-``utils.wrap_shape.typeset_wrap_line``: pin right at ``design_box.x2``,
-``left = design.x2 - width``. Placement uses **width only**; left_offset
-is forensic. Missing multi-line boxes: extractor / ``resolve_wrap_shape``
+``left_offset = line.x - design_box.x``. Horizontal consumption is
+``utils.line_interval_plan`` (``WrapMode`` + ``LineIntervalPlan``), not
+right-pin-only. Missing multi-line boxes: extractor / ``resolve_wrap_shape``
 synthesize from ``per_line_widths``.
 
 ``text_on_photo`` / subtitle overlay signals are uncalibrated on real OA
 pages until P1+; treat as advisory for consumers.
+
+See ``docs/line-interval-architecture.md``.
 """
 
 from __future__ import annotations
@@ -53,6 +54,14 @@ class LayoutIntentRole(str, Enum):
     OCR = "ocr"
 
 
+class WrapMode(str, Enum):
+    """How wrap_shape pins horizontal edges (LineIntervalPlan input)."""
+
+    NONE = "none"
+    RIGHT_FIXED = "right_fixed"  # pin x2; x1 = x2 - width (figure left of text)
+    LEFT_FIXED = "left_fixed"  # pin x1; x2 = x1 + width (figure right of text)
+
+
 @dataclass(slots=True)
 class LayoutIntent:
     """Pre-translation derived projection; consumers must not mutate it.
@@ -68,8 +77,9 @@ class LayoutIntent:
     top_inset: float  # design_box.y2 - first-line ink top (y2 max), PDF y-up
     bottom_inset: float  # last-line ink bottom (y min) - design_box.y
     wrap_shape: list[tuple[float, float]] | None = (
-        None  # per-line (left_offset, width); right edge = design right edge, left edge = right edge - width
+        None  # per-line (left_offset, width)
     )
+    wrap_mode: WrapMode = WrapMode.NONE  # pin side for wrap_shape → intervals
     overlays_band: str | None = (
         None  # SUBTITLE_OVERLAY -> debug_id of the TITLE it overlays
     )
@@ -110,6 +120,7 @@ class LayoutIntent:
                 if self.wrap_shape is not None
                 else None
             ),
+            "wrap_mode": self.wrap_mode.value,
             "overlays_band": self.overlays_band,
             "stack": self.stack,
             "expansion_policy": list(self.expansion_policy),

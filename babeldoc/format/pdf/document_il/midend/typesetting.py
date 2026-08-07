@@ -42,13 +42,15 @@ from babeldoc.format.pdf.document_il.utils.cjk_kinsoku import (
     is_cjk_line_end_forbidden,
     is_cjk_line_start_forbidden,
 )
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import LayoutAttempt
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import flags_to_attempt
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import resolve_line_interval_plan
 from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import layout_intent_wrap_enabled
 from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
 from babeldoc.format.pdf.document_il.utils.wrap_shape import should_fallback_residual_to_block
 from babeldoc.format.pdf.document_il.utils.wrap_shape import should_fallback_wrap_to_block
 from babeldoc.format.pdf.document_il.utils.wrap_shape import should_skip_pre_expand_for_wrap
-from babeldoc.format.pdf.document_il.utils.wrap_shape import typeset_wrap_line
 from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.format.pdf.translation_config import WatermarkOutputMode
 
@@ -1327,9 +1329,16 @@ class Typesetting:
             )
         prev_zones = page_zones
         prev_wrap = getattr(self, "_wrap_enabled", None)
+        prev_drop = getattr(self, "_layout_drop_figure_zones", False)
+        prev_attempt = getattr(self, "_layout_attempt", None)
         self._current_zone_index = filtered_zones
-        # Call-scoped for _active_wrap / line-interval consumers in this frame.
+        # Call-scoped for _active_wrap / LineIntervalPlan consumers.
         self._wrap_enabled = wrap_enabled
+        self._layout_drop_figure_zones = drop_figure_zones
+        self._layout_attempt = flags_to_attempt(
+            wrap_enabled=bool(wrap_enabled),
+            drop_figure_zones=drop_figure_zones,
+        )
         try:
             return self._find_optimal_scale_and_layout_inner(
                 paragraph,
@@ -1345,6 +1354,8 @@ class Typesetting:
         finally:
             self._current_zone_index = prev_zones
             self._wrap_enabled = prev_wrap
+            self._layout_drop_figure_zones = prev_drop
+            self._layout_attempt = prev_attempt
 
     def _find_optimal_scale_and_layout_inner(
         self,
@@ -3215,22 +3226,41 @@ class Typesetting:
         reference_widths: list[float] | None,
         alignment: str | None = None,
     ) -> list[tuple[float, float]]:
-        """Line residual pockets with Layout-First P2 replace matrix.
+        """Line residual pockets via LineIntervalPlan (Intent → intervals).
 
-        Wrap geometry lives in ``utils.wrap_shape``; this method only wires it.
+        Architecture: docs/line-interval-architecture.md. Typesetting only wires.
         """
-        active = self._active_wrap(paragraph, box)
-        if active is not None:
-            design, shape = active
-            return [typeset_wrap_line(design, shape, line_idx)]
-        intervals = self._query_line_intervals(y_bottom, y_top, box)
-        return self._cap_leftmost_interval_with_reference(
-            box,
-            intervals,
-            reference_widths,
-            line_idx,
-            alignment=alignment,
+        wrap_enabled = getattr(self, "_wrap_enabled", None)
+        if wrap_enabled is None:
+            wrap_enabled = layout_intent_wrap_enabled(
+                getattr(self, "translation_config", None)
+            )
+        drop_figs = bool(getattr(self, "_layout_drop_figure_zones", False))
+        attempt = flags_to_attempt(
+            wrap_enabled=bool(wrap_enabled),
+            drop_figure_zones=drop_figs,
         )
+        # Explicit attempt on self wins (C2 attempt loop).
+        explicit = getattr(self, "_layout_attempt", None)
+        if explicit is not None:
+            attempt = explicit
+
+        def _cap(box_, ax, ax2, refs, li):
+            return Typesetting._cap_available_with_reference(
+                box_, ax, ax2, refs, li, alignment=alignment
+            )
+
+        plan = resolve_line_interval_plan(
+            paragraph,
+            box,
+            attempt=attempt,
+            wrap_enabled=bool(wrap_enabled),
+            zone_index=getattr(self, "_current_zone_index", None),
+            reference_widths=reference_widths,
+            alignment=alignment,
+            cap_available=_cap,
+        )
+        return plan.intervals_at(y_bottom, y_top, line_idx=line_idx)
 
     @staticmethod
     def _cap_leftmost_interval_with_reference(

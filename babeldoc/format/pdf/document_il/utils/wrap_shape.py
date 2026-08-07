@@ -123,30 +123,17 @@ def typeset_wrap_line(
     wrap_shape: list[tuple[float, float]],
     line_idx: int,
 ) -> tuple[float, float]:
-    """Right edge pinned at ``design_box.x2``; left = right − width.
+    """Right-pin wrap pocket (legacy API).
 
-    This is EN figure-wrap geometry (left edge steps right as the column
-    narrows around a photo). Not mirror taper (fixed left, shrinking right).
-
-    ``wrap_shape`` entries are ``(left_offset, width)``; placement uses
-    **width only**. Lines past the shape reuse the last width. Empty shape
-    falls back to the full design box (caller should usually not call this
-    without a resolved shape). ``design_box`` must be non-None.
+    New code should use ``line_interval_plan.wrap_interval`` with an explicit
+    ``WrapMode``. This function keeps pre-clamp right-pin math for existing
+    tests and call sites.
     """
-    if design_box is None:
-        raise TypeError("typeset_wrap_line requires a design_box")
-    if not wrap_shape:
-        return float(design_box.x), float(design_box.x2)
-    idx = 0 if line_idx < 0 else line_idx
-    if idx >= len(wrap_shape):
-        _off, width = wrap_shape[-1]
-    else:
-        _off, width = wrap_shape[idx]
-    width = float(width)
-    if width < 8.0:
-        width = 8.0
-    right = float(design_box.x2)
-    return right - width, right
+    from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+        typeset_wrap_line_legacy,
+    )
+
+    return typeset_wrap_line_legacy(design_box, wrap_shape, line_idx)
 
 
 def should_skip_pre_expand_for_wrap(
