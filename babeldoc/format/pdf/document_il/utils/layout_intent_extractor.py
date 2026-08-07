@@ -37,6 +37,10 @@ from babeldoc.format.pdf.document_il.utils.layout_helper import calculate_box_io
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_quote_block
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    infer_wrap_mode_from_line_boxes,
+)
 from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
 from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
 from babeldoc.format.pdf.document_il.utils.vertical_gap import is_display_title
@@ -231,12 +235,20 @@ class LayoutIntentExtractor:
             bottom_inset = float(ink.y - design_box.y)
 
         wrap_shape = None
+        wrap_mode = WrapMode.NONE
         if role is LayoutIntentRole.WRAP_COLUMN:
             if len(meta["lines"]) >= 2:
                 wrap_shape = [
                     (float(line.x - design_box.x), float(line.x2 - line.x))
                     for line in meta["lines"]
                 ]
+                line_boxes = [
+                    (float(line.x), float(line.x2)) for line in meta["lines"]
+                ]
+                wrap_mode = infer_wrap_mode_from_line_boxes(line_boxes)
+                # Shape without clear edge spread: preserve historical right-pin.
+                if wrap_mode is WrapMode.NONE:
+                    wrap_mode = WrapMode.RIGHT_FIXED
             else:
                 # No multi-line boxes (noisy/post-cluster): synthesize from
                 # reference widths so P2 pin path still has a shape.
@@ -245,6 +257,9 @@ class LayoutIntentExtractor:
                     getattr(rm, "per_line_widths", None) if rm is not None else None
                 )
                 wrap_shape = shape_from_widths(widths)
+                # Width-only synth: no edge geometry → right-pin (legacy).
+                if wrap_shape:
+                    wrap_mode = WrapMode.RIGHT_FIXED
 
         expansion_policy, expansion_limits, overflow_policy = self._project_policy(
             role
@@ -261,6 +276,7 @@ class LayoutIntentExtractor:
             top_inset=top_inset,
             bottom_inset=bottom_inset,
             wrap_shape=wrap_shape,
+            wrap_mode=wrap_mode,
             overlays_band=overlays_band,
             expansion_policy=expansion_policy,
             expansion_limits=expansion_limits,

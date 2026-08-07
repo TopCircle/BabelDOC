@@ -11,6 +11,7 @@ from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.xml_converter import XMLConverter
 
 
@@ -52,6 +53,7 @@ def _from_dict(d: dict) -> LayoutIntent:
             if d["wrap_shape"] is not None
             else None
         ),
+        wrap_mode=WrapMode(d["wrap_mode"]) if d.get("wrap_mode") else WrapMode.NONE,
         overlays_band=d["overlays_band"],
         stack=d["stack"],
         expansion_policy=tuple(d["expansion_policy"]),
@@ -71,6 +73,7 @@ def test_to_dict_roundtrip():
         top_inset=2.5,
         bottom_inset=1.75,
         wrap_shape=[(4.0, 194.0), (6.5, 174.0)],
+        wrap_mode=WrapMode.RIGHT_FIXED,
         overlays_band=None,
         stack=0,
         expansion_policy=("right", "down"),
@@ -90,6 +93,7 @@ def test_to_dict_roundtrip():
         "top_inset": 2.5,
         "bottom_inset": 1.75,
         "wrap_shape": [[4.0, 194.0], [6.5, 174.0]],
+        "wrap_mode": "right_fixed",
         "overlays_band": None,
         "stack": 0,
         "expansion_policy": ["right", "down"],
