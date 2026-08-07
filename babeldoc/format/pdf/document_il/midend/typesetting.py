@@ -43,6 +43,9 @@ from babeldoc.format.pdf.document_il.utils.cjk_kinsoku import (
     is_cjk_line_start_forbidden,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import LayoutAttempt
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    attempt_chain_for_paragraph,
+)
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import flags_to_attempt
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import resolve_line_interval_plan
 from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
@@ -1290,33 +1293,78 @@ class Typesetting:
         apply_layout: bool = False,
         line_skip: float | None = None,
         *,
+        layout_attempt: LayoutAttempt | None = None,
         wrap_enabled: bool | None = None,
         drop_figure_zones: bool = False,
     ) -> tuple[float, list[TypesettingUnit] | None]:
         """查找最优缩放因子并可选择性地执行布局
 
-        Args:
-            paragraph: 段落对象
-            page: 页面对象
-            typesetting_units: 排版单元列表
-            initial_scale: 初始缩放因子
-            use_english_line_break: 是否使用英文换行规则
-            apply_layout: 是否应用布局到 paragraph（True 时执行实际排版）
-            wrap_enabled: pin wrap on/off for this attempt; None → config default.
-                CJK wrap→block fallback re-enters with False (no instance flag).
-            drop_figure_zones: ignore figure exclusion zones for this attempt;
-                re-entered True when residual strips leave text unfittable.
+        Horizontal geometry is ``LineIntervalPlan`` (see
+        ``docs/line-interval-architecture.md``). Overflow uses
+        ``LayoutAttempt`` (PRIMARY → FULL_MEASURE), not ad-hoc flag recursion.
 
-        Returns:
-            tuple[float, list[TypesettingUnit] | None]: (最终缩放因子，排版后的单元列表或 None)
+        Legacy kwargs ``wrap_enabled`` / ``drop_figure_zones`` map to attempts
+        for one release; prefer ``layout_attempt=``.
         """
         if not paragraph.box:
             return initial_scale, None
 
+        cfg_wrap = layout_intent_wrap_enabled(
+            getattr(self, "translation_config", None)
+        )
         if wrap_enabled is None:
-            wrap_enabled = layout_intent_wrap_enabled(
-                getattr(self, "translation_config", None)
+            wrap_enabled = cfg_wrap
+
+        # Entry without explicit attempt: walk attempt chain (CJK float-wrap).
+        if layout_attempt is None and not drop_figure_zones and wrap_enabled:
+            chain = attempt_chain_for_paragraph(
+                paragraph, is_cjk=bool(self.is_cjk)
             )
+            last: tuple[float, list[TypesettingUnit] | None] = (
+                initial_scale,
+                None,
+            )
+            for attempt in chain:
+                scale, units = self._find_optimal_scale_and_layout(
+                    paragraph,
+                    page,
+                    typesetting_units,
+                    initial_scale,
+                    use_english_line_break=True,
+                    apply_layout=apply_layout,
+                    line_skip=line_skip,
+                    layout_attempt=attempt,
+                )
+                last = (scale, units)
+                if attempt is LayoutAttempt.FULL_MEASURE:
+                    return last
+                # PRIMARY accepted only if not over line budget.
+                if units is not None or not apply_layout:
+                    if not self._cjk_should_abandon_narrow_column(
+                        paragraph,
+                        paragraph.box,
+                        units,
+                        all_units_fit=units is not None,
+                        wrap_enabled=True,
+                        drop_figure_zones=False,
+                    ):
+                        return last
+                # else continue chain → FULL_MEASURE
+            return last
+
+        if layout_attempt is None:
+            layout_attempt = flags_to_attempt(
+                wrap_enabled=bool(wrap_enabled),
+                drop_figure_zones=drop_figure_zones,
+            )
+
+        # Derive flags from attempt (single source for zone filter + plan).
+        if layout_attempt is LayoutAttempt.FULL_MEASURE:
+            wrap_enabled = False
+            drop_figure_zones = True
+        else:
+            wrap_enabled = bool(wrap_enabled) and cfg_wrap
+            drop_figure_zones = False
 
         # Ignore DocLayout figure zones that spill over this paragraph's own
         # box (false positives crush body text to unreadable scale).
@@ -1332,13 +1380,9 @@ class Typesetting:
         prev_drop = getattr(self, "_layout_drop_figure_zones", False)
         prev_attempt = getattr(self, "_layout_attempt", None)
         self._current_zone_index = filtered_zones
-        # Call-scoped for _active_wrap / LineIntervalPlan consumers.
         self._wrap_enabled = wrap_enabled
         self._layout_drop_figure_zones = drop_figure_zones
-        self._layout_attempt = flags_to_attempt(
-            wrap_enabled=bool(wrap_enabled),
-            drop_figure_zones=drop_figure_zones,
-        )
+        self._layout_attempt = layout_attempt
         try:
             return self._find_optimal_scale_and_layout_inner(
                 paragraph,
@@ -1481,8 +1525,8 @@ class Typesetting:
                         )
                     ):
                         logger.info(
-                            "CJK narrow-column reject (fit but over line budget; "
-                            "debug_id=%s)",
+                            "CJK narrow-column → LayoutAttempt.FULL_MEASURE "
+                            "(line budget; debug_id=%s)",
                             getattr(paragraph, "debug_id", None),
                         )
                         return self._find_optimal_scale_and_layout(
@@ -1493,8 +1537,7 @@ class Typesetting:
                             use_english_line_break=True,
                             apply_layout=apply_layout,
                             line_skip=line_skip,
-                            wrap_enabled=False,
-                            drop_figure_zones=True,
+                            layout_attempt=LayoutAttempt.FULL_MEASURE,
                         )
                     if apply_layout:
                         # DP 断行优化：在最终布局时尝试更优的断行方案
@@ -1762,9 +1805,8 @@ class Typesetting:
         ):
             logger.debug(
                 "Scale floor reached with figure zones still active; "
-                "retrying without figure exclusion for this paragraph"
+                "FULL_MEASURE attempt (drop figure exclusion)"
             )
-            # Re-enter outer wrapper so filter_for_paragraph runs again
             return self._find_optimal_scale_and_layout(
                 paragraph,
                 page,
@@ -1773,8 +1815,7 @@ class Typesetting:
                 use_english_line_break=True,
                 apply_layout=apply_layout,
                 line_skip=line_skip,
-                wrap_enabled=wrap_enabled,
-                drop_figure_zones=True,
+                layout_attempt=LayoutAttempt.FULL_MEASURE,
             )
 
         # Force-layout candidate (apply path only) — also feeds wrap fallback.
@@ -1821,10 +1862,8 @@ class Typesetting:
             )
         ):
             logger.info(
-                "CJK narrow-column→block fallback "
-                "(wrap=%s drop_fig=%s; debug_id=%s)",
-                wrap_enabled,
-                drop_figure_zones,
+                "CJK narrow-column → LayoutAttempt.FULL_MEASURE "
+                "(floor; debug_id=%s)",
                 getattr(paragraph, "debug_id", None),
             )
             return self._find_optimal_scale_and_layout(
@@ -1835,8 +1874,7 @@ class Typesetting:
                 use_english_line_break=True,
                 apply_layout=apply_layout,
                 line_skip=line_skip,
-                wrap_enabled=False,
-                drop_figure_zones=True,
+                layout_attempt=LayoutAttempt.FULL_MEASURE,
             )
 
         # Force-apply at readable floor even if text overflows the box.
