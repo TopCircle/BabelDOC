@@ -45,6 +45,7 @@ from babeldoc.format.pdf.document_il.utils.cjk_kinsoku import (
 from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import layout_intent_wrap_enabled
 from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
+from babeldoc.format.pdf.document_il.utils.wrap_shape import should_fallback_residual_to_block
 from babeldoc.format.pdf.document_il.utils.wrap_shape import should_fallback_wrap_to_block
 from babeldoc.format.pdf.document_il.utils.wrap_shape import should_skip_pre_expand_for_wrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import typeset_wrap_line
@@ -1453,6 +1454,37 @@ class Typesetting:
 
                 # 如果所有单元都放得下
                 if all_units_fit:
+                    # CJK LA-1: "fits" under pin/residual can still be a dense
+                    # wall (OA p82). Reject and reflow full-width once.
+                    if (
+                        self.is_cjk
+                        and paragraph is not None
+                        and (wrap_enabled or not drop_figure_zones)
+                        and self._cjk_should_abandon_narrow_column(
+                            paragraph,
+                            box,
+                            typeset_units,
+                            all_units_fit=True,
+                            wrap_enabled=wrap_enabled,
+                            drop_figure_zones=drop_figure_zones,
+                        )
+                    ):
+                        logger.info(
+                            "CJK narrow-column reject (fit but over line budget; "
+                            "debug_id=%s)",
+                            getattr(paragraph, "debug_id", None),
+                        )
+                        return self._find_optimal_scale_and_layout(
+                            paragraph,
+                            page,
+                            typesetting_units,
+                            initial_scale,
+                            use_english_line_break=True,
+                            apply_layout=apply_layout,
+                            line_skip=line_skip,
+                            wrap_enabled=False,
+                            drop_figure_zones=True,
+                        )
                     if apply_layout:
                         # DP 断行优化：在最终布局时尝试更优的断行方案
                         optimized_typeset_units = None
@@ -1760,39 +1792,41 @@ class Typesetting:
                     reference_widths=force_ref,
                 )
 
-        # Single CJK wrap→block fallback (layout align LA-1): pin + long ZH
-        # produces needle overflow (OA p82). Re-enter with wrap_enabled=False.
-        if wrap_enabled and self.is_cjk and paragraph is not None:
-            shape = resolve_wrap_shape(paragraph)
-            would_wrap = get_active_wrap(
+        # CJK layout-align LA-1: pin and/or figure residual strip → full width.
+        decision_units = (
+            force_units if force_units is not None else last_typeset_units
+        )
+        if (
+            self.is_cjk
+            and paragraph is not None
+            and (wrap_enabled or not drop_figure_zones)
+            and self._cjk_should_abandon_narrow_column(
                 paragraph,
-                enabled=True,
-                layout_box=box,
-            )
-            decision_units = (
-                force_units if force_units is not None else last_typeset_units
-            )
-            if would_wrap is not None and should_fallback_wrap_to_block(
-                wrap_shape=shape or would_wrap[1],
-                typeset_units=decision_units,
+                box,
+                decision_units,
                 all_units_fit=False,
-            ):
-                logger.info(
-                    "CJK wrap→block fallback (lines overflow pin budget; "
-                    "debug_id=%s)",
-                    getattr(paragraph, "debug_id", None),
-                )
-                return self._find_optimal_scale_and_layout(
-                    paragraph,
-                    page,
-                    typesetting_units,
-                    initial_scale,
-                    use_english_line_break=True,
-                    apply_layout=apply_layout,
-                    line_skip=line_skip,
-                    wrap_enabled=False,
-                    drop_figure_zones=drop_figure_zones,
-                )
+                wrap_enabled=wrap_enabled,
+                drop_figure_zones=drop_figure_zones,
+            )
+        ):
+            logger.info(
+                "CJK narrow-column→block fallback "
+                "(wrap=%s drop_fig=%s; debug_id=%s)",
+                wrap_enabled,
+                drop_figure_zones,
+                getattr(paragraph, "debug_id", None),
+            )
+            return self._find_optimal_scale_and_layout(
+                paragraph,
+                page,
+                typesetting_units,
+                initial_scale,
+                use_english_line_break=True,
+                apply_layout=apply_layout,
+                line_skip=line_skip,
+                wrap_enabled=False,
+                drop_figure_zones=True,
+            )
 
         # Force-apply at readable floor even if text overflows the box.
         # Never leave composition empty after apply_layout cleared it.
@@ -3093,6 +3127,82 @@ class Typesetting:
             enabled=enabled,
             layout_box=layout_box,
         )
+
+    def _max_figure_residual_width(self, box: Box | None) -> float | None:
+        """Narrowest horizontal residual after carving active figure zones.
+
+        Used by CJK residual-strip→block fallback (OA p82 left wall). None when
+        no figure zones bite the paragraph box.
+        """
+        if box is None or box.x is None or box.x2 is None:
+            return None
+        zone_index = getattr(self, "_current_zone_index", None)
+        if zone_index is None or not zone_index.zones:
+            return None
+        from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
+            ZONE_FIGURE,
+            _max_horizontal_residual,
+        )
+
+        residuals: list[float] = []
+        for zone in zone_index.zones:
+            if getattr(zone, "kind", None) != ZONE_FIGURE:
+                continue
+            zb = getattr(zone, "box", None)
+            if zb is None:
+                continue
+            residuals.append(float(_max_horizontal_residual(box, zb)))
+        if not residuals:
+            return None
+        return min(residuals)
+
+    def _cjk_should_abandon_narrow_column(
+        self,
+        paragraph: il_version_1.PdfParagraph | None,
+        box: Box | None,
+        typeset_units,
+        *,
+        all_units_fit: bool,
+        wrap_enabled: bool,
+        drop_figure_zones: bool,
+    ) -> bool:
+        """True when pin wrap and/or figure residual should yield full width.
+
+        Combines wrap_shape line budget and residual-strip budget so both the
+        scale-search success path and the floor fallback share one policy.
+        """
+        if paragraph is None:
+            return False
+        if wrap_enabled:
+            shape = resolve_wrap_shape(paragraph)
+            would_wrap = get_active_wrap(
+                paragraph,
+                enabled=True,
+                layout_box=box,
+            )
+            if would_wrap is not None and should_fallback_wrap_to_block(
+                wrap_shape=shape or would_wrap[1],
+                typeset_units=typeset_units,
+                all_units_fit=all_units_fit,
+            ):
+                return True
+        if not drop_figure_zones:
+            residual_w = self._max_figure_residual_width(box)
+            para_w = (
+                float(box.x2 - box.x)
+                if box is not None
+                and box.x is not None
+                and box.x2 is not None
+                else None
+            )
+            if should_fallback_residual_to_block(
+                residual_width=residual_w,
+                para_width=para_w,
+                typeset_units=typeset_units,
+                all_units_fit=all_units_fit,
+            ):
+                return True
+        return False
 
     def _resolve_line_intervals(
         self,

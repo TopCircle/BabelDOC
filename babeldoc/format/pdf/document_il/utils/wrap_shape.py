@@ -218,3 +218,52 @@ def should_fallback_wrap_to_block(
     if n_lines > budget:
         return True
     return False
+
+
+def residual_line_budget(
+    residual_width: float | None,
+    para_width: float | None,
+) -> int:
+    """Max layout lines allowed in a figure residual strip before block fallback.
+
+    Side-photo residual columns (~150–200pt, OA p82) are fine for short EN
+    wrap captions but turn long ZH into a dense wall. Budget scales with how
+    wide the residual is relative to the paragraph; near-full width → no cap.
+    """
+    if residual_width is None or residual_width <= 0:
+        return 10
+    if para_width is not None and para_width > 0:
+        if residual_width >= para_width * 0.75:
+            return 10_000  # effectively full measure — keep figure
+        ratio = residual_width / para_width
+        # At ~0.4 measure (189/460), allow ~10 lines; narrower → fewer.
+        return max(6, int(round(10 * (ratio / 0.4))))
+    # No para width: absolute floor from residual pt (≈ one CJK line ~12pt)
+    return max(6, int(residual_width / 18.0))
+
+
+def should_fallback_residual_to_block(
+    *,
+    residual_width: float | None,
+    para_width: float | None,
+    typeset_units,
+    all_units_fit: bool,
+) -> bool:
+    """True when CJK should abandon figure residual strip for full width.
+
+    Complements pin-wrap fallback: even with wrap_enabled=False, a kept figure
+    zone still carves a ~189pt left column (OA p82). If line count exceeds the
+    residual budget (or never fits), drop figures and reflow at design width.
+    """
+    if residual_width is None:
+        return False
+    if para_width is not None and para_width > 0:
+        if residual_width >= para_width * 0.75:
+            return False
+    budget = residual_line_budget(residual_width, para_width)
+    n_lines = count_typeset_baselines(typeset_units)
+    if not all_units_fit and (typeset_units is None or n_lines >= budget):
+        return True
+    if n_lines > budget:
+        return True
+    return False
