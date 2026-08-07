@@ -486,3 +486,57 @@ def test_extract_does_not_mutate_paragraph_geometry():
     assert (line.box.x, line.box.y, line.box.x2, line.box.y2) == line_before
     assert (ch.box.x, ch.box.y, ch.box.x2, ch.box.y2) == ch_before
     assert para.layout_intent is not None
+
+
+def test_gap_contract_skips_drop_cap_line():
+    """gap_contract measures to the first *regular* line, not the drop cap.
+
+    p19 regression: the EN body below the 56pt title starts with an oversized
+    drop-cap initial whose top (~11pt below the title) made the contract
+    ~11.2pt instead of the first-body-line clearance (~18pt) the P1
+    acceptance tool uses. The drop-cap glyph must be excluded.
+    """
+    title = _para(
+        Box(x=0, y=90, x2=300, y2=130),
+        label="title",
+        debug_id="t1",
+        lines=[_line(0, 300, 90, 130, font_size=56)],
+        font_size=56,
+    )
+    # Body with an oversized drop-cap "I" (33.7pt) followed by regular 12.5pt
+    # text. Drop-cap top (y2=90) sits well above the regular first-line top
+    # (y2=80); the contract must measure to the regular line (10pt), not the
+    # drop cap (0pt).
+    drop_cap = _char(0, 20, 40, 90, font_size=33.7)
+    regular = [
+        _char(22, 40, 50, 80, font_size=12.5),
+        _char(42, 60, 50, 80, font_size=12.5),
+    ]
+    body = _para(
+        Box(x=0, y=40, x2=300, y2=90),
+        label="text",
+        chars=[drop_cap, *regular],
+        font_size=12.5,
+    )
+    _extract(_page([title, body]))
+    # title ink bottom = 90; regular first line top = 80 -> contract 10.
+    assert body.layout_intent.gap_contract is None
+    assert title.layout_intent.gap_contract == pytest.approx(10.0)
+
+
+def test_gap_contract_unchanged_without_drop_cap():
+    """Paragraphs without oversized glyphs keep the raw ink-top contract."""
+    upper = _para(
+        Box(x=0, y=90, x2=300, y2=130),
+        label="text",
+        lines=[_line(0, 300, 90, 130)],
+    )
+    below = _para(
+        Box(x=0, y=40, x2=300, y2=60),
+        label="text",
+        lines=[_line(0, 300, 40, 60)],
+    )
+    _extract(_page([upper, below]))
+    # gap = upper ink bottom (90) - below ink top (60) = 30.
+    assert upper.layout_intent.gap_contract == pytest.approx(90.0 - 60.0)
+    assert below.layout_intent.gap_contract is None

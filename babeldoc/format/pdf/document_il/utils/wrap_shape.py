@@ -254,3 +254,61 @@ def should_fallback_residual_to_block(
     if n_lines > budget:
         return True
     return False
+
+
+#: Minimum usable line-pocket width for CJK reflow (points).
+#:
+#: CJK full-width characters need ~2 chars to form a readable line tail; a
+#: pocket narrower than this (an EN sliver such as a lone "I" or a trailing
+#: fragment) can only ever hold 0–1 Chinese characters, which forces a
+#: single-character orphan line (acceptance V3: 无单/双字孤行). EN
+#: proportional text tolerates 1–8pt slivers, so this sanitizer is applied
+#: **only** on the CJK consumption path.
+CJK_WRAP_MIN_LINE_WIDTH = 24.0
+
+
+def sanitize_wrap_shape_for_cjk(
+    wrap_shape: list[tuple[float, float]] | None,
+    *,
+    min_width: float = CJK_WRAP_MIN_LINE_WIDTH,
+) -> list[tuple[float, float]] | None:
+    """Replace degenerate wrap pockets that CJK reflow would orphan.
+
+    ``wrap_shape`` entries are ``(left_offset, width)`` per EN line. A width
+    below ``min_width`` (~2 full-width chars) is unusable for CJK: DP/placement
+    would be forced to put exactly one character on that line (OA p19 "的"
+    alone at y≈542). The pocket is merged into the nearest usable line by
+    borrowing the next valid width (else previous valid, else the widest valid,
+    else the floor), so the surrounding text reflows onto a real line instead
+    of creating an orphan.
+
+    Idempotent: when every entry is already >= ``min_width`` the input list is
+    returned unchanged.
+    """
+    if not wrap_shape:
+        return wrap_shape
+    widths = [float(w) for _off, w in wrap_shape]
+    if all(w >= min_width for w in widths):
+        return wrap_shape
+    valid = [w for w in widths if w >= min_width]
+    max_valid = max(valid) if valid else min_width
+    out: list[tuple[float, float]] = []
+    for i, (_off, w) in enumerate(wrap_shape):
+        w = float(w)
+        if w >= min_width:
+            out.append((_off, w))
+            continue
+        replacement: float | None = None
+        for j in range(i + 1, len(widths)):
+            if widths[j] >= min_width:
+                replacement = widths[j]
+                break
+        if replacement is None:
+            for j in range(i - 1, -1, -1):
+                if widths[j] >= min_width:
+                    replacement = widths[j]
+                    break
+        if replacement is None:
+            replacement = max_valid
+        out.append((_off, replacement))
+    return out

@@ -396,3 +396,124 @@ class TestLayoutDebugStubPatterns:
         for u in ("paragraph[z44NW]-[title]", "pagenumber: 19"):
             p = TestIsLayoutDebugStub._stub(u)
             assert is_layout_debug_stub(p) is True
+
+
+class TestSanitizeCjkWrapShape:
+    """CJK orphan protection: degenerate wrap pockets must not strand a
+    single/double-character line (acceptance V3)."""
+
+    def test_oa_p19_sliver_replaced_by_next_valid(self):
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            sanitize_wrap_shape_for_cjk,
+        )
+
+        # Real OA p19 WRAP_COLUMN shape: entry 2 is a ~1pt sliver that forced
+        # "的" onto its own line; entry 9 is another sliver.
+        shape = [
+            (9.528, 133.728),
+            (0.0, 193.56),
+            (57.252, 0.972),
+            (31.704, 155.556),
+            (19.56, 174.06),
+            (72.156, 114.54),
+            (51.012, 142.608),
+            (128.376, 58.86),
+            (140.664, 52.932),
+            (126.48, 1.38),
+        ]
+        out = sanitize_wrap_shape_for_cjk(shape)
+        assert out is not None
+        assert len(out) == len(shape)
+        # Sliver at idx 2 borrows the next valid width (idx 3: 155.556).
+        assert out[2] == (57.252, 155.556)
+        # Last sliver borrows the previous valid width (idx 8: 52.932).
+        assert out[9] == (126.48, 52.932)
+        # All pockets now usable for ≥2 CJK chars.
+        assert all(w >= 24.0 for _off, w in out)
+
+    def test_idempotent(self):
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            sanitize_wrap_shape_for_cjk,
+        )
+
+        shape = [(0.0, 193.6), (19.6, 174.0), (50.0, 143.0), (126.0, 67.0)]
+        once = sanitize_wrap_shape_for_cjk(shape)
+        twice = sanitize_wrap_shape_for_cjk(once)
+        assert once == twice
+
+    def test_clean_shape_unchanged(self):
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            sanitize_wrap_shape_for_cjk,
+        )
+
+        shape = [(0.0, 193.6), (19.6, 174.0), (50.0, 143.0), (126.0, 67.0)]
+        assert sanitize_wrap_shape_for_cjk(shape) is shape
+
+    def test_all_degenerate_falls_back_to_floor(self):
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            sanitize_wrap_shape_for_cjk,
+        )
+
+        out = sanitize_wrap_shape_for_cjk([(0.0, 1.0), (5.0, 2.0)])
+        assert out is not None
+        assert all(w >= 24.0 for _off, w in out)
+
+    def test_none_and_empty(self):
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            sanitize_wrap_shape_for_cjk,
+        )
+
+        assert sanitize_wrap_shape_for_cjk(None) is None
+        assert sanitize_wrap_shape_for_cjk([]) == []
+
+
+class TestCjkWrapShapeSanitizeWiring:
+    """CJK consumption path must sanitize before interval planning (p19)."""
+
+    def test_resolve_line_intervals_uses_sanitized_shape(self):
+        from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
+        from babeldoc.format.pdf.document_il.utils.layout_intent import (
+            LayoutIntentRole,
+            WrapMode,
+        )
+
+        ts = Typesetting.__new__(Typesetting)
+        ts.is_cjk = True
+        ts._wrap_enabled = True
+        ts._layout_drop_figure_zones = False
+        ts._layout_attempt = None
+        ts._current_zone_index = None
+        ts.translation_config = None
+        design = il_version_1.Box(x=375.912, y=234.95, x2=569.532, y2=284.95)
+        para = TestFigureWrapParagraph._para(widths=[194, 174, 143, 67])
+        para.box = il_version_1.Box(x=375.912, y=234.95, x2=596.0, y2=284.95)
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.WRAP_COLUMN,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+            wrap_shape=[
+                (9.528, 133.728),
+                (0.0, 193.56),
+                (57.252, 0.972),
+                (31.704, 155.556),
+            ],
+            wrap_mode=WrapMode.RIGHT_FIXED,
+        )
+        page = il_version_1.Page(page_number=18)
+        intervals = ts._resolve_line_intervals(
+            241.7,
+            258.0,
+            para.box,
+            paragraph=para,
+            line_idx=2,
+            reference_widths=None,
+        )
+        # The sliver (would have been an 8pt pocket) is replaced by the next
+        # valid width (155.556) — pocket must be wide enough for ≥2 CJK chars.
+        assert len(intervals) == 1
+        x1, x2 = intervals[0]
+        assert x2 - x1 >= 24.0
+        # Non-mutating: the intent's shape stays the raw extractor output.
+        assert para.layout_intent.wrap_shape[2][1] == 0.972

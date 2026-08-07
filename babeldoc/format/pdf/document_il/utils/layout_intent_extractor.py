@@ -407,19 +407,74 @@ class LayoutIntentExtractor:
         for root in root_order:
             members = [item for item in pool if find(id(item[0])) == root]
             bottom_para, bottom_ink = min(members, key=lambda item: item[1].y)
-            best: tuple[PdfParagraph, Box] | None = None
+            best: tuple[PdfParagraph, float] | None = None
             for cand, cand_ink in pool:
                 if cand is bottom_para:
                     continue
-                if cand_ink.y2 >= bottom_ink.y:  # must be strictly below
+                # Measure to the candidate's first *regular* line (drop-cap
+                # glyphs excluded). An oversized drop-cap initial rises above
+                # the paragraph's first text line and would otherwise make
+                # gap_contract a drop-cap-inclusive gap (~11pt on p19) instead
+                # of the first-body-line clearance (~18pt) the P1 acceptance
+                # tool measures.
+                cand_top = self._first_regular_line_top(cand, cand_ink)
+                if cand_top >= bottom_ink.y:  # must be strictly below
                     continue
                 if not self._x_overlap(bottom_ink, cand_ink):
                     continue
-                if best is None or cand_ink.y2 > best[1].y2:
-                    best = (cand, cand_ink)
+                if best is None or cand_top > best[1]:
+                    best = (cand, cand_top)
             intent = intents.get(id(bottom_para))
             if intent is not None and best is not None:
-                intent.gap_contract = float(bottom_ink.y - best[1].y2)
+                intent.gap_contract = float(bottom_ink.y - best[1])
+
+    @classmethod
+    def _first_regular_line_top(cls, para: PdfParagraph, ink: Box) -> float:
+        """Top (PDF y-up, max y2) of the first regular-size line.
+
+        Drop caps (oversized first glyphs) rise above a paragraph's first
+        text line; excluding them keeps ``gap_contract`` measured against the
+        first body line the reader actually sees (matches the P1 ink-gap
+        acceptance tool, which skips single-char drop-cap spans).
+
+        Heuristic: a top-line glyph is a drop cap when its font size is
+        >= 1.3x the paragraph's median size. When the whole top line is a
+        drop cap, fall back to the next line's top. No drop cap -> the
+        paragraph's raw ink top (unchanged behaviour).
+        """
+        items: list[tuple[float, float]] = []
+        for comp in para.pdf_paragraph_composition or []:
+            for ch in cls._comp_chars(comp):
+                box = cls._char_visual_box(ch)
+                if box is None or box.y2 is None:
+                    continue
+                st = getattr(ch, "pdf_style", None)
+                size = 0.0
+                if st is not None and st.font_size is not None:
+                    try:
+                        size = float(st.font_size)
+                    except (TypeError, ValueError):
+                        size = 0.0
+                items.append((float(box.y2), size))
+        if not items:
+            return float(ink.y2)
+        ordered = sorted(items, key=lambda it: -it[0])
+        sizes = [s for _, s in ordered if s > 0]
+        if not sizes:
+            return float(ordered[0][0])
+        regular = float(sorted(sizes)[len(sizes) // 2])
+        tol = max(regular * 0.3, 1.0)
+        top_y2 = ordered[0][0]
+        top_line = [it for it in ordered if abs(it[0] - top_y2) <= tol]
+        if not any(s >= regular * 1.3 for _, s in top_line):
+            return float(top_y2)
+        rest = [it for it in top_line if it[1] < regular * 1.3]
+        if rest:
+            return float(max(it[0] for it in rest))
+        below = [it for it in ordered if it[0] < top_y2 - tol]
+        if below:
+            return float(max(it[0] for it in below))
+        return float(top_y2)
 
     @staticmethod
     def _stack_overlap(

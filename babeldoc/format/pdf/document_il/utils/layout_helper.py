@@ -284,6 +284,53 @@ def strip_ascii_controls(text: str | None) -> str:
     return "".join(out)
 
 
+def _sort_chars_into_reading_order(
+    chars: list[PdfCharacter],
+    *,
+    y_tol: float = 7.5,
+) -> list[PdfCharacter]:
+    """Top-to-bottom, left-to-right sort robust to per-char baseline drift.
+
+    ``stream_order.sort_chars_visual_order`` buckets glyphs by
+    ``round(y2 / y_tol)``; when a design block paints glyphs at slightly
+    drifted baselines (~3pt, e.g. OA p82 pull-quote rows), one visual row
+    splits across two buckets and the rows interleave.  Cluster on proximity
+    instead (tolerance must stay below the row pitch, ~15pt), then sort each
+    row left-to-right.
+    """
+    from babeldoc.format.pdf.document_il.utils.stream_order import char_visual_xy
+
+    if len(chars) < 2:
+        return list(chars)
+    items: list[tuple[int, float, float, PdfCharacter]] = []
+    for i, ch in enumerate(chars):
+        xy = char_visual_xy(ch)
+        if xy is None:
+            items.append((i, 0.0, float(i), ch))
+        else:
+            items.append((i, xy[1], xy[0], ch))
+    items.sort(key=lambda t: t[1], reverse=True)
+    clusters: list[list[tuple[int, float, float, PdfCharacter]]] = []
+    cluster_means: list[float] = []
+    for item in items:
+        placed = False
+        for ci, mean in enumerate(cluster_means):
+            if abs(mean - item[1]) <= y_tol:
+                clusters[ci].append(item)
+                n = len(clusters[ci])
+                cluster_means[ci] = (mean * (n - 1) + item[1]) / n
+                placed = True
+                break
+        if not placed:
+            clusters.append([item])
+            cluster_means.append(item[1])
+    ordered: list[PdfCharacter] = []
+    for ci in sorted(range(len(clusters)), key=lambda i: cluster_means[i], reverse=True):
+        row = sorted(clusters[ci], key=lambda t: (t[2], t[0]))
+        ordered.extend(t[3] for t in row)
+    return ordered
+
+
 def prepare_chars_for_mt(
     chars: list[PdfCharacter],
     *,
@@ -306,7 +353,9 @@ def prepare_chars_for_mt(
 
     climbed = maybe_reorder_multiline_stream_climb(chars, para_width=para_width)
     if climbed is not None and climbed is not chars:
-        chars = climbed
+        # Climb reorder uses fixed-width y buckets that split drifted rows;
+        # re-stabilize into clean top-to-bottom, left-to-right rows.
+        chars = _sort_chars_into_reading_order(climbed)
     return place_drop_caps_before_continuations(chars)
 
 

@@ -54,9 +54,12 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     layout_box_is_thin_vs_full_measure,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import resolve_line_interval_plan
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import wrap_interval
 from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import layout_intent_wrap_enabled
 from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
+from babeldoc.format.pdf.document_il.utils.wrap_shape import sanitize_wrap_shape_for_cjk
+from babeldoc.format.pdf.document_il.utils.wrap_shape import CJK_WRAP_MIN_LINE_WIDTH
 from babeldoc.format.pdf.document_il.utils.wrap_shape import should_fallback_residual_to_block
 from babeldoc.format.pdf.document_il.utils.wrap_shape import should_fallback_wrap_to_block
 from babeldoc.format.pdf.document_il.utils.wrap_shape import should_skip_pre_expand_for_wrap
@@ -3332,7 +3335,31 @@ class Typesetting:
             alignment=alignment,
             cap_available=_cap,
         )
-        return plan.intervals_at(y_bottom, y_top, line_idx=line_idx)
+        intervals = plan.intervals_at(y_bottom, y_top, line_idx=line_idx)
+        # CJK orphan protection (acceptance V3): the intent wrap_shape may
+        # contain 1–8pt slivers (EN "I" / trailing fragments). For EN those are
+        # fine; for CJK a pocket that narrow forces a single-character orphan
+        # line (OA p19 "的"). Widen the pin pocket using the sanitized shape
+        # (non-mutating — the intent is a read-only projection).
+        if (
+            getattr(self, "is_cjk", False)
+            and plan.wrap_active
+            and plan.wrap_mode is not None
+            and intervals
+            and len(intervals) == 1
+        ):
+            ix1, ix2 = intervals[0]
+            if (ix2 - ix1) < CJK_WRAP_MIN_LINE_WIDTH:
+                cleaned = sanitize_wrap_shape_for_cjk(plan.wrap_shape)
+                widened = wrap_interval(
+                    plan.design_box,
+                    cleaned,
+                    line_idx,
+                    plan.wrap_mode,
+                    layout_box=plan.layout_box,
+                )
+                intervals = [widened]
+        return intervals
 
     @staticmethod
     def _cap_leftmost_interval_with_reference(
@@ -3931,6 +3958,7 @@ class Typesetting:
             # Units re-emitted on the next line when we pull illegal EOL tails
             # (open paren / mid-word / mid-number) back off the finished line.
             pull_to_next: list[TypesettingUnit] = []
+            orphan_pull_back = False
             if need_break and current_line_heights:
                 # If breaking here would end the line after a non-breakable unit
                 # (感|情, 第11卷（|1989), pull that tail onto the new line.
@@ -3944,6 +3972,21 @@ class Typesetting:
                         break
                     pull_to_next.append(typeset_units.pop())
                 pull_to_next.reverse()
+                # CJK 孤行拉回 (acceptance V3): a line that would end with only
+                # 1–2 non-space units is an orphan line (单字/双字孤行, e.g.
+                # OA p19 "的"). Pull the whole short line onto the next line so
+                # it reflows as a real line tail instead of standing alone.
+                if (
+                    getattr(self, "is_cjk", False)
+                    and i < len(typesetting_units) - 1
+                    and len(typeset_units) > line_start_idx
+                ):
+                    line_units = typeset_units[line_start_idx:]
+                    n_non_space = sum(1 for u in line_units if not u.is_space)
+                    if 0 < n_non_space <= 2:
+                        orphan_pull_back = True
+                        pull_to_next = list(line_units) + pull_to_next
+                        del typeset_units[line_start_idx:]
                 if pull_to_next:
                     # Rebuild line height state after pull-back
                     current_line_heights = [
@@ -3952,16 +3995,21 @@ class Typesetting:
                         if not u.is_space
                     ]
                     if not current_line_heights:
-                        # Whole line was an unbreakable run — put back and overflow
-                        typeset_units.extend(pull_to_next)
-                        pull_to_next = []
-                        current_line_heights = [
-                            u.height
-                            for u in typeset_units[line_start_idx:]
-                            if not u.is_space
-                        ]
-                        need_break = False
-                        all_units_fit = False
+                        if orphan_pull_back:
+                            # Intentionally emptied orphan line: keep the break
+                            # so the pulled units re-flow on the next line.
+                            pass
+                        else:
+                            # Whole line was an unbreakable run — put back and overflow
+                            typeset_units.extend(pull_to_next)
+                            pull_to_next = []
+                            current_line_heights = [
+                                u.height
+                                for u in typeset_units[line_start_idx:]
+                                if not u.is_space
+                            ]
+                            need_break = False
+                            all_units_fit = False
                     else:
                         last_kept = typeset_units[-1]
                         current_x = last_kept.box.x2 if last_kept.box else available_x
@@ -3973,11 +4021,16 @@ class Typesetting:
             if need_break:
                 # 换行
                 if not current_line_heights:
+                    if orphan_pull_back:
+                        # Orphan line emptied on purpose: fall through to the
+                        # normal break finalization below (skip this y-band and
+                        # re-place the pulled units on the next line).
+                        pass
                     # Nothing on this line yet — cannot wrap. English lookahead
                     # may set need_break while the unit still fits the current
                     # pocket; keep left residual in that case (do not snap to
                     # the rightmost pocket under the figure).
-                    if fits_current:
+                    elif fits_current:
                         pass  # fall through and place on current pocket
                     else:
                         # Find any pocket that can host this single unit
@@ -4001,13 +4054,20 @@ class Typesetting:
                     # 检测 DP 模式下贪心是否插入了额外断行
                     if not dp_break and break_points is not None:
                         dp_break_mismatch = True
-                    max_height = max(current_line_heights)
+                    # Orphan pull-back may leave the current line empty (its
+                    # 1–2 units moved to the next line); heights default to 0
+                    # and the advance still floors at one em (line_advance).
+                    max_height = max(current_line_heights) if current_line_heights else 0.0
                     try:
-                        mode_height = statistics.mode(current_line_heights)
+                        mode_height = (
+                            statistics.mode(current_line_heights)
+                            if current_line_heights
+                            else 0.0
+                        )
                     except statistics.StatisticsError:
                         mode_height = sum(current_line_heights) / len(
                             current_line_heights
-                        )
+                        ) if current_line_heights else 0.0
 
                     # Finalize horizontal alignment for the completed line
                     self._apply_line_horizontal_alignment(

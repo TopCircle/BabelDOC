@@ -128,7 +128,10 @@ def test_side_callout_reason_matches_skip_predicate():
     assert side_callout_skip_reason(callout, page) == SkipReason.PULLQUOTE
     assert side_callout_skip_reason(body, page) is None
 
-    # Ultra-narrow tall strip (OA-style right callout ~80pt)
+    # Ultra-narrow tall strip (OA-style right callout ~80pt). Product default
+    # is "expand" (translate + box-expand, 0.6.4.41), so it is NOT skipped by
+    # default; under keep_en the strip stays English and the skip reason is
+    # reported as ULTRA_NARROW either way.
     narrow = _para(
         "x" * 40,
         x=480,
@@ -138,7 +141,9 @@ def test_side_callout_reason_matches_skip_predicate():
         layout_label="plain text",
     )
     page2 = _page(narrow)
-    assert should_skip_side_callout_mt(narrow, page2) is True
+    assert should_skip_side_callout_mt(narrow, page2) is False
+    assert should_skip_side_callout_mt(narrow, page2, mode="keep_en") is True
+    assert should_skip_side_callout_mt(narrow, page2, mode="expand") is False
     assert side_callout_skip_reason(narrow, page2) == SkipReason.ULTRA_NARROW
 
 

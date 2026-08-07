@@ -47,6 +47,7 @@ sys.path.insert(0, str(ROOT))
 
 import driver  # noqa: E402  (sibling import after sys.path setup)
 import synth_page  # noqa: E402
+import visual_layout_check  # noqa: E402
 
 GOLDEN_SUMMARY_FILENAME = driver.SUMMARY_FILENAME
 
@@ -177,8 +178,10 @@ def run_digest(args) -> tuple[int, dict | None]:
         print(f"golden not found: {golden_path}", file=sys.stderr)
         return 2, None
 
+    run_dir = Path(args.run_dir) if args.run_dir else Path(args.working_dir)
+
     if args.run_dir:
-        run_summary = load_summary(Path(args.run_dir) / GOLDEN_SUMMARY_FILENAME)
+        run_summary = load_summary(run_dir / GOLDEN_SUMMARY_FILENAME)
     else:
         working_dir = Path(args.working_dir)
         out_dir = Path(args.out_dir)
@@ -201,38 +204,88 @@ def run_digest(args) -> tuple[int, dict | None]:
         else:
             run_summary = run_synth(working_dir, out_dir, args.translator)
 
+    code = 0
     if args.update_golden:
         write_golden(golden_path, run_summary)
         print(f"updated golden: {golden_path}")
         print(f"digest_sha256       : {canonical_sha256(run_summary.get('pages', {}))}")
         print(f"fingerprint_sha256  : {run_summary.get('fingerprint_sha256')}")
-        return 0, run_summary
-
-    golden = load_summary(golden_path)
-    ok, diffs = compare(
-        golden,
-        run_summary,
-        strict_fingerprint=bool(getattr(args, "strict_fingerprint", False)),
-    )
-    warnings = list(run_summary.pop("_compare_warnings", None) or [])
-    if ok:
-        print(
-            "Δ=0 PASS (canonical typsetting sha + prior debug_id set"
-            + ("; strict fingerprint" if args.strict_fingerprint else "")
-            + ")"
+    else:
+        golden = load_summary(golden_path)
+        ok, diffs = compare(
+            golden,
+            run_summary,
+            strict_fingerprint=bool(getattr(args, "strict_fingerprint", False)),
         )
-        print(f"digest_sha256       : {canonical_sha256(run_summary.get('pages', {}))}")
-        print(f"fingerprint_sha256  : {run_summary.get('fingerprint_sha256')}")
-        for line in warnings:
-            print(f"WARN: {line}", file=sys.stderr)
-        return 0, run_summary
+        warnings = list(run_summary.pop("_compare_warnings", None) or [])
+        if ok:
+            print(
+                "Δ=0 PASS (canonical typsetting sha + prior debug_id set"
+                + ("; strict fingerprint" if args.strict_fingerprint else "")
+                + ")"
+            )
+            print(f"digest_sha256       : {canonical_sha256(run_summary.get('pages', {}))}")
+            print(f"fingerprint_sha256  : {run_summary.get('fingerprint_sha256')}")
+            for line in warnings:
+                print(f"WARN: {line}", file=sys.stderr)
+        else:
+            print("Δ≠0 FAIL", file=sys.stderr)
+            for line in diffs:
+                print(f"  {line}", file=sys.stderr)
+            for line in warnings:
+                print(f"WARN: {line}", file=sys.stderr)
+            code = 1
 
-    print("Δ≠0 FAIL", file=sys.stderr)
-    for line in diffs:
-        print(f"  {line}", file=sys.stderr)
-    for line in warnings:
-        print(f"WARN: {line}", file=sys.stderr)
-    return 1, run_summary
+    visual_code = _maybe_run_visual_check(args, run_dir, run_summary)
+    return code or visual_code, run_summary
+
+
+def _auto_pick_en_reference(run_dir: Path) -> Path | None:
+    """Pick ``golden/en_pXX_blocks.json`` whose run page key matches the run."""
+    try:
+        pages = visual_layout_check.load_run(run_dir)["pages"]
+    except FileNotFoundError:
+        return None
+    for name in ("en_p19_blocks.json", "en_p82_blocks.json"):
+        path = ROOT / "golden" / name
+        if not path.exists():
+            continue
+        ref = visual_layout_check.load_en_reference(path)
+        if any(visual_layout_check.en_page_for_run(ref, key) is not None for key in pages):
+            return path
+    return None
+
+
+def _maybe_run_visual_check(args, run_dir: Path, run_summary: dict) -> int:
+    """Run the V1-V5 visual layout check on the run (advisory by default).
+
+    Returns 1 only when ``--visual-gate`` is set and any assertion FAILed;
+    otherwise the V1-V5 report is printed for diagnosis without changing the
+    digest exit code (the \u0394=0 gate keeps its own semantics).
+    """
+    if not getattr(args, "visual_check", False):
+        return 0
+    if run_dir is None or not Path(run_dir).exists():
+        print("visual check skipped: run-dir missing", file=sys.stderr)
+        return 0
+    ref_path = Path(args.en_reference) if getattr(args, "en_reference", None) else None
+    if ref_path is None:
+        ref_path = _auto_pick_en_reference(Path(run_dir))
+    if ref_path is None:
+        keys = sorted(run_summary.get("pages", {}))
+        print(
+            f"visual check skipped: no EN reference for run page(s) {keys} "
+            "(use --en-reference tests/repro/golden/en_pXX_blocks.json)",
+            file=sys.stderr,
+        )
+        return 0
+    report = visual_layout_check.check_run_dir(run_dir, ref_path)
+    print()
+    print(visual_layout_check.format_report(report))
+    if getattr(args, "visual_gate", False) and not report["all_pass"]:
+        print("visual gate FAILED (drop --visual-gate to keep advisory)", file=sys.stderr)
+        return 1
+    return 0
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -269,6 +322,28 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "Default off: fingerprint includes DocLayout stubs and is "
             "noisy across ONNX providers / machines."
         ),
+    )
+    parser.add_argument(
+        "--visual-check",
+        action="store_true",
+        help=(
+            "Run the V1-V5 visual layout acceptance checks on the run "
+            "(docs/visual-layout-acceptance.md) and print the per-item report. "
+            "Advisory unless --visual-gate is also given."
+        ),
+    )
+    parser.add_argument(
+        "--en-reference",
+        default=None,
+        help=(
+            "EN block reference golden for --visual-check "
+            "(default: auto-pick golden/en_p19_blocks.json / en_p82_blocks.json)"
+        ),
+    )
+    parser.add_argument(
+        "--visual-gate",
+        action="store_true",
+        help="With --visual-check: exit 1 when any V1-V5 assertion FAILs.",
     )
     parser.add_argument("--header-height", type=float, default=driver.DEFAULT_HEADER_HEIGHT)
     parser.add_argument("--footer-height", type=float, default=driver.DEFAULT_FOOTER_HEIGHT)

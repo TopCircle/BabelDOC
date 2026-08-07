@@ -1,0 +1,648 @@
+{
+  "schema": "babeldoc-repro-en-blocks/v1",
+  "source": "Orgasmic Addiction.pdf (original EN; 0.6.4.6x layout baseline)",
+  "extraction_note": "pymupdf get_text('dict') line clusters; top/bottom are PDF y-up points (page_height - y0 / page_height - y1). Anchors are hand-curated against docs/visual-layout-acceptance.md: title/section/body-first-line tops and title->body ink gaps. 1-indexed page_no; run_page_key is the 0-indexed page_number used by the run's typsetting.json.",
+  "page_no": 82,
+  "run_page_key": "81",
+  "page_size": [
+    612.0,
+    792.0
+  ],
+  "lines": [
+    {
+      "top": 714.7,
+      "bottom": 701.0,
+      "x0": 488.1,
+      "x1": 495.2,
+      "font_size": 11.0,
+      "text": "p"
+    },
+    {
+      "top": 714.7,
+      "bottom": 701.0,
+      "x0": 495.3,
+      "x1": 520.7,
+      "font_size": 11.0,
+      "text": "art "
+    },
+    {
+      "top": 714.7,
+      "bottom": 701.0,
+      "x0": 520.8,
+      "x1": 527.3,
+      "font_size": 11.0,
+      "text": "t"
+    },
+    {
+      "top": 714.7,
+      "bottom": 701.0,
+      "x0": 527.5,
+      "x1": 555.9,
+      "font_size": 11.0,
+      "text": "hree"
+    },
+    {
+      "top": 696.7,
+      "bottom": 680.4,
+      "x0": 472.3,
+      "x1": 575.9,
+      "font_size": 13.0,
+      "text": "Putting it All "
+    },
+    {
+      "top": 687.4,
+      "bottom": 668.6,
+      "x0": 42.0,
+      "x1": 114.7,
+      "font_size": 15.0,
+      "text": "Chapter "
+    },
+    {
+      "top": 687.4,
+      "bottom": 668.6,
+      "x0": 114.3,
+      "x1": 122.3,
+      "font_size": 15.0,
+      "text": "9"
+    },
+    {
+      "top": 685.3,
+      "bottom": 668.6,
+      "x0": 132.0,
+      "x1": 139.9,
+      "font_size": 13.4,
+      "text": "t"
+    },
+    {
+      "top": 685.3,
+      "bottom": 668.6,
+      "x0": 140.1,
+      "x1": 162.3,
+      "font_size": 13.4,
+      "text": "he "
+    },
+    {
+      "top": 685.3,
+      "bottom": 668.6,
+      "x0": 162.5,
+      "x1": 175.4,
+      "font_size": 13.4,
+      "text": "dI"
+    },
+    {
+      "top": 685.3,
+      "bottom": 668.6,
+      "x0": 175.6,
+      "x1": 214.2,
+      "font_size": 13.4,
+      "text": "rect "
+    },
+    {
+      "top": 685.3,
+      "bottom": 668.6,
+      "x0": 214.3,
+      "x1": 223.5,
+      "font_size": 13.4,
+      "text": "c"
+    },
+    {
+      "top": 685.3,
+      "bottom": 668.6,
+      "x0": 223.6,
+      "x1": 242.3,
+      "font_size": 13.4,
+      "text": "ur"
+    },
+    {
+      "top": 685.3,
+      "bottom": 668.6,
+      "x0": 242.4,
+      "x1": 249.6,
+      "font_size": 13.4,
+      "text": "L"
+    },
+    {
+      "top": 681.7,
+      "bottom": 665.3,
+      "x0": 487.8,
+      "x1": 556.2,
+      "font_size": 13.0,
+      "text": "Together"
+    },
+    {
+      "top": 646.8,
+      "bottom": 633.2,
+      "x0": 102.0,
+      "x1": 572.7,
+      "font_size": 12.0,
+      "text": "You should be lying back on the bed with plenty of room above your head for her to position "
+    },
+    {
+      "top": 631.8,
+      "bottom": 618.2,
+      "x0": 102.0,
+      "x1": 572.7,
+      "font_size": 12.0,
+      "text": "herself. It helps if you have a headboard so she can support herself by her arms, but you can make "
+    },
+    {
+      "top": 616.8,
+      "bottom": 603.2,
+      "x0": 102.0,
+      "x1": 223.4,
+      "font_size": 12.0,
+      "text": "do with what you’ve got."
+    },
+    {
+      "top": 586.8,
+      "bottom": 573.2,
+      "x0": 102.0,
+      "x1": 572.6,
+      "font_size": 12.0,
+      "text": "Have her kneel over your face, lowering her sex onto your mouth and leaning forward, hands on "
+    },
+    {
+      "top": 571.8,
+      "bottom": 558.2,
+      "x0": 102.0,
+      "x1": 338.8,
+      "font_size": 12.0,
+      "text": "the headboard or the bed above your shoulders."
+    },
+    {
+      "top": 541.8,
+      "bottom": 528.2,
+      "x0": 102.0,
+      "x1": 572.7,
+      "font_size": 12.0,
+      "text": "With both of your hands reaching around behind her, you can penetrate both erogenous zones "
+    },
+    {
+      "top": 526.8,
+      "bottom": 513.2,
+      "x0": 102.0,
+      "x1": 572.6,
+      "font_size": 12.0,
+      "text": "with a great deal of ease. With one hand, curl your index and middle ﬁngers up against her "
+    },
+    {
+      "top": 511.8,
+      "bottom": 498.2,
+      "x0": 102.0,
+      "x1": 572.6,
+      "font_size": 12.0,
+      "text": "g-spot. (If she only wants one ﬁnger, use the middle.) With the middle ﬁnger of the other hand, "
+    },
+    {
+      "top": 496.8,
+      "bottom": 483.2,
+      "x0": 102.0,
+      "x1": 569.9,
+      "font_size": 12.0,
+      "text": "penetrate her outer anal sphincter, opening her up as you press gently against the tight muscles."
+    },
+    {
+      "top": 466.8,
+      "bottom": 453.2,
+      "x0": 102.0,
+      "x1": 178.7,
+      "font_size": 12.0,
+      "text": "If you have a di"
+    },
+    {
+      "top": 466.8,
+      "bottom": 453.2,
+      "x0": 178.8,
+      "x1": 188.0,
+      "font_size": 12.0,
+      "text": "ﬃ"
+    },
+    {
+      "top": 466.8,
+      "bottom": 453.2,
+      "x0": 188.1,
+      "x1": 572.6,
+      "font_size": 12.0,
+      "text": "cult time breathing in this position, you can try having her ﬂip around in the "
+    },
+    {
+      "top": 451.8,
+      "bottom": 438.2,
+      "x0": 102.0,
+      "x1": 423.8,
+      "font_size": 12.0,
+      "text": "other direction, but be careful you don’t poke yourself in the eyes!"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 102.0,
+      "x1": 107.6,
+      "font_size": 12.0,
+      "text": "“"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 107.7,
+      "x1": 114.9,
+      "font_size": 12.0,
+      "text": "t"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 115.0,
+      "x1": 135.2,
+      "font_size": 12.0,
+      "text": "he "
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 135.3,
+      "x1": 150.2,
+      "font_size": 12.0,
+      "text": "cL"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 150.4,
+      "x1": 158.6,
+      "font_size": 12.0,
+      "text": "a"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 158.8,
+      "x1": 172.1,
+      "font_size": 12.0,
+      "text": "W"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 172.3,
+      "x1": 195.3,
+      "font_size": 12.0,
+      "text": "” (d"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 195.4,
+      "x1": 198.1,
+      "font_size": 12.0,
+      "text": "I"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 198.3,
+      "x1": 262.8,
+      "font_size": 12.0,
+      "text": "rect, cur"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 263.0,
+      "x1": 269.5,
+      "font_size": 12.0,
+      "text": "L"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 269.6,
+      "x1": 284.2,
+      "font_size": 12.0,
+      "text": ", f"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 284.4,
+      "x1": 287.1,
+      "font_size": 12.0,
+      "text": "I"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 287.2,
+      "x1": 295.2,
+      "font_size": 12.0,
+      "text": "r"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 295.4,
+      "x1": 303.2,
+      "font_size": 12.0,
+      "text": "S"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 303.4,
+      "x1": 378.5,
+      "font_size": 12.0,
+      "text": "t gate, fro"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 378.7,
+      "x1": 390.0,
+      "font_size": 12.0,
+      "text": "M"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 390.2,
+      "x1": 418.5,
+      "font_size": 12.0,
+      "text": " beh"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 418.7,
+      "x1": 421.4,
+      "font_size": 12.0,
+      "text": "I"
+    },
+    {
+      "top": 418.1,
+      "bottom": 403.1,
+      "x0": 421.5,
+      "x1": 444.1,
+      "font_size": 12.0,
+      "text": "nd)"
+    },
+    {
+      "top": 391.8,
+      "bottom": 378.2,
+      "x0": 102.0,
+      "x1": 426.6,
+      "font_size": 12.0,
+      "text": "This move is great because it has you using both your hands, and "
+    },
+    {
+      "top": 376.8,
+      "bottom": 363.2,
+      "x0": 102.0,
+      "x1": 108.4,
+      "font_size": 12.0,
+      "text": "o"
+    },
+    {
+      "top": 376.8,
+      "bottom": 363.2,
+      "x0": 108.5,
+      "x1": 115.0,
+      "font_size": 12.0,
+      "text": "ﬀ"
+    },
+    {
+      "top": 376.8,
+      "bottom": 363.2,
+      "x0": 114.9,
+      "x1": 382.3,
+      "font_size": 12.0,
+      "text": "ers the opportunity for some double vaginal penetra"
+    },
+    {
+      "top": 376.8,
+      "bottom": 363.2,
+      "x0": 382.4,
+      "x1": 386.0,
+      "font_size": 12.0,
+      "text": "-"
+    },
+    {
+      "top": 361.8,
+      "bottom": 348.2,
+      "x0": 102.0,
+      "x1": 356.3,
+      "font_size": 12.0,
+      "text": "tion! Your lover may or may not be into such an in"
+    },
+    {
+      "top": 361.8,
+      "bottom": 348.2,
+      "x0": 356.4,
+      "x1": 360.0,
+      "font_size": 12.0,
+      "text": "-"
+    },
+    {
+      "top": 346.8,
+      "bottom": 333.2,
+      "x0": 102.0,
+      "x1": 342.6,
+      "font_size": 12.0,
+      "text": "tense experience, and it may vary throughout her "
+    },
+    {
+      "top": 331.8,
+      "bottom": 318.2,
+      "x0": 102.0,
+      "x1": 326.6,
+      "font_size": 12.0,
+      "text": "cycle. Try it when she is ovulation. Make sure "
+    },
+    {
+      "top": 316.8,
+      "bottom": 303.2,
+      "x0": 102.0,
+      "x1": 312.6,
+      "font_size": 12.0,
+      "text": "she has had plenty of opportunity to warm "
+    },
+    {
+      "top": 301.8,
+      "bottom": 288.2,
+      "x0": 102.0,
+      "x1": 301.6,
+      "font_size": 12.0,
+      "text": "up with other vaginal stimulation, and "
+    },
+    {
+      "top": 286.8,
+      "bottom": 273.2,
+      "x0": 102.0,
+      "x1": 291.6,
+      "font_size": 12.0,
+      "text": "ensure that there is plenty of lube to "
+    },
+    {
+      "top": 271.8,
+      "bottom": 258.2,
+      "x0": 102.0,
+      "x1": 155.1,
+      "font_size": 12.0,
+      "text": "go around."
+    },
+    {
+      "top": 241.8,
+      "bottom": 228.2,
+      "x0": 102.0,
+      "x1": 269.6,
+      "font_size": 12.0,
+      "text": "Approach her while she is bent "
+    },
+    {
+      "top": 226.8,
+      "bottom": 213.2,
+      "x0": 102.0,
+      "x1": 264.6,
+      "font_size": 12.0,
+      "text": "over on the bed, butt up in the "
+    },
+    {
+      "top": 211.8,
+      "bottom": 198.2,
+      "x0": 102.0,
+      "x1": 254.4,
+      "font_size": 12.0,
+      "text": "air and face down on the mat"
+    },
+    {
+      "top": 211.8,
+      "bottom": 198.2,
+      "x0": 254.4,
+      "x1": 258.0,
+      "font_size": 12.0,
+      "text": "-"
+    },
+    {
+      "top": 196.8,
+      "bottom": 183.2,
+      "x0": 102.0,
+      "x1": 257.6,
+      "font_size": 12.0,
+      "text": "tress. Spread her legs as much "
+    },
+    {
+      "top": 181.8,
+      "bottom": 168.2,
+      "x0": 102.0,
+      "x1": 254.6,
+      "font_size": 12.0,
+      "text": "as you need to get between "
+    },
+    {
+      "top": 166.8,
+      "bottom": 153.2,
+      "x0": 102.0,
+      "x1": 130.4,
+      "font_size": 12.0,
+      "text": "them."
+    },
+    {
+      "top": 138.8,
+      "bottom": 121.0,
+      "x0": 112.7,
+      "x1": 249.7,
+      "font_size": 15.0,
+      "text": "Make sure she has had plenty "
+    },
+    {
+      "top": 123.8,
+      "bottom": 106.0,
+      "x0": 107.2,
+      "x1": 255.2,
+      "font_size": 15.0,
+      "text": "of opportunity to warm up with "
+    },
+    {
+      "top": 108.8,
+      "bottom": 91.0,
+      "x0": 110.6,
+      "x1": 251.7,
+      "font_size": 15.0,
+      "text": "other vaginal stimulation, and "
+    },
+    {
+      "top": 93.8,
+      "bottom": 76.0,
+      "x0": 102.9,
+      "x1": 259.5,
+      "font_size": 15.0,
+      "text": "ensure that there is plenty of lube "
+    },
+    {
+      "top": 78.8,
+      "bottom": 61.0,
+      "x0": 149.3,
+      "x1": 210.7,
+      "font_size": 15.0,
+      "text": "to go around."
+    },
+    {
+      "top": 52.2,
+      "bottom": 38.6,
+      "x0": 42.0,
+      "x1": 134.9,
+      "font_size": 11.5,
+      "text": "www.GabrielleMoore.com"
+    },
+    {
+      "top": 24.2,
+      "bottom": 11.8,
+      "x0": 594.0,
+      "x1": 604.2,
+      "font_size": 11.0,
+      "text": "82"
+    }
+  ],
+  "anchors": [
+    {
+      "id": "chapter_title",
+      "kind": "chapter_title",
+      "top": 687.4,
+      "bottom": 668.6,
+      "font_size": 15.0,
+      "text": "Chapter 9"
+    },
+    {
+      "id": "body_first_line_0",
+      "kind": "body_first_line",
+      "top": 646.8,
+      "font_size": 12.0,
+      "text": "You should be ..."
+    },
+    {
+      "id": "body_first_line_1",
+      "kind": "body_first_line",
+      "top": 586.8,
+      "font_size": 12.0,
+      "text": "Have her kneel over your face, ..."
+    },
+    {
+      "id": "body_first_line_2",
+      "kind": "body_first_line",
+      "top": 541.8,
+      "font_size": 12.0,
+      "text": "With both of your hands reaching around ..."
+    }
+  ],
+  "invariants": {
+    "title_to_body_gaps": [
+      21.8
+    ],
+    "callout_count": 1,
+    "original_font_sizes": {
+      "body": 12.0,
+      "callout": 15.0,
+      "chrome": 13.0,
+      "pull_quote": 12.0
+    }
+  }
+}

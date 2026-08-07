@@ -1,0 +1,453 @@
+{
+  "schema": "babeldoc-repro-en-blocks/v1",
+  "source": "Orgasmic Addiction.pdf (original EN; 0.6.4.6x layout baseline)",
+  "extraction_note": "pymupdf get_text('dict') line clusters; top/bottom are PDF y-up points (page_height - y0 / page_height - y1). Anchors are hand-curated against docs/visual-layout-acceptance.md: title/section/body-first-line tops and title->body ink gaps. 1-indexed page_no; run_page_key is the 0-indexed page_number used by the run's typsetting.json.",
+  "page_no": 19,
+  "run_page_key": "18",
+  "page_size": [
+    612.0,
+    792.0
+  ],
+  "lines": [
+    {
+      "top": 714.7,
+      "bottom": 701.0,
+      "x0": 493.9,
+      "x1": 501.0,
+      "font_size": 11.0,
+      "text": "p"
+    },
+    {
+      "top": 714.7,
+      "bottom": 701.0,
+      "x0": 501.1,
+      "x1": 526.5,
+      "font_size": 11.0,
+      "text": "art "
+    },
+    {
+      "top": 714.7,
+      "bottom": 701.0,
+      "x0": 526.6,
+      "x1": 535.0,
+      "font_size": 11.0,
+      "text": "o"
+    },
+    {
+      "top": 714.7,
+      "bottom": 701.0,
+      "x0": 535.1,
+      "x1": 550.1,
+      "font_size": 11.0,
+      "text": "ne"
+    },
+    {
+      "top": 696.7,
+      "bottom": 680.4,
+      "x0": 456.2,
+      "x1": 592.0,
+      "font_size": 13.0,
+      "text": "Learn The Trigasm "
+    },
+    {
+      "top": 693.5,
+      "bottom": 653.3,
+      "x0": 42.0,
+      "x1": 197.0,
+      "font_size": 32.0,
+      "text": "Chapter "
+    },
+    {
+      "top": 693.5,
+      "bottom": 653.3,
+      "x0": 196.2,
+      "x1": 213.4,
+      "font_size": 32.0,
+      "text": "3"
+    },
+    {
+      "top": 687.4,
+      "bottom": 668.6,
+      "x0": 42.0,
+      "x1": 122.3,
+      "font_size": 15.0,
+      "text": "Chapter 3"
+    },
+    {
+      "top": 685.3,
+      "bottom": 668.6,
+      "x0": 132.0,
+      "x1": 265.3,
+      "font_size": 13.4,
+      "text": "be an actIon Man"
+    },
+    {
+      "top": 681.7,
+      "bottom": 665.3,
+      "x0": 500.6,
+      "x1": 543.5,
+      "font_size": 13.0,
+      "text": "Basics"
+    },
+    {
+      "top": 660.8,
+      "bottom": 590.9,
+      "x0": 42.0,
+      "x1": 79.4,
+      "font_size": 56.0,
+      "text": "b"
+    },
+    {
+      "top": 660.8,
+      "bottom": 590.9,
+      "x0": 78.1,
+      "x1": 224.6,
+      "font_size": 56.0,
+      "text": "e an "
+    },
+    {
+      "top": 660.8,
+      "bottom": 590.9,
+      "x0": 223.3,
+      "x1": 261.7,
+      "font_size": 56.0,
+      "text": "a"
+    },
+    {
+      "top": 660.8,
+      "bottom": 590.9,
+      "x0": 260.5,
+      "x1": 330.8,
+      "font_size": 56.0,
+      "text": "ct"
+    },
+    {
+      "top": 660.8,
+      "bottom": 590.9,
+      "x0": 329.6,
+      "x1": 342.0,
+      "font_size": 56.0,
+      "text": "I"
+    },
+    {
+      "top": 660.8,
+      "bottom": 590.9,
+      "x0": 340.8,
+      "x1": 574.1,
+      "font_size": 56.0,
+      "text": "on Man"
+    },
+    {
+      "top": 579.6,
+      "bottom": 537.3,
+      "x0": 102.0,
+      "x1": 125.7,
+      "font_size": 35.4,
+      "text": " I"
+    },
+    {
+      "top": 572.9,
+      "bottom": 557.8,
+      "x0": 121.1,
+      "x1": 572.6,
+      "font_size": 12.5,
+      "text": "f you want to get some action, you need to take some action. All relationships move "
+    },
+    {
+      "top": 557.9,
+      "bottom": 542.8,
+      "x0": 121.1,
+      "x1": 572.6,
+      "font_size": 12.5,
+      "text": "beyond the so-called honeymoon phase, that period in a partnership where everything "
+    },
+    {
+      "top": 542.9,
+      "bottom": 527.8,
+      "x0": 102.0,
+      "x1": 572.6,
+      "font_size": 12.5,
+      "text": "is smiles and hearts and roses. It is a natural evolution in how love works. Staying in "
+    },
+    {
+      "top": 527.9,
+      "bottom": 512.8,
+      "x0": 102.0,
+      "x1": 572.6,
+      "font_size": 12.5,
+      "text": "love and maintaining passion beyond that point comes down to your willingness to do "
+    },
+    {
+      "top": 512.8,
+      "bottom": 497.8,
+      "x0": 102.0,
+      "x1": 206.9,
+      "font_size": 12.5,
+      "text": "something about it!"
+    },
+    {
+      "top": 481.5,
+      "bottom": 467.9,
+      "x0": 102.0,
+      "x1": 321.6,
+      "font_size": 12.0,
+      "text": "As they say, actions speak louder than words."
+    },
+    {
+      "top": 447.8,
+      "bottom": 432.8,
+      "x0": 102.0,
+      "x1": 110.2,
+      "font_size": 12.0,
+      "text": "a"
+    },
+    {
+      "top": 447.8,
+      "bottom": 432.8,
+      "x0": 110.4,
+      "x1": 148.0,
+      "font_size": 12.0,
+      "text": " Man "
+    },
+    {
+      "top": 447.8,
+      "bottom": 432.8,
+      "x0": 148.2,
+      "x1": 164.4,
+      "font_size": 12.0,
+      "text": "WI"
+    },
+    {
+      "top": 447.8,
+      "bottom": 432.8,
+      "x0": 164.5,
+      "x1": 197.5,
+      "font_size": 12.0,
+      "text": "th a "
+    },
+    {
+      "top": 447.8,
+      "bottom": 432.8,
+      "x0": 197.7,
+      "x1": 212.1,
+      "font_size": 12.0,
+      "text": "pL"
+    },
+    {
+      "top": 447.8,
+      "bottom": 432.8,
+      "x0": 212.2,
+      "x1": 234.0,
+      "font_size": 12.0,
+      "text": "an "
+    },
+    {
+      "top": 421.5,
+      "bottom": 407.9,
+      "x0": 102.0,
+      "x1": 572.7,
+      "font_size": 12.0,
+      "text": "Women love a man with a plan. In fact, it is planning that is at the root of all good romance. Even "
+    },
+    {
+      "top": 406.5,
+      "bottom": 392.9,
+      "x0": 102.0,
+      "x1": 572.6,
+      "font_size": 12.0,
+      "text": "the spontaneous kind of romance becomes successful from practice and a deep understanding "
+    },
+    {
+      "top": 391.5,
+      "bottom": 377.9,
+      "x0": 102.0,
+      "x1": 363.3,
+      "font_size": 12.0,
+      "text": "of what your partner wants and needs to feel special. "
+    },
+    {
+      "top": 357.8,
+      "bottom": 342.8,
+      "x0": 290.0,
+      "x1": 297.1,
+      "font_size": 12.0,
+      "text": "t"
+    },
+    {
+      "top": 357.8,
+      "bottom": 342.8,
+      "x0": 297.3,
+      "x1": 313.9,
+      "font_size": 12.0,
+      "text": "ak"
+    },
+    {
+      "top": 357.8,
+      "bottom": 342.8,
+      "x0": 314.1,
+      "x1": 316.8,
+      "font_size": 12.0,
+      "text": "I"
+    },
+    {
+      "top": 357.8,
+      "bottom": 342.8,
+      "x0": 316.9,
+      "x1": 339.3,
+      "font_size": 12.0,
+      "text": "ng "
+    },
+    {
+      "top": 357.8,
+      "bottom": 342.8,
+      "x0": 339.5,
+      "x1": 347.7,
+      "font_size": 12.0,
+      "text": "c"
+    },
+    {
+      "top": 357.8,
+      "bottom": 342.8,
+      "x0": 347.9,
+      "x1": 389.3,
+      "font_size": 12.0,
+      "text": "harge"
+    },
+    {
+      "top": 331.5,
+      "bottom": 317.9,
+      "x0": 314.0,
+      "x1": 572.6,
+      "font_size": 12.0,
+      "text": "In order to work through the exercises in this book, "
+    },
+    {
+      "top": 316.5,
+      "bottom": 302.9,
+      "x0": 323.0,
+      "x1": 572.6,
+      "font_size": 12.0,
+      "text": "you will need to take charge of your sex life and "
+    },
+    {
+      "top": 301.5,
+      "bottom": 287.9,
+      "x0": 341.0,
+      "x1": 572.7,
+      "font_size": 12.0,
+      "text": "start directing the ﬂow of development in your "
+    },
+    {
+      "top": 286.5,
+      "bottom": 272.9,
+      "x0": 375.0,
+      "x1": 572.6,
+      "font_size": 12.0,
+      "text": "relationship. Mind-blowing orgasms "
+    },
+    {
+      "top": 271.5,
+      "bottom": 257.9,
+      "x0": 395.0,
+      "x1": 572.7,
+      "font_size": 12.0,
+      "text": "and incredible intimacy await the "
+    },
+    {
+      "top": 256.5,
+      "bottom": 243.0,
+      "x0": 426.0,
+      "x1": 572.7,
+      "font_size": 12.0,
+      "text": "man who is prepared to do "
+    },
+    {
+      "top": 241.5,
+      "bottom": 228.0,
+      "x0": 450.0,
+      "x1": 572.6,
+      "font_size": 12.0,
+      "text": "the work, make the "
+    },
+    {
+      "top": 226.5,
+      "bottom": 213.0,
+      "x0": 469.0,
+      "x1": 572.6,
+      "font_size": 12.0,
+      "text": "plans, and stick to "
+    },
+    {
+      "top": 211.5,
+      "bottom": 198.0,
+      "x0": 482.0,
+      "x1": 545.7,
+      "font_size": 12.0,
+      "text": "the program."
+    },
+    {
+      "top": 52.2,
+      "bottom": 38.6,
+      "x0": 42.0,
+      "x1": 134.9,
+      "font_size": 11.5,
+      "text": "www.GabrielleMoore.com"
+    },
+    {
+      "top": 24.2,
+      "bottom": 11.8,
+      "x0": 594.0,
+      "x1": 604.2,
+      "font_size": 11.0,
+      "text": "19"
+    }
+  ],
+  "anchors": [
+    {
+      "id": "chapter_title",
+      "kind": "chapter_title",
+      "top": 693.5,
+      "bottom": 653.3,
+      "font_size": 32.0,
+      "text": "Chapter 3"
+    },
+    {
+      "id": "section_title",
+      "kind": "section_title",
+      "top": 660.8,
+      "bottom": 590.9,
+      "font_size": 56.0,
+      "text": "be an actIon Man"
+    },
+    {
+      "id": "body_first_line_0",
+      "kind": "body_first_line",
+      "top": 572.9,
+      "font_size": 12.5,
+      "text": "f you want to get some action, ..."
+    },
+    {
+      "id": "body_first_line_1",
+      "kind": "body_first_line",
+      "top": 421.5,
+      "font_size": 12.0,
+      "text": "Women love a man with a plan. ..."
+    }
+  ],
+  "invariants": {
+    "title_to_body_gaps": [
+      18.0
+    ],
+    "wrap_right_edge": 572.7,
+    "callout_count": 1,
+    "original_font_sizes": {
+      "title": 32.0,
+      "section_title": 56.0,
+      "body": 12.5,
+      "wrap_column": 12.0,
+      "callout": 15.0,
+      "chrome": 13.0,
+      "pull_quote": 12.0
+    }
+  }
+}

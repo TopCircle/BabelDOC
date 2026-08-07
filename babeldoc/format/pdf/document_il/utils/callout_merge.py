@@ -34,6 +34,12 @@ _MAX_VERTICAL_GAP = 22.0
 _MAX_X_DELTA = 160.0
 
 
+#: Minimum normalized fragment length for pull-quote-host containment.
+_MIN_PULLQUOTE_FRAGMENT = 25
+#: Minimum chars for multi-row block detection.
+_MIN_MULTIROW_CHARS = 8
+
+
 def _box(p: PdfParagraph):
     return getattr(p, "box", None)
 
@@ -56,7 +62,113 @@ def _same_xobj(a: PdfParagraph, b: PdfParagraph) -> bool:
     return getattr(a, "xobj_id", None) == getattr(b, "xobj_id", None)
 
 
-def _can_merge(upper: PdfParagraph, lower: PdfParagraph) -> bool:
+def _char_y_bounds(c: Any) -> tuple[float, float] | None:
+    """Return (y, y2) from visual_bbox (fall back to pdf box)."""
+    box = None
+    vb = getattr(c, "visual_bbox", None)
+    if vb is not None and getattr(vb, "box", None) is not None:
+        box = vb.box
+    if box is None:
+        box = getattr(c, "box", None)
+    if box is None:
+        return None
+    if box.y is None or box.y2 is None:
+        return None
+    return float(box.y), float(box.y2)
+
+
+def _is_multi_row_block(paragraph: PdfParagraph) -> bool:
+    """True when one composition line spans multiple visual rows.
+
+    OA p82 pull-quote: dense 15pt rows with ~12pt-tall glyph boxes defeat the
+    line-threading zero-collision gap scan, so the whole 5-row quote collapses
+    into a single 75pt "line".  Such a block is a complete design element, not
+    a stacked narrow line — merging it into a body stack duplicates the
+    sentence inside one paragraph unicode.
+    """
+    comps = list(paragraph.pdf_paragraph_composition or [])
+    if len(comps) != 1:
+        return False
+    line = comps[0].pdf_line
+    if line is None:
+        return False
+    chars = list(line.pdf_character or [])
+    if len(chars) < _MIN_MULTIROW_CHARS:
+        return False
+    centers: list[float] = []
+    heights: list[float] = []
+    for c in chars:
+        bounds = _char_y_bounds(c)
+        if bounds is None:
+            continue
+        y, y2 = bounds
+        centers.append((y + y2) / 2.0)
+        heights.append(y2 - y)
+    if len(centers) < _MIN_MULTIROW_CHARS:
+        return False
+    heights.sort()
+    med_h = heights[len(heights) // 2]
+    if med_h <= 0:
+        return False
+    centers.sort()
+    rows = 1
+    last = centers[0]
+    tol = max(3.0, med_h * 0.4)
+    for y in centers[1:]:
+        if y - last > tol:
+            rows += 1
+        last = y
+    y_bounds = [b for b in (_char_y_bounds(c) for c in chars) if b is not None]
+    ymin = min((b[0] for b in y_bounds), default=0.0)
+    ymax = max((b[1] for b in y_bounds), default=0.0)
+    span = ymax - ymin
+    return rows >= 2 and span > 1.5 * med_h
+
+
+def _pullquote_host_ids(paragraphs: list[PdfParagraph]) -> set[int]:
+    """Ids of paragraphs whose reading-order text contains another's text.
+
+    A pull-quote repeats body fragments; when its normalized reading-order
+    text contains another same-page paragraph's normalized text (>=25 chars),
+    merging it into a body stack would put the same sentence into one MT unit
+    twice (p82 ×4).  Returned ids must stay out of the stacked-line merge.
+    """
+    from babeldoc.format.pdf.document_il.utils.layout_helper import (
+        get_paragraph_unicode,
+    )
+    from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
+        normalize_for_dup,
+    )
+
+    texts: dict[int, str] = {}
+    for p in paragraphs:
+        try:
+            u = get_paragraph_unicode(p)
+        except Exception:
+            u = getattr(p, "unicode", None) or ""
+        texts[id(p)] = normalize_for_dup(u)
+    hosts: set[int] = set()
+    for p in paragraphs:
+        pt = texts.get(id(p), "")
+        if len(pt) < _MIN_PULLQUOTE_FRAGMENT:
+            continue
+        for q in paragraphs:
+            if q is p:
+                continue
+            qt = texts.get(id(q), "")
+            if len(qt) < _MIN_PULLQUOTE_FRAGMENT:
+                continue
+            if len(qt) <= len(pt) and qt in pt:
+                hosts.add(id(p))
+                break
+    return hosts
+
+
+def _can_merge(
+    upper: PdfParagraph,
+    lower: PdfParagraph,
+    excluded: set[int] | frozenset[int] = frozenset(),
+) -> bool:
     bu, bl = _box(upper), _box(lower)
     if bu is None or bl is None:
         return False
@@ -65,6 +177,12 @@ def _can_merge(upper: PdfParagraph, lower: PdfParagraph) -> bool:
     if _width(upper) > _MAX_LINE_WIDTH or _width(lower) > _MAX_LINE_WIDTH:
         return False
     if not _same_xobj(upper, lower):
+        return False
+    # Complete blocks (multi-row / pull-quote host) must not be stacked into
+    # a body MT unit — that duplicates the same sentence inside one paragraph.
+    if _is_multi_row_block(upper) or _is_multi_row_block(lower):
+        return False
+    if id(upper) in excluded or id(lower) in excluded:
         return False
     # lower is below upper: lower.y2 < upper.y2 (PDF y-up)
     if (bl.y2 or 0) >= (bu.y2 or 0) - 0.5:
@@ -163,7 +281,10 @@ def _has_intervening_paragraph(
     return False
 
 
-def _merge_list_adjacent(paragraphs: list[PdfParagraph]) -> int:
+def _merge_list_adjacent(
+    paragraphs: list[PdfParagraph],
+    excluded: set[int] | frozenset[int] = frozenset(),
+) -> int:
     merges = 0
     i = 0
     while i < len(paragraphs) - 1:
@@ -177,7 +298,7 @@ def _merge_list_adjacent(paragraphs: list[PdfParagraph]) -> int:
             upper, lower = a, b
         else:
             upper, lower = b, a
-        if not _can_merge(upper, lower):
+        if not _can_merge(upper, lower, excluded):
             i += 1
             continue
         _merge_lower_into_upper(upper, lower)
@@ -187,7 +308,10 @@ def _merge_list_adjacent(paragraphs: list[PdfParagraph]) -> int:
     return merges
 
 
-def _merge_y_sorted_ultra_narrow(paragraphs: list[PdfParagraph]) -> int:
+def _merge_y_sorted_ultra_narrow(
+    paragraphs: list[PdfParagraph],
+    excluded: set[int] | frozenset[int] = frozenset(),
+) -> int:
     """Second pass: non-list-adjacent ultra-narrow tips only."""
     merges = 0
     while True:
@@ -205,7 +329,7 @@ def _merge_y_sorted_ultra_narrow(paragraphs: list[PdfParagraph]) -> int:
             lower = candidates[i + 1]
             if upper not in paragraphs or lower not in paragraphs:
                 continue
-            if not _can_merge(upper, lower):
+            if not _can_merge(upper, lower, excluded):
                 continue
             if _has_intervening_paragraph(upper, lower, paragraphs):
                 continue
@@ -223,12 +347,18 @@ def merge_stacked_narrow_callout_paragraphs(
     paragraphs: list[PdfParagraph],
     page: Page | None = None,
 ) -> int:
-    """In-place merge of stacked narrow callout lines. Returns merge count."""
+    """In-place merge of stacked narrow callout lines. Returns merge count.
+
+    Complete blocks (multi-row collapsed lines and pull-quote hosts) are
+    excluded from stacking so their sentence is not merged into a body MT unit
+    twice (p82 same-sentence x4 wall).
+    """
     _ = page
     if len(paragraphs) < 2:
         return 0
-    merges = _merge_list_adjacent(paragraphs)
-    merges += _merge_y_sorted_ultra_narrow(paragraphs)
+    excluded = _pullquote_host_ids(paragraphs)
+    merges = _merge_list_adjacent(paragraphs, excluded)
+    merges += _merge_y_sorted_ultra_narrow(paragraphs, excluded)
     if merges:
         logger.debug("callout_merge: merged %d stacked narrow lines", merges)
     return merges

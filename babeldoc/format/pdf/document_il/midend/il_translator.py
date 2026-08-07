@@ -446,6 +446,65 @@ class ILTranslator:
         # Lost at least one full sentence (EN 3 → ZH 2, etc.)
         return dst_n <= src_n - 1
 
+    #: Sentence terminator split for the same-sentence duplication gate.
+    #: Splits after sentence-ending punctuation, consuming following spaces,
+    #: when the next sentence starts with a letter/digit/CJK (no whitespace
+    #: required — CJK sentences run together after 。/！/？).
+    _DUP_SENT_SPLIT_RE = re.compile(
+        r"(?<=[.!?。！？])\s*(?=[A-Za-z0-9\u4e00-\u9fff])"
+    )
+    #: Token extraction for normalized sentence comparison (EN + CJK).
+    _DUP_TOKEN_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]+")
+
+    @classmethod
+    def split_sentences(cls, text: str) -> list[str]:
+        """Split *text* into sentences on sentence-ending punctuation."""
+        if not text:
+            return []
+        return [s.strip() for s in cls._DUP_SENT_SPLIT_RE.split(text) if s.strip()]
+
+    @classmethod
+    def _sentence_tokens(cls, sentence: str) -> tuple[str, list[str]]:
+        tokens = cls._DUP_TOKEN_RE.findall(sentence.lower())
+        return "".join(tokens), tokens
+
+    @classmethod
+    def find_consecutive_duplicate_sentences(
+        cls,
+        text: str,
+        *,
+        min_chars: int = 8,
+        min_near_chars: int = 15,
+        min_tokens: int = 3,
+        near_overlap: float = 0.6,
+    ) -> list[tuple[str, str]]:
+        """Return ``[(sentence, kind)]`` for consecutive same-sentence runs.
+
+        Acceptance V4: a translated paragraph must not contain the same
+        sentence twice in a row (assembly bugs merge one span into the MT
+        input repeatedly).  ``kind`` is ``"exact"`` (normalized equality) or
+        ``"near"`` (a shorter fragment is token-covered by the adjacent
+        sentence — catches pull-quote fragments glued to their host).
+        """
+        sentences = cls.split_sentences(text)
+        out: list[tuple[str, str]] = []
+        for a, b in zip(sentences, sentences[1:]):
+            na, ta = cls._sentence_tokens(a)
+            nb, tb = cls._sentence_tokens(b)
+            if na and na == nb and len(na) >= min_chars:
+                out.append((a, "exact"))
+                continue
+            if not ta or not tb:
+                continue
+            if min(len(ta), len(tb)) < min_tokens:
+                continue
+            if len(na) < min_near_chars and len(nb) < min_near_chars:
+                continue
+            inter = len(set(ta) & set(tb))
+            if inter / min(len(ta), len(tb)) >= near_overlap:
+                out.append((a, "near"))
+        return out
+
     def _maybe_write_skip_report(self) -> None:
         """Write skip_report.json when debug/working_dir (same gate as tracking)."""
         if not (
@@ -1744,6 +1803,28 @@ class ILTranslator:
                 )
                 if text is None:
                     return
+                # Acceptance V4 gate (source): a paragraph whose MT input
+                # repeats the same sentence consecutively is an assembly bug —
+                # translate it and the duplicate is magnified in the target.
+                # Skip MT (keep source) and surface the warning.
+                src_dups = self.find_consecutive_duplicate_sentences(text)
+                if any(kind == "exact" for _, kind in src_dups):
+                    logger.warning(
+                        "Consecutive duplicate sentence in MT input "
+                        "(paragraph id=%s, sentence=%r); skipping MT to keep "
+                        "source.",
+                        paragraph.debug_id,
+                        src_dups[0][0][:60],
+                    )
+                    self.record_skip(page, paragraph, SkipReason.PULLQUOTE)
+                    return
+                if src_dups:
+                    logger.warning(
+                        "Near-duplicate consecutive sentences in MT input "
+                        "(paragraph id=%s, sentence=%r).",
+                        paragraph.debug_id,
+                        src_dups[0][0][:60],
+                    )
                 llm_translate_tracker = tracker.new_llm_translate_tracker()
                 # Perform translation
                 if self.support_llm_translate:
@@ -1838,6 +1919,27 @@ class ILTranslator:
                             f"keeping result. paragraph id: {paragraph.debug_id} "
                             f"output={translated_text[:80]!r}"
                         )
+
+                # Acceptance V4 gate (output): if MT/LLM duplicated a sentence
+                # back-to-back in the target, fall back to the source so a
+                # "same-sentence xN wall" is never shipped.
+                out_dups = self.find_consecutive_duplicate_sentences(translated_text)
+                if any(kind == "exact" for _, kind in out_dups):
+                    logger.warning(
+                        "Translation repeats a sentence consecutively "
+                        "(paragraph id=%s, sentence=%r); falling back to "
+                        "source text.",
+                        paragraph.debug_id,
+                        out_dups[0][0][:60],
+                    )
+                    translated_text = text
+                elif out_dups:
+                    logger.warning(
+                        "Translation has near-duplicate consecutive sentences "
+                        "(paragraph id=%s, sentence=%r).",
+                        paragraph.debug_id,
+                        out_dups[0][0][:60],
+                    )
 
                 # Post-translation processing
                 self.post_translate_paragraph(
