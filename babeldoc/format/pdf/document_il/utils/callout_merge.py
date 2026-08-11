@@ -1,23 +1,24 @@
-"""Merge stacked ultra-narrow callout lines into one paragraph for whole-MT.
+"""Merge callout fragments into single MT/reflow units.
 
-OA TAKING CHARGE paints each triangle row as its own short paragraph.  Line-by-
-line MT loses discourse context and typesetting keeps the inverted-triangle
-geometry (one CJK char per tip line).
+Two independent product problems, one module:
 
-Merge vertically stacked narrow strips (same column) so unicode is one block
-and typesetting can reflow in the union box.
+1. **Vertical stack** (OA TAKING CHARGE tip): each triangle row is its own
+   short paragraph → merge stacked narrow lines (width ≤220) so unicode is one
+   block.  Whole-page y-sort of every medium strip over-merged body in
+   0.6.4.48; that path stays ultra-narrow only.
 
-Strategy (0.6.4.49):
-  1. List-adjacent chain merge (safe; matches stream/discovery order).
-  2. Optional y-sorted merge only for remaining **ultra-narrow** tips that are
-     not list-adjacent but sit in a clear vertical stack (no intervening para
-     in the same column band).  Whole-page y-sort of every width≤220 strip
-     over-merged body/subheads in 0.6.4.48 and wrecked dual layout.
+2. **Horizontal prefix pair** (OA p5 red/black dual column): left fragment
+   text is a prefix of the right fuller column → absorb shorter into longer
+   with union box.  Vertical stack constants are intentionally *not* loosened
+   for this case.
+
+Entry: :func:`merge_stacked_narrow_callout_paragraphs` (name kept for callers).
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -26,18 +27,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# --- vertical stack (list-adjacent + ultra-narrow y-pass) ---
 _MAX_LINE_WIDTH = 220.0
-# Non-list-adjacent y-merge only for tip-like fragments (OA tip ~50–100pt).
 _ULTRA_NARROW_Y_MERGE = 120.0
 _MAX_VERTICAL_GAP = 22.0
-# Triangle tip indents far right of the first line (OA ~100pt+).
 _MAX_X_DELTA = 160.0
 
+# --- horizontal prefix pair (dual-column callout) ---
+_H_PAIR_MIN_Y_IOU = 0.25
+_H_PAIR_MAX_LEFT_WIDTH = 280.0
+_H_PAIR_MIN_PREFIX = 8
 
-#: Minimum normalized fragment length for pull-quote-host containment.
 _MIN_PULLQUOTE_FRAGMENT = 25
-#: Minimum chars for multi-row block detection.
 _MIN_MULTIROW_CHARS = 8
+_TRAIL_PUNCT = ".:;。：；,，!！?？\"'”’"
 
 
 def _box(p: PdfParagraph):
@@ -63,29 +66,19 @@ def _same_xobj(a: PdfParagraph, b: PdfParagraph) -> bool:
 
 
 def _char_y_bounds(c: Any) -> tuple[float, float] | None:
-    """Return (y, y2) from visual_bbox (fall back to pdf box)."""
     box = None
     vb = getattr(c, "visual_bbox", None)
     if vb is not None and getattr(vb, "box", None) is not None:
         box = vb.box
     if box is None:
         box = getattr(c, "box", None)
-    if box is None:
-        return None
-    if box.y is None or box.y2 is None:
+    if box is None or box.y is None or box.y2 is None:
         return None
     return float(box.y), float(box.y2)
 
 
 def _is_multi_row_block(paragraph: PdfParagraph) -> bool:
-    """True when one composition line spans multiple visual rows.
-
-    OA p82 pull-quote: dense 15pt rows with ~12pt-tall glyph boxes defeat the
-    line-threading zero-collision gap scan, so the whole 5-row quote collapses
-    into a single 75pt "line".  Such a block is a complete design element, not
-    a stacked narrow line — merging it into a body stack duplicates the
-    sentence inside one paragraph unicode.
-    """
+    """True when one composition line spans multiple visual rows (p82 quote)."""
     comps = list(paragraph.pdf_paragraph_composition or [])
     if len(comps) != 1:
         return False
@@ -121,32 +114,30 @@ def _is_multi_row_block(paragraph: PdfParagraph) -> bool:
     y_bounds = [b for b in (_char_y_bounds(c) for c in chars) if b is not None]
     ymin = min((b[0] for b in y_bounds), default=0.0)
     ymax = max((b[1] for b in y_bounds), default=0.0)
-    span = ymax - ymin
-    return rows >= 2 and span > 1.5 * med_h
+    return rows >= 2 and (ymax - ymin) > 1.5 * med_h
+
+
+def _para_text(p: PdfParagraph) -> str:
+    try:
+        from babeldoc.format.pdf.document_il.utils.layout_helper import (
+            get_paragraph_unicode,
+        )
+
+        u = get_paragraph_unicode(p)
+        if u:
+            return u
+    except Exception:
+        pass
+    return getattr(p, "unicode", None) or ""
 
 
 def _pullquote_host_ids(paragraphs: list[PdfParagraph]) -> set[int]:
-    """Ids of paragraphs whose reading-order text contains another's text.
-
-    A pull-quote repeats body fragments; when its normalized reading-order
-    text contains another same-page paragraph's normalized text (>=25 chars),
-    merging it into a body stack would put the same sentence into one MT unit
-    twice (p82 ×4).  Returned ids must stay out of the stacked-line merge.
-    """
-    from babeldoc.format.pdf.document_il.utils.layout_helper import (
-        get_paragraph_unicode,
-    )
+    """Hosts whose text contains another para's text — stay out of vertical stack."""
     from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
         normalize_for_dup,
     )
 
-    texts: dict[int, str] = {}
-    for p in paragraphs:
-        try:
-            u = get_paragraph_unicode(p)
-        except Exception:
-            u = getattr(p, "unicode", None) or ""
-        texts[id(p)] = normalize_for_dup(u)
+    texts = {id(p): normalize_for_dup(_para_text(p)) for p in paragraphs}
     hosts: set[int] = set()
     for p in paragraphs:
         pt = texts.get(id(p), "")
@@ -164,7 +155,7 @@ def _pullquote_host_ids(paragraphs: list[PdfParagraph]) -> set[int]:
     return hosts
 
 
-def _can_merge(
+def _can_merge_vertical(
     upper: PdfParagraph,
     lower: PdfParagraph,
     excluded: set[int] | frozenset[int] = frozenset(),
@@ -178,20 +169,15 @@ def _can_merge(
         return False
     if not _same_xobj(upper, lower):
         return False
-    # Complete blocks (multi-row / pull-quote host) must not be stacked into
-    # a body MT unit — that duplicates the same sentence inside one paragraph.
     if _is_multi_row_block(upper) or _is_multi_row_block(lower):
         return False
     if id(upper) in excluded or id(lower) in excluded:
         return False
-    # lower is below upper: lower.y2 < upper.y2 (PDF y-up)
     if (bl.y2 or 0) >= (bu.y2 or 0) - 0.5:
         return False
-    # gap between upper bottom and lower top (stacked rows may be denser)
     gap = float(bu.y) - float(bl.y2)
     if gap > _MAX_VERTICAL_GAP or gap < -12.0:
         return False
-    # similar column (lower may indent more for triangle tip)
     if abs(float(bu.x) - float(bl.x)) > _MAX_X_DELTA and float(bl.x) + 5 < float(bu.x):
         return False
     if float(bl.x) > float(bu.x2) or float(bl.x2) < float(bu.x):
@@ -215,37 +201,42 @@ def _composition_sort_key(comp: Any) -> tuple[float, float]:
 
 
 def _sort_compositions_visual(paragraph: PdfParagraph) -> None:
-    """Top-first composition order after merge (tip-first stream → reading order)."""
     comps = list(paragraph.pdf_paragraph_composition or [])
     if len(comps) < 2:
         return
     paragraph.pdf_paragraph_composition = sorted(comps, key=_composition_sort_key)
 
 
-def _merge_lower_into_upper(upper: PdfParagraph, lower: PdfParagraph) -> None:
+def _absorb(host: PdfParagraph, other: PdfParagraph, *, unicode: str | None = None) -> None:
+    """Union compositions + boxes into *host*; drop *other* must be done by caller."""
     from babeldoc.format.pdf.document_il.il_version_1 import Box
 
-    upper.pdf_paragraph_composition = list(
-        upper.pdf_paragraph_composition or []
-    ) + list(lower.pdf_paragraph_composition or [])
-    ub, lb = upper.box, lower.box
-    upper.box = Box(
-        x=min(float(ub.x), float(lb.x)),
-        y=min(float(ub.y), float(lb.y)),
-        x2=max(float(ub.x2), float(lb.x2)),
-        y2=max(float(ub.y2), float(lb.y2)),
+    host.pdf_paragraph_composition = list(
+        host.pdf_paragraph_composition or []
+    ) + list(other.pdf_paragraph_composition or [])
+    hb, ob = host.box, other.box
+    host.box = Box(
+        x=min(float(hb.x), float(ob.x)),
+        y=min(float(hb.y), float(ob.y)),
+        x2=max(float(hb.x2), float(ob.x2)),
+        y2=max(float(hb.y2), float(ob.y2)),
     )
-    if getattr(lower, "layout_label", None) in ("title", "section_header"):
-        if getattr(upper, "layout_label", None) not in ("title", "section_header"):
-            upper.layout_label = lower.layout_label
-    _sort_compositions_visual(upper)
+    if getattr(other, "layout_label", None) in ("title", "section_header"):
+        if getattr(host, "layout_label", None) not in ("title", "section_header"):
+            host.layout_label = other.layout_label
+    if unicode is not None:
+        host.unicode = unicode
+    _sort_compositions_visual(host)
+
+
+# Back-compat name used by vertical passes (upper absorbs lower).
+def _merge_lower_into_upper(upper: PdfParagraph, lower: PdfParagraph) -> None:
+    _absorb(upper, lower)
 
 
 def _column_band(a: PdfParagraph, b: PdfParagraph) -> tuple[float, float]:
     ba, bb = _box(a), _box(b)
-    x0 = min(float(ba.x), float(bb.x))
-    x1 = max(float(ba.x2), float(bb.x2))
-    return x0, x1
+    return min(float(ba.x), float(bb.x)), max(float(ba.x2), float(bb.x2))
 
 
 def _has_intervening_paragraph(
@@ -253,14 +244,11 @@ def _has_intervening_paragraph(
     lower: PdfParagraph,
     paragraphs: list[PdfParagraph],
 ) -> bool:
-    """True if another para sits between upper/lower in y within their x-band."""
     bu, bl = _box(upper), _box(lower)
     if bu is None or bl is None:
         return True
-    y_hi = min(float(bu.y2 or 0), float(bl.y2 or 0))  # noqa: not used for gap
-    # Vertical interior between the two stacks (exclusive)
-    top = float(bu.y)  # bottom edge of upper
-    bot = float(bl.y2)  # top edge of lower
+    top = float(bu.y)
+    bot = float(bl.y2)
     if top <= bot:
         return False
     x0, x1 = _column_band(upper, lower)
@@ -270,11 +258,9 @@ def _has_intervening_paragraph(
         b = _box(p)
         if b is None or b.x is None or b.x2 is None or b.y is None or b.y2 is None:
             continue
-        # center y of p in the open gap?
         cy = 0.5 * (float(b.y) + float(b.y2))
         if not (bot < cy < top):
             continue
-        # x overlap with column band
         if float(b.x2) < x0 or float(b.x) > x1:
             continue
         return True
@@ -288,8 +274,7 @@ def _merge_list_adjacent(
     merges = 0
     i = 0
     while i < len(paragraphs) - 1:
-        a = paragraphs[i]
-        b = paragraphs[i + 1]
+        a, b = paragraphs[i], paragraphs[i + 1]
         ba, bb = _box(a), _box(b)
         if ba is None or bb is None:
             i += 1
@@ -298,13 +283,12 @@ def _merge_list_adjacent(
             upper, lower = a, b
         else:
             upper, lower = b, a
-        if not _can_merge(upper, lower, excluded):
+        if not _can_merge_vertical(upper, lower, excluded):
             i += 1
             continue
-        _merge_lower_into_upper(upper, lower)
+        _absorb(upper, lower)
         paragraphs.remove(lower)
         merges += 1
-        # stay on i to chain-merge further lines into the same stack
     return merges
 
 
@@ -312,7 +296,6 @@ def _merge_y_sorted_ultra_narrow(
     paragraphs: list[PdfParagraph],
     excluded: set[int] | frozenset[int] = frozenset(),
 ) -> int:
-    """Second pass: non-list-adjacent ultra-narrow tips only."""
     merges = 0
     while True:
         candidates = [
@@ -325,15 +308,14 @@ def _merge_y_sorted_ultra_narrow(
         candidates.sort(key=_y2, reverse=True)
         merged_this_pass = False
         for i in range(len(candidates) - 1):
-            upper = candidates[i]
-            lower = candidates[i + 1]
+            upper, lower = candidates[i], candidates[i + 1]
             if upper not in paragraphs or lower not in paragraphs:
                 continue
-            if not _can_merge(upper, lower, excluded):
+            if not _can_merge_vertical(upper, lower, excluded):
                 continue
             if _has_intervening_paragraph(upper, lower, paragraphs):
                 continue
-            _merge_lower_into_upper(upper, lower)
+            _absorb(upper, lower)
             paragraphs.remove(lower)
             merges += 1
             merged_this_pass = True
@@ -343,15 +325,110 @@ def _merge_y_sorted_ultra_narrow(
     return merges
 
 
+def _compact(s: str) -> str:
+    """Alnum-ish compact form for prefix checks (reuse pull-quote normalizer)."""
+    from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
+        normalize_for_dup,
+    )
+
+    return normalize_for_dup(s).rstrip(_TRAIL_PUNCT)
+
+
+def _is_text_prefix(short: str, long: str) -> bool:
+    """True if *short* is a meaningful prefix of *long* after compacting."""
+    a, b = _compact(short), _compact(long)
+    if len(a) < _H_PAIR_MIN_PREFIX or len(b) <= len(a) + 5:
+        return False
+    if b.startswith(a):
+        return True
+    for sep in (":", "：", ".", "。"):
+        if sep in short:
+            head = _compact(short.split(sep, 1)[0])
+            return len(head) >= _H_PAIR_MIN_PREFIX and b.startswith(head)
+    return False
+
+
+def _y_iou(a: PdfParagraph, b: PdfParagraph) -> float:
+    ba, bb = _box(a), _box(b)
+    if ba is None or bb is None:
+        return 0.0
+    if None in (ba.y, ba.y2, bb.y, bb.y2):
+        return 0.0
+    y0 = max(float(ba.y), float(bb.y))
+    y1 = min(float(ba.y2), float(bb.y2))
+    if y1 <= y0:
+        return 0.0
+    ha = float(ba.y2) - float(ba.y)
+    hb = float(bb.y2) - float(bb.y)
+    if ha <= 0 or hb <= 0:
+        return 0.0
+    return (y1 - y0) / min(ha, hb)
+
+
+def _can_merge_horizontal_prefix(left: PdfParagraph, right: PdfParagraph) -> bool:
+    """Geometry + prefix gate for dual-column callout (left short, right fuller)."""
+    bl, br = _box(left), _box(right)
+    if bl is None or br is None:
+        return False
+    if None in (bl.x, bl.x2, br.x, br.x2):
+        return False
+    if float(bl.x) >= float(br.x) - 2.0:
+        return False
+    if float(bl.x2) > float(br.x2) + 5.0:
+        return False
+    lw = _width(left)
+    if lw <= 0 or lw > _H_PAIR_MAX_LEFT_WIDTH:
+        return False
+    if _y_iou(left, right) < _H_PAIR_MIN_Y_IOU:
+        return False
+    if not _same_xobj(left, right):
+        return False
+    if _is_multi_row_block(left) and _is_multi_row_block(right):
+        return False
+    lt, rt = _para_text(left), _para_text(right)
+    if len(lt.strip()) < _H_PAIR_MIN_PREFIX:
+        return False
+    return _is_text_prefix(lt, rt) or _is_text_prefix(rt, lt)
+
+
+def _merge_horizontal_prefix_pairs(paragraphs: list[PdfParagraph]) -> int:
+    """Absorb left short prefix column into right fuller column (or vice versa)."""
+    merges = 0
+    changed = True
+    while changed:
+        changed = False
+        for left in list(paragraphs):
+            for right in list(paragraphs):
+                if right is left:
+                    continue
+                if not _can_merge_horizontal_prefix(left, right):
+                    continue
+                lt, rt = _para_text(left), _para_text(right)
+                if len(_compact(rt)) >= len(_compact(lt)):
+                    host, other, text = right, left, rt
+                else:
+                    host, other, text = left, right, lt
+                _absorb(host, other, unicode=text)
+                if other in paragraphs:
+                    paragraphs.remove(other)
+                merges += 1
+                changed = True
+                break
+            if changed:
+                break
+    return merges
+
+
 def merge_stacked_narrow_callout_paragraphs(
     paragraphs: list[PdfParagraph],
     page: Page | None = None,
 ) -> int:
-    """In-place merge of stacked narrow callout lines. Returns merge count.
+    """In-place callout fragment merge. Returns total merge count.
 
-    Complete blocks (multi-row collapsed lines and pull-quote hosts) are
-    excluded from stacking so their sentence is not merged into a body MT unit
-    twice (p82 same-sentence x4 wall).
+    Passes:
+      1. list-adjacent vertical stack (width ≤220, gap ≤22)
+      2. ultra-narrow y-stack (width ≤120, no intervening)
+      3. horizontal prefix pair (left short ⊆ right longer text)
     """
     _ = page
     if len(paragraphs) < 2:
@@ -359,6 +436,7 @@ def merge_stacked_narrow_callout_paragraphs(
     excluded = _pullquote_host_ids(paragraphs)
     merges = _merge_list_adjacent(paragraphs, excluded)
     merges += _merge_y_sorted_ultra_narrow(paragraphs, excluded)
+    merges += _merge_horizontal_prefix_pairs(paragraphs)
     if merges:
-        logger.debug("callout_merge: merged %d stacked narrow lines", merges)
+        logger.debug("callout_merge: merged %d units", merges)
     return merges
