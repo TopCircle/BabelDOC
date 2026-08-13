@@ -16,6 +16,9 @@ from babeldoc.format.pdf.document_il.utils.side_callout_skip import normalize_fo
 from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
     should_skip_side_callout_mt,
 )
+from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
+    side_callout_debug_extra,
+)
 
 
 def _para(
@@ -185,6 +188,29 @@ def test_title_not_ultra_narrow_even_if_narrow_box():
     )
     page = _page(title)
     assert is_ultra_narrow_side_callout(title, page) is False
+
+
+def test_side_callout_debug_extra_is_bounded_geometry():
+    """Helper exposes ratios/branch only — no text payload."""
+    right = _para(QUOTE, x=360, x2=560)
+    left = _para(QUOTE, x=0, x2=80)
+    page = _page(right, left)
+    right_extra = side_callout_debug_extra(right, page)
+    left_extra = side_callout_debug_extra(left, page)
+    assert right_extra is not None
+    assert left_extra is not None
+    assert set(right_extra) == {
+        "left_ratio",
+        "right_ratio",
+        "width_ratio",
+        "matched_branch",
+    }
+    assert right_extra["matched_branch"] == "right_margin_indent"
+    assert left_extra["matched_branch"] == "left_margin_gutter"
+    assert isinstance(right_extra["left_ratio"], float)
+    assert "text" not in right_extra
+    assert "unicode" not in right_extra
+    assert side_callout_debug_extra(right, None) is None
 
 
 def test_compat_reexport_from_pullquote_dedupe():

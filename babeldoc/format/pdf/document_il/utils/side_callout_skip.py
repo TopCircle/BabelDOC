@@ -89,6 +89,40 @@ def _page_box(page: Page):
     return None
 
 
+def side_callout_debug_extra(
+    paragraph: PdfParagraph,
+    page: Page | None,
+) -> dict[str, float | str | None] | None:
+    """Bounded geometry for SkipEvent.debug_extra. Never includes text."""
+    if page is None:
+        return None
+    box = getattr(paragraph, "box", None)
+    if not box or box.x is None or box.x2 is None:
+        return None
+    page_box = _page_box(page)
+    if page_box is None or page_box.x2 <= page_box.x:
+        return None
+    page_width = page_box.x2 - page_box.x
+    para_width = box.x2 - box.x
+    if para_width <= 0:
+        return None
+    left_ratio = (box.x - page_box.x) / page_width
+    width_ratio = para_width / page_width
+    right_ratio = (page_box.x2 - box.x2) / page_width
+    matched_branch = None
+    if width_ratio < _PULLQUOTE_WIDTH_RATIO:
+        if left_ratio > _PULLQUOTE_LEFT_RATIO:
+            matched_branch = "right_margin_indent"
+        elif right_ratio > _PULLQUOTE_LEFT_RATIO:
+            matched_branch = "left_margin_gutter"
+    return {
+        "left_ratio": left_ratio,
+        "right_ratio": right_ratio,
+        "width_ratio": width_ratio,
+        "matched_branch": matched_branch,
+    }
+
+
 def _looks_like_side_callout(paragraph: PdfParagraph, page: Page) -> bool:
     box = getattr(paragraph, "box", None)
     if not box or box.x is None or box.x2 is None:

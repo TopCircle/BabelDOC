@@ -43,6 +43,9 @@ from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
     is_placeholder_only_paragraph,
 )
 from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
+    side_callout_debug_extra,
+)
+from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
     should_skip_side_callout_mt,
 )
 from babeldoc.format.pdf.document_il.utils.region_skip import (
@@ -585,9 +588,17 @@ class ILTranslator:
         page: Page | None,
         paragraph: PdfParagraph,
         reason: SkipReason | str,
+        *,
+        debug_extra: dict | None = None,
     ) -> None:
         """Record a skip event (thread-safe). No-op effect on translation."""
-        self.skip_report.record(page=page, paragraph=paragraph, reason=reason)
+        extra = debug_extra if getattr(self.translation_config, "debug", False) else None
+        self.skip_report.record(
+            page=page,
+            paragraph=paragraph,
+            reason=reason,
+            debug_extra=extra,
+        )
 
     def region_skip_reason(
         self,
@@ -1841,10 +1852,14 @@ class ILTranslator:
                     paragraph, page, mode=_callout_mode
                 ):
                     reason = side_callout_skip_reason(paragraph, page)
+                    extra = None
+                    if getattr(self.translation_config, "debug", False):
+                        extra = side_callout_debug_extra(paragraph, page)
                     self.record_skip(
                         page,
                         paragraph,
                         reason or SkipReason.ULTRA_NARROW,
+                        debug_extra=extra,
                     )
                     logger.debug(
                         "skip side-callout MT: id=%s reason=%s mode=%s text=%r",

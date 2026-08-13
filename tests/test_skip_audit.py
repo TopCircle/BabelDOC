@@ -13,6 +13,7 @@ from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
     should_skip_side_callout_mt,
 )
 from babeldoc.format.pdf.document_il.utils.skip_audit import PREVIEW_MAX
+from babeldoc.format.pdf.document_il.utils.skip_audit import SkipEvent
 from babeldoc.format.pdf.document_il.utils.skip_audit import SkipReason
 from babeldoc.format.pdf.document_il.utils.skip_audit import SkipReport
 from babeldoc.format.pdf.document_il.utils.skip_audit import side_callout_skip_reason
@@ -103,11 +104,67 @@ def test_skip_report_record_and_json(tmp_path: Path):
     assert data["events"][0]["paragraph_id"] == "abc"
     assert data["events"][0]["reason"] == "ultra_narrow"
     assert "testicles" in data["events"][0]["unicode_preview"]
+    assert "debug_extra" not in data["events"][0]
+    assert "debug_extra" not in data["events"][1]
 
     out = report.write_json(tmp_path / "skip_report.json")
     loaded = json.loads(out.read_text(encoding="utf-8"))
     assert loaded["total"] == 2
     assert loaded["counts_by_reason"]["header"] == 1
+    assert "debug_extra" not in loaded["events"][0]
+
+
+def test_skip_event_debug_extra_default_none_serializes_when_set():
+    event = SkipEvent(
+        page_number=1,
+        paragraph_id="p",
+        reason=SkipReason.PULLQUOTE.value,
+        unicode_preview="quote",
+    )
+    assert event.debug_extra is None
+    assert "debug_extra" not in event.to_dict()
+
+    extra = {
+        "left_ratio": 0.59,
+        "right_ratio": 0.09,
+        "width_ratio": 0.33,
+        "matched_branch": "right_margin_indent",
+    }
+    report = SkipReport()
+    report.record(
+        page_number=5,
+        paragraph_id="pq",
+        reason=SkipReason.PULLQUOTE,
+        unicode="side quote",
+        debug_extra=extra,
+    )
+    data = report.to_dict()
+    assert data["schema_version"] == 1
+    assert data["events"][0]["debug_extra"] == extra
+    assert "unicode" not in data["events"][0]["debug_extra"]
+    loaded = json.loads(report.to_json())
+    assert loaded["events"][0]["debug_extra"]["matched_branch"] == "right_margin_indent"
+
+
+def test_record_skip_attaches_debug_extra_only_when_debug():
+    from unittest.mock import MagicMock
+
+    from babeldoc.format.pdf.document_il.midend.il_translator import ILTranslator
+
+    cfg = MagicMock()
+    cfg.debug = False
+    tr = object.__new__(ILTranslator)
+    tr.translation_config = cfg
+    tr.skip_report = SkipReport()
+    para = _para("side quote text")
+    page = _page(para)
+    extra = {"left_ratio": 0.59, "matched_branch": "right_margin_indent"}
+    tr.record_skip(page, para, SkipReason.PULLQUOTE, debug_extra=extra)
+    assert "debug_extra" not in tr.skip_report.to_dict()["events"][0]
+
+    cfg.debug = True
+    tr.record_skip(page, para, SkipReason.PULLQUOTE, debug_extra=extra)
+    assert tr.skip_report.to_dict()["events"][1]["debug_extra"] == extra
 
 
 def test_side_callout_reason_matches_skip_predicate():

@@ -47,9 +47,13 @@ class SkipEvent:
     reason: str
     unicode_preview: str
     layout_label: str | None = None
+    debug_extra: dict | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        if data.get("debug_extra") is None:
+            data.pop("debug_extra", None)
+        return data
 
 
 def unicode_preview(text: str | None, max_len: int = PREVIEW_MAX) -> str:
@@ -100,6 +104,7 @@ class SkipReport:
         unicode: str | None = None,
         layout_label: str | None = None,
         paragraph_id: str | None = None,
+        debug_extra: dict | None = None,
     ) -> None:
         """Append one skip event. Safe from worker threads."""
         reason_s = reason.value if isinstance(reason, SkipReason) else str(reason)
@@ -116,12 +121,14 @@ class SkipReport:
                 text = getattr(paragraph, "unicode", None)
             if label is None:
                 label = getattr(paragraph, "layout_label", None)
+        extra = dict(debug_extra) if debug_extra else None
         event = SkipEvent(
             page_number=pn,
             paragraph_id=pid,
             reason=reason_s,
             unicode_preview=unicode_preview(text),
             layout_label=label,
+            debug_extra=extra,
         )
         with self._lock:
             self._events.append(event)
