@@ -25,6 +25,7 @@ from babeldoc.format.pdf.document_il import PdfSameStyleUnicodeCharacters
 from babeldoc.format.pdf.document_il import PdfStyle
 from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
 from babeldoc.format.pdf.document_il.utils.layout_helper import FIGURE_TEXT_COVERAGE_THRESHOLD
+from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_style_span
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode_string
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_paragraph_unicode
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_figure_text_paragraph
@@ -1061,6 +1062,11 @@ class ILTranslator:
                     span_chars, span_style, i_comp = coalesce_emphasis_style_run(
                         compositions, i_comp, base_style
                     )
+                    # OA p3 Trajan [space][W][space]: wrapping isolates W from
+                    # elcome and DeepLX leaves a literal W in the ZH.
+                    if is_drop_cap_style_span(span_chars):
+                        chars.extend(span_chars)
+                        continue
                     span_id = len(style_spans)
                     source_text = get_char_unicode_string(span_chars)
                     chars.append(f"〖B{span_id}〗")

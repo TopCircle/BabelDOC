@@ -331,6 +331,128 @@ def _sort_chars_into_reading_order(
     return ordered
 
 
+_STYLE_OPEN_RE = re.compile(r"^〖B(\d+)〗$")
+
+
+def _group_mt_tokens(
+    chars: list[PdfCharacter | str],
+) -> list[list[PdfCharacter | str]]:
+    """Keep 〖Bn〗…〖/Bn〗 runs together so drop-cap prep can move the unit."""
+    groups: list[list[PdfCharacter | str]] = []
+    i = 0
+    n = len(chars)
+    while i < n:
+        item = chars[i]
+        if isinstance(item, str):
+            matched = _STYLE_OPEN_RE.match(item)
+            if matched:
+                close = f"〖/B{matched.group(1)}〗"
+                group: list[PdfCharacter | str] = [item]
+                i += 1
+                while i < n and chars[i] != close:
+                    group.append(chars[i])
+                    i += 1
+                if i < n:
+                    group.append(chars[i])
+                    i += 1
+                groups.append(group)
+                continue
+        groups.append([item])
+        i += 1
+    return groups
+
+
+def _attach_string_groups(
+    groups: list[list[PdfCharacter | str]],
+) -> list[list[PdfCharacter | str]]:
+    """Keep formula placeholders next to the preceding character group."""
+    merged: list[list[PdfCharacter | str]] = []
+    prefix: list[PdfCharacter | str] = []
+    for group in groups:
+        if any(isinstance(item, PdfCharacter) for item in group):
+            merged.append(prefix + group)
+            prefix = []
+        elif merged:
+            merged[-1].extend(group)
+        else:
+            prefix.extend(group)
+    if prefix:
+        if merged:
+            merged[-1].extend(prefix)
+        else:
+            merged.append(prefix)
+    return merged
+
+
+def _apply_prepared_order_to_mixed(
+    chars: list[PdfCharacter | str],
+    prepared: list[PdfCharacter],
+) -> list[PdfCharacter | str]:
+    """Replay climb/drop-cap order onto a mixed marker+char token list."""
+    from babeldoc.format.pdf.document_il.utils.drop_cap import (
+        is_drop_cap_letter,
+        is_drop_cap_pair,
+    )
+
+    groups = _attach_string_groups(_group_mt_tokens(chars))
+    id_to_group: dict[int, int] = {}
+    for group_i, group in enumerate(groups):
+        for item in group:
+            if isinstance(item, PdfCharacter):
+                id_to_group[id(item)] = group_i
+    prep_index = {id(char): idx for idx, char in enumerate(prepared)}
+    emitted: set[int] = set()
+    out: list[PdfCharacter | str] = []
+    for char in prepared:
+        group_i = id_to_group.get(id(char))
+        if group_i is None:
+            out.append(char)
+            continue
+        if group_i in emitted:
+            continue
+        emitted.add(group_i)
+        group = groups[group_i]
+        # Drop-cap sidebearing spaces must not ride along inside 〖Bn〗.
+        drop_letters = [
+            item
+            for item in group
+            if isinstance(item, PdfCharacter) and is_drop_cap_letter(item)
+        ]
+        if drop_letters:
+            rest = [
+                c
+                for c in prepared
+                if c is not drop_letters[0] and not (c.char_unicode or "").isspace()
+            ]
+            if rest and is_drop_cap_pair(drop_letters[0], rest[0]):
+                group = [
+                    item
+                    for item in group
+                    if not (
+                        isinstance(item, PdfCharacter)
+                        and (item.char_unicode or "").isspace()
+                    )
+                ]
+        char_items = [item for item in group if isinstance(item, PdfCharacter)]
+        if len(char_items) > 1:
+            char_items.sort(key=lambda item: prep_index.get(id(item), 0))
+            rebuilt: list[PdfCharacter | str] = []
+            inserted = False
+            for item in group:
+                if isinstance(item, PdfCharacter):
+                    if not inserted:
+                        rebuilt.extend(char_items)
+                        inserted = True
+                else:
+                    rebuilt.append(item)
+            group = rebuilt
+        out.extend(group)
+    for group_i, group in enumerate(groups):
+        if group_i not in emitted:
+            out.extend(group)
+    return out
+
+
 def prepare_chars_for_mt(
     chars: list[PdfCharacter],
     *,
@@ -356,7 +478,11 @@ def prepare_chars_for_mt(
         # Climb reorder uses fixed-width y buckets that split drifted rows;
         # re-stabilize into clean top-to-bottom, left-to-right rows.
         chars = _sort_chars_into_reading_order(climbed)
-    return place_drop_caps_before_continuations(chars)
+    from babeldoc.format.pdf.document_il.utils.drop_cap import (
+        strip_drop_cap_padding,
+    )
+
+    return strip_drop_cap_padding(place_drop_caps_before_continuations(chars))
 
 
 def get_char_unicode_string(
@@ -387,10 +513,16 @@ def get_char_unicode_string(
     """
     # Decorative letter-spacing: letter gaps skipped; word outliers still split.
     pdf_only = [c for c in chars if isinstance(c, PdfCharacter)]
-    # Pure-char path: single prep entry for climb + drop-cap (B1).
-    if pdf_only and len(pdf_only) == len(chars):
-        pdf_only = prepare_chars_for_mt(pdf_only, para_width=para_width)
-        chars = pdf_only
+    # Climb + drop-cap even when ILTranslator mixed in 〖Bn〗 / {vN} strings.
+    # Pure-char lists used to be the only path; style markers skipped prep and
+    # left OA p3 as ``elcome … 〖B0〗W 〖/B0〗``.
+    if pdf_only:
+        prepared = prepare_chars_for_mt(pdf_only, para_width=para_width)
+        if len(pdf_only) == len(chars):
+            chars = prepared
+        else:
+            chars = _apply_prepared_order_to_mixed(chars, prepared)
+        pdf_only = [c for c in chars if isinstance(c, PdfCharacter)]
     is_decorative = is_decorative_text(pdf_only)
     decorative_word_gap = (
         decorative_word_gap_threshold(pdf_only) if is_decorative else None
@@ -463,7 +595,22 @@ def get_char_unicode_string(
                         unicode_chars.pop()
                     continue  # no space; next char appends directly
             # Drop-cap: never insert space between large ``I`` and ``f you…``
+            # Peek across 〖Bn〗 strings — ILTranslator may wrap the cap.
             if should_suppress_space_after_drop_cap(chars[i], next_ch):
+                continue
+            peeked = next_ch
+            for k in range(i + 1, len(chars)):
+                item = chars[k]
+                if isinstance(item, str):
+                    continue
+                if isinstance(item, PdfCharacter):
+                    if (item.char_unicode or "").isspace():
+                        continue
+                    peeked = item
+                break
+            if peeked is not next_ch and should_suppress_space_after_drop_cap(
+                chars[i], peeked
+            ):
                 continue
             if is_decorative:
                 insert = is_nl or gap_is_decorative_word_boundary(
