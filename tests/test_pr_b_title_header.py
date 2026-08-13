@@ -21,14 +21,21 @@ from babeldoc.format.pdf.document_il.utils.stream_order import (
 from babeldoc.format.pdf.document_il.utils.text_recovery import space_chapter_number
 
 
-def _ch(text: str, x: float, y: float = 100.0, w: float = 8.0) -> PdfCharacter:
-    box = Box(x=x, y=y, x2=x + w, y2=y + 12)
+def _ch(
+    text: str,
+    x: float,
+    y: float = 100.0,
+    w: float = 8.0,
+    *,
+    font_size: float = 12.0,
+) -> PdfCharacter:
+    box = Box(x=x, y=y, x2=x + w, y2=y + font_size)
     return PdfCharacter(
         pdf_character_id=None,
         char_unicode=text,
         box=box,
         visual_bbox=VisualBbox(box=box),
-        pdf_style=PdfStyle(font_id="base", font_size=12.0, graphic_state=None),
+        pdf_style=PdfStyle(font_id="base", font_size=font_size, graphic_state=None),
         scale=1.0,
         advance=w,
         vertical=False,
@@ -113,11 +120,13 @@ def _line_para(
     y2: float = 750.0,
     layout_label: str = "plain text",
     char_w: float = 8.0,
+    font_size: float = 12.0,
+    para_font_size: float | None = None,
 ) -> PdfParagraph:
     chars = []
     cx = x
     for ch in text:
-        chars.append(_ch(ch, cx, y=y, w=char_w))
+        chars.append(_ch(ch, cx, y=y, w=char_w, font_size=font_size))
         cx += char_w + 1
     line = PdfLine(
         box=Box(x=x, y=y, x2=cx, y2=y2),
@@ -125,7 +134,11 @@ def _line_para(
     )
     p = PdfParagraph(
         box=Box(x=x, y=y, x2=cx, y2=y2),
-        pdf_style=PdfStyle(font_id="base", font_size=18.0, graphic_state=None),
+        pdf_style=PdfStyle(
+            font_id="base",
+            font_size=para_font_size if para_font_size is not None else 18.0,
+            graphic_state=None,
+        ),
         pdf_paragraph_composition=[PdfParagraphComposition(pdf_line=line)],
         unicode=text,
         layout_label=layout_label,
@@ -164,3 +177,44 @@ def test_chapter_and_title_stay_separate_paragraphs():
     assert "love" in (paras[1].unicode or "").lower()
     assert "anatomy" in (paras[2].unicode or "")
     assert not hasattr(finder, "merge_chapter_title_paragraphs")
+
+
+def test_midcap_display_title_lowers_without_tracking():
+    """W1b: mid-caps display title lowers even when letters are tight."""
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        should_normalize_midcap_title,
+    )
+    from babeldoc.format.pdf.document_il.utils.vertical_gap import (
+        DISPLAY_TITLE_SIZE_PT,
+    )
+
+    title = "SLoWcoMfortabLe ScreW"
+    para = _line_para(
+        title,
+        layout_label="title",
+        font_size=DISPLAY_TITLE_SIZE_PT,
+        para_font_size=DISPLAY_TITLE_SIZE_PT,
+    )
+    assert should_normalize_midcap_title(para)
+    finder = _finder()
+    finder.update_paragraph_data(para, update_unicode=True, page=None)
+    assert para.unicode == "slowcomfortable screw"
+
+
+def test_plain_text_12pt_iphone_not_lowered():
+    """W1b: 12pt body must keep brand mixed-case (no mid-caps OR)."""
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        should_normalize_midcap_title,
+    )
+
+    para = _line_para(
+        "The iPhone works today.",
+        layout_label="plain text",
+        font_size=12.0,
+        para_font_size=12.0,
+    )
+    assert not should_normalize_midcap_title(para)
+    finder = _finder()
+    finder.update_paragraph_data(para, update_unicode=True, page=None)
+    assert "iPhone" in (para.unicode or "")
+    assert "iphone" not in (para.unicode or "")
