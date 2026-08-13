@@ -16,6 +16,7 @@ from __future__ import annotations
 import regex
 
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
+from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 
 # Latin presentation forms (FB00–FB04). NFKC usually expands these; keep an
 # explicit map so partial/broken pipelines and char-level paths still recover.
@@ -616,6 +617,43 @@ def space_chapter_number(text: str) -> str:
     return text
 
 
+_MIDCAP_TITLE_LABELS = frozenset({"title", "section_header"})
+
+
+def _mostly_ascii_letters(text: str) -> bool:
+    """True when *text* is short and mostly ASCII letters (title-case gate)."""
+    if not text or len(text) > 80:
+        return False
+    letters = [c for c in text if c.isalpha()]
+    if len(letters) < 4:
+        return False
+    ascii_letters = [c for c in letters if ord(c) < 128]
+    return len(ascii_letters) >= max(4, int(0.8 * len(letters)))
+
+
+def should_normalize_midcap_title(
+    paragraph: PdfParagraph,
+    text: str | None = None,
+) -> bool:
+    """True when a mid-caps title should be lowered without tracking.
+
+    Must AND :func:`has_decorative_mid_caps`. Must not open OR on 12pt body
+    (``plain text`` / BODY labels). Qualifies when the layout label is
+    ``title`` / ``section_header`` or :func:`is_display_title` (font ≥ 28pt).
+    """
+    src = text if text is not None else (getattr(paragraph, "unicode", None) or "")
+    if not has_decorative_mid_caps(src):
+        return False
+    if not _mostly_ascii_letters(src):
+        return False
+    label = (getattr(paragraph, "layout_label", None) or "").strip().lower()
+    if label in _MIDCAP_TITLE_LABELS:
+        return True
+    from babeldoc.format.pdf.document_il.utils.vertical_gap import is_display_title
+
+    return is_display_title(paragraph)
+
+
 def normalize_decorative_title_case(text: str) -> str:
     """Normalize design-font mixed case for MT readability.
 
@@ -627,13 +665,7 @@ def normalize_decorative_title_case(text: str) -> str:
     Call only from decorative/geometry-gated sites — not on full body prose
     (would smash ``iPhone`` / ``eBay``).
     """
-    if not text or len(text) > 80:
-        return text
-    letters = [c for c in text if c.isalpha()]
-    if len(letters) < 4:
-        return text
-    ascii_letters = [c for c in letters if ord(c) < 128]
-    if len(ascii_letters) < max(4, int(0.8 * len(letters))):
+    if not _mostly_ascii_letters(text or ""):
         return text
     if not has_decorative_mid_caps(text):
         return text
