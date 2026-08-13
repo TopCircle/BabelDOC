@@ -43,6 +43,12 @@ from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
     is_placeholder_only_paragraph,
 )
 from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
+    find_pullquote_host,
+)
+from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
+    is_near_full_pullquote,
+)
+from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
     side_callout_debug_extra,
 )
 from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
@@ -396,6 +402,10 @@ class ILTranslator:
         self.docs = None
         # PR-C1: observability only — does not change skip predicates.
         self.skip_report = SkipReport()
+        # Near-full pull-quote → copy host ZH after the page pool finishes.
+        # Keyed by id(quote); resolved by walking pages (do not re-match
+        # on post-MT unicode).
+        self._near_full_pullquotes: dict[int, dict] = {}
 
         # Pre-compile patterns for placeholder-like tokens that may be hallucinated by LLM.
         # We only consider the same shapes as our own formula & rich-text placeholders.
@@ -600,6 +610,55 @@ class ILTranslator:
             debug_extra=extra,
         )
 
+    def _stash_near_full_pullquote(
+        self,
+        paragraph: PdfParagraph,
+        page: Page,
+    ) -> None:
+        """Remember a near-full pull-quote so we can copy host ZH later."""
+        host = find_pullquote_host(paragraph, page)
+        if host is None or not is_near_full_pullquote(paragraph, host):
+            return
+        self._near_full_pullquotes[id(paragraph)] = {
+            "host_obj_id": id(host),
+            "quote_debug_id": getattr(paragraph, "debug_id", None),
+            "host_debug_id": getattr(host, "debug_id", None),
+            "kind": "near_full",
+        }
+
+    @staticmethod
+    def _apply_zh_to_quote(quote: PdfParagraph, zh: str) -> None:
+        """Replace quote text with host ZH; keep quote style/box, not host comps."""
+        ssu = PdfSameStyleUnicodeCharacters(pdf_style=quote.pdf_style, unicode=zh)
+        quote.unicode = zh
+        quote.pdf_paragraph_composition = [
+            PdfParagraphComposition(pdf_same_style_unicode_characters=ssu)
+        ]
+
+    def _apply_stashed_near_full_pullquotes(self) -> None:
+        """Copy host ZH onto near-full quotes after MT. Match by id(), not text."""
+        stash = getattr(self, "_near_full_pullquotes", None)
+        if not stash:
+            return
+        docs = getattr(self, "docs", None)
+        if docs is None:
+            return
+        by_id: dict[int, PdfParagraph] = {}
+        for page in docs.page:
+            for para in getattr(page, "pdf_paragraph", None) or []:
+                by_id[id(para)] = para
+        for quote_id, info in list(stash.items()):
+            if info.get("kind") != "near_full":
+                continue
+            quote = by_id.get(quote_id)
+            host = by_id.get(info.get("host_obj_id"))  # type: ignore[arg-type]
+            if quote is None or host is None:
+                continue
+            host_zh = getattr(host, "unicode", None) or ""
+            if self._CJK_CHAR_RE.search(host_zh):
+                self._apply_zh_to_quote(quote, host_zh)
+        stash.clear()
+
     def region_skip_reason(
         self,
         page: Page,
@@ -631,6 +690,7 @@ class ILTranslator:
     def translate(self, docs: Document):
         self.docs = docs
         self.skip_report.clear()
+        self._near_full_pullquotes.clear()
         tracker = DocumentTranslateTracker()
 
         if not self.translation_config.shared_context_cross_split_part.first_paragraph:
@@ -658,6 +718,8 @@ class ILTranslator:
             ) as executor:
                 for page in docs.page:
                     self.process_page(page, executor, pbar, tracker.new_page())
+
+        self._apply_stashed_near_full_pullquotes()
 
         path = self.translation_config.get_working_file_path("translate_tracking.json")
 
@@ -1843,14 +1905,12 @@ class ILTranslator:
                 if self.use_as_fallback:
                     # il translator llm only modifies unicode in some situations
                     paragraph.unicode = get_paragraph_unicode(paragraph)
-                # Side callout: pull-quote dup always skip; ultra-narrow
-                # respects narrow_callout_mode (default expand).
+                # Side callout: near-full pull-quote skip + later host ZH;
+                # excerpt falls through to MT; ultra-narrow respects mode.
                 _callout_mode = getattr(
                     self.translation_config, "narrow_callout_mode", "expand"
                 )
-                if should_skip_side_callout_mt(
-                    paragraph, page, mode=_callout_mode
-                ):
+                if should_skip_side_callout_mt(paragraph, page, mode=_callout_mode):
                     reason = side_callout_skip_reason(paragraph, page)
                     extra = None
                     if getattr(self.translation_config, "debug", False):
@@ -1868,6 +1928,7 @@ class ILTranslator:
                         _callout_mode,
                         (paragraph.unicode or "")[:60],
                     )
+                    self._stash_near_full_pullquote(paragraph, page)
                     return
                 # Pre-translation processing
                 text, translate_input = self.pre_translate_paragraph(

@@ -185,6 +185,16 @@ def test_side_callout_reason_matches_skip_predicate():
     assert side_callout_skip_reason(callout, page) == SkipReason.PULLQUOTE
     assert side_callout_skip_reason(body, page) is None
 
+    excerpt_host = _para(
+        f'"{quote}," says Laura Berman, author of The Passion Prescription.',
+        x=102,
+        x2=360,
+    )
+    excerpt = _para(quote, x=360, x2=560)
+    page_ex = _page(excerpt_host, excerpt)
+    assert should_skip_side_callout_mt(excerpt, page_ex) is False
+    assert side_callout_skip_reason(excerpt, page_ex) is None
+
     # Ultra-narrow tall strip (OA-style right callout ~80pt). Product default
     # is "expand" (translate + box-expand, 0.6.4.41), so it is NOT skipped by
     # default; under keep_en the strip stays English and the skip reason is

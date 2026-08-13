@@ -74,14 +74,20 @@ def side_callout_skip_reason(
     Order matches ``should_skip_side_callout_mt`` (pullquote first).
     """
     from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
-        is_pullquote_duplicate_of_body,
+        find_pullquote_host,
+    )
+    from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
+        is_near_full_pullquote,
     )
     from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
         is_ultra_narrow_side_callout,
     )
 
-    if is_pullquote_duplicate_of_body(paragraph, page):
-        return SkipReason.PULLQUOTE
+    host = find_pullquote_host(paragraph, page)
+    if host is not None:
+        if is_near_full_pullquote(paragraph, host):
+            return SkipReason.PULLQUOTE
+        return None
     if is_ultra_narrow_side_callout(paragraph, page):
         return SkipReason.ULTRA_NARROW
     return None

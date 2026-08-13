@@ -3,7 +3,9 @@
 Two independent reasons to leave a paragraph untranslated:
 
 1. **Pull-quote near-duplicate** (Day6): side band repeats body quote text.
-   Always skipped (duplicate EN chrome) regardless of product mode.
+   Near-full copies (ratio >= 0.85, or equal after stripping quotes) skip MT
+   and later copy host ZH. Excerpts (substring, not near-full) go through
+   normal MT once. Decided on EN at skip time.
 2. **Ultra-narrow tall strip** (Orgasmic Addiction p8): ~80pt figure-adjacent
    column that cannot fit CJK after translation even with box expansion.
 
@@ -27,6 +29,7 @@ from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 
 _ALNUM = re.compile(r"[^a-z0-9]+")
+_QUOTES_WS = re.compile(r"""[\s\"'“”‘’«»]+""")
 
 NarrowCalloutMode = Literal["keep_en", "expand", "translate_body_column"]
 NARROW_CALLOUT_MODES = frozenset(
@@ -47,6 +50,8 @@ _ULTRA_NARROW_MIN_CHARS = 30
 _ULTRA_NARROW_LEFT_RATIO = 0.45  # mostly right-half of the page
 # Absolute width (pt) used by box_expand for aggressive expand policy.
 ULTRA_NARROW_MAX_WIDTH_PT = 100.0
+# quote_norm / host_norm — near-full copies skip MT and reuse host ZH.
+_NEAR_FULL_RATIO = 0.85
 
 # Semantic layout labels only — not engine noise (abandon / fallback_line).
 _SKIP_ULTRA_NARROW_LABELS = frozenset({"title", "section_header"})
@@ -164,6 +169,51 @@ def _looks_like_side_callout(paragraph: PdfParagraph, page: Page) -> bool:
         return False
 
 
+def _text_of(value: str | PdfParagraph | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return getattr(value, "unicode", None) or ""
+
+
+def _strip_quotes_ws(text: str | None) -> str:
+    if not text:
+        return ""
+    return _QUOTES_WS.sub("", text)
+
+
+def find_pullquote_host(
+    paragraph: PdfParagraph,
+    page: Page | None,
+    *,
+    min_quote_chars: int = 40,
+) -> PdfParagraph | None:
+    """Host paragraph whose normalized text strictly contains *paragraph*.
+
+    Same gates as :func:`is_pullquote_duplicate_of_body`: min length,
+    side-callout geometry, strictly longer same-page host.
+    """
+    if page is None:
+        return None
+    quote = normalize_for_dup(getattr(paragraph, "unicode", None))
+    if len(quote) < min_quote_chars:
+        return None
+
+    if not _looks_like_side_callout(paragraph, page):
+        return None
+
+    for other in getattr(page, "pdf_paragraph", None) or []:
+        if other is paragraph:
+            continue
+        host = normalize_for_dup(getattr(other, "unicode", None))
+        if len(host) <= len(quote):
+            continue
+        if quote in host:
+            return other
+    return None
+
+
 def is_pullquote_duplicate_of_body(
     paragraph: PdfParagraph,
     page: Page | None,
@@ -178,24 +228,29 @@ def is_pullquote_duplicate_of_body(
       2. Its normalized text is long enough and contained in another
          same-page paragraph's normalized text (strictly longer host).
     """
-    if page is None:
-        return False
-    quote = normalize_for_dup(getattr(paragraph, "unicode", None))
-    if len(quote) < min_quote_chars:
-        return False
+    return (
+        find_pullquote_host(paragraph, page, min_quote_chars=min_quote_chars)
+        is not None
+    )
 
-    if not _looks_like_side_callout(paragraph, page):
-        return False
 
-    for other in getattr(page, "pdf_paragraph", None) or []:
-        if other is paragraph:
-            continue
-        host = normalize_for_dup(getattr(other, "unicode", None))
-        if len(host) <= len(quote):
-            continue
-        if quote in host:
-            return True
-    return False
+def is_near_full_pullquote(
+    quote: str | PdfParagraph | None,
+    host: str | PdfParagraph | None,
+) -> bool:
+    """True when quote is essentially the whole host (EN, skip-time).
+
+    ``len(norm_quote) / len(norm_host) >= 0.85`` or the texts match after
+    stripping quotes and whitespace.
+    """
+    q_text = _text_of(quote)
+    h_text = _text_of(host)
+    nq = normalize_for_dup(q_text)
+    nh = normalize_for_dup(h_text)
+    if nq and nh and len(nq) / len(nh) >= _NEAR_FULL_RATIO:
+        return True
+    stripped = _strip_quotes_ws(q_text)
+    return bool(stripped) and stripped == _strip_quotes_ws(h_text)
 
 
 def is_ultra_narrow_side_callout(
@@ -247,15 +302,19 @@ def should_skip_side_callout_mt(
     *,
     mode: str | None = None,
 ) -> bool:
-    """Unified skip: duplicate pull-quote **or** ultra-narrow (mode-dependent).
+    """Unified skip: near-full pull-quote **or** ultra-narrow (mode-dependent).
 
     Args:
         mode: ``keep_en`` | ``expand`` | ``translate_body_column``.
-            Default ``expand``. Pull-quote duplicates always skip.
-            Ultra-narrow skips only under ``keep_en``.
+            Default ``expand``. Near-full pull-quote duplicates always skip.
+            Excerpt duplicates fall through to MT. Ultra-narrow skips only
+            under ``keep_en``.
     """
-    if is_pullquote_duplicate_of_body(paragraph, page):
-        return True
+    host = find_pullquote_host(paragraph, page)
+    if host is not None:
+        # Excerpt (substring, not near-full): translate once. Do not also
+        # treat as ultra-narrow keep_en.
+        return is_near_full_pullquote(paragraph, host)
     if not is_ultra_narrow_side_callout(paragraph, page):
         return False
     resolved = normalize_narrow_callout_mode(mode)
