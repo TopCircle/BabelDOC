@@ -93,3 +93,46 @@ def test_place_drop_cap_non_adjacent():
     placed = place_drop_caps_before_continuations(stream)
     assert placed[0].char_unicode == "I"
     assert placed[1].char_unicode == "f"
+
+
+def test_place_drop_cap_welcome_not_darling():
+    """OA p3: leftover Trajan W rejoins elcome, not darling."""
+    from babeldoc.format.pdf.document_il.utils.drop_cap import (
+        place_drop_caps_before_continuations,
+    )
+
+    # Body 12.5pt; 'd' visual top sits closer to the cap than 'e' (ascender),
+    # so nearest-y pairing attaches W to darling.
+    body = []
+    for i, c in enumerate("elcome my darling!"):
+        y = 202.0 if c == "d" else 200.0
+        body.append(_ch(c, 146.0 + i * 6.0, size=12.5, y=y))
+    drop = _ch("W", 102.0, size=33.7, w=38.0, y=181.3, font_id="Trajan")
+    stream = body + [drop]
+    placed = place_drop_caps_before_continuations(stream)
+    text = get_char_unicode_string(placed)
+    assert text.startswith("Welcome my darling")
+    assert "Wdarling" not in text
+    assert "elcome my W" not in text
+
+
+def test_place_drop_cap_same_line_not_wrapped_and():
+    """OA p3 wrap: left-margin 'and' must not steal W from elcome."""
+    from babeldoc.format.pdf.document_il.utils.drop_cap import (
+        place_drop_caps_before_continuations,
+    )
+
+    line1 = [
+        _ch(c, 146.0 + i * 6.0, size=12.5, y=200.0)
+        for i, c in enumerate("elcome my darling!")
+    ]
+    line2 = [
+        _ch(c, 102.0 + i * 6.0, size=12.5, y=180.0)
+        for i, c in enumerate("ins and outs of")
+    ]
+    drop = _ch("W", 102.0, size=33.7, w=38.0, y=200.0, font_id="Trajan")
+    stream = line1 + line2 + [drop]
+    placed = place_drop_caps_before_continuations(stream)
+    text = get_char_unicode_string(placed)
+    assert text.startswith("Welcome my darling")
+    assert "Wand" not in text
