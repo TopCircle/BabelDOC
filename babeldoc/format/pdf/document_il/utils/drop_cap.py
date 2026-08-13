@@ -17,6 +17,10 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
 
 # Drop-cap size vs following body size.
 DROP_CAP_SIZE_RATIO = 1.35
+# Coarse y window (~3–4 body lines). Not used to pick among candidates.
+DROP_CAP_Y_SEARCH = 55.0
+# Same-line band around the closest body glyph (ascender, not a wrap).
+DROP_CAP_Y_LINE_SLACK = 12.0
 
 # Text cleanup: lone capital + space + single lowercase letter (``I f`` → ``If``).
 # Does NOT glue ``A man`` (second token longer than one letter).
@@ -104,7 +108,7 @@ def place_drop_caps_before_continuations(
 
     When stream order is bottom→top, ``I`` may appear far from ``f you…`` even
     after line sort.  Pair by geometry: large capital + leftmost smaller
-    **word-start** lowercase to its right on a nearby baseline.
+    **word-start** lowercase on the same body line (then to its right).
     """
     if not chars or len(chars) < 2:
         return chars
@@ -122,8 +126,7 @@ def place_drop_caps_before_continuations(
             if xy is None:
                 continue
             cx, cy = xy
-            best_j: int | None = None
-            best_ox = 1e18
+            candidates: list[tuple[float, float, int]] = []
             for j, other in enumerate(result):
                 if j == i:
                     continue
@@ -143,8 +146,19 @@ def place_drop_caps_before_continuations(
                 ox, oy = oxy
                 if ox < cx - 2:
                     continue
-                # Drop-cap baseline often sits below the first body line band.
-                if abs(oy - cy) > 55.0:
+                dy = abs(oy - cy)
+                # Coarse reject only; wrapped left-margin words sit inside 55pt.
+                if dy > DROP_CAP_Y_SEARCH:
+                    continue
+                candidates.append((dy, ox, j))
+            if not candidates:
+                continue
+            # Closest baseline first, then leftmost x on that line — not global min x.
+            min_dy = min(dy for dy, _ox, _j in candidates)
+            best_j: int | None = None
+            best_ox = 1e18
+            for dy, ox, j in candidates:
+                if dy > min_dy + DROP_CAP_Y_LINE_SLACK:
                     continue
                 if ox < best_ox:
                     best_ox = ox
