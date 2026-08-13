@@ -103,7 +103,7 @@ def place_drop_caps_before_continuations(
     """Move large drop-cap letters immediately before their word remainder.
 
     When stream order is bottom→top, ``I`` may appear far from ``f you…`` even
-    after line sort.  Pair by geometry: large capital + nearest smaller
+    after line sort.  Pair by geometry: large capital + leftmost smaller
     **word-start** lowercase to its right on a nearby baseline.
     """
     if not chars or len(chars) < 2:
@@ -115,16 +115,15 @@ def place_drop_caps_before_continuations(
         for i, ch in enumerate(result):
             if not is_drop_cap_letter(ch):
                 continue
-            # Already immediately before a size-ok continuation
-            if i + 1 < len(result) and is_drop_cap_pair(ch, result[i + 1]):
-                continue
+            # Adjacent lowercase is not done: W+d (darling) is a valid pair
+            # while elcome sits further left on the same line.
             ps = _font_size(ch) or 0.0
             xy = _char_xy(ch)
             if xy is None:
                 continue
             cx, cy = xy
             best_j: int | None = None
-            best_score = 1e18
+            best_ox = 1e18
             for j, other in enumerate(result):
                 if j == i:
                     continue
@@ -147,9 +146,8 @@ def place_drop_caps_before_continuations(
                 # Drop-cap baseline often sits below the first body line band.
                 if abs(oy - cy) > 55.0:
                     continue
-                score = abs(oy - cy) * 50.0 + (ox - cx)
-                if score < best_score:
-                    best_score = score
+                if ox < best_ox:
+                    best_ox = ox
                     best_j = j
             if best_j is None or best_j == i + 1:
                 continue
