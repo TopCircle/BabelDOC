@@ -1833,9 +1833,9 @@ class ILTranslator:
                     # il translator llm only modifies unicode in some situations
                     paragraph.unicode = get_paragraph_unicode(paragraph)
                 # Side callout: pull-quote dup always skip; ultra-narrow
-                # respects narrow_callout_mode (default keep_en → skip MT).
+                # respects narrow_callout_mode (default expand).
                 _callout_mode = getattr(
-                    self.translation_config, "narrow_callout_mode", "keep_en"
+                    self.translation_config, "narrow_callout_mode", "expand"
                 )
                 if should_skip_side_callout_mt(
                     paragraph, page, mode=_callout_mode
