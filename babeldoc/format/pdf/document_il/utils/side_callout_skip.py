@@ -102,8 +102,24 @@ def _looks_like_side_callout(paragraph: PdfParagraph, page: Page) -> bool:
         return False
     left_ratio = (box.x - page_box.x) / page_width
     width_ratio = para_width / page_width
-    if width_ratio < _PULLQUOTE_WIDTH_RATIO and left_ratio > _PULLQUOTE_LEFT_RATIO:
-        return True
+    if width_ratio < _PULLQUOTE_WIDTH_RATIO:
+        if left_ratio > _PULLQUOTE_LEFT_RATIO:
+            return True
+        # Symmetric case: a narrow LEFT-margin gutter callout (e.g.
+        # Orgasmic Addiction p5's red pull-quote, which sits at the page's
+        # left edge rather than indented past the body column). Mirror the
+        # right-callout check using the gap on the paragraph's *right*
+        # side instead of its left. This alone would also match a narrow
+        # left-column figure-wrap paragraph, but the caller
+        # (is_pullquote_duplicate_of_body) additionally requires this
+        # paragraph's normalized text to be a near-exact substring of
+        # another, longer paragraph on the same page — ordinary body or
+        # figure-wrap text essentially never satisfies that, so widening
+        # this geometric gate does not risk misclassifying real body
+        # columns as pull-quotes.
+        right_ratio = (page_box.x2 - box.x2) / page_width
+        if right_ratio > _PULLQUOTE_LEFT_RATIO:
+            return True
     try:
         from babeldoc.format.pdf.document_il.utils.layout_helper import (
             is_quote_block,

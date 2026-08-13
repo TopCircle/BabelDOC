@@ -62,6 +62,21 @@ def is_formulas_middle_char(
     if re.match(",", char):
         return True
 
+    # Lowercase/uppercase "x" used as a multiplication sign in compact
+    # notation, e.g. "3x2x2 = 12" or "(3+2+2=7, 3x2x2 = 12)". Plain "x"/"X"
+    # is an ordinary Latin letter (category Ll/Lu), so it never satisfies
+    # is_formulas_start_char() and can therefore never *open* a formula run
+    # on its own (e.g. inside "box", "next", "taxi"). This branch is only
+    # reachable while already inside an open formula run (the caller ANDs
+    # this result with `in_formula_state`), so it only lets an
+    # already-started formula continue through a multiplication "x" instead
+    # of being chopped into single-character formula/text fragments at
+    # every "x" boundary. Without this, digit-x-digit runs get sliced into
+    # tiny alternating {vN} placeholders that MT engines reliably mangle,
+    # losing content such as the "+"/"=" arithmetic around them.
+    if char in ("x", "X"):
+        return True
+
     return False
 
 
