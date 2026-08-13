@@ -49,10 +49,13 @@ from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
     is_near_full_pullquote,
 )
 from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
-    side_callout_debug_extra,
+    is_ultra_narrow_side_callout,
 )
 from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
-    should_skip_side_callout_mt,
+    normalize_narrow_callout_mode,
+)
+from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
+    side_callout_debug_extra,
 )
 from babeldoc.format.pdf.document_il.utils.region_skip import (
     classify_header_footer_skip,
@@ -62,7 +65,6 @@ from babeldoc.format.pdf.document_il.utils.region_skip import (
 )
 from babeldoc.format.pdf.document_il.utils.skip_audit import SkipReason
 from babeldoc.format.pdf.document_il.utils.skip_audit import SkipReport
-from babeldoc.format.pdf.document_il.utils.skip_audit import side_callout_skip_reason
 from babeldoc.format.pdf.document_il.utils.style_marker_recover import StyleSpan
 from babeldoc.format.pdf.document_il.utils.style_marker_recover import (
     coalesce_emphasis_style_run,
@@ -610,21 +612,22 @@ class ILTranslator:
             debug_extra=extra,
         )
 
-    def _stash_near_full_pullquote(
-        self,
-        paragraph: PdfParagraph,
-        page: Page,
-    ) -> None:
-        """Remember a near-full pull-quote so we can copy host ZH later."""
-        host = find_pullquote_host(paragraph, page)
-        if host is None or not is_near_full_pullquote(paragraph, host):
-            return
-        self._near_full_pullquotes[id(paragraph)] = {
-            "host_obj_id": id(host),
-            "quote_debug_id": getattr(paragraph, "debug_id", None),
-            "host_debug_id": getattr(host, "debug_id", None),
-            "kind": "near_full",
-        }
+    def _classify_near_full_pullquotes(self, page: Page) -> None:
+        """Stash near-full quote→host pairs while unicode is still pre-MT EN."""
+        stash = getattr(self, "_near_full_pullquotes", None)
+        if stash is None:
+            self._near_full_pullquotes = {}
+            stash = self._near_full_pullquotes
+        for paragraph in getattr(page, "pdf_paragraph", None) or []:
+            host = find_pullquote_host(paragraph, page)
+            if host is None or not is_near_full_pullquote(paragraph, host):
+                continue
+            stash[id(paragraph)] = {
+                "host_obj_id": id(host),
+                "quote_debug_id": getattr(paragraph, "debug_id", None),
+                "host_debug_id": getattr(host, "debug_id", None),
+                "kind": "near_full",
+            }
 
     @staticmethod
     def _apply_zh_to_quote(quote: PdfParagraph, zh: str) -> None:
@@ -758,6 +761,9 @@ class ILTranslator:
         tracker: PageTranslateTracker = None,
     ):
         self.translation_config.raise_if_cancelled()
+        # Decide near-full on pre-MT EN. Hosts submit first (longer →
+        # lower priority number) and would make a later rematch miss.
+        self._classify_near_full_pullquotes(page)
         for paragraph in page.pdf_paragraph:
             region_reason = self.region_skip_reason(page, paragraph)
             if region_reason is not None:
@@ -1905,30 +1911,49 @@ class ILTranslator:
                 if self.use_as_fallback:
                     # il translator llm only modifies unicode in some situations
                     paragraph.unicode = get_paragraph_unicode(paragraph)
-                # Side callout: near-full pull-quote skip + later host ZH;
-                # excerpt falls through to MT; ultra-narrow respects mode.
-                _callout_mode = getattr(
-                    self.translation_config, "narrow_callout_mode", "expand"
-                )
-                if should_skip_side_callout_mt(paragraph, page, mode=_callout_mode):
-                    reason = side_callout_skip_reason(paragraph, page)
+                # Near-full: stash membership only (classified on EN
+                # before submit). Do not rematch live host.unicode.
+                if id(paragraph) in getattr(self, "_near_full_pullquotes", {}):
                     extra = None
                     if getattr(self.translation_config, "debug", False):
                         extra = side_callout_debug_extra(paragraph, page)
                     self.record_skip(
                         page,
                         paragraph,
-                        reason or SkipReason.ULTRA_NARROW,
+                        SkipReason.PULLQUOTE,
+                        debug_extra=extra,
+                    )
+                    logger.debug(
+                        "skip side-callout MT: id=%s reason=%s text=%r",
+                        paragraph.debug_id,
+                        SkipReason.PULLQUOTE.value,
+                        (paragraph.unicode or "")[:60],
+                    )
+                    return
+                # Ultra-narrow keep_en: geometry only, no host rematch.
+                _callout_mode = getattr(
+                    self.translation_config, "narrow_callout_mode", "expand"
+                )
+                if (
+                    is_ultra_narrow_side_callout(paragraph, page)
+                    and normalize_narrow_callout_mode(_callout_mode) == "keep_en"
+                ):
+                    extra = None
+                    if getattr(self.translation_config, "debug", False):
+                        extra = side_callout_debug_extra(paragraph, page)
+                    self.record_skip(
+                        page,
+                        paragraph,
+                        SkipReason.ULTRA_NARROW,
                         debug_extra=extra,
                     )
                     logger.debug(
                         "skip side-callout MT: id=%s reason=%s mode=%s text=%r",
                         paragraph.debug_id,
-                        reason.value if reason else "ultra_narrow",
+                        SkipReason.ULTRA_NARROW.value,
                         _callout_mode,
                         (paragraph.unicode or "")[:60],
                     )
-                    self._stash_near_full_pullquote(paragraph, page)
                     return
                 # Pre-translation processing
                 text, translate_input = self.pre_translate_paragraph(

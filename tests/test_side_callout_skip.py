@@ -332,3 +332,48 @@ def test_apply_stashed_near_full_leaves_en_when_host_has_no_cjk():
     tr._apply_stashed_near_full_pullquotes()
     assert quote.unicode == QUOTE
     assert quote.pdf_paragraph_composition == []
+
+
+def test_classify_near_full_uses_en_even_if_host_later_becomes_cjk():
+    """process_page-level classify must not rematch live post-MT host unicode.
+
+    Longer hosts finish MT first; normalize_for_dup then strips CJK and a
+    worker rematch would send the quote to MT. Stash from pre-MT EN +
+    apply-by-id still copies host ZH.
+    """
+    host = _para(f'"{QUOTE}," says Laura Berman.', x=102, x2=360)
+    quote = _para(QUOTE, x=360, x2=560)
+    page = _page(host, quote)
+    tr = object.__new__(ILTranslator)
+    tr._near_full_pullquotes = {}
+    tr._classify_near_full_pullquotes(page)
+    assert id(quote) in tr._near_full_pullquotes
+    assert tr._near_full_pullquotes[id(quote)]["host_obj_id"] == id(host)
+    assert tr._near_full_pullquotes[id(quote)]["kind"] == "near_full"
+
+    host_zh = "由于她的高潮本质上是盆底肌的强烈收缩，劳拉·伯曼说。"
+    host.unicode = host_zh
+    # Worker rematch on live unicode would miss; skip is stash membership.
+    assert find_pullquote_host(quote, page) is None
+    assert should_skip_side_callout_mt(quote, page) is False
+    assert id(quote) in tr._near_full_pullquotes
+
+    tr.docs = type("Docs", (), {"page": [page]})()
+    tr._apply_stashed_near_full_pullquotes()
+    assert quote.unicode == host_zh
+    ssu = quote.pdf_paragraph_composition[0].pdf_same_style_unicode_characters
+    assert ssu.unicode == host_zh
+
+
+def test_classify_excerpt_is_not_stashed():
+    extra = (
+        " This is an extra sentence about Kegels that makes the host "
+        "substantially longer than the pull-quote itself."
+    )
+    host = _para(QUOTE + extra, x=102, x2=360)
+    quote = _para(QUOTE, x=360, x2=560)
+    page = _page(host, quote)
+    tr = object.__new__(ILTranslator)
+    tr._near_full_pullquotes = {}
+    tr._classify_near_full_pullquotes(page)
+    assert id(quote) not in tr._near_full_pullquotes
