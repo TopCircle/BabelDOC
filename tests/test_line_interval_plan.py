@@ -143,6 +143,28 @@ class TestFullMeasureBoxC3:
         assert (wide.x2 - wide.x) >= 400 - 1e-6
         assert layout_box_is_thin_vs_full_measure(residual, wide) is True
 
+    def test_right_fixed_wrap_column_stays_in_design(self):
+        """OA p33: FULL_MEASURE must not grow a right-pin wrap into the photo."""
+        design = Box(x=102.18, y=453.4, x2=443.63, y2=497.9)
+        para = PdfParagraph(box=design, pdf_paragraph_composition=[], unicode="x")
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.WRAP_COLUMN,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+            wrap_shape=[(0.0, 338.0), (0.8, 327.5), (0.0, 127.7)],
+            wrap_mode=WrapMode.RIGHT_FIXED,
+        )
+        page = type(
+            "P",
+            (),
+            {"cropbox": type("C", (), {"box": Box(x=0, y=0, x2=612, y2=792)})()},
+        )()
+        out = full_measure_layout_box(para, design, page)
+        assert out is not None
+        assert out.x2 <= 443.63 + 1e-6
+        assert out.x >= 102.18 - 1e-6
+
 
 class TestAttemptChainCallout:
     def _para(self, role: LayoutIntentRole, design: Box) -> PdfParagraph:

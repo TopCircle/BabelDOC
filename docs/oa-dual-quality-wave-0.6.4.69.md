@@ -4,7 +4,7 @@
 |------|----|
 | **Document title** | OA Dual Quality Wave — post BabelDOC 0.6.4.69 |
 | **Author** | solo operator（OA dual wave） |
-| **Date** | 2026-08-17（rev 8；B4e 已合 p91 绕排左齐） |
+| **Date** | 2026-08-17（rev 9；B4c wrap 撕碎在飞，叠在 B4e 上） |
 | **Status** | **Active** (operator queue; index: [`PLAN-INDEX.md`](PLAN-INDEX.md)) |
 | **Baseline dual** | `/Users/yun/Library/CloudStorage/OneDrive-Personal/Documentos/Books/Gabrielle Moore/Orgasmic Addiction/Orgasmic Addiction.no_watermark.zh-CN.dual.pdf` |
 | **Producer** | BabelDOC v0.6.4.69（tip `6486fae`） |
@@ -1048,8 +1048,10 @@ flowchart TB
 ### PR-B4c — `fix(layout): OA figure-wrap shred`（dump 门控）
 
 - **仓：** BabelDOC
-- **文件：** dump 后决定。检测未触发 → `figure_wrap.py` + 金宽度。信号 2 已触发仍撕 → `wrap_shape.get_active_wrap` / `line_interval_plan.wrap_interval` / `Typesetting._active_wrap` 与 `_query_line_intervals` 的接线
-- **依赖：** W1。**不等 D3**
+- **文件：** `callout_merge.py`（右缘钉住、宽 ≤280 的绕图行合并；stub 不挡邻接）；`region_skip.py`（粘连 `fallback_line…`）；`wrap_shape.py`（相对 sliver &lt;25% peak）；`typesetting.py`（CJK 始终用 sanitize 后的 wrap 口袋）；`line_interval_plan.py`（RIGHT_FIXED WRAP_COLUMN 的 FULL_MEASURE 不胀进照片）
+- **依赖：** W1。**不要和 B4e 挤。** 已 rebase 到 B4e。
+- **针页：** p19 TAKING CHARGE。源已是一块右钉锥形（314–572）。段落器拆成 228–255pt 行 + fallback stub 后被当成 PULL_QUOTE。合并后应成一块 CJK。
+- **2026-08-17：** 单测过。本地 dual：主绕图已并成矩形块。残留：「, 使」/「工作计划…」尾碎片（与主块 y 间隙 &gt;22pt 或叠在 host 内，本 PR 不把 merge gap 放到 80）。p33 FULL_MEASURE 不得画进右侧人像。
 - **内容：** 先 dump p7/19/33/68/117 的 `per_line_widths` + line boxes。不重开 S3。跑 figure_baseline_probe。
 
 ### PR-B4d — `fix(skip): exempt CHAPTER-N display titles from header chrome`（有条件）

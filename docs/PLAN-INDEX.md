@@ -1,7 +1,7 @@
 # Plan / review index (operator)
 
 Last updated: 2026-08-17。**If two docs disagree on what to do next, this table wins.**  
-**On main (this push):** W1+B4a+B1e+W4e+formula `{vN}` restore + B4b + **B4e** p91 quote 右侧正文左齐。**In flight:** B4c wrap（w1-stack，未合）。**Queued:** **PR-B1i** 章题颜色。**Next:** B4c，或 B1i，或操作员指定。
+**On main:** W1+B4a+B1e+W4e+formula `{vN}` restore + B4b + **B4e** p91 quote 右侧左齐。**In flight:** **PR-B4c** figure-wrap 撕碎（`execute-plan/pr-b4c-figure-wrap`，已叠在 B4e 上）。**Queued:** **PR-B1i** 章题颜色。**Next:** 操作员 dual 验 p19/p33 后合 B4c，或 B1i。
 
 ## Current
 

@@ -149,3 +149,122 @@ def test_horizontal_prefix_does_not_merge_unrelated():
     n = merge_stacked_narrow_callout_paragraphs(paras)
     assert n == 0
     assert len(paras) == 2
+
+
+def test_right_pinned_wrap_lines_merge_above_220():
+    """OA p19 TAKING CHARGE: wrap rows are 228–255pt, right edge pinned ~570.
+
+    The 220pt callout cap must stay (p5 regression). Wrap-column rows need a
+    separate right-pin merge so CJK can reflow as one WRAP_COLUMN.
+    """
+    rows = [
+        _line_para("To complete the exercises in this book,", x=315.0, y=420, w=255.0),
+        _line_para("you will need to take charge of your sex life and", x=323.0, y=400, w=246.0),
+        _line_para("start directing your", x=341.5, y=380, w=228.0),
+        _line_para("relationship. Mind-blowing orgasms await.", x=376.0, y=360, w=194.0),
+    ]
+    for p, x, y in zip(
+        rows,
+        (315.0, 323.0, 341.5, 376.0),
+        (420.0, 400.0, 380.0, 360.0),
+        strict=True,
+    ):
+        p.box = Box(x=x, y=y, x2=570.0, y2=y + 14)
+    n = merge_stacked_narrow_callout_paragraphs(rows)
+    assert n >= 2
+    assert len(rows) == 1
+    from babeldoc.format.pdf.document_il.utils.layout_helper import (
+        get_paragraph_unicode,
+    )
+
+    u = get_paragraph_unicode(rows[0]) or ""
+    assert "exercises" in u
+    assert "orgasms" in u
+    assert abs(rows[0].box.x2 - 570.0) < 0.1
+    assert abs(rows[0].box.x - 315.0) < 0.1
+
+
+def test_right_pinned_keeps_merging_after_union_exceeds_280():
+    """After the first absorb the host box is the wrap column (~290pt)."""
+    rows = [
+        _line_para("line one of the wrap column text xx", x=315.0, y=420, w=255.0),
+        _line_para("line two wrap column text here xxx", x=323.0, y=400, w=247.0),
+        _line_para("line three wrap column text xxxxx", x=341.5, y=380, w=228.5),
+        _line_para("line four wrap column text xx", x=376.0, y=360, w=194.0),
+        _line_para("line five shorter wrap tail", x=401.5, y=340, w=168.5),
+    ]
+    for p, x, y in zip(
+        rows,
+        (315.0, 323.0, 341.5, 376.0, 401.5),
+        (420.0, 400.0, 380.0, 360.0, 340.0),
+        strict=True,
+    ):
+        p.box = Box(x=x, y=y, x2=570.0, y2=y + 14)
+    n = merge_stacked_narrow_callout_paragraphs(rows)
+    assert n >= 3
+    assert len(rows) == 1
+    assert abs(rows[0].box.x - 315.0) < 0.1
+    assert abs(rows[0].box.x2 - 570.0) < 0.1
+
+
+def test_right_pinned_absorbs_next_line_into_multirow_wrap_host():
+    """OA p19: existing wrap cluster (one tall composition) + the line above."""
+    host = _line_para(
+        "relationship. Mindblowing orgasms await the prepared man.",
+        x=375.9,
+        y=198.0,
+        w=193.6,
+    )
+    host.box = Box(x=375.9, y=197.9, x2=569.5, y2=284.9)
+    above = _line_para(
+        "start directing the flow of development in your",
+        x=341.5,
+        y=287.9,
+        w=228.3,
+    )
+    above.box = Box(x=341.5, y=287.9, x2=569.9, y2=299.9)
+    paras = [above, host]
+    n = merge_stacked_narrow_callout_paragraphs(paras)
+    assert n >= 1
+    assert len(paras) == 1
+    assert paras[0].box.x <= 341.5 + 0.1
+    assert paras[0].box.x2 >= 569.5 - 0.1
+
+
+def test_debug_stub_does_not_block_right_pinned_wrap_merge():
+    """OA p19: fallback_line stub sits in the 3pt gap between wrap rows."""
+    host = _line_para("relationship. Mindblowing orgasms await.", x=375.9, y=198.0, w=193.6)
+    host.box = Box(x=375.9, y=197.9, x2=569.5, y2=284.9)
+    above = _line_para("start directing the flow of development", x=341.5, y=287.9, w=228.3)
+    above.box = Box(x=341.5, y=287.9, x2=569.9, y2=299.9)
+    stub = _line_para("fallback_line", x=447.7, y=284.9, w=71.5)
+    stub.box = Box(x=447.7, y=284.9, x2=519.2, y2=289.9)
+    stub.unicode = "fallback_line"
+    paras = [above, stub, host]
+    n = merge_stacked_narrow_callout_paragraphs(paras)
+    assert n >= 1
+    from babeldoc.format.pdf.document_il.utils.layout_helper import (
+        get_paragraph_unicode,
+    )
+
+    joined = " ".join(get_paragraph_unicode(p) or "" for p in paras)
+    assert "relationship" in joined
+    assert "directing" in joined
+    assert len([p for p in paras if (p.unicode or "") != "fallback_line"]) == 1
+
+
+def test_right_pinned_does_not_merge_unpinned_body():
+    """Full-measure body (x2 not pinned together) must not join a wrap stack."""
+    wrap = _line_para("start directing your", x=341.5, y=380, w=228.0)
+    wrap.box = Box(x=341.5, y=380, x2=570.0, y2=394)
+    body = _line_para(
+        "If you want a little extra spice in the bedroom you have to take charge.",
+        x=102.0,
+        y=350,
+        w=470.0,
+    )
+    body.box = Box(x=102.0, y=350, x2=572.0, y2=380)
+    paras = [wrap, body]
+    n = merge_stacked_narrow_callout_paragraphs(paras)
+    assert n == 0
+    assert len(paras) == 2

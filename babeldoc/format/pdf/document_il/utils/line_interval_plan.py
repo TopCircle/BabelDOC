@@ -13,6 +13,7 @@ from enum import Enum
 from typing import Any, Callable
 
 from babeldoc.format.pdf.document_il import il_version_1
+from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
@@ -418,7 +419,15 @@ def full_measure_layout_box(
 
     design_w = max(0.0, float(design.x2) - float(design.x))
     page_w = max(1.0, page_right - page_left)
-    target_w = max(design_w, min_body_width, min(460.0, page_w * 0.72))
+    role = getattr(intent, "role", None) if intent is not None else None
+    wrap_mode = getattr(intent, "wrap_mode", None) if intent is not None else None
+    # RIGHT_FIXED wrap sits left of a side photo (OA p33). Growing to the
+    # 400pt body floor paints CJK into the figure. LEFT_FIXED residual
+    # strips (p82.65) still need the body-measure widen.
+    if role is LayoutIntentRole.WRAP_COLUMN and wrap_mode is WrapMode.RIGHT_FIXED:
+        target_w = design_w
+    else:
+        target_w = max(design_w, min_body_width, min(460.0, page_w * 0.72))
     right = min(page_right - 16.0, left + target_w)
     if right <= left + 50.0:
         right = min(page_right - 16.0, left + min_body_width)
