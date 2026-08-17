@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import pytest
+
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
+from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
@@ -13,6 +18,9 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     full_measure_layout_box,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    _left_quote_owns_residual,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     infer_wrap_mode_from_line_boxes,
@@ -175,3 +183,93 @@ class TestAttemptChainCallout:
         assert LayoutAttempt.FULL_MEASURE in attempt_chain_for_paragraph(
             wrap, is_cjk=True
         )
+
+
+class TestQuoteResidualCap:
+    """OA p91: left quote residual must stay left-aligned, not snap to box.x."""
+
+    def _quote_index(self, *, kind: str = "quote"):
+        zone = SimpleNamespace(
+            kind=kind,
+            box=Box(x=54.18, y=376.0, x2=211.635, y2=451.0),
+        )
+        return SimpleNamespace(zones=[zone])
+
+    def test_quote_owns_residual_left(self):
+        idx = self._quote_index()
+        assert _left_quote_owns_residual(idx, 211.635, y_bottom=390.0, y_top=405.0)
+        assert _left_quote_owns_residual(idx, 220.0, y_bottom=390.0, y_top=405.0)
+        # Different y-band (above the bar) does not own the residual.
+        assert not _left_quote_owns_residual(
+            idx, 211.635, y_bottom=200.0, y_top=220.0
+        )
+
+    def test_figure_zone_does_not_own_residual(self):
+        idx = self._quote_index(kind="figure")
+        assert not _left_quote_owns_residual(
+            idx, 330.0, y_bottom=400.0, y_top=420.0
+        )
+
+    def test_cap_does_not_snap_over_left_quote(self):
+        """Residual [211, 572] + EN wrap width ~323 stays in the pocket.
+
+        Without the quote guard, left-align snap walks back to box.x=102
+        and CJK overpaints the red bar (undoes B4b).
+        """
+        box = Box(x=102.18, y=339.0, x2=572.57, y2=459.0)
+        refs = [317.28, 325.60, 323.28, 322.73, 323.06, 323.14, 238.27]
+        para = PdfParagraph(box=box, pdf_paragraph_composition=[], unicode="x")
+        plan = resolve_line_interval_plan(
+            para,
+            box,
+            attempt=LayoutAttempt.PRIMARY,
+            wrap_enabled=True,
+            zone_index=self._quote_index(),
+            reference_widths=refs,
+            alignment="left",
+            cap_available=lambda b, ax, ax2, r, li: (
+                Typesetting._cap_available_with_reference(
+                    b, ax, ax2, r, li, alignment="left"
+                )
+            ),
+        )
+        x1, x2 = plan._cap_leftmost(
+            box,
+            [(211.635, 572.57)],
+            1,
+            y_bottom=390.0,
+            y_top=405.0,
+        )[0]
+        assert x1 == pytest.approx(211.635, abs=0.1)
+        assert x1 > 180.0  # must not snap to box.x=102
+        assert x2 == pytest.approx(211.635 + 325.60, abs=1.0)
+        assert x2 < 560.0  # capped; not the full 572 residual
+
+    def test_figure_residual_still_snaps_to_box(self):
+        """Orgasms p.21: figure (not quote) mid-photo shove still snaps."""
+        box = Box(x=110.0, y=100.0, x2=550.0, y2=700.0)
+        refs = [200.0, 210.0, 190.0]
+        para = PdfParagraph(box=box, pdf_paragraph_composition=[], unicode="x")
+        plan = resolve_line_interval_plan(
+            para,
+            box,
+            attempt=LayoutAttempt.PRIMARY,
+            wrap_enabled=True,
+            zone_index=self._quote_index(kind="figure"),
+            reference_widths=refs,
+            alignment="left",
+            cap_available=lambda b, ax, ax2, r, li: (
+                Typesetting._cap_available_with_reference(
+                    b, ax, ax2, r, li, alignment="left"
+                )
+            ),
+        )
+        x1, x2 = plan._cap_leftmost(
+            box,
+            [(330.0, 520.0)],
+            0,
+            y_bottom=400.0,
+            y_top=420.0,
+        )[0]
+        assert x1 == pytest.approx(110.0)
+        assert x2 == pytest.approx(310.0)

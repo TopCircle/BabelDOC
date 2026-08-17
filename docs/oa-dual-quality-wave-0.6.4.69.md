@@ -4,7 +4,7 @@
 |------|----|
 | **Document title** | OA Dual Quality Wave — post BabelDOC 0.6.4.69 |
 | **Author** | solo operator（OA dual wave） |
-| **Date** | 2026-08-17（rev 7；B4b 已合；记下 PR-B1i 章题颜色） |
+| **Date** | 2026-08-17（rev 8；B4e 已合 p91 绕排左齐） |
 | **Status** | **Active** (operator queue; index: [`PLAN-INDEX.md`](PLAN-INDEX.md)) |
 | **Baseline dual** | `/Users/yun/Library/CloudStorage/OneDrive-Personal/Documentos/Books/Gabrielle Moore/Orgasmic Addiction/Orgasmic Addiction.no_watermark.zh-CN.dual.pdf` |
 | **Producer** | BabelDOC v0.6.4.69（tip `6486fae`） |
@@ -781,7 +781,8 @@ assert "3" in p5 and "2" in p5 and "7" in p5 and "12" in p5
 5. **W4** 版面 PRs（与 D3 **无 merge 依赖**；B4d 仍依赖 R0/R1 的 skip 证据）。
 6. **2026-08-14 下一刀：W4e** CJK 中间行满栏（针页 p5「一次只学一种」段）。单独 PR，不挡 p91/B4c。
 7. **2026-08-17 记下：PR-B1i** p91「第十章」红。不要和 B4b 绑。未开做。
-8. **R2 全本 dual** + 左栏 grep + 页级门禁。
+8. **2026-08-17 落地：PR-B4e** p91 quote 右侧步骤左齐。不要和 B4c 绑。
+9. **R2 全本 dual** + 左栏 grep + 页级门禁。
 
 ### 每份 dual regen 的 cache 清单
 
@@ -916,6 +917,7 @@ flowchart TB
   B1i[PR-B1i 章题颜色 · 已记]
   B4q[PR-B4a 近全拷 / 摘录 MT]
   B4o[PR-B4b p91 重叠]
+  B4e[PR-B4e p91 绕排左齐]
   B4w[PR-B4c wrap · dump 后]
   B4t[PR-B4d p32 · 有条件]
 
@@ -932,6 +934,7 @@ flowchart TB
   D3csv ~~~ D3sc
   B1a --> B4q
   B1a --> B4o
+  B4o --> B4e
   B1a --> B4w
   B1b --> B4q
   B0 --> B4t
@@ -1031,6 +1034,16 @@ flowchart TB
 - **依赖：** W1 段落稳定。**不等 D3。** p91 签字只认全本 dual
 - **2026-08-17 落地（本 push）：** 正文不再误标 PULL_QUOTE（窄阈值 0.70）；CALLOUT 用 design_box 出 exclusion zone；禁止 callout/quote FULL_MEASURE；左沟不左扩出红框。针 dual：红条与步骤水平错开。残留：绕条段变高后与下一段纵向叠字；全本签字仍待 R2。
 - **内容：** 红条与步骤不再相交。不默认打开全局 post-layout。
+
+### PR-B4e — `fix(layout): p91 body beside left quote stays left-aligned`
+
+- **仓：** BabelDOC
+- **文件：** `paragraph_alignment.py`（末行未贴右缘 → 不是 right）；`line_interval_plan.py`（quote residual 禁止 p.21 snap 回 `box.x`）；`tests/test_paragraph_alignment.py`、`tests/test_line_interval_plan.py`
+- **依赖：** B4b（exclusion 已把步骤推到红条右侧）。**不要和 B4c 挤一个 commit。**
+- **针页：** 正式 `5and91.pdf` p91。EN「Have your lover…」左齐 x=246；ZH 同段被标 `alignment=right`，行尾钉在 476.6，末行「之间，勾住你的膝盖。」贴右。
+- **2026-08-17 落地（本 push）：** 末行未贴右缘不再判 right；quote residual 禁止 snap 回 `box.x`。目视认 p91 步骤左齐，且不压红条。
+- **内容：** 左引文旁绕排是左齐口袋，不是设计右齐。左齐之后 cap 不得 snap 回 `box.x=102`（会撤掉 B4b、压红条）。不动 `typesetting.py` wrap_active 右齐 hack（那是 p19 锥形绕图）。
+- **不修（另账）：** 「就像一个可怕的挑逗…从边缘式」是上一段尾巴并进本段后的溢出，属 merge/B4c，不和本 PR 绑。
 
 ### PR-B4c — `fix(layout): OA figure-wrap shred`（dump 门控）
 
