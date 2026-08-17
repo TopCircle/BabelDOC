@@ -256,7 +256,9 @@ Resume only with a **new plan** (not more one-off glue / dict / pull-back patche
 | **S2** | Wire `QuoteZoneConfig` into **main** typesetting + fix `typsetting_document` watermark typo | Quote/body collision; Both-watermark hard bug | ✅ **done** (`3b50f52` quote wire, `80ec6cf` watermark typo, `test_typesetting_quote_config`) |
 | **S3** | Multi-interval: **same** intervals for estimate → DP → place; log DP reject | Figure wrap + stops silent bad-greedy | ✅ **done** (`_line_capacity_like_place`, `DP_REJECT` logs, `test_multi_interval_layout`) |
 
-**Post-freeze “next three” (S1 / S1.1 / S2 / S3) = complete.** Next layout work is **L3+** (style / align / CJK break), not another S-number unless reopened.
+**Post-freeze “next three” (S1 / S1.1 / S2 / S3) = complete.** L3 shipped.
+
+**Current operator queue (2026-08-13):** [`docs/oa-dual-quality-wave-0.6.4.69.md`](../../docs/oa-dual-quality-wave-0.6.4.69.md) — not “start L4”. L4 only if wave B4d’s skip_report proves a chapter-title header skip. Index: [`docs/PLAN-INDEX.md`](../../docs/PLAN-INDEX.md).
 
 ### Operator sample: All Tied Up (record only — 2026-07-20)
 

@@ -1,5 +1,8 @@
 # P1 验收：OA dual ink gap（相对 EN）
 
+> **2026-08-13 — Closed phase** (0.6.4.50/52). Not the current OA queue.  
+> Active: [`oa-dual-quality-wave-0.6.4.69.md`](oa-dual-quality-wave-0.6.4.69.md)
+
 | 项 | 值 |
 |----|-----|
 | 日期 | 2026-08-04 |

@@ -1,5 +1,8 @@
 # 视觉版式达标验收定义（v1）
 
+> **2026-08-13:** Still valid as **acceptance criteria**, not a work queue.  
+> Scheduling: [`oa-dual-quality-wave-0.6.4.69.md`](oa-dual-quality-wave-0.6.4.69.md). Wave page gates (切除子宫 / p68 EN / p91 overlap / …) sit **on top of** V1–V5.
+
 > 背景：0.6.4.57–66 在"复刻 EN 绕图锥形"上迭代 6 版未收敛——CJK 等宽方块**结构上无法**复刻 EN 词宽参差（P2"左缘±2pt"不可达）。本定义改以**英文原版为版式基准、但按"读者能否看出是同一本书的版式"验收**。
 
 ## 0. 原则

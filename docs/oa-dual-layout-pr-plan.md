@@ -1,11 +1,15 @@
 # Orgasmic Addiction Dual 版面修复 — PR 拆分计划
 
-> **基线 dual**：`Orgasmic Addiction.no_watermark.zh-CN.dual.pdf`（2025-07-29 再生）  
+> **2026-08-13 — Superseded as the OA queue.** PR-A–D landed around 0.6.4.37.  
+> **Current OA work:** [`oa-dual-quality-wave-0.6.4.69.md`](oa-dual-quality-wave-0.6.4.69.md)  
+> Keep this file for the A→D dependency story and page evidence. Do not open a new PR-E from this list.
+
+> **基线 dual（historical）**：`Orgasmic Addiction.no_watermark.zh-CN.dual.pdf`（2025-07-29 再生）  
 > **对照页**：3–120（中文左半 / 英文右半）  
 > **原则**：每个 PR 可独立 merge、有明确验收页与测试；**先修 IL 输入，再修 skip 策略，最后修 box 重排**。  
 > **禁止**：在未过 figure IL 不变性 + OA 抽样页前扩大 `stream_order` 触发面。
 
-**当前代码基线**：`0.6.4.37`（A recovery + B title + C1 report + C2 safer skip + D narrow_callout；figure IL invariants）
+**当时代码基线**：`0.6.4.37`（A recovery + B title + C1 report + C2 safer skip + D narrow_callout；figure IL invariants）
 
 ---
 
