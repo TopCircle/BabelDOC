@@ -1672,16 +1672,18 @@ class ILTranslator:
             if llm_translate_tracker := tracker.last_llm_translate_tracker():
                 llm_translate_tracker.set_placeholder_full_match()
             return False
-        # Single post-MT normalize (controls + debris + residual 〖B…〗 markers).
-        translated_text = normalize_translated_text(translated_text)
-        paragraph.unicode = translated_text
+        # Keep {vN} until parse reattaches PdfFormula (OA p5 （,）).
+        translated_text = normalize_translated_text(
+            translated_text, keep_formula_placeholders=True
+        )
         paragraph.pdf_paragraph_composition = self.parse_translate_output(
             translate_input,
             translated_text,
             tracker,
             tracker.last_llm_translate_tracker(),
         )
-        # Parse may leave residual markers on paragraph.unicode / compositions.
+        # Rebuild unicode from parsed comps (formula glyphs, not leftover {vN}).
+        paragraph.unicode = get_paragraph_unicode(paragraph)
         paragraph.unicode = normalize_translated_text(paragraph.unicode)
 
         # Heading punctuation localization for CJK targets.

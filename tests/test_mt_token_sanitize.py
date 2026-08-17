@@ -42,6 +42,19 @@ class TestNormalizeTranslatedText:
         s = "她说：\"如果 a > b，就选 A。\" 版本 v1 已发布。"
         assert normalize_translated_text(s) == s
 
+    def test_default_strips_leftover_formula_placeholders(self):
+        assert "{v1}" not in normalize_translated_text("组合（{v1},{v2}）")
+
+    def test_keep_formula_placeholders_for_parse(self):
+        """pre-parse cleanup must not eat {vN} or parse cannot reattach formulas."""
+        out = normalize_translated_text(
+            "组合（{v1},{v2}）",
+            keep_formula_placeholders=True,
+        )
+        assert "{v1}" in out and "{v2}" in out
+        assert "组合" in out
+
+
     def test_none_and_empty(self):
         assert normalize_translated_text(None) is None
         assert normalize_translated_text("") == ""
