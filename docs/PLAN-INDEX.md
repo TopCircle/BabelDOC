@@ -1,7 +1,7 @@
 # Plan / review index (operator)
 
 Last updated: 2026-08-17。**If two docs disagree on what to do next, this table wins.**  
-**On main (this push):** W1+B4a+B1e+W4e+formula `{vN}` restore. **Next:** W4 p91 重叠 / B4c wrap，或操作员指定。
+**On main (this push):** W1+B4a+B1e+W4e+formula `{vN}` restore + **B4b** p91 红条绕排。**Queued:** **PR-B1i** 章题颜色（p91「第十章」应红；不要和 B4b 绑）；B4c wrap（dump 已做）。**Next:** B4c 区间接线，或 B1i，或操作员指定。
 
 ## Current
 

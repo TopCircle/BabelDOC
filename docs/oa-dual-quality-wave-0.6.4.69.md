@@ -4,7 +4,7 @@
 |------|----|
 | **Document title** | OA Dual Quality Wave — post BabelDOC 0.6.4.69 |
 | **Author** | solo operator（OA dual wave） |
-| **Date** | 2026-08-17（rev 6；W4e + `{vN}` 公式占位已合 main） |
+| **Date** | 2026-08-17（rev 7；B4b 已合；记下 PR-B1i 章题颜色） |
 | **Status** | **Active** (operator queue; index: [`PLAN-INDEX.md`](PLAN-INDEX.md)) |
 | **Baseline dual** | `/Users/yun/Library/CloudStorage/OneDrive-Personal/Documentos/Books/Gabrielle Moore/Orgasmic Addiction/Orgasmic Addiction.no_watermark.zh-CN.dual.pdf` |
 | **Producer** | BabelDOC v0.6.4.69（tip `6486fae`） |
@@ -131,6 +131,7 @@ DeepLX 路径是 **duck-typed**：`CLITranslatorTranslator` 继承的是 `pdf2zh
 | 9 | p5 | 公式 `(3+2+2=7, 3x2x2=12)` 仍 `（、）` / `di.` | x-continue 与 `{vN}`→QFOR 保护均已落地 → **先 wipe 再 IL dump**；其次 style 切碎；`di.` 当连字残骸 | W1c-diag（D2 wipe + `--pages 3` dump）；B1c 仅 dump 仍碎时开 |
 | 10 | p3 / p7 / p33 | 掉字 W/Q/T 留在正文 | 可能是独立 `PdfParagraph`，不是同一 stream 未粘合 | W1a-diag IL dump；再决定 `drop_cap` vs `paragraph_finder` 窄合并 |
 | 11 | p7 / 19 / 33 / 68 / 117 | figure-wrap 撕碎 | 绕图区间 | `figure_wrap` / `wrap_shape` / `line_interval_plan`，**不**改写 typesetting 上帝文件 |
+| 16 | p91 | `Chapter 10 the IndIrect thruSt`：EN「Chapter 10」红 `#d12027` / 15pt Trajan，「the Indirect thrust」黑 13.4pt；ZH「第十章间接推送」**整段黑** | 样式标记被章号改写剥掉，不是没译 | **PR-B1i**（已记，未开做） |
 
 #### P2（本波不作为硬门禁）
 
@@ -181,7 +182,7 @@ DeepLX 路径是 **duck-typed**：`CLITranslatorTranslator` 继承的是 `pdf2zh
 | p59 | `57` | 56 | `SLoW` / `coMfortabLe` / `ScreW` | 无整段 `SLoWcoMfortabLe` |
 | p63 | `61` | 60 | `FINGER-LICKING` / `enema` / `water` | 无整段 `THE FINGER-LICKING GOODS` |
 | p68 | `66` | 65 | `Dildos` / `butt plugs` / `erent` | 无 `erent` 整段 EN |
-| p91 | `89` | 88 | 红条 / pull-quote 预览 | 目视无叠字（**全本 dual**） |
+| p91 | `89` | 88 | 红条 / pull-quote 预览；`第十章` | 目视无叠字（**全本 dual**）。**P1：**「第十章」应红（PR-B1i，非本波硬门禁） |
 | p100 | `98` | 97 | `aLL InacrobatIc` | （P1 glue） |
 | p117 | `115` | 114 | `MISSIOnary` | （P1 glue） |
 | p120 | `118` | 117 | `心船` 对应 EN | P2，不挡 ship |
@@ -779,7 +780,8 @@ assert "3" in p5 and "2" in p5 and "7" in p5 and "12" in p5
 4. **D3a / D3b-csv / D3b-script**（DeepLX 仓，互不捆绑）。
 5. **W4** 版面 PRs（与 D3 **无 merge 依赖**；B4d 仍依赖 R0/R1 的 skip 证据）。
 6. **2026-08-14 下一刀：W4e** CJK 中间行满栏（针页 p5「一次只学一种」段）。单独 PR，不挡 p91/B4c。
-7. **R2 全本 dual** + 左栏 grep + 页级门禁。
+7. **2026-08-17 记下：PR-B1i** p91「第十章」红。不要和 B4b 绑。未开做。
+8. **R2 全本 dual** + 左栏 grep + 页级门禁。
 
 ### 每份 dual regen 的 cache 清单
 
@@ -911,6 +913,7 @@ flowchart TB
   D3a[PR-D3a 删 cheeks]
   D3csv[PR-D3b-csv 两条表面]
   D3sc[PR-D3b-script 两句 post_clean]
+  B1i[PR-B1i 章题颜色 · 已记]
   B4q[PR-B4a 近全拷 / 摘录 MT]
   B4o[PR-B4b p91 重叠]
   B4w[PR-B4c wrap · dump 后]
@@ -932,6 +935,7 @@ flowchart TB
   B1a --> B4w
   B1b --> B4q
   B0 --> B4t
+  B4q ~~~ B1i
 ```
 
 ### PR-B0 — `fix(skip): gate side-callout debug via skip_audit`
@@ -998,6 +1002,21 @@ flowchart TB
 - **依赖：** 不要和 D3b-csv 挤一个 commit
 - **内容：** **只** `切除子宫`→`影响子宫`，`刺激您的计算机`→`刺激您的应用`。改完 wipe deeplx（key 不含 post_clean 源码）。
 
+### PR-B1i — `fix(translate): keep chapter-marker style spans`（已记，未开做）
+
+- **仓：** BabelDOC
+- **针页：** p91 `Chapter 10 the IndIrect thruSt` → ZH「第十章间接推送」整段黑。同页「滑进滑出 / 扭身娇娃 / Putting it all together」整段红，颜色在。
+- **证据（2026-08-17 p91 dual）：** EN 是两段样式：`Chapter`+`10` = `#d12027` / 15pt Trajan；`the Indirect thrust` = 黑 13.4pt。ZH 段 `pdf_style` = `0 0 0 scn` / 13.35pt（黑半段的 base style）。
+- **因果：** 非 LLM 已给红 span 包 `〖B0〗Chapter 10〖/B0〗`。`ILTranslator.fix_untranslated_chapter_markers` 为 p82「Chapter9直接卷曲」**先剥全部 `〖Bn〗`** 再写成 `第十章 …`（函数注释写明 rich-text 一并丢掉）。`rewrap_styles_from_source` 只在译文里找原文 `"Chapter 10"`，对不上「第十章」。
+- **文件：** `il_translator.py`（`fix_untranslated_chapter_markers`）；`style_marker_recover.py`（若要给 `第十章` 当 Chapter-N 同义）；`tests/test_paragraph_dedup.py`
+- **依赖：** **不要和 B4b 挤一个 commit。** 不等 D3。
+- **内容：**
+  1. `Chapter N` 已整段落在**同一个** `〖Bn〗` 里 → **在标记内部**改成 `第N章`，保留 `〖Bn〗`。
+  2. 仅当 `Chapter` 与数字被拆到两个 span（现有 p82 用例 `〖B0〗Chapter 〖/B0〗9 …`）才走剥标记。
+  3. 改写后把对应 `StyleSpan.source_text` 更新为 `第N章`，以便 DeepLX 丢掉标记时 rewrap 仍能命中。
+  4. 单测：`〖B0〗Chapter 10〖/B0〗 the Indirect thrust` → `〖B0〗第十章〖/B0〗 the Indirect thrust`；现有 p82 拆 span 用例不变。
+- **不做：** 不改 typesetting；不把整段章题强行涂红；不重开 B4d。
+
 ### PR-B4a — `fix(translate): near-full pull-quote copies host ZH; excerpts MT once`
 
 - **仓：** BabelDOC
@@ -1010,6 +1029,7 @@ flowchart TB
 - **仓：** BabelDOC
 - **文件：** 优先 `post_layout_processor.py` / `vertical_gap.py`；仅当 zone 没打上才动 `exclusion_zone.py`；避免胀 `typesetting.py`。测试：`test_typesetting_quote_config.py` 或新 overlap 单测
 - **依赖：** W1 段落稳定。**不等 D3。** p91 签字只认全本 dual
+- **2026-08-17 落地（本 push）：** 正文不再误标 PULL_QUOTE（窄阈值 0.70）；CALLOUT 用 design_box 出 exclusion zone；禁止 callout/quote FULL_MEASURE；左沟不左扩出红框。针 dual：红条与步骤水平错开。残留：绕条段变高后与下一段纵向叠字；全本签字仍待 R2。
 - **内容：** 红条与步骤不再相交。不默认打开全局 post-layout。
 
 ### PR-B4c — `fix(layout): OA figure-wrap shred`（dump 门控）
