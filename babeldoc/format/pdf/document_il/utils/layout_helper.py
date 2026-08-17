@@ -1744,7 +1744,7 @@ def is_quote_block(
     para: PdfParagraph,
     page_width: float,
     *,
-    narrow_threshold: float = 0.8,
+    narrow_threshold: float = 0.70,
     indent_threshold: float = 0.15,
     right_margin_threshold: float = 0.05,
 ) -> bool:
@@ -1763,7 +1763,9 @@ def is_quote_block(
     Args:
         para: 要判断的段落
         page_width: 页面宽度（cropbox.x2 - cropbox.x）
-        narrow_threshold: 段落宽度 / 页面宽度 < 此值视为窄段落
+        narrow_threshold: 段落宽度 / 页面宽度 < 此值视为窄段落。
+            默认 0.70：过滤 OA 一类 ~77% 页宽的正文栏（470/612），
+            保留典型 pull-quote（通常 ≲ 0.50）。
         indent_threshold: 左侧缩进 / 页面宽度 > 此值视为有缩进。
             默认 0.15：过滤 ~5–12% 的正文页边距，保留真正的 pull-quote
             （通常 indent ≳ 0.25–0.5）。
@@ -1861,7 +1863,7 @@ def get_quote_exclusion_margins(
     return (
         page_width * left_margin,   # left
         page_height * top_margin,   # top
-        0.0,                        # right
+        page_width * left_margin,   # right (body-side gap for left gutter)
         page_height * bottom_margin, # bottom
     )
 

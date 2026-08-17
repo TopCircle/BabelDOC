@@ -61,6 +61,16 @@ class TestIsQuoteBlock:
         para = self._make_para(30, 400, 582, 500)
         assert is_quote_block(para, page_width=612) is False
 
+    def test_oa_p91_body_column_not_quote(self):
+        """OA p91 body (~77% of letter, indent ~17%) is not a pull-quote.
+
+        Default narrow_threshold=0.8 used to accept 470/612≈0.77 + indent
+        102/612≈0.17, so every body step on that page became PULL_QUOTE and
+        the left red bar never got an exclusion zone.
+        """
+        para = self._make_para(101.9, 93.2, 571.0, 123.2)
+        assert is_quote_block(para, page_width=612) is False
+
     def test_narrow_but_no_indent_not_quote(self):
         """窄但没有缩进的段落不是 Quote。"""
         # 左侧无缩进

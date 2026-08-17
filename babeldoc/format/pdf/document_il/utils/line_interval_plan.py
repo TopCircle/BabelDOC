@@ -309,6 +309,10 @@ def attempt_chain_for_paragraph(
     role = getattr(intent, "role", None) if intent is not None else None
     from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 
+    # Side callout / pull-quote must stay in their design column. FULL_MEASURE
+    # widens a 157pt left gutter to ~440pt (OA p91 red bar → overlaps body).
+    if role in (LayoutIntentRole.CALLOUT, LayoutIntentRole.PULL_QUOTE):
+        return [LayoutAttempt.PRIMARY]
     if shape or role is LayoutIntentRole.WRAP_COLUMN:
         return [LayoutAttempt.PRIMARY, LayoutAttempt.FULL_MEASURE]
     # Thin residual bodies also get FULL_MEASURE as second chance (CJK)

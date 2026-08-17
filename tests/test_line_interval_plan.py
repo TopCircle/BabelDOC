@@ -9,6 +9,9 @@ from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import LayoutAttempt
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    attempt_chain_for_paragraph,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     full_measure_layout_box,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
@@ -131,3 +134,44 @@ class TestFullMeasureBoxC3:
         assert wide.x >= 56 - 1e-6  # snapped off x=5
         assert (wide.x2 - wide.x) >= 400 - 1e-6
         assert layout_box_is_thin_vs_full_measure(residual, wide) is True
+
+
+class TestAttemptChainCallout:
+    def _para(self, role: LayoutIntentRole, design: Box) -> PdfParagraph:
+        para = PdfParagraph(box=design, pdf_paragraph_composition=[], unicode="x")
+        para.layout_intent = LayoutIntent(
+            role=role,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+        )
+        return para
+
+    def test_cjk_callout_stays_primary(self):
+        """OA p91 red bar must not FULL_MEASURE into the body column."""
+        bar = self._para(
+            LayoutIntentRole.CALLOUT,
+            Box(x=54.18, y=375.99, x2=211.635, y2=450.99),
+        )
+        assert attempt_chain_for_paragraph(bar, is_cjk=True) == [
+            LayoutAttempt.PRIMARY
+        ]
+
+    def test_cjk_pull_quote_stays_primary(self):
+        quote = self._para(
+            LayoutIntentRole.PULL_QUOTE,
+            Box(x=361, y=360, x2=552, y2=440),
+        )
+        assert attempt_chain_for_paragraph(quote, is_cjk=True) == [
+            LayoutAttempt.PRIMARY
+        ]
+
+    def test_cjk_wrap_column_still_escalates(self):
+        wrap = self._para(
+            LayoutIntentRole.WRAP_COLUMN,
+            Box(x=102, y=400, x2=427, y2=700),
+        )
+        wrap.layout_intent.wrap_shape = [(0.0, 200.0)]
+        assert LayoutAttempt.FULL_MEASURE in attempt_chain_for_paragraph(
+            wrap, is_cjk=True
+        )

@@ -223,7 +223,7 @@ class TranslationConfig:
         header_height: float = 40,
         footer_height: float = 40,
         enable_post_layout_optimization: bool = False,
-        quote_narrow_threshold: float = 0.8,
+        quote_narrow_threshold: float = 0.70,
         quote_indent_threshold: float = 0.15,
         quote_right_margin_threshold: float = 0.05,
         # PR-D: ultra-narrow side callout product policy
@@ -412,7 +412,7 @@ class TranslationConfig:
         self.enable_layout_intent_wrap = enable_layout_intent_wrap
         self.enable_legacy_quote_geometry = enable_legacy_quote_geometry
         self.quote_narrow_threshold = max(
-            min(float(quote_narrow_threshold if quote_narrow_threshold is not None else 0.8), 1.0),
+            min(float(quote_narrow_threshold if quote_narrow_threshold is not None else 0.70), 1.0),
             0.1,
         )
         self.quote_indent_threshold = max(
