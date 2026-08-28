@@ -223,11 +223,12 @@ class TestCJKCost:
         assert half_cost > 1000
 
     def test_cjk_interior_heavier_than_last_line_same_gap(self):
-        """中间行未填满应比最后一行同 residual 更重。"""
+        """中间行未填满应比最后一行同 residual 更重（末行剩余不再计费）。"""
         interior = _line_cost(50, 100, 5, False, 500, cjk_mode=True)
         last = _line_cost(50, 100, 5, True, 500, cjk_mode=True)
+        assert last == 0.0
         assert interior > last
-        assert interior == last * CJK_INTERIOR_FILL_WEIGHT
+        assert interior == (50**2) * CJK_INTERIOR_FILL_WEIGHT
 
     def test_cjk_last_line_widow(self):
         """CJK 最后一行孤行应被严厉惩罚。"""
@@ -236,10 +237,59 @@ class TestCJKCost:
         assert widow_cost > normal_cost
         assert widow_cost >= 500
 
-    def test_cjk_last_line_normal(self):
-        """CJK 最后一行正常长度应有二次惩罚（与原始版本一致）。"""
-        cost = _line_cost(30, 100, 3, True, 500, cjk_mode=True)
-        assert cost == (100 - 30) ** 2
+    def test_cjk_last_line_does_not_tax_leftover(self):
+        """CJK 末行允许短：剩余宽度不再用二次惩罚（否则会抽空中间行）。"""
+        short_last = _line_cost(30, 100, 5, True, 500, cjk_mode=True)
+        long_last = _line_cost(80, 100, 8, True, 500, cjk_mode=True)
+        interior_gap = _line_cost(80, 100, 8, False, 500, cjk_mode=True)
+        assert short_last == long_last == 0.0
+        # 中间行 20pt 空洞必须比「把这 20pt 挪到末行」更贵
+        assert interior_gap > 0
+
+    def test_oa_p5_interior_fills_and_keeps_yizhong_together(self):
+        """OA p5「一次只学一种。」：中间行尽量满栏，禁止断在「学/一种」。"""
+
+        class _U(MockUnit):
+            def __init__(self, ch: str, width: float = 12.0):
+                super().__init__(width=width, unicode=ch, is_cjk_char=True)
+                self.can_break_line_cache = None
+
+            @property
+            def can_break_line(self):
+                if self.can_break_line_cache is not None:
+                    return self.can_break_line_cache
+                return True
+
+        text = (
+            "你可以一次学习几种这里介绍的新技巧，边学边练，但我强烈建议一次只学一种。"
+            "将新技巧加入你的常规性爱剧目中，以便在舒适的环境中掌握它们，"
+            "然后再将这些技巧全部混合起来新体位"
+        )
+        units = [_U(ch) for ch in text]
+        merge_cjk_units(units)
+        available = 470.0
+        breaks = optimal_line_break(
+            units, [available], scale=1.0, space_width=6.0, cjk_mode=True
+        )
+        assert breaks is not None
+        from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
+            _compute_line_width,
+        )
+
+        pts = [0] + breaks + [len(units)]
+        lines = []
+        for a, b in zip(pts[:-1], pts[1:]):
+            chunk = "".join(u.try_get_unicode() for u in units[a:b])
+            width = _compute_line_width(units, a, b, 1.0, 6.0, 0.0)
+            lines.append((chunk, width))
+        joined = "".join(ch for ch, _w in lines)
+        assert "学\n一种" not in "\n".join(ch for ch, _w in lines)
+        assert lines[0][0].endswith("一种。"), lines[0][0]
+        # Interiors ≥ 95%, or end on ，。 within slack (line 1 max 432pt).
+        for chunk, width in lines[:-1]:
+            punct_ok = chunk[-1] in "。．？！；：，、" and width / available >= 0.90
+            assert width / available >= 0.95 or punct_ok, (chunk, width, available)
+        assert joined == text
 
     def test_english_mode_unchanged(self):
         """英文模式不应受影响。"""

@@ -32,6 +32,14 @@ _MAX_LINE_WIDTH = 220.0
 _ULTRA_NARROW_Y_MERGE = 120.0
 _MAX_VERTICAL_GAP = 22.0
 _MAX_X_DELTA = 160.0
+# OA p19 TAKING CHARGE wrap rows (~228–255pt) sit just over the callout cap.
+# Right-edge pin is the extra gate so this path cannot re-open the 0.6.4.48
+# medium-strip y-merge. Do not raise _MAX_LINE_WIDTH.
+_WRAP_LINE_MAX_WIDTH = 280.0
+# Union box of a left-stepping wrap column is wider than any single row
+# (OA p19 ~290pt). Cap the host, not the incoming line, at this.
+_WRAP_HOST_MAX_WIDTH = 340.0
+_WRAP_RIGHT_PIN_SPREAD = 8.0
 
 # --- horizontal prefix pair (dual-column callout) ---
 _H_PAIR_MIN_Y_IOU = 0.25
@@ -185,6 +193,45 @@ def _can_merge_vertical(
     return True
 
 
+def _can_merge_right_pinned_wrap(
+    upper: PdfParagraph,
+    lower: PdfParagraph,
+    excluded: set[int] | frozenset[int] = frozenset(),
+) -> bool:
+    """Stacked figure-wrap rows: right edge pinned, width up to ~280pt."""
+    bu, bl = _box(upper), _box(lower)
+    if bu is None or bl is None:
+        return False
+    if None in (bu.x, bu.x2, bu.y, bl.x, bl.x2, bl.y2):
+        return False
+    wu, wl = _width(upper), _width(lower)
+    if wu <= 0 or wl <= 0:
+        return False
+    incoming = min(wu, wl)
+    host_w = max(wu, wl)
+    if incoming > _WRAP_LINE_MAX_WIDTH or host_w > _WRAP_HOST_MAX_WIDTH:
+        return False
+    if abs(float(bu.x2) - float(bl.x2)) > _WRAP_RIGHT_PIN_SPREAD:
+        return False
+    # Flat same-x stacks are body/callout columns (0.6.4.48). Wrap rows step.
+    if abs(float(bu.x) - float(bl.x)) < 8.0:
+        return False
+    if not _same_xobj(upper, lower):
+        return False
+    # EN wrap column is often one composition spanning several visual rows
+    # (OA p19 cluster y-span ~87pt). Do not use _is_multi_row_block here.
+    if id(upper) in excluded or id(lower) in excluded:
+        return False
+    if (bl.y2 or 0) >= (bu.y2 or 0) - 0.5:
+        return False
+    gap = float(bu.y) - float(bl.y2)
+    if gap > _MAX_VERTICAL_GAP or gap < -12.0:
+        return False
+    if float(bl.x) > float(bu.x2) or float(bl.x2) < float(bu.x):
+        return False
+    return True
+
+
 def _composition_sort_key(comp: Any) -> tuple[float, float]:
     line = getattr(comp, "pdf_line", None)
     box = getattr(line, "box", None) if line is not None else None
@@ -252,8 +299,12 @@ def _has_intervening_paragraph(
     if top <= bot:
         return False
     x0, x1 = _column_band(upper, lower)
+    from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
+
     for p in paragraphs:
         if p is upper or p is lower:
+            continue
+        if is_layout_debug_stub(p):
             continue
         b = _box(p)
         if b is None or b.x is None or b.x2 is None or b.y is None or b.y2 is None:
@@ -312,6 +363,44 @@ def _merge_y_sorted_ultra_narrow(
             if upper not in paragraphs or lower not in paragraphs:
                 continue
             if not _can_merge_vertical(upper, lower, excluded):
+                continue
+            if _has_intervening_paragraph(upper, lower, paragraphs):
+                continue
+            _absorb(upper, lower)
+            paragraphs.remove(lower)
+            merges += 1
+            merged_this_pass = True
+            break
+        if not merged_this_pass:
+            break
+    return merges
+
+
+def _merge_y_sorted_right_pinned_wrap(
+    paragraphs: list[PdfParagraph],
+    excluded: set[int] | frozenset[int] = frozenset(),
+) -> int:
+    """Merge right-pinned wrap-column rows (OA p19 TAKING CHARGE)."""
+    from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
+
+    merges = 0
+    while True:
+        candidates = [
+            p
+            for p in paragraphs
+            if _box(p) is not None
+            and 0 < _width(p) <= _WRAP_HOST_MAX_WIDTH
+            and not is_layout_debug_stub(p)
+        ]
+        if len(candidates) < 2:
+            break
+        candidates.sort(key=_y2, reverse=True)
+        merged_this_pass = False
+        for i in range(len(candidates) - 1):
+            upper, lower = candidates[i], candidates[i + 1]
+            if upper not in paragraphs or lower not in paragraphs:
+                continue
+            if not _can_merge_right_pinned_wrap(upper, lower, excluded):
                 continue
             if _has_intervening_paragraph(upper, lower, paragraphs):
                 continue
@@ -428,7 +517,8 @@ def merge_stacked_narrow_callout_paragraphs(
     Passes:
       1. list-adjacent vertical stack (width ≤220, gap ≤22)
       2. ultra-narrow y-stack (width ≤120, no intervening)
-      3. horizontal prefix pair (left short ⊆ right longer text)
+      3. right-pinned wrap rows (width ≤280, x2 spread ≤8)
+      4. horizontal prefix pair (left short ⊆ right longer text)
     """
     _ = page
     if len(paragraphs) < 2:
@@ -436,6 +526,7 @@ def merge_stacked_narrow_callout_paragraphs(
     excluded = _pullquote_host_ids(paragraphs)
     merges = _merge_list_adjacent(paragraphs, excluded)
     merges += _merge_y_sorted_ultra_narrow(paragraphs, excluded)
+    merges += _merge_y_sorted_right_pinned_wrap(paragraphs, excluded)
     merges += _merge_horizontal_prefix_pairs(paragraphs)
     if merges:
         logger.debug("callout_merge: merged %d units", merges)

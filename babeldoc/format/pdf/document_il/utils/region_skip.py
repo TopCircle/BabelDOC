@@ -198,6 +198,9 @@ def is_layout_debug_stub(paragraph: PdfParagraph) -> bool:
     uni = (getattr(paragraph, "unicode", None) or "").strip()
     if uni in _LAYOUT_STUB_UNICODE:
         return True
+    # ParagraphFinder can glue stub rows into "fallback_linefallback_line…"
+    if uni and not uni.replace("fallback_line", "").strip():
+        return True
     # AddDebugInformation labels ("paragraph[abc12]-[title]", "pagenumber: 19")
     # — the debug composition may already be replaced by rendered chars by
     # the time vertical-gap/overlap passes run, so the unicode pattern is the

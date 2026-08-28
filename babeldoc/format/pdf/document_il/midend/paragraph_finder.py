@@ -300,6 +300,10 @@ class ParagraphFinder:
             maybe_reorder_reversed_stream,
             sort_line_compositions_if_stream_climbs,
         )
+        from babeldoc.format.pdf.document_il.utils.text_recovery import (
+            normalize_decorative_title_case,
+            should_normalize_midcap_title,
+        )
 
         page = page if page is not None else getattr(self, "_current_page", None)
         layout_label = getattr(paragraph, "layout_label", None)
@@ -355,6 +359,12 @@ class ParagraphFinder:
             ):
                 para_w = float(paragraph.box.x2 - paragraph.box.x)
             paragraph.unicode = get_char_unicode_string(chars, para_width=para_w)
+            # Mid-caps display titles lack tracking so get_char_unicode_string
+            # never lowers them (is_decorative_text is false).
+            if should_normalize_midcap_title(paragraph):
+                paragraph.unicode = normalize_decorative_title_case(
+                    paragraph.unicode
+                )
         if not chars:
             return
         # 更新边界框

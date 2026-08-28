@@ -2,14 +2,25 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import pytest
+
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
+from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import LayoutAttempt
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    attempt_chain_for_paragraph,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     full_measure_layout_box,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    _left_quote_owns_residual,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     infer_wrap_mode_from_line_boxes,
@@ -131,3 +142,156 @@ class TestFullMeasureBoxC3:
         assert wide.x >= 56 - 1e-6  # snapped off x=5
         assert (wide.x2 - wide.x) >= 400 - 1e-6
         assert layout_box_is_thin_vs_full_measure(residual, wide) is True
+
+    def test_right_fixed_wrap_column_stays_in_design(self):
+        """OA p33: FULL_MEASURE must not grow a right-pin wrap into the photo."""
+        design = Box(x=102.18, y=453.4, x2=443.63, y2=497.9)
+        para = PdfParagraph(box=design, pdf_paragraph_composition=[], unicode="x")
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.WRAP_COLUMN,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+            wrap_shape=[(0.0, 338.0), (0.8, 327.5), (0.0, 127.7)],
+            wrap_mode=WrapMode.RIGHT_FIXED,
+        )
+        page = type(
+            "P",
+            (),
+            {"cropbox": type("C", (), {"box": Box(x=0, y=0, x2=612, y2=792)})()},
+        )()
+        out = full_measure_layout_box(para, design, page)
+        assert out is not None
+        assert out.x2 <= 443.63 + 1e-6
+        assert out.x >= 102.18 - 1e-6
+
+
+class TestAttemptChainCallout:
+    def _para(self, role: LayoutIntentRole, design: Box) -> PdfParagraph:
+        para = PdfParagraph(box=design, pdf_paragraph_composition=[], unicode="x")
+        para.layout_intent = LayoutIntent(
+            role=role,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+        )
+        return para
+
+    def test_cjk_callout_stays_primary(self):
+        """OA p91 red bar must not FULL_MEASURE into the body column."""
+        bar = self._para(
+            LayoutIntentRole.CALLOUT,
+            Box(x=54.18, y=375.99, x2=211.635, y2=450.99),
+        )
+        assert attempt_chain_for_paragraph(bar, is_cjk=True) == [
+            LayoutAttempt.PRIMARY
+        ]
+
+    def test_cjk_pull_quote_stays_primary(self):
+        quote = self._para(
+            LayoutIntentRole.PULL_QUOTE,
+            Box(x=361, y=360, x2=552, y2=440),
+        )
+        assert attempt_chain_for_paragraph(quote, is_cjk=True) == [
+            LayoutAttempt.PRIMARY
+        ]
+
+    def test_cjk_wrap_column_still_escalates(self):
+        wrap = self._para(
+            LayoutIntentRole.WRAP_COLUMN,
+            Box(x=102, y=400, x2=427, y2=700),
+        )
+        wrap.layout_intent.wrap_shape = [(0.0, 200.0)]
+        assert LayoutAttempt.FULL_MEASURE in attempt_chain_for_paragraph(
+            wrap, is_cjk=True
+        )
+
+
+class TestQuoteResidualCap:
+    """OA p91: left quote residual must stay left-aligned, not snap to box.x."""
+
+    def _quote_index(self, *, kind: str = "quote"):
+        zone = SimpleNamespace(
+            kind=kind,
+            box=Box(x=54.18, y=376.0, x2=211.635, y2=451.0),
+        )
+        return SimpleNamespace(zones=[zone])
+
+    def test_quote_owns_residual_left(self):
+        idx = self._quote_index()
+        assert _left_quote_owns_residual(idx, 211.635, y_bottom=390.0, y_top=405.0)
+        assert _left_quote_owns_residual(idx, 220.0, y_bottom=390.0, y_top=405.0)
+        # Different y-band (above the bar) does not own the residual.
+        assert not _left_quote_owns_residual(
+            idx, 211.635, y_bottom=200.0, y_top=220.0
+        )
+
+    def test_figure_zone_does_not_own_residual(self):
+        idx = self._quote_index(kind="figure")
+        assert not _left_quote_owns_residual(
+            idx, 330.0, y_bottom=400.0, y_top=420.0
+        )
+
+    def test_cap_does_not_snap_over_left_quote(self):
+        """Residual [211, 572] + EN wrap width ~323 stays in the pocket.
+
+        Without the quote guard, left-align snap walks back to box.x=102
+        and CJK overpaints the red bar (undoes B4b).
+        """
+        box = Box(x=102.18, y=339.0, x2=572.57, y2=459.0)
+        refs = [317.28, 325.60, 323.28, 322.73, 323.06, 323.14, 238.27]
+        para = PdfParagraph(box=box, pdf_paragraph_composition=[], unicode="x")
+        plan = resolve_line_interval_plan(
+            para,
+            box,
+            attempt=LayoutAttempt.PRIMARY,
+            wrap_enabled=True,
+            zone_index=self._quote_index(),
+            reference_widths=refs,
+            alignment="left",
+            cap_available=lambda b, ax, ax2, r, li: (
+                Typesetting._cap_available_with_reference(
+                    b, ax, ax2, r, li, alignment="left"
+                )
+            ),
+        )
+        x1, x2 = plan._cap_leftmost(
+            box,
+            [(211.635, 572.57)],
+            1,
+            y_bottom=390.0,
+            y_top=405.0,
+        )[0]
+        assert x1 == pytest.approx(211.635, abs=0.1)
+        assert x1 > 180.0  # must not snap to box.x=102
+        assert x2 == pytest.approx(211.635 + 325.60, abs=1.0)
+        assert x2 < 560.0  # capped; not the full 572 residual
+
+    def test_figure_residual_still_snaps_to_box(self):
+        """Orgasms p.21: figure (not quote) mid-photo shove still snaps."""
+        box = Box(x=110.0, y=100.0, x2=550.0, y2=700.0)
+        refs = [200.0, 210.0, 190.0]
+        para = PdfParagraph(box=box, pdf_paragraph_composition=[], unicode="x")
+        plan = resolve_line_interval_plan(
+            para,
+            box,
+            attempt=LayoutAttempt.PRIMARY,
+            wrap_enabled=True,
+            zone_index=self._quote_index(kind="figure"),
+            reference_widths=refs,
+            alignment="left",
+            cap_available=lambda b, ax, ax2, r, li: (
+                Typesetting._cap_available_with_reference(
+                    b, ax, ax2, r, li, alignment="left"
+                )
+            ),
+        )
+        x1, x2 = plan._cap_leftmost(
+            box,
+            [(330.0, 520.0)],
+            0,
+            y_bottom=400.0,
+            y_top=420.0,
+        )[0]
+        assert x1 == pytest.approx(110.0)
+        assert x2 == pytest.approx(310.0)

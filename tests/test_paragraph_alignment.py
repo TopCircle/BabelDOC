@@ -263,6 +263,24 @@ class TestDetectParagraphAlignment:
         para = _line_para(lines)
         assert detect_paragraph_alignment(para) == "right"
 
+    def test_p91_wrap_beside_left_quote_is_left(self):
+        """OA p91: leftover full-measure tail + wrap column, last line short.
+
+        Rights of the wrap lines pin at ~572 but the last line ends at 485.
+        That is left text beside a left quote, not designed right-align.
+        """
+        lines = [
+            (102.0, 419.9),  # "from here. Start off like a terrible tease…"
+            (246.0, 572.6),
+            (246.0, 572.6),
+            (246.0, 572.6),
+            (246.0, 572.6),
+            (246.0, 572.6),
+            (246.0, 485.0),  # "tween your thighs and hook it around your knee."
+        ]
+        para = _line_para(lines)
+        assert detect_paragraph_alignment(para, _page(612)) == "left"
+
 
 class TestResolveEffectiveAlignment:
     def test_long_body_without_metrics_never_center(self):

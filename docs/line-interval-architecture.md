@@ -2,8 +2,8 @@
 
 | Field | Value |
 |-------|--------|
-| Status | **In implementation** — C0/C1 landed 0.6.4.64; C2 attempt cleanup next |
-| Date | 2026-08-07 |
+| Status | **Landed C0–C3** (0.6.4.64–66). Remaining OA wrap shreds → wave W4c, not a new C-number. |
+| Date | 2026-08-07 (status stamp 2026-08-13) |
 | Baseline | TopCircle/BabelDOC `main` @ 0.6.4.63 (`0afa0c9`) |
 | Supersedes (direction) | Ad-hoc wrap/residual flag retries (0.6.4.61–63) as *architecture* |
 | Relates | [`layout-first-plan.md`](layout-first-plan.md), [`layout-first-coding-plan.md`](layout-first-coding-plan.md) |

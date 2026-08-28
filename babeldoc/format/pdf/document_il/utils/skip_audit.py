@@ -47,9 +47,13 @@ class SkipEvent:
     reason: str
     unicode_preview: str
     layout_label: str | None = None
+    debug_extra: dict | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        if data.get("debug_extra") is None:
+            data.pop("debug_extra", None)
+        return data
 
 
 def unicode_preview(text: str | None, max_len: int = PREVIEW_MAX) -> str:
@@ -70,14 +74,20 @@ def side_callout_skip_reason(
     Order matches ``should_skip_side_callout_mt`` (pullquote first).
     """
     from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
-        is_pullquote_duplicate_of_body,
+        find_pullquote_host,
+    )
+    from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
+        is_near_full_pullquote,
     )
     from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
         is_ultra_narrow_side_callout,
     )
 
-    if is_pullquote_duplicate_of_body(paragraph, page):
-        return SkipReason.PULLQUOTE
+    host = find_pullquote_host(paragraph, page)
+    if host is not None:
+        if is_near_full_pullquote(paragraph, host):
+            return SkipReason.PULLQUOTE
+        return None
     if is_ultra_narrow_side_callout(paragraph, page):
         return SkipReason.ULTRA_NARROW
     return None
@@ -100,6 +110,7 @@ class SkipReport:
         unicode: str | None = None,
         layout_label: str | None = None,
         paragraph_id: str | None = None,
+        debug_extra: dict | None = None,
     ) -> None:
         """Append one skip event. Safe from worker threads."""
         reason_s = reason.value if isinstance(reason, SkipReason) else str(reason)
@@ -116,12 +127,14 @@ class SkipReport:
                 text = getattr(paragraph, "unicode", None)
             if label is None:
                 label = getattr(paragraph, "layout_label", None)
+        extra = dict(debug_extra) if debug_extra else None
         event = SkipEvent(
             page_number=pn,
             paragraph_id=pid,
             reason=reason_s,
             unicode_preview=unicode_preview(text),
             layout_label=label,
+            debug_extra=extra,
         )
         with self._lock:
             self._events.append(event)

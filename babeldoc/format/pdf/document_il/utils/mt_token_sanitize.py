@@ -124,11 +124,14 @@ def _fix_chapter_title_mistranslations(text: str) -> str:
     return out
 
 
-def _scrub_mt_debris(text: str) -> str:
+def _scrub_mt_debris(text: str, *, keep_formula_placeholders: bool = False) -> str:
     out = text
     out = _HEX_BRACE_TOKEN_RE.sub("", out)
     out = _GARBAGE_ALNUM_TOKEN_RE.sub("", out)
-    out = _FORMULA_V_TOKEN_RE.sub("", out)
+    if not keep_formula_placeholders:
+        # After parse only: leftover {vN} that were not reattached as formulas.
+        # Must not run before parse_translate_output (OA p5 empty （,）).
+        out = _FORMULA_V_TOKEN_RE.sub("", out)
     out = _ORPHAN_BRACE_BEFORE_CJK_RE.sub("", out)
     out = _scrub_latin_ligature_debris(out)
     out = _fix_chapter_title_mistranslations(out)
@@ -163,12 +166,19 @@ def _nfkc_cjk_compatibility(text: str) -> str:
 nfkc_compatibility_codepoints = _nfkc_cjk_compatibility
 
 
-def normalize_translated_text(text: str | None) -> str | None:
+def normalize_translated_text(
+    text: str | None,
+    *,
+    keep_formula_placeholders: bool = False,
+) -> str | None:
     """Canonical post-MT cleanup: controls + debris + residual style markers + compat NFKC.
 
     Compatibility ideographs are mapped to unified CJK so dual/mono text layers
     stay searchable and font-stable. Must run after MT and before typeset
     (``post_translate_paragraph``). Does **not** fold fullwidth punctuation.
+
+    Set *keep_formula_placeholders* when the caller still needs ``{vN}``
+    tokens so ``parse_translate_output`` can reattach ``PdfFormula``.
 
     Safe on ``None`` / empty. Idempotent for clean text.
     """
@@ -177,7 +187,7 @@ def normalize_translated_text(text: str | None) -> str | None:
     if not text:
         return text
     out = strip_ascii_controls(text)
-    out = _scrub_mt_debris(out)
+    out = _scrub_mt_debris(out, keep_formula_placeholders=keep_formula_placeholders)
     if out and "〖B" in out:
         out = _STYLE_MARKER_RE.sub("", out)
     out = expand_latin_ligatures(out)

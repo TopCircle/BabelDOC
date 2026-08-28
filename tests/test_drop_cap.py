@@ -136,3 +136,40 @@ def test_place_drop_cap_same_line_not_wrapped_and():
     text = get_char_unicode_string(placed)
     assert text.startswith("Welcome my darling")
     assert "Wand" not in text
+
+
+def test_style_markers_do_not_skip_drop_cap_prep():
+    """OA p3: ILTranslator wraps Trajan W as 〖B0〗; prep must still rejoin.
+
+    get_char_unicode_string used to skip climb+drop-cap whenever the list
+    mixed PdfCharacters with marker strings, so MT saw
+    ``elcome … 〖B0〗W 〖/B0〗`` instead of ``Welcome``.
+    """
+    body = [
+        _ch(c, 146.0 + i * 6.0, size=12.5, y=200.0)
+        for i, c in enumerate("elcome my darling!")
+    ]
+    drop = _ch("W", 102.0, size=33.7, w=38.0, y=181.3, font_id="Trajan")
+    mixed: list = [*body, "〖B0〗", drop, "〖/B0〗"]
+    text = get_char_unicode_string(mixed)
+    stripped = text.replace("〖B0〗", "").replace("〖/B0〗", "")
+    assert stripped.startswith("Welcome my darling")
+    assert "elcome my W" not in stripped
+    assert "Wdarling" not in stripped
+
+
+def test_drop_cap_padding_spaces_do_not_split_welcome():
+    """OA p3 Trajan run is [space, W, space] then elcome — padding is not a word gap."""
+    pad_l = _ch(" ", 90.0, size=33.7, w=8.0, y=181.3, font_id="Trajan")
+    drop = _ch("W", 102.0, size=33.7, w=38.0, y=181.3, font_id="Trajan")
+    pad_r = _ch(" ", 142.0, size=33.7, w=10.0, y=181.3, font_id="Trajan")
+    body = [
+        _ch(c, 146.0 + i * 6.0, size=12.5, y=200.0)
+        for i, c in enumerate("elcome my darling!")
+    ]
+    mixed: list = ["〖B0〗", pad_l, drop, pad_r, "〖/B0〗", *body]
+    text = get_char_unicode_string(mixed)
+    stripped = text.replace("〖B0〗", "").replace("〖/B0〗", "")
+    assert stripped.startswith("Welcome my darling")
+    assert not stripped.startswith("W ")
+    assert "W elcome" not in stripped

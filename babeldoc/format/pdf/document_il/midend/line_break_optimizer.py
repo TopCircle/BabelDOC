@@ -21,6 +21,11 @@ DEFAULT_OVERFLOW_PENALTY = 10000.0  # 超宽惩罚（不应该发生，但作为
 # (方块感 / English-style rectangular column). Last line stays unweighted.
 # 2.5 was too soft vs kinsoku-forced early wraps; 6.0 strongly packs mids.
 CJK_INTERIOR_FILL_WEIGHT = 6.0
+# Interior line that ends on ，。； and is within this slack of the
+# measure counts as full (prefer 一种。 over 将新|技巧).
+CJK_PUNCT_FILL_SLACK_PT = 80.0
+CJK_PUNCT_FILL_SLACK_RATIO = 0.18
+CJK_LINE_END_PUNCT = frozenset("。．？！；：，、")
 
 
 def optimal_line_break(
@@ -154,8 +159,17 @@ def optimal_line_break(
             # 段落末尾（j == n）总是合法的断行点
             # hung punctuation 不能作为断行点（与 typesetter 保持一致）
             if (unit.can_break_line and not unit.is_hung_punctuation) or j == n:
+                end_ch = unit.try_get_unicode() if cjk_mode else None
                 raggedness = _line_cost(
-                    line_width, available, non_space_count, j == n, widow_penalty, cjk_mode
+                    line_width,
+                    available,
+                    non_space_count,
+                    j == n,
+                    widow_penalty,
+                    cjk_mode,
+                    ends_with_punct=bool(
+                        end_ch and end_ch in CJK_LINE_END_PUNCT
+                    ),
                 )
                 new_cost = cost[i] + raggedness
                 if new_cost < cost[j]:
@@ -256,11 +270,14 @@ def _line_cost(
     is_last_line: bool,
     widow_penalty: float,
     cjk_mode: bool = False,
+    *,
+    ends_with_punct: bool = False,
 ) -> float:
     """计算一行的代价。
 
     Raggedness = (available - line_width)²，加孤行惩罚。
-    CJK 模式：中间行额外加重未填满惩罚（方块感）；最后一行仍用二次惩罚；
+    CJK 模式：中间行加重未填满；末行剩余不收费（允许短末行）；
+    中间行若以 ，。； 收尾且距栏宽在 slack 内，视为已满；
     任何 ≤2 字行严厉加 orphan 惩罚。
     """
     if line_width > available_width:
@@ -271,12 +288,24 @@ def _line_cost(
 
     if cjk_mode:
         if is_last_line:
-            raggedness = remaining ** 2
+            # Short last line is correct CJK body (W4e). Taxing leftover
+            # here made DP steal chars from interiors (OA p5 420pt mid
+            # lines so the tail could grow).
+            raggedness = 0.0
         else:
-            # Prefer fuller intermediate lines (reduces 短长交错 raggedness)
-            raggedness = (remaining ** 2) * CJK_INTERIOR_FILL_WEIGHT
+            slack = max(
+                CJK_PUNCT_FILL_SLACK_PT,
+                available_width * CJK_PUNCT_FILL_SLACK_RATIO,
+            )
+            if ends_with_punct and remaining <= slack:
+                raggedness = 0.0
+            else:
+                # Prefer fuller intermediate lines (reduces 短长交错 raggedness)
+                raggedness = (remaining ** 2) * CJK_INTERIOR_FILL_WEIGHT
         if num_units <= 2:
-            raggedness += widow_penalty * 2
+            # Must beat the interior-fill gain of parking one extra
+            # 12pt glyph on the previous line (OA-scale ~1150).
+            raggedness += widow_penalty * 4
         return raggedness
 
     raggedness = remaining ** 2

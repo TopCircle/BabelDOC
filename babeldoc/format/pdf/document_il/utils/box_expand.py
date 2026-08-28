@@ -245,10 +245,12 @@ def try_pre_expand_for_content(
         return None
 
     # Ultra-narrow / right-blocked callout column: modest left, then right, down.
+    # Left-gutter bars (OA p91 x≈54) must not walk off the painted box.
     if force_callout:
+        left_gutter = box.x is not None and float(box.x) < 80.0
         left = (
             try_expand_left(box, get_max_left, need_width=content_w)
-            if get_max_left is not None
+            if get_max_left is not None and not left_gutter
             else None
         )
         work = left if left is not None else box

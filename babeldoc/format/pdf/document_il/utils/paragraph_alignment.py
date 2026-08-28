@@ -229,9 +229,16 @@ def detect_paragraph_alignment(
         if left_ratio >= 0.65:
             return "left"
 
-        # 2) Shared right edge → right-aligned
+        # 2) Shared right edge → right-aligned, but only when the last
+        # line is also flush-right. Full lines pinned on the right with a
+        # short last line is wrap-around-a-left-obstacle (OA p91 body
+        # beside the red quote: leftover at x≈102 + wrap lines at x≈246,
+        # last line 246–485) — that is left text in a right-pinned pocket,
+        # not designed right-align. Designed right-align keeps the last
+        # line on the same right edge (short side is the left).
         right_ratio = _cluster_ratio(rights, para_right)
-        if right_ratio >= 0.7:
+        last_flush_right = abs(rights[-1] - para_right) <= tol
+        if right_ratio >= 0.7 and last_flush_right:
             return "right"
 
         # 3) Shared centers + short lines inset both sides → center

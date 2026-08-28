@@ -67,6 +67,9 @@ class TestIsLayoutDebugStub:
     def test_debug_stub_by_unicode(self):
         for u in ("fallback_line", "title", "plain text", "abandon"):
             assert is_layout_debug_stub(self._stub(u)) is True
+        glued = self._real("fallback_linefallback_linefallback_line")
+        glued.unicode = "fallback_linefallback_linefallback_line"
+        assert is_layout_debug_stub(glued) is True
 
     def test_debug_stub_by_debug_composition(self):
         p = self._stub("not a class name")
@@ -465,6 +468,26 @@ class TestSanitizeCjkWrapShape:
 
         assert sanitize_wrap_shape_for_cjk(None) is None
         assert sanitize_wrap_shape_for_cjk([]) == []
+
+    def test_oa_p19_relative_sliver_42pt_replaced(self):
+        """Current p19 dump: 42pt pocket is >24pt floor but still a shred line."""
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            sanitize_wrap_shape_for_cjk,
+        )
+
+        shape = [
+            (58.8, 84.4),
+            (0.0, 193.6),
+            (57.3, 42.4),
+            (37.9, 137.0),
+            (19.6, 174.1),
+            (72.2, 106.6),
+            (51.0, 142.6),
+        ]
+        out = sanitize_wrap_shape_for_cjk(shape)
+        assert out is not None
+        assert out[2][1] >= 100.0
+        assert out[1][1] == 193.6
 
 
 class TestCjkWrapShapeSanitizeWiring:

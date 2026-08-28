@@ -212,3 +212,21 @@ def test_medium_width_left_body_not_force_callout_left():
     assert out is not None
     assert out.x == box.x
     assert out.x2 > box.x2
+
+
+def test_left_gutter_callout_expands_down_not_off_bar():
+    """OA p91 red bar (x≈54, ~157pt): do not left-expand off the painted box."""
+    bar = _box(x=54.18, y=375.99, x2=211.635, y2=450.99)
+    out = try_pre_expand_for_content(
+        bar,
+        content_w=400.0,
+        text="这本书主要是教你新技巧" * 3,
+        layout_label="plain text",
+        get_max_right=lambda b: 102.0,  # body column blocks right
+        get_max_bottom=lambda b: 348.0,
+        get_max_left=lambda b: 5.0,
+    )
+    assert out is not None
+    assert out.x == bar.x
+    assert out.y < bar.y
+    assert out.x2 == bar.x2

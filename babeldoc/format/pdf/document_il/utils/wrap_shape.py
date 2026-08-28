@@ -294,24 +294,35 @@ def sanitize_wrap_shape_for_cjk(
     if not wrap_shape:
         return wrap_shape
     widths = [float(w) for _off, w in wrap_shape]
-    if all(w >= min_width for w in widths):
+    floor_valid = [w for w in widths if w >= min_width]
+    max_valid = max(floor_valid) if floor_valid else min_width
+    # Relative slivers (OA p19 42pt vs 193pt peak) are usable by the 24pt
+    # floor but still force a 3–4 CJK shred line. Treat < 25% of the peak
+    # as degenerate too.
+    sliver_cut = max(min_width, max_valid * 0.25) if max_valid > 0 else min_width
+
+    def _usable(w: float) -> bool:
+        return w >= sliver_cut
+
+    if all(_usable(w) for w in widths):
         return wrap_shape
-    valid = [w for w in widths if w >= min_width]
-    max_valid = max(valid) if valid else min_width
+    valid = [w for w in widths if _usable(w)]
+    if valid:
+        max_valid = max(valid)
     out: list[tuple[float, float]] = []
     for i, (_off, w) in enumerate(wrap_shape):
         w = float(w)
-        if w >= min_width:
+        if _usable(w):
             out.append((_off, w))
             continue
         replacement: float | None = None
         for j in range(i + 1, len(widths)):
-            if widths[j] >= min_width:
+            if _usable(widths[j]):
                 replacement = widths[j]
                 break
         if replacement is None:
             for j in range(i - 1, -1, -1):
-                if widths[j] >= min_width:
+                if _usable(widths[j]):
                     replacement = widths[j]
                     break
         if replacement is None:

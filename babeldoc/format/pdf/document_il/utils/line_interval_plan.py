@@ -13,6 +13,7 @@ from enum import Enum
 from typing import Any, Callable
 
 from babeldoc.format.pdf.document_il import il_version_1
+from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
@@ -32,6 +33,42 @@ class LayoutAttempt(str, Enum):
 
     PRIMARY = "primary"
     FULL_MEASURE = "full_measure"
+
+
+def _left_quote_owns_residual(
+    zone_index: Any,
+    residual_x1: float,
+    *,
+    y_bottom: float | None = None,
+    y_top: float | None = None,
+) -> bool:
+    """True when a quote zone's right edge is this residual's left edge.
+
+    OA p91: red bar design ~54–211, body residual starts at ~211. B4b
+    carved that pocket on purpose; the Orgasms p.21 box.x snap must not
+    undo it. Figure zones do not match — p.21 still snaps.
+    """
+    if zone_index is None:
+        return False
+    zones = getattr(zone_index, "zones", None) or []
+    for zone in zones:
+        if getattr(zone, "kind", None) != "quote":
+            continue
+        zb = getattr(zone, "box", None)
+        if zb is None or zb.x2 is None:
+            continue
+        if (
+            y_bottom is not None
+            and y_top is not None
+            and zb.y is not None
+            and zb.y2 is not None
+            and (zb.y2 < y_bottom or zb.y > y_top)
+        ):
+            continue
+        # Residual starts at or just past the quote (padding slack).
+        if zb.x2 <= residual_x1 + 2.0 and residual_x1 - zb.x2 <= 40.0:
+            return True
+    return False
 
 
 def infer_wrap_mode_from_line_boxes(
@@ -187,7 +224,9 @@ class LineIntervalPlan:
 
         # PRIMARY: zone residual + optional reference cap
         intervals = self._zone_intervals(y_bottom, y_top, box)
-        return self._cap_leftmost(box, intervals, line_idx)
+        return self._cap_leftmost(
+            box, intervals, line_idx, y_bottom=y_bottom, y_top=y_top
+        )
 
     def _zone_intervals(
         self,
@@ -209,14 +248,26 @@ class LineIntervalPlan:
         box: Box,
         intervals: list[tuple[float, float]],
         line_idx: int,
+        *,
+        y_bottom: float | None = None,
+        y_top: float | None = None,
     ) -> list[tuple[float, float]]:
         if not intervals:
             return [(float(box.x), float(box.x2))]
         if not self.reference_widths or self.cap_available is None:
             return intervals
         ix1, ix2 = intervals[0]
+        # A left quote already carved this residual (OA p91). The p.21
+        # snap-back uses box.x (full-measure leftover ~102) and would
+        # paint CJK back over the red bar. Pretend the paragraph starts
+        # at the residual so cap keeps the wrap pocket.
+        cap_box = box
+        if _left_quote_owns_residual(
+            self.zone_index, ix1, y_bottom=y_bottom, y_top=y_top
+        ):
+            cap_box = Box(x=ix1, y=box.y, x2=box.x2, y2=box.y2)
         cx1, cx2 = self.cap_available(
-            box,
+            cap_box,
             ix1,
             ix2,
             self.reference_widths,
@@ -309,6 +360,10 @@ def attempt_chain_for_paragraph(
     role = getattr(intent, "role", None) if intent is not None else None
     from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 
+    # Side callout / pull-quote must stay in their design column. FULL_MEASURE
+    # widens a 157pt left gutter to ~440pt (OA p91 red bar → overlaps body).
+    if role in (LayoutIntentRole.CALLOUT, LayoutIntentRole.PULL_QUOTE):
+        return [LayoutAttempt.PRIMARY]
     if shape or role is LayoutIntentRole.WRAP_COLUMN:
         return [LayoutAttempt.PRIMARY, LayoutAttempt.FULL_MEASURE]
     # Thin residual bodies also get FULL_MEASURE as second chance (CJK)
@@ -364,7 +419,15 @@ def full_measure_layout_box(
 
     design_w = max(0.0, float(design.x2) - float(design.x))
     page_w = max(1.0, page_right - page_left)
-    target_w = max(design_w, min_body_width, min(460.0, page_w * 0.72))
+    role = getattr(intent, "role", None) if intent is not None else None
+    wrap_mode = getattr(intent, "wrap_mode", None) if intent is not None else None
+    # RIGHT_FIXED wrap sits left of a side photo (OA p33). Growing to the
+    # 400pt body floor paints CJK into the figure. LEFT_FIXED residual
+    # strips (p82.65) still need the body-measure widen.
+    if role is LayoutIntentRole.WRAP_COLUMN and wrap_mode is WrapMode.RIGHT_FIXED:
+        target_w = design_w
+    else:
+        target_w = max(design_w, min_body_width, min(460.0, page_w * 0.72))
     right = min(page_right - 16.0, left + target_w)
     if right <= left + 50.0:
         right = min(page_right - 16.0, left + min_body_width)

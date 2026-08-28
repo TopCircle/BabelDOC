@@ -66,7 +66,7 @@ class TestQuoteZoneConfigFromTranslationConfig:
     def test_build_page_zones_uses_config_thresholds(self):
         """Default thresholds may miss a borderline para; looser ones catch it."""
         # Narrow-ish column: width ~55% of page, indent ~10%
-        # Default narrow_threshold=0.8 would still count as narrow (0.55<0.8)
+        # Default narrow_threshold=0.70 would still count as narrow (0.55<0.70)
         # but indent 0.10 < default indent_threshold 0.15 → not quote by default.
         borderline = _para(61, 400, 400, 500)  # indent≈0.10, width_ratio≈0.55
         page = _page([borderline])
@@ -120,3 +120,65 @@ class TestQuoteZoneConfigFromTranslationConfig:
         # taper metrics exist; without metrics, legacy can quote. Accept either
         # as long as default path never quotes WRAP_COLUMN.
         _ = zones_l
+
+    def test_callout_intent_uses_design_box_not_inflated_para_box(self):
+        """OA p91 red bar: CALLOUT design 54–211 must zone, not the 54–494 box.
+
+        FULL_MEASURE (or layout-class residue) inflates para.box to ~440pt.
+        A zone from that box would either crush the body or self-block and
+        fall back to full measure — the overlap we are fixing.
+        """
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+
+        design = Box(x=54.18, y=375.99, x2=211.635, y2=450.99)
+        inflated = Box(x=54.18, y=372.62, x2=494.82, y2=450.99)
+        bar = _para(inflated.x, inflated.y, inflated.x2, inflated.y2)
+        bar.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.CALLOUT,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+        )
+        page = _page([bar])
+        cfg = _config(enable_legacy_quote_geometry=False)
+        ts = Typesetting(cfg)
+        zones = ts._build_page_exclusion_zones(page)
+        quote_zones = [z for z in zones if z.kind == ZONE_QUOTE]
+        assert len(quote_zones) == 1
+        z = quote_zones[0].box
+        # Zone must track the red-bar design width, not the inflated box.
+        assert z.x2 <= 250.0
+        assert z.x2 >= 211.0
+        assert z.x <= 54.18 + 1.0
+
+    def test_p91_body_available_x_starts_after_callout_zone(self):
+        """Body line overlapping the red bar must wrap to its right."""
+        from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
+            ExclusionZoneIndex,
+        )
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+
+        design = Box(x=54.18, y=375.99, x2=211.635, y2=450.99)
+        bar = _para(54.18, 372.62, 494.82, 450.99)
+        bar.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.CALLOUT,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+        )
+        body = _para(102.18, 357.24, 572.57, 459.24)
+        body.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.BODY,
+            design_box=body.box,
+            top_inset=0.0,
+            bottom_inset=0.0,
+        )
+        page = _page([bar, body])
+        ts = Typesetting(_config(enable_legacy_quote_geometry=False))
+        zones = ts._build_page_exclusion_zones(page)
+        index = ExclusionZoneIndex(zones)
+        x1, x2 = index.get_available_x_range(380.0, 400.0, 102.18, 572.57)
+        assert x1 >= 211.0
+        assert x2 == 572.57

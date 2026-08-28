@@ -101,6 +101,48 @@ def _char_xy(ch: PdfCharacter) -> tuple[float, float] | None:
     return float(box.x), y
 
 
+def is_drop_cap_style_span(chars: list[PdfCharacter]) -> bool:
+    """True if *chars* is padding + one drop-cap letter + padding (OA Trajan W)."""
+    letters = [
+        ch
+        for ch in chars
+        if not (ch.char_unicode or "").isspace()
+    ]
+    return len(letters) == 1 and is_drop_cap_letter(letters[0])
+
+
+def strip_drop_cap_padding(
+    chars: list[PdfCharacter],
+) -> list[PdfCharacter]:
+    """Remove sidebearing spaces around a drop-cap that rejoins a word.
+
+    OA p3 paints Trajan ``[space][W][space]`` then ``elcome``. Those spaces
+    are visual padding, not a word gap; leaving them yields ``W elcome``.
+    """
+    if not chars or len(chars) < 2:
+        return chars
+    remove: set[int] = set()
+    for i, ch in enumerate(chars):
+        if not is_drop_cap_letter(ch):
+            continue
+        j = i + 1
+        while j < len(chars) and (chars[j].char_unicode or "").isspace():
+            j += 1
+        if j >= len(chars) or not is_drop_cap_pair(ch, chars[j]):
+            continue
+        k = i - 1
+        while k >= 0 and (chars[k].char_unicode or "").isspace():
+            remove.add(k)
+            k -= 1
+        k = i + 1
+        while k < len(chars) and (chars[k].char_unicode or "").isspace():
+            remove.add(k)
+            k += 1
+    if not remove:
+        return chars
+    return [ch for i, ch in enumerate(chars) if i not in remove]
+
+
 def place_drop_caps_before_continuations(
     chars: list[PdfCharacter],
 ) -> list[PdfCharacter]:

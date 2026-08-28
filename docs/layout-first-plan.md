@@ -1,8 +1,11 @@
 # BabelDOC 排版优先（Layout-First）整体方案 v2.1
 
+> **2026-08-13 — Historical.** P0–P2 largely landed. **Do not schedule from this file.**  
+> Active queue: [`oa-dual-quality-wave-0.6.4.69.md`](oa-dual-quality-wave-0.6.4.69.md) · index: [`PLAN-INDEX.md`](PLAN-INDEX.md)
+
 | 字段 | 值 |
 |------|-----|
-| 状态 | Draft v2.1（内部 3 人评审 + 外部评审两轮修订） |
+| 状态 | **Historical** (v2.1). Remaining OA wrap shreds → wave W4c |
 | 日期 | 2026-08-03 |
 | 基线 | 5cf4962（0.6.4.50） |
 | 内部评审 | 架构/语义/实施 3 人组：v2 已吸收 9 高/13 中/6 低 |

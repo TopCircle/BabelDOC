@@ -520,7 +520,7 @@ class QuoteDetector:
 
     def __init__(
         self,
-        narrow_threshold: float = 0.8,
+        narrow_threshold: float = 0.70,
         indent_threshold: float = 0.15,
         right_margin_threshold: float = 0.05,
     ):
@@ -1118,7 +1118,7 @@ class PostLayoutProcessor:
         self,
         context: DocumentContext,
         typesetter: Typesetting | None = None,
-        quote_narrow_threshold: float = 0.8,
+        quote_narrow_threshold: float = 0.70,
         quote_indent_threshold: float = 0.15,
         quote_right_margin_threshold: float = 0.05,
     ):

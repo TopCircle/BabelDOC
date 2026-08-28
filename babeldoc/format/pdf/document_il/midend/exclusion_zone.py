@@ -113,7 +113,7 @@ class ExclusionZoneBuilder:
 @dataclass
 class QuoteZoneConfig:
     """Quote 区域检测参数。"""
-    narrow_threshold: float = 0.8
+    narrow_threshold: float = 0.70
     # Must exceed typical body page margin (~5–12%); see is_quote_block.
     indent_threshold: float = 0.15
     right_margin_threshold: float = 0.05
@@ -134,7 +134,7 @@ def _para_is_quote_for_zone(
 
     With ``enable_legacy_quote_geometry=False`` (default after P2):
     - WRAP_COLUMN / figure-wrap never become quotes
-    - if layout_intent present: only PULL_QUOTE
+    - if layout_intent present: PULL_QUOTE or CALLOUT (left gutter red bar)
     - if no intent: fall back to is_quote_block (extract miss)
     With flag True: always is_quote_block (pre-intent behaviour).
     """
@@ -152,7 +152,10 @@ def _para_is_quote_for_zone(
             role = getattr(intent, "role", None)
             if role is LayoutIntentRole.WRAP_COLUMN:
                 return False
-            return role is LayoutIntentRole.PULL_QUOTE
+            return role in (
+                LayoutIntentRole.PULL_QUOTE,
+                LayoutIntentRole.CALLOUT,
+            )
     return is_quote_block(
         para,
         page_width,
@@ -160,6 +163,28 @@ def _para_is_quote_for_zone(
         indent_threshold=config.indent_threshold,
         right_margin_threshold=config.right_margin_threshold,
     )
+
+
+def _quote_zone_source_box(para: PdfParagraph) -> Box | None:
+    """Box that should spawn the quote/callout exclusion zone.
+
+    Prefer ``layout_intent.design_box`` so a later FULL_MEASURE / pre-expand
+    that inflates ``para.box`` (OA p91 callout 54–211 → 54–494) cannot
+    publish a page-wide zone.
+    """
+    intent = getattr(para, "layout_intent", None)
+    if intent is not None:
+        design = getattr(intent, "design_box", None)
+        if design is not None and not any(
+            getattr(design, attr, None) is None for attr in ("x", "y", "x2", "y2")
+        ):
+            return design
+    box = getattr(para, "box", None)
+    if box is None or any(
+        getattr(box, attr, None) is None for attr in ("x", "y", "x2", "y2")
+    ):
+        return None
+    return box
 
 
 def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZone]:
@@ -189,7 +214,9 @@ def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZ
         if is_layout_debug_stub(para):
             continue
 
-        box = para.box
+        box = _quote_zone_source_box(para)
+        if box is None:
+            continue
         para_width = box.x2 - box.x
         width_ratio = para_width / page_width if page_width > 0 else 1.0
         left_indent = box.x
@@ -227,7 +254,6 @@ def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZ
         )
         left_margin, top_margin, right_margin, bottom_margin = margins
 
-        box = para.box
         exclusion_box = Box(
             x=box.x - left_margin,
             y=box.y - bottom_margin,

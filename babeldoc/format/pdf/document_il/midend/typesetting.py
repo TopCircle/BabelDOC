@@ -3348,17 +3348,17 @@ class Typesetting:
             and intervals
             and len(intervals) == 1
         ):
-            ix1, ix2 = intervals[0]
-            if (ix2 - ix1) < CJK_WRAP_MIN_LINE_WIDTH:
-                cleaned = sanitize_wrap_shape_for_cjk(plan.wrap_shape)
-                widened = wrap_interval(
-                    plan.design_box,
-                    cleaned,
-                    line_idx,
-                    plan.wrap_mode,
-                    layout_box=plan.layout_box,
-                )
-                intervals = [widened]
+            cleaned = sanitize_wrap_shape_for_cjk(plan.wrap_shape)
+            if cleaned:
+                intervals = [
+                    wrap_interval(
+                        plan.design_box,
+                        cleaned,
+                        line_idx,
+                        plan.wrap_mode,
+                        layout_box=plan.layout_box,
+                    )
+                ]
         return intervals
 
     @staticmethod

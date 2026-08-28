@@ -118,10 +118,18 @@ class TestIsQuoteBlock:
     def test_normal_text_not_detected(self):
         """普通正文段落不应该被检测为 Quote。"""
         # 正文: x=50..562, y=100..200 (宽度=512, 页面宽度=612)
-        # 宽度比例 = 512/612 ≈ 0.84 > 0.8 ✗
+        # 宽度比例 = 512/612 ≈ 0.84 > 0.70 ✗
         para = _make_paragraph(
             chars=[_make_char(50, 100, 562, 200)],
             layout_box=Box(x=50, y=100, x2=562, y2=200),
+        )
+        assert is_quote_block(para, 612.0) is False
+
+    def test_oa_p91_body_column_not_detected(self):
+        """OA p91 470pt body (width/page ≈ 0.77) is not a quote."""
+        para = _make_paragraph(
+            chars=[_make_char(102, 357, 572, 459)],
+            layout_box=Box(x=102.18, y=357.24, x2=572.57, y2=459.24),
         )
         assert is_quote_block(para, 612.0) is False
 
@@ -164,7 +172,7 @@ class TestIsQuoteBlock:
     def test_custom_thresholds(self):
         """自定义阈值应该生效。"""
         # 宽度=300, 页面宽度=612
-        # 默认阈值 narrow_threshold=0.8: 300/612 ≈ 0.49 < 0.8 ✓
+        # 默认阈值 narrow_threshold=0.70: 300/612 ≈ 0.49 < 0.70 ✓
         para = _make_paragraph(
             chars=[_make_char(100, 100, 400, 200)],
             layout_box=Box(x=100, y=100, x2=400, y2=200),

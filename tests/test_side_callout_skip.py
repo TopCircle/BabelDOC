@@ -6,6 +6,11 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
+from babeldoc.format.pdf.document_il.midend.il_translator import ILTranslator
+from babeldoc.format.pdf.document_il.utils.side_callout_skip import find_pullquote_host
+from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
+    is_near_full_pullquote,
+)
 from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
     is_pullquote_duplicate_of_body,
 )
@@ -15,6 +20,9 @@ from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
 from babeldoc.format.pdf.document_il.utils.side_callout_skip import normalize_for_dup
 from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
     should_skip_side_callout_mt,
+)
+from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
+    side_callout_debug_extra,
 )
 
 
@@ -71,7 +79,10 @@ def test_side_callout_contained_in_body_is_duplicate():
     page = _page(body, callout)
     assert is_pullquote_duplicate_of_body(callout, page) is True
     assert is_pullquote_duplicate_of_body(body, page) is False
-    assert should_skip_side_callout_mt(callout, page) is True
+    assert find_pullquote_host(callout, page) is body
+    # Host = quote + extra sentence → excerpt, not near-full; MT once.
+    assert is_near_full_pullquote(callout, body) is False
+    assert should_skip_side_callout_mt(callout, page) is False
 
 
 def test_unique_body_not_duplicate():
@@ -133,13 +144,15 @@ def test_pullquote_always_skips_even_in_expand_mode():
         "area and enables her to experience a deeper pleasure sensation and a "
         "repeated series of pulses"
     )
+    # Short attribution → near-full (ratio >= 0.85); skip in every mode.
     body = _para(
-        f'"{quote}," says Laura Berman, author of The Passion Prescription.',
+        f'"{quote}," says Laura Berman.',
         x=102,
         x2=360,
     )
     callout = _para(quote, x=360, x2=560)
     page = _page(body, callout)
+    assert is_near_full_pullquote(callout, body) is True
     assert should_skip_side_callout_mt(callout, page, mode="expand") is True
     assert should_skip_side_callout_mt(callout, page, mode="keep_en") is True
 
@@ -187,6 +200,29 @@ def test_title_not_ultra_narrow_even_if_narrow_box():
     assert is_ultra_narrow_side_callout(title, page) is False
 
 
+def test_side_callout_debug_extra_is_bounded_geometry():
+    """Helper exposes ratios/branch only — no text payload."""
+    right = _para(QUOTE, x=360, x2=560)
+    left = _para(QUOTE, x=0, x2=80)
+    page = _page(right, left)
+    right_extra = side_callout_debug_extra(right, page)
+    left_extra = side_callout_debug_extra(left, page)
+    assert right_extra is not None
+    assert left_extra is not None
+    assert set(right_extra) == {
+        "left_ratio",
+        "right_ratio",
+        "width_ratio",
+        "matched_branch",
+    }
+    assert right_extra["matched_branch"] == "right_margin_indent"
+    assert left_extra["matched_branch"] == "left_margin_gutter"
+    assert isinstance(right_extra["left_ratio"], float)
+    assert "text" not in right_extra
+    assert "unicode" not in right_extra
+    assert side_callout_debug_extra(right, None) is None
+
+
 def test_compat_reexport_from_pullquote_dedupe():
     """Older imports via pullquote_dedupe still resolve."""
     from babeldoc.format.pdf.document_il.utils import pullquote_dedupe as pq
@@ -204,3 +240,140 @@ def test_compat_reexport_from_pullquote_dedupe():
     # default expand → translate; keep_en still skips
     assert pq.should_skip_side_callout_mt(callout, page) is False
     assert pq.should_skip_side_callout_mt(callout, page, mode="keep_en") is True
+
+
+def test_excerpt_pullquote_is_not_near_full_and_does_not_skip():
+    """Host = quote + extra sentence: substring but ratio < 0.85 → MT once."""
+    extra = (
+        " This is an extra sentence about Kegels that makes the host "
+        "substantially longer than the pull-quote itself."
+    )
+    body = _para(QUOTE + extra, x=102, x2=360)
+    callout = _para(QUOTE, x=360, x2=560)
+    page = _page(body, callout)
+    assert is_pullquote_duplicate_of_body(callout, page) is True
+    assert find_pullquote_host(callout, page) is body
+    assert is_near_full_pullquote(QUOTE, QUOTE + extra) is False
+    assert is_near_full_pullquote(callout, body) is False
+    assert should_skip_side_callout_mt(callout, page) is False
+    assert should_skip_side_callout_mt(callout, page, mode="expand") is False
+    assert should_skip_side_callout_mt(callout, page, mode="keep_en") is False
+
+
+def test_near_full_pullquote_skips_mt():
+    """Quote ≈ host (ratio >= 0.85) → skip MT; copy host ZH later."""
+    body = _para(f'"{QUOTE}," says Laura Berman.', x=102, x2=360)
+    callout = _para(QUOTE, x=360, x2=560)
+    page = _page(body, callout)
+    assert is_near_full_pullquote(callout, body) is True
+    assert is_near_full_pullquote(QUOTE, f'"{QUOTE}," says Laura Berman.') is True
+    assert should_skip_side_callout_mt(callout, page) is True
+
+
+def test_near_full_via_stripped_quotes_whitespace():
+    assert is_near_full_pullquote(f'  "{QUOTE}"  ', QUOTE) is True
+
+
+def test_apply_zh_to_quote_is_shorter_than_long_host_zh():
+    """Excerpt never uses _apply; applied ZH must not be the full host."""
+    quote = _para(QUOTE, x=360, x2=560)
+    excerpt_zh = "加强它们会增加该区域的血流并带来更深的快感。"
+    host_zh = excerpt_zh + "劳拉·伯曼，《激情处方》作者说。"
+    ILTranslator._apply_zh_to_quote(quote, excerpt_zh)
+    assert quote.unicode == excerpt_zh
+    assert len(quote.unicode) < len(host_zh)
+    comps = quote.pdf_paragraph_composition
+    assert len(comps) == 1
+    ssu = comps[0].pdf_same_style_unicode_characters
+    assert ssu is not None
+    assert ssu.unicode == excerpt_zh
+    assert any("\u4e00" <= ch <= "\u9fff" for ch in ssu.unicode)
+    assert ssu.pdf_style is quote.pdf_style
+
+
+def test_apply_stashed_near_full_copies_host_zh_when_cjk():
+    quote = _para(QUOTE, x=360, x2=560)
+    host = _para(f'"{QUOTE}," says Laura Berman.', x=102, x2=360)
+    host_zh = "由于她的高潮本质上是盆底肌的强烈收缩，劳拉·伯曼说。"
+    host.unicode = host_zh
+    page = _page(host, quote)
+    tr = object.__new__(ILTranslator)
+    tr.docs = type("Docs", (), {"page": [page]})()
+    tr._near_full_pullquotes = {
+        id(quote): {
+            "host_obj_id": id(host),
+            "quote_debug_id": getattr(quote, "debug_id", None),
+            "host_debug_id": getattr(host, "debug_id", None),
+            "kind": "near_full",
+        }
+    }
+    tr._apply_stashed_near_full_pullquotes()
+    assert quote.unicode == host_zh
+    ssu = quote.pdf_paragraph_composition[0].pdf_same_style_unicode_characters
+    assert ssu.unicode == host_zh
+    assert ssu.pdf_style is quote.pdf_style
+    assert tr._near_full_pullquotes == {}
+
+
+def test_apply_stashed_near_full_leaves_en_when_host_has_no_cjk():
+    quote = _para(QUOTE, x=360, x2=560)
+    host = _para(f'"{QUOTE}," says Laura Berman.', x=102, x2=360)
+    page = _page(host, quote)
+    tr = object.__new__(ILTranslator)
+    tr.docs = type("Docs", (), {"page": [page]})()
+    tr._near_full_pullquotes = {
+        id(quote): {
+            "host_obj_id": id(host),
+            "quote_debug_id": None,
+            "host_debug_id": None,
+            "kind": "near_full",
+        }
+    }
+    tr._apply_stashed_near_full_pullquotes()
+    assert quote.unicode == QUOTE
+    assert quote.pdf_paragraph_composition == []
+
+
+def test_classify_near_full_uses_en_even_if_host_later_becomes_cjk():
+    """process_page-level classify must not rematch live post-MT host unicode.
+
+    Longer hosts finish MT first; normalize_for_dup then strips CJK and a
+    worker rematch would send the quote to MT. Stash from pre-MT EN +
+    apply-by-id still copies host ZH.
+    """
+    host = _para(f'"{QUOTE}," says Laura Berman.', x=102, x2=360)
+    quote = _para(QUOTE, x=360, x2=560)
+    page = _page(host, quote)
+    tr = object.__new__(ILTranslator)
+    tr._near_full_pullquotes = {}
+    tr._classify_near_full_pullquotes(page)
+    assert id(quote) in tr._near_full_pullquotes
+    assert tr._near_full_pullquotes[id(quote)]["host_obj_id"] == id(host)
+    assert tr._near_full_pullquotes[id(quote)]["kind"] == "near_full"
+
+    host_zh = "由于她的高潮本质上是盆底肌的强烈收缩，劳拉·伯曼说。"
+    host.unicode = host_zh
+    # Worker rematch on live unicode would miss; skip is stash membership.
+    assert find_pullquote_host(quote, page) is None
+    assert should_skip_side_callout_mt(quote, page) is False
+    assert id(quote) in tr._near_full_pullquotes
+
+    tr.docs = type("Docs", (), {"page": [page]})()
+    tr._apply_stashed_near_full_pullquotes()
+    assert quote.unicode == host_zh
+    ssu = quote.pdf_paragraph_composition[0].pdf_same_style_unicode_characters
+    assert ssu.unicode == host_zh
+
+
+def test_classify_excerpt_is_not_stashed():
+    extra = (
+        " This is an extra sentence about Kegels that makes the host "
+        "substantially longer than the pull-quote itself."
+    )
+    host = _para(QUOTE + extra, x=102, x2=360)
+    quote = _para(QUOTE, x=360, x2=560)
+    page = _page(host, quote)
+    tr = object.__new__(ILTranslator)
+    tr._near_full_pullquotes = {}
+    tr._classify_near_full_pullquotes(page)
+    assert id(quote) not in tr._near_full_pullquotes
