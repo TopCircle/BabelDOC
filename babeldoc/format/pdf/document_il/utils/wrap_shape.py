@@ -193,12 +193,18 @@ def should_fallback_wrap_to_block(
 ) -> bool:
     """True when CJK should abandon pin wrap and use full design width.
 
-    Triggers when pin layout never fits, or fits only by overflowing into
-    far more lines than the EN wrap shape implies.
+    Triggers when pin layout never fits, or fits only by overflowing beyond
+    the translated paragraph's source wrap budget. A single extra line is
+    tolerated for normal language expansion; larger growth makes reusing the
+    English tail geometry unsafe, especially with CJK over figures.
     """
     if not wrap_shape:
         return False
-    budget = wrap_line_budget(wrap_shape)
+    # ``wrap_line_budget`` keeps a generous legacy margin for rough capacity
+    # estimates. This is a safety gate: once translated text exceeds the
+    # source shape by more than one line, abandon stale pin geometry and let
+    # the FULL_MEASURE attempt reflow.
+    budget = len(wrap_shape) + 1
     n_lines = count_typeset_baselines(typeset_units)
     if not all_units_fit and (typeset_units is None or n_lines >= budget):
         return True

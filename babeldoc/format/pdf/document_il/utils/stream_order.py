@@ -323,6 +323,62 @@ def sort_line_compositions_if_stream_climbs(
     )
 
 
+def reorder_plain_paragraph_runs_if_stream_climbs(
+    paragraphs: list[Any],
+) -> bool:
+    """Repair bottom-to-top paragraph runs in one plain-text xobject."""
+    if len(paragraphs) < 3:
+        return False
+
+    plain_labels = {"", "plain text", "text", "paragraph", "paragraph_hybrid"}
+    changed = False
+    start = 0
+    while start < len(paragraphs):
+        first = paragraphs[start]
+        label = (getattr(first, "layout_label", None) or "").strip().lower()
+        xobj_id = getattr(first, "xobj_id", None)
+        if label not in plain_labels or xobj_id is None:
+            start += 1
+            continue
+
+        end = start + 1
+        while end < len(paragraphs):
+            paragraph = paragraphs[end]
+            next_label = (
+                getattr(paragraph, "layout_label", None) or ""
+            ).strip().lower()
+            if (
+                next_label not in plain_labels
+                or getattr(paragraph, "xobj_id", None) != xobj_id
+            ):
+                break
+            end += 1
+
+        run = paragraphs[start:end]
+        if len(run) >= 3:
+            boxes = [getattr(paragraph, "box", None) for paragraph in run]
+            y2_values = [getattr(box, "y2", None) for box in boxes]
+            if all(value is not None for value in y2_values) and all(
+                box is not None and box.x is not None and box.x2 is not None
+                for box in boxes
+            ):
+                climbs = sum(b > a + 2.0 for a, b in zip(y2_values, y2_values[1:]))
+                drops = sum(b < a - 2.0 for a, b in zip(y2_values, y2_values[1:]))
+                # A wrapped continuation can be much narrower than the
+                # surrounding body paragraphs. Use the median text span
+                # rather than requiring every fragment to share one width.
+                lefts = sorted(float(box.x) for box in boxes)
+                rights = sorted(float(box.x2) for box in boxes)
+                midpoint = len(boxes) // 2
+                median_left = lefts[midpoint]
+                median_right = rights[midpoint]
+                if climbs >= 2 and climbs > drops and median_right > median_left:
+                    paragraphs[start:end] = sorted(run, key=lambda paragraph: -paragraph.box.y2)
+                    changed = True
+        start = end
+    return changed
+
+
 # Narrow callout / design columns (OA TAKING CHARGE ~190pt wide).
 _MULTILINE_CLIMB_MAX_WIDTH = 240.0
 # Wide body may still bottom→top paint (OA p19 intro); require stronger climb.

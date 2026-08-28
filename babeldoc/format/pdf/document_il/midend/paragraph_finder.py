@@ -36,6 +36,9 @@ from babeldoc.format.pdf.document_il.utils.layout_helper import _cluster_chars_b
 from babeldoc.format.pdf.document_il.utils.paragraph_helper import is_cid_paragraph
 from babeldoc.format.pdf.document_il.utils.style_helper import INDIGO
 from babeldoc.format.pdf.document_il.utils.style_helper import WHITE
+from babeldoc.format.pdf.document_il.utils.stream_order import (
+    reorder_plain_paragraph_runs_if_stream_climbs,
+)
 from babeldoc.format.pdf.translation_config import TranslationConfig
 
 logger = logging.getLogger(__name__)
@@ -506,6 +509,11 @@ class ParagraphFinder:
 
         for paragraph in paragraphs:
             self.update_paragraph_data(paragraph, update_unicode=True, page=page)
+
+        # Narrow design-PDF policy: repair contiguous plain-text runs sharing
+        # one xobject when the source paints paragraphs bottom-to-top.
+        reorder_plain_paragraph_runs_if_stream_climbs(paragraphs)
+        page.pdf_paragraph = paragraphs
 
         if self.translation_config.ocr_workaround:
             self.add_text_fill_background(page)

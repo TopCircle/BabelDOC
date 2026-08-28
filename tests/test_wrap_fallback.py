@@ -59,6 +59,16 @@ class TestShouldFallbackWrapToBlock:
             is True
         )
 
+    def test_translation_growth_beyond_one_extra_line_fallback(self):
+        shape = [(0, 194), (0, 174), (0, 143), (0, 67)]
+        units = [_U(500 - 10 * i) for i in range(6)]
+        assert (
+            should_fallback_wrap_to_block(
+                wrap_shape=shape, typeset_units=units, all_units_fit=True
+            )
+            is True
+        )
+
     def test_no_shape_no_fallback(self):
         assert (
             should_fallback_wrap_to_block(

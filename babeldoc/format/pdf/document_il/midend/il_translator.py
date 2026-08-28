@@ -512,6 +512,15 @@ class ILTranslator:
     #: Rich-text bold markers that split a chapter marker ("Chapter " bold +
     #: "9" regular) and make MT fuse it into "Chapter9直接卷曲".
     _RICH_TEXT_MARKER_RE = re.compile(r"[〖\u3016]/?B\d+[〗\u3017]")
+    #: A complete ``Chapter N`` marker can be translated without discarding
+    #: its source style.  Split markers are handled by the legacy fallback
+    #: below because there is no single style span to preserve.
+    _RICH_TEXT_CHAPTER_RE = re.compile(
+        r"(?P<open>[〖\u3016]B(?P<id>\d+)[〗\u3017])"
+        r"(?P<lead>\s*)Chapter\s*(?P<number>\d{1,3})(?P<trail>\s*)"
+        r"(?P<close>[〖\u3016]/B(?P=id)[〗\u3017])",
+        re.IGNORECASE,
+    )
     _CJK_CHAR_RE = re.compile(r"[\u4e00-\u9fff]")
     _CN_DIGITS = "零一二三四五六七八九"
 
@@ -541,14 +550,41 @@ class ILTranslator:
         """Replace ``Chapter N`` (plain or rich-text-split) with ``第N章``.
 
         Chapter names are titles to translate; MT often leaves the marker
-        English (p82 "Chapter9直接卷曲") and rich-text bold markers can split
-        "Chapter " from "9" inside the MT input.  When a replacement happens,
-        the rich-text markers are dropped (the bold run no longer exists), so
-        the engine sees a clean "第N章 ..." input.
+        English (p82 "Chapter9直接卷曲").  A complete rich-text span keeps its
+        style while a marker split across spans uses the compatibility fallback
+        and is flattened before the engine sees a clean ``第N章`` input.
         """
         if not text:
             return text
-        cleaned = cls._RICH_TEXT_MARKER_RE.sub("", text)
+
+        # Preserve a style span when it contains the complete chapter marker.
+        # Placeholders avoid stripping these protected markers in the fallback
+        # cleanup, while keeping the implementation independent of the marker
+        # ids chosen by the upstream translator.
+        protected: list[str] = []
+
+        def _protect_rich_chapter(match: re.Match) -> str:
+            try:
+                n = int(match.group("number"))
+            except (TypeError, ValueError):
+                return match.group(0)
+            token = f"__RICH_CHAPTER_{len(protected)}__"
+            replacement = (
+                match.group("open")
+                + match.group("lead")
+                + "第"
+                + cls._cn_numeral(n)
+                + "章"
+                + match.group("trail")
+                + match.group("close")
+            )
+            protected.append(replacement)
+            return token
+
+        protected_text = cls._RICH_TEXT_CHAPTER_RE.sub(
+            _protect_rich_chapter, text
+        )
+        cleaned = cls._RICH_TEXT_MARKER_RE.sub("", protected_text)
 
         def _repl(m: re.Match) -> str:
             try:
@@ -558,7 +594,9 @@ class ILTranslator:
             return "第" + cls._cn_numeral(n) + "章"
 
         fixed = cls._CHAPTER_MARKER_RE.sub(_repl, cleaned)
-        if fixed == cleaned:
+        for index, replacement in enumerate(protected):
+            fixed = fixed.replace(f"__RICH_CHAPTER_{index}__", replacement)
+        if fixed == text:
             return text  # nothing changed: keep markers untouched
         return fixed
 

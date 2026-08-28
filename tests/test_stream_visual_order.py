@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
+from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
@@ -17,6 +18,9 @@ from babeldoc.format.pdf.document_il.utils.stream_order import (
 )
 from babeldoc.format.pdf.document_il.utils.stream_order import (
     sort_chars_visual_order,
+)
+from babeldoc.format.pdf.document_il.utils.stream_order import (
+    reorder_plain_paragraph_runs_if_stream_climbs,
 )
 
 
@@ -185,3 +189,38 @@ def test_ltr_body_line_not_reordered_when_sort_would_shuffle_noise():
     word = list("compositeoperation")
     chars = [_ch(ch, 50 + i * 5) for i, ch in enumerate(word)]
     assert maybe_reorder_reversed_stream(chars) is chars
+
+
+def _paragraph(
+    text: str,
+    *,
+    y: float,
+    xobj_id: int = 0,
+    label: str = "plain text",
+) -> PdfParagraph:
+    return PdfParagraph(
+        box=Box(x=100, y=y, x2=500, y2=y + 30),
+        pdf_paragraph_composition=[],
+        unicode=text,
+        xobj_id=xobj_id,
+        layout_label=label,
+    )
+
+
+def test_reorders_plain_paragraph_run_when_stream_climbs():
+    paragraphs = [
+        _paragraph("bottom", y=100),
+        _paragraph("middle", y=140),
+        _paragraph("top", y=180),
+    ]
+    assert reorder_plain_paragraph_runs_if_stream_climbs(paragraphs) is True
+    assert [p.unicode for p in paragraphs] == ["top", "middle", "bottom"]
+
+
+def test_does_not_reorder_mixed_xobject_or_title_run():
+    paragraphs = [
+        _paragraph("bottom", y=100),
+        _paragraph("middle", y=140, xobj_id=1),
+        _paragraph("top", y=180, label="title"),
+    ]
+    assert reorder_plain_paragraph_runs_if_stream_climbs(paragraphs) is False

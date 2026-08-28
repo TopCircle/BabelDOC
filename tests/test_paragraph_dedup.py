@@ -216,6 +216,11 @@ def test_fix_untranslated_chapter_markers():
     assert ILTranslator.fix_untranslated_chapter_markers(
         "〖B0〗Chapter 〖/B0〗9 the dIrect curL"
     ) == "第九章 the dIrect curL"
+    # A complete style span must survive the chapter-marker rewrite so the
+    # red chapter number remains red in the dual PDF.
+    assert ILTranslator.fix_untranslated_chapter_markers(
+        "〖B0〗Chapter 10〖/B0〗 the Indirect thrust"
+    ) == "〖B0〗第十章〖/B0〗 the Indirect thrust"
     # Chinese-numeral conversion for teens / tens.
     assert ILTranslator._cn_numeral(3) == "三"
     assert ILTranslator._cn_numeral(9) == "九"
