@@ -18,8 +18,16 @@ from babeldoc.format.pdf.document_il import PdfParagraphComposition
 from babeldoc.format.pdf.document_il import PdfSameStyleUnicodeCharacters
 from babeldoc.format.pdf.document_il import PdfStyle
 from babeldoc.format.pdf.document_il import il_version_1
+from babeldoc.format.pdf.document_il.utils.layout_helper import get_paragraph_unicode
+from babeldoc.format.pdf.document_il.utils.layout_helper import is_bullet_point
 
 logger = logging.getLogger(__name__)
+
+# The source books keep their hollow-circle bullet as a positioned glyph at
+# the paragraph's left edge.  Translation providers may move the placeholder
+# into the translated sentence; only bullets whose original glyph is still at
+# that edge are safe to move back.  Inline decorative bullets are left alone.
+_BULLET_GUTTER_TOLERANCE = 6.0
 
 # Leading list markers (EN/CJK dual hanging indent).
 # Digits: full range. Letters: **a–d / A–D only** (quiz options) — avoid
@@ -244,6 +252,87 @@ def normalize_list_marker_on_paragraph(
                 ssu.unicode = new_c
                 changed = True
     return changed
+
+
+def _composition_characters(composition: PdfParagraphComposition) -> list:
+    """Return positioned characters carried by one composition."""
+    if composition.pdf_line is not None:
+        return list(composition.pdf_line.pdf_character or [])
+    if composition.pdf_character is not None:
+        return [composition.pdf_character]
+    if composition.pdf_same_style_characters is not None:
+        return list(composition.pdf_same_style_characters.pdf_character or [])
+    if composition.pdf_formula is not None:
+        return list(composition.pdf_formula.pdf_character or [])
+    return []
+
+
+def _is_source_leading_bullet(
+    paragraph: il_version_1.PdfParagraph,
+    composition: PdfParagraphComposition,
+) -> bool:
+    """Whether ``composition`` is a source-positioned bullet-only run."""
+    chars = _composition_characters(composition)
+    if not chars or paragraph.box is None or paragraph.box.x is None:
+        return False
+    bullet_chars = [char for char in chars if is_bullet_point(char)]
+    if not bullet_chars:
+        return False
+    # Never move a mixed text line: this helper is for a marker run only.
+    if any(
+        char.char_unicode
+        and not char.char_unicode.isspace()
+        and not is_bullet_point(char)
+        for char in chars
+    ):
+        return False
+    positioned = [
+        char.box.x
+        for char in bullet_chars
+        if char.box is not None and char.box.x is not None
+    ]
+    if not positioned:
+        return False
+    return min(positioned) <= float(paragraph.box.x) + _BULLET_GUTTER_TOLERANCE
+
+
+def normalize_leading_bullets_on_paragraph(
+    paragraph: il_version_1.PdfParagraph,
+) -> bool:
+    """Restore source-leading symbol bullets to the first composition.
+
+    DeepLX can move the ``{vN}`` placeholder for a red hollow-circle glyph
+    into the middle or end of Chinese output.  The glyph retains its source
+    x-coordinate, which lets us distinguish a list marker from an intentional
+    inline bullet without changing the latter.
+    """
+    compositions = list(paragraph.pdf_paragraph_composition or [])
+    if len(compositions) < 2:
+        return False
+    leading: list[PdfParagraphComposition] = []
+    remaining: list[PdfParagraphComposition] = []
+    for composition in compositions:
+        if _is_source_leading_bullet(paragraph, composition):
+            leading.append(composition)
+        else:
+            remaining.append(composition)
+    if not leading or compositions[: len(leading)] == leading:
+        return False
+    paragraph.pdf_paragraph_composition = leading + remaining
+    paragraph.unicode = get_paragraph_unicode(paragraph)
+    return True
+
+
+def normalize_leading_bullets_on_document(document: il_version_1.Document) -> int:
+    """Restore source-leading symbol bullets across all translated pages."""
+    count = 0
+    for page in document.page or []:
+        for paragraph in page.pdf_paragraph or []:
+            if normalize_leading_bullets_on_paragraph(paragraph):
+                count += 1
+    if count:
+        logger.info("Restored %d leading symbol bullet(s)", count)
+    return count
 
 
 def reattach_trailing_list_markers(

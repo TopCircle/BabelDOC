@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import pytest
-
 from babeldoc.format.pdf.document_il.il_version_1 import Box
+from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
+from babeldoc.format.pdf.document_il.il_version_1 import PdfFormula
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
 from babeldoc.format.pdf.document_il.il_version_1 import PdfSameStyleUnicodeCharacters
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.utils.list_marker_repair import (
     expand_glued_quiz_options_text,
+)
+from babeldoc.format.pdf.document_il.utils.list_marker_repair import (
+    normalize_leading_bullets_on_paragraph,
+)
+from babeldoc.format.pdf.document_il.utils.list_marker_repair import (
     split_glued_quiz_options_on_page,
 )
 
@@ -93,3 +99,69 @@ class TestSplitGluedQuizParagraphs:
         assert len(out) == 1
         assert out[0].unicode.startswith("a.")
         assert "a.a." not in out[0].unicode
+
+
+class TestLeadingSymbolBulletRepair:
+    def _bullet_formula(self, x: float = 56.0) -> PdfParagraphComposition:
+        style = PdfStyle(font_id="bullet", font_size=11.0, graphic_state=None)
+        bullet = PdfCharacter(
+            pdf_style=style,
+            box=Box(x=x, y=120, x2=x + 6, y2=132),
+            char_unicode="\uf643",
+            advance=0.512,
+        )
+        space = PdfCharacter(
+            pdf_style=style,
+            box=Box(x=x + 6, y=120, x2=x + 12, y2=132),
+            char_unicode=" ",
+            advance=6.0,
+        )
+        return PdfParagraphComposition(
+            pdf_formula=PdfFormula(
+                box=Box(x=x, y=120, x2=x + 12, y2=132),
+                pdf_character=[bullet, space],
+                x_offset=0,
+                y_offset=0,
+            )
+        )
+
+    def test_private_use_bullet_moves_to_paragraph_start(self):
+        p = _para("您的恋人上一次高潮\uf643是什么时候？")
+        p.pdf_paragraph_composition = [
+            PdfParagraphComposition(
+                pdf_same_style_unicode_characters=PdfSameStyleUnicodeCharacters(
+                    unicode="您的恋人上一次高潮",
+                    pdf_style=p.pdf_style,
+                )
+            ),
+            self._bullet_formula(),
+            PdfParagraphComposition(
+                pdf_same_style_unicode_characters=PdfSameStyleUnicodeCharacters(
+                    unicode="是什么时候？",
+                    pdf_style=p.pdf_style,
+                )
+            ),
+        ]
+        assert normalize_leading_bullets_on_paragraph(p)
+        assert p.pdf_paragraph_composition[0].pdf_formula is not None
+        assert p.unicode.startswith("\uf643")
+
+    def test_inline_bullet_is_not_moved(self):
+        p = _para("标签\uf643正文")
+        p.pdf_paragraph_composition = [
+            PdfParagraphComposition(
+                pdf_same_style_unicode_characters=PdfSameStyleUnicodeCharacters(
+                    unicode="标签",
+                    pdf_style=p.pdf_style,
+                )
+            ),
+            self._bullet_formula(x=120.0),
+            PdfParagraphComposition(
+                pdf_same_style_unicode_characters=PdfSameStyleUnicodeCharacters(
+                    unicode="正文",
+                    pdf_style=p.pdf_style,
+                )
+            ),
+        ]
+        assert not normalize_leading_bullets_on_paragraph(p)
+        assert p.pdf_paragraph_composition[0].pdf_same_style_unicode_characters.unicode == "标签"

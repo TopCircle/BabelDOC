@@ -1958,6 +1958,9 @@ class Typesetting:
     normalize_list_markers_on_document = staticmethod(
         _list_markers.normalize_list_markers_on_document
     )
+    normalize_leading_bullets_on_document = staticmethod(
+        _list_markers.normalize_leading_bullets_on_document
+    )
     reattach_trailing_list_markers_on_document = staticmethod(
         _list_markers.reattach_trailing_list_markers_on_document
     )
@@ -2532,6 +2535,11 @@ class Typesetting:
         from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
             ExclusionZoneIndex,
         )
+
+        # Restore source-leading symbol bullets before numeric-list repair.
+        # Translation placeholders can otherwise land in the middle/end of
+        # the translated CJK sentence (OA dual p12 and similar pages).
+        Typesetting.normalize_leading_bullets_on_document(document)
 
         # ATU dual p21: serials glued to prior item ends → reattach so hang runs.
         Typesetting.reattach_trailing_list_markers_on_document(document)
