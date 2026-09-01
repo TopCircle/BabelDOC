@@ -58,6 +58,15 @@ LEADING_LIST_MARKER_DOT_RE = re.compile(
     r"^(?P<lead>\s*)(?P<num>\d{1,3}|[a-dA-D])\s*(?P<punct>[。．、])\s*"
 )
 
+# Translation may retain a source serial in the middle of an otherwise
+# list-shaped paragraph (``... pleasure 3. 慢慢来``) or at its end
+# (``... second step 3。``).  These are list markers, not decimal numbers:
+# require whitespace before the token and CJK/Latin text (or end-of-string)
+# after it.  The page pass below carries such markers to the next paragraph.
+EMBEDDED_NUMERIC_MARKER_RE = re.compile(
+    r"(?<!^)\s+(?P<marker>\d{1,3})\s*[\.．、。](?=\s*[\u4e00-\u9fffA-Za-z]|\s*$)"
+)
+
 # Mid-string tip serials only (Day 6 ``提示 3。最大值``) — not arbitrary ``a。``
 MID_LIST_IDEO_PERIOD_RE = re.compile(
     r"(?:提示|TIP|秘诀|Moregas\w*|MOREGASM)\s*"
@@ -149,6 +158,69 @@ def normalize_leading_list_marker_text(text: str | None) -> str | None:
         t,
     )
     return t2
+
+
+def _set_paragraph_unicode(paragraph: il_version_1.PdfParagraph, text: str) -> None:
+    """Keep paragraph unicode and its first text composition in sync."""
+    paragraph.unicode = text
+    comps = paragraph.pdf_paragraph_composition or []
+    if comps:
+        ssu = comps[0].pdf_same_style_unicode_characters
+        if ssu is not None:
+            ssu.unicode = text
+
+
+def normalize_embedded_numeric_markers_on_page(
+    paragraphs: list[il_version_1.PdfParagraph] | None,
+) -> int:
+    """Move misplaced numeric serials to list-item starts on one page.
+
+    A marker already leading its paragraph is retained.  Any later marker is
+    removed from that paragraph and carried to the next paragraph, matching
+    the source's one-item-per-paragraph structure.  The pass is deliberately
+    gated to paragraphs containing a numeric marker, so ordinary prose and
+    decimals are untouched.
+    """
+    if not paragraphs:
+        return 0
+    pending: list[str] = []
+    changed = 0
+    for para in paragraphs:
+        text = (getattr(para, "unicode", None) or "").replace("\xa0", " ")
+        if not text.strip():
+            continue
+        leading = LIST_MARKER_RE.match(text.lstrip())
+        embedded = list(EMBEDDED_NUMERIC_MARKER_RE.finditer(text))
+        if not leading and not embedded and not pending:
+            continue
+
+        # Remove embedded serials while preserving surrounding body text.
+        found = [m.group("marker") for m in embedded]
+        if embedded:
+            body = EMBEDDED_NUMERIC_MARKER_RE.sub(" ", text)
+            body = re.sub(r"[ \t]{2,}", " ", body).strip()
+            if leading:
+                marker_match = re.match(
+                    r"(?:\d{1,3}|[a-dA-D])\s*[\.．。、\)]", text.lstrip()
+                )
+                marker = normalize_list_marker_token(marker_match.group(0))
+                _set_paragraph_unicode(para, join_list_marker_to_body(marker, body))
+            elif pending:
+                _set_paragraph_unicode(para, join_list_marker_to_body(pending.pop(0), body))
+            else:
+                marker = normalize_list_marker_token(found.pop(0))
+                _set_paragraph_unicode(para, join_list_marker_to_body(marker, body))
+            changed += len(found) + 1
+        elif pending:
+            current = text.strip()
+            if not LIST_MARKER_RE.match(current):
+                _set_paragraph_unicode(para, join_list_marker_to_body(pending.pop(0), current))
+                changed += 1
+            else:
+                pending.pop(0)
+        if found:
+            pending.extend(normalize_list_marker_token(marker) for marker in found)
+    return changed
 
 
 def join_list_marker_to_body(marker: str, body: str) -> str:
@@ -630,6 +702,7 @@ def reattach_trailing_list_markers_on_document(
     """Page-wise pass; call once before typesetting."""
     total = 0
     for page in document.page or []:
+        normalize_embedded_numeric_markers_on_page(page.pdf_paragraph)
         # Quiz glue before reattach so hang sees clean serials
         if page.pdf_paragraph:
             page.pdf_paragraph = split_glued_quiz_options_on_page(

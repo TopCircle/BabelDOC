@@ -14,6 +14,9 @@ from babeldoc.format.pdf.document_il.utils.list_marker_repair import (
     expand_glued_quiz_options_text,
 )
 from babeldoc.format.pdf.document_il.utils.list_marker_repair import (
+    normalize_embedded_numeric_markers_on_page,
+)
+from babeldoc.format.pdf.document_il.utils.list_marker_repair import (
     normalize_leading_bullets_on_paragraph,
 )
 from babeldoc.format.pdf.document_il.utils.list_marker_repair import (
@@ -165,3 +168,22 @@ class TestLeadingSymbolBulletRepair:
         ]
         assert not normalize_leading_bullets_on_paragraph(p)
         assert p.pdf_paragraph_composition[0].pdf_same_style_unicode_characters.unicode == "标签"
+
+
+class TestEmbeddedNumericMarkerRepair:
+    def test_moves_mid_marker_to_item_start(self):
+        p = _para("让她保持高性唤起 3。慢慢来并寻求同意")
+        assert normalize_embedded_numeric_markers_on_page([p]) == 1
+        assert p.unicode.startswith("3.")
+        assert "3。" not in p.unicode
+
+    def test_carries_trailing_marker_to_next_item(self):
+        first = _para("1. 基本动作说明 2.")
+        second = _para("第一门动作是第二步 3。继续深入")
+        third = _para("如果她准备好了再继续")
+        normalize_embedded_numeric_markers_on_page([first, second, third])
+        assert first.unicode.startswith("1.")
+        assert not first.unicode.rstrip().endswith("2.")
+        assert second.unicode.startswith("2.")
+        assert "3。" not in second.unicode
+        assert third.unicode.startswith("3.")
