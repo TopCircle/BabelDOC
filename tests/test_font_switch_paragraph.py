@@ -417,3 +417,61 @@ class TestClosestFaceFromName:
         fid = mapped.font_id.lower()
         assert "sans" in fid
         assert "bold" in fid
+
+
+def test_whohas_title_splits_from_body():
+    """OA p7 WhohaSorgaSMS? (title face) must split from the 12pt body."""
+    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+        should_split_line_pair,
+    )
+
+    title = _line("WhohaSorgaSMS?", 316.0, "KSPF42")
+    body = _line("There is a myth rampant in our culture ", 288.0, "KSPF52")
+    assert should_split_line_pair(
+        title.pdf_line,
+        body.pdf_line,
+        median_width=400.0,
+        split_short_lines=False,
+        short_line_split_factor=0.5,
+        soft_mid_sentence_font_split=False,
+    )
+
+
+def test_hyphen_wrap_ligature_face_switch_not_split():
+    """OA S7: ``stu-`` body + ligature tail on another face stay one paragraph."""
+    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+        is_hyphen_wrap_continuation,
+        should_split_line_pair,
+    )
+
+    prev = _line("dig through your stu-", 200, "BodyFont")
+    curr = _line("\ufb00", 185, "LigFont", x0=50.0)
+    assert is_hyphen_wrap_continuation(prev.pdf_line, curr.pdf_line)
+    assert not should_split_line_pair(
+        prev.pdf_line,
+        curr.pdf_line,
+        median_width=400.0,
+        split_short_lines=False,
+        short_line_split_factor=0.5,
+        soft_mid_sentence_font_split=False,
+    )
+
+
+def test_hyphen_then_figure_label_still_splits():
+    """``ap-`` + ``Ancilla`` is a figure label, not a wrap tail."""
+    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+        is_hyphen_wrap_continuation,
+        should_split_line_pair,
+    )
+
+    prev = _line("the dispersive ap-", 280, "SFRM1000")
+    curr = _line("Ancilla", 265, "ArialMT", x0=320.0)
+    assert not is_hyphen_wrap_continuation(prev.pdf_line, curr.pdf_line)
+    assert should_split_line_pair(
+        prev.pdf_line,
+        curr.pdf_line,
+        median_width=200.0,
+        split_short_lines=False,
+        short_line_split_factor=0.5,
+        soft_mid_sentence_font_split=False,
+    )

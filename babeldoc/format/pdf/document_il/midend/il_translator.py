@@ -26,6 +26,9 @@ from babeldoc.format.pdf.document_il import PdfStyle
 from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
 from babeldoc.format.pdf.document_il.utils.layout_helper import FIGURE_TEXT_COVERAGE_THRESHOLD
 from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_style_span
+from babeldoc.format.pdf.document_il.utils.layout_helper import (
+    assemble_midcap_title_unicode,
+)
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode_string
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_paragraph_unicode
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_figure_text_paragraph
@@ -70,6 +73,7 @@ from babeldoc.format.pdf.document_il.utils.style_marker_recover import StyleSpan
 from babeldoc.format.pdf.document_il.utils.style_marker_recover import (
     coalesce_emphasis_style_run,
 )
+from babeldoc.format.pdf.document_il.utils import text_recovery
 from babeldoc.format.pdf.document_il.utils.style_marker_recover import (
     rewrap_styles_from_source,
 )
@@ -1025,8 +1029,25 @@ class ILTranslator:
                 or composition.pdf_same_style_characters
                 or composition.pdf_character
             ):
+                mt_chars = []
+                if composition.pdf_line and composition.pdf_line.pdf_character:
+                    mt_chars = list(composition.pdf_line.pdf_character)
+                elif (
+                    composition.pdf_same_style_characters
+                    and composition.pdf_same_style_characters.pdf_character
+                ):
+                    mt_chars = list(
+                        composition.pdf_same_style_characters.pdf_character
+                    )
+                elif composition.pdf_character:
+                    mt_chars = [composition.pdf_character]
+                mt_text = (
+                    assemble_midcap_title_unicode(paragraph, mt_chars)
+                    if mt_chars
+                    else (paragraph.unicode or "")
+                )
                 translate_input = self.TranslateInput(
-                    paragraph.unicode,
+                    mt_text,
                     [],
                     paragraph.pdf_style,
                 )
@@ -1066,6 +1087,18 @@ class ILTranslator:
                 chars.extend(composition.pdf_line.pdf_character)
                 i_comp += 1
             elif composition.pdf_formula:
+                fchars = composition.pdf_formula.pdf_character or []
+                frag = "".join(
+                    text_recovery.expand_latin_ligatures(c.char_unicode or "")
+                    for c in fchars
+                )
+                if text_recovery.should_join_hyphen_wrap(
+                    text_recovery.mixed_chars_stem(chars), frag
+                ):
+                    # Ligature / hyphen-wrap tail misclassified as formula.
+                    chars.extend(fchars)
+                    i_comp += 1
+                    continue
                 formula_placeholder = self.create_formula_placeholder(
                     composition.pdf_formula,
                     placeholder_id,
@@ -1103,6 +1136,13 @@ class ILTranslator:
                     # OA p3 Trajan [space][W][space]: wrapping isolates W from
                     # elcome and DeepLX leaves a literal W in the ZH.
                     if is_drop_cap_style_span(span_chars):
+                        chars.extend(span_chars)
+                        continue
+                    if text_recovery.should_join_hyphen_wrap(
+                        text_recovery.mixed_chars_stem(chars),
+                        get_char_unicode_string(span_chars),
+                    ):
+                        # Do not isolate ``ﬀ`` / ``ly`` tails with 〖Bn〗.
                         chars.extend(span_chars)
                         continue
                     span_id = len(style_spans)
@@ -1189,7 +1229,9 @@ class ILTranslator:
         box = getattr(paragraph, "box", None)
         if box is not None and box.x is not None and box.x2 is not None:
             para_w = float(box.x2 - box.x)
-        text = get_char_unicode_string(chars, para_width=para_w)
+        text = assemble_midcap_title_unicode(
+            paragraph, chars, para_width=para_w
+        )
         translate_input = self.TranslateInput(text, placeholders, paragraph.pdf_style)
         translate_input.set_original_placeholder_tokens(original_placeholder_tokens)
 

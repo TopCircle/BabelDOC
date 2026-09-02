@@ -300,9 +300,8 @@ class ParagraphFinder:
             maybe_reorder_reversed_stream,
             sort_line_compositions_if_stream_climbs,
         )
-        from babeldoc.format.pdf.document_il.utils.text_recovery import (
-            normalize_decorative_title_case,
-            should_normalize_midcap_title,
+        from babeldoc.format.pdf.document_il.utils.layout_helper import (
+            assemble_midcap_title_unicode,
         )
 
         page = page if page is not None else getattr(self, "_current_page", None)
@@ -358,13 +357,11 @@ class ParagraphFinder:
                 and paragraph.box.x2 is not None
             ):
                 para_w = float(paragraph.box.x2 - paragraph.box.x)
-            paragraph.unicode = get_char_unicode_string(chars, para_width=para_w)
-            # Mid-caps display titles lack tracking so get_char_unicode_string
-            # never lowers them (is_decorative_text is false).
-            if should_normalize_midcap_title(paragraph):
-                paragraph.unicode = normalize_decorative_title_case(
-                    paragraph.unicode
-                )
+            # Mid-caps titles lack tracking so get_char_unicode_string never
+            # lowers them (is_decorative_text is false). Sort + normalize here.
+            paragraph.unicode = assemble_midcap_title_unicode(
+                paragraph, chars, para_width=para_w
+            )
         if not chars:
             return
         # 更新边界框
@@ -508,7 +505,17 @@ class ParagraphFinder:
             self.merge_alternating_line_number_paragraphs(paragraphs)
 
         # Chapter N + title stay separate paragraphs so red Trajan and black
-        # display faces map independently (do not merge).
+        # display faces map independently (do not merge). OA Ch1/Ch3 glue
+        # the 56pt digit onto the display title in one line — cut here.
+        from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+            split_glued_chapter_title_paragraphs,
+        )
+
+        split_glued_chapter_title_paragraphs(
+            paragraphs, new_debug_id_factory=generate_base58_id
+        )
+        for paragraph in paragraphs:
+            self.update_paragraph_data(paragraph)
 
         # OA callout triangle: merge stacked narrow lines → one MT unit + reflow box
         from babeldoc.format.pdf.document_il.utils.callout_merge import (

@@ -173,3 +173,43 @@ def test_drop_cap_padding_spaces_do_not_split_welcome():
     assert stripped.startswith("Welcome my darling")
     assert not stripped.startswith("W ")
     assert "W elcome" not in stripped
+
+
+def test_oa_p7_we_are_told_drop_cap():
+    """OA p7: Trajan W at end of the body stream rejoins We, not from."""
+    from babeldoc.format.pdf.document_il.utils.drop_cap import (
+        is_drop_cap_style_span,
+        place_drop_caps_before_continuations,
+    )
+
+    body = []
+    x = 146.0
+    for c in "e are told from a young age":
+        w = 3.0 if c == " " else 6.0
+        body.append(_ch(c, x, size=12.5, w=w, y=528.0))
+        x += w
+    drop = _ch("W", 102.0, size=33.7, w=28.0, y=546.0, font_id="Trajan")
+    assert is_drop_cap_style_span([drop])
+    placed = place_drop_caps_before_continuations(body + [drop])
+    text = get_char_unicode_string(placed)
+    assert text.startswith("We are told")
+    assert "Wfrom" not in text.replace(" ", "")
+
+
+def test_oa_p33_todays_drop_cap():
+    """OA p33: Trajan T rejoins Today's, not lessons."""
+    from babeldoc.format.pdf.document_il.utils.drop_cap import (
+        place_drop_caps_before_continuations,
+    )
+
+    body = []
+    x = 146.0
+    for c in "oday's lessons are all about":
+        w = 3.0 if c == " " else 6.0
+        body.append(_ch(c, x, size=12.5, w=w, y=513.0))
+        x += w
+    drop = _ch("T", 102.0, size=33.7, w=24.0, y=546.0, font_id="Trajan")
+    placed = place_drop_caps_before_continuations(body + [drop])
+    text = get_char_unicode_string(placed)
+    assert text.lower().startswith("today")
+    assert "Tlessons" not in text.replace(" ", "")

@@ -45,6 +45,11 @@ HEADER_BODY_MIN_CHARS = 48
 HEADER_BODY_MIN_HEIGHT_PT = 28.0
 HEADER_BODY_MIN_CHARS_TALL = 24
 
+# Real chapter OPENERS (Trajan 32pt / display 56pt), not 13pt running headers.
+_CHAPTER_OPENER_RE = re.compile(r"(?i)\bchapter\s*\d{1,3}\b")
+_CHAPTER_OPENER_MIN_PT = 18.0
+_CHAPTER_OPENER_MIN_HEIGHT_PT = 22.0
+
 
 def _page_crop_box(page: Page | None):
     if page is None:
@@ -59,10 +64,35 @@ def _page_crop_box(page: Page | None):
     return None
 
 
+def _paragraph_font_size(paragraph: PdfParagraph) -> float:
+    st = getattr(paragraph, "pdf_style", None)
+    if st is not None and getattr(st, "font_size", None):
+        try:
+            return float(st.font_size)
+        except (TypeError, ValueError):
+            pass
+    return 0.0
+
+
+def is_real_chapter_title(paragraph: PdfParagraph) -> bool:
+    """True for opener-scale ``Chapter N`` (not 13pt running-header chrome)."""
+    text = (getattr(paragraph, "unicode", None) or "").strip()
+    if not text or not _CHAPTER_OPENER_RE.search(text):
+        return False
+    size = _paragraph_font_size(paragraph)
+    box = getattr(paragraph, "box", None)
+    height = 0.0
+    if box is not None and box.y is not None and box.y2 is not None:
+        height = float(box.y2) - float(box.y)
+    return size >= _CHAPTER_OPENER_MIN_PT or height >= _CHAPTER_OPENER_MIN_HEIGHT_PT
+
+
 def is_header_chrome_exempt(paragraph: PdfParagraph) -> bool:
     """True when paragraph must never be treated as header/footer chrome."""
     label = (getattr(paragraph, "layout_label", None) or "").strip().lower()
     if label in HEADER_EXEMPT_LABELS:
+        return True
+    if is_real_chapter_title(paragraph):
         return True
     text = (getattr(paragraph, "unicode", None) or "").strip()
     if not text:
@@ -278,6 +308,16 @@ def classify_header_footer_skip(
         page, paragraph, footer_height=footer_height
     ):
         return "footer"
+    # OA S6: LayoutParser-abandon PART/LEARN bars sit at ~y=683, below the
+    # default 40pt header band, so band skip misses them and DeepLX prints
+    # reverse-paint soup (``neoart p`` / ``otWart p`` / ``hreetart p``).
+    # Short abandon chrome is not body; keep skip_header on as the switch.
+    if skip_header:
+        label = (getattr(paragraph, "layout_label", None) or "").strip().lower()
+        if label == "abandon":
+            text = (getattr(paragraph, "unicode", None) or "").strip()
+            if 0 < len(text) <= 80:
+                return "header"
     return None
 
 

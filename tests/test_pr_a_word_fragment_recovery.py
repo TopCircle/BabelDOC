@@ -169,3 +169,117 @@ def test_full_recover_orphan_without_body_mid_cap():
     assert "ﬀ" not in out
     # Mid-cap body slogans stay for decorative call sites, not recover
     assert "anSWer" in recover_latin_word_fragments("this is the anSWer")
+
+
+def test_midcap_normalize_surfaces_oa_s6():
+    """OA S6: CamelCase splits; mid-caps soup only lowers (no hump split)."""
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        has_decorative_mid_caps,
+        normalize_decorative_title_case,
+    )
+
+    assert has_decorative_mid_caps("LearnTheTrigasmBasics")
+    assert has_decorative_mid_caps("SLoWcoMfortaBLe")
+    assert has_decorative_mid_caps("beanactIonMan")
+    assert has_decorative_mid_caps("otWart")
+    assert (
+        normalize_decorative_title_case("LearnTheTrigasmBasics")
+        == "learn the trigasm basics"
+    )
+    assert normalize_decorative_title_case("SLoWcoMfortaBLe") == "slowcomfortable"
+    assert normalize_decorative_title_case("beanactIonMan") == "beanactionman"
+    assert normalize_decorative_title_case("otWart") == "otwart"
+    tags = normalize_decorative_title_case("dIrect, thruSt, Soft Touch, acRoBaTic")
+    assert tags == "direct, thrust, soft touch, acrobatic"
+
+
+def test_stu_ff_hyphen_ligature_becomes_stuff():
+    """OA p12: PDF split ``stu-`` / ``ff`` ligature must reach MT as stuff."""
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        should_join_hyphen_wrap,
+    )
+
+    assert recover_latin_word_fragments("stu-ff") == "stuff"
+    assert recover_latin_word_fragments("stu- ff") == "stuff"
+    assert recover_latin_word_fragments("stu-\ufb00") == "stuff"
+    assert recover_latin_word_fragments("stu\u00adff") == "stuff"
+    assert recover_latin_word_fragments("stu ff") == "stuff"
+    assert should_join_hyphen_wrap("stu-", "\ufb00")
+    assert should_join_hyphen_wrap("stu-", "ff")
+
+
+def test_stu_ff_across_style_markers():
+    """Adjacent same-paragraph spans wrap 〖Bn〗 around the ligature tail."""
+    marked = "stu-\u3016B0\u3017\ufb00\u3016/B0\u3017"
+    out = recover_latin_word_fragments(marked)
+    assert "stuff" in out
+    assert "stu" not in out or "stuff" in out
+    assert "\ufb00" not in out
+    spaced = "stu- \u3016B0\u3017ff\u3016/B0\u3017"
+    assert "stuff" in recover_latin_word_fragments(spaced)
+
+
+def test_g_spot_not_glued():
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        should_join_hyphen_wrap,
+    )
+
+    assert recover_latin_word_fragments("g-spot") == "g-spot"
+    assert "gspot" not in recover_latin_word_fragments("the g-spot is")
+    assert not should_join_hyphen_wrap("g-", "spot")
+
+
+def test_get_char_unicode_string_hyphen_wrap_ligature():
+    """Geometric wrap: ``stu-`` EOL + ligature ﬀ at left margin → stuff."""
+    chars = [
+        _ch("s", 50),
+        _ch("t", 56),
+        _ch("u", 62),
+        _ch("-", 68),
+        _ch("\ufb00", 50),  # overwritten below with lower y
+    ]
+    # Fix last char as newline (lower y, x jumps left). Need pdf_character_id
+    # so Layout.is_newline does not ignore formula-height-id-less chars.
+    lig = chars[-1]
+    lig.box.x = 50
+    lig.box.x2 = 58
+    lig.box.y = 85
+    lig.box.y2 = 97
+    lig.visual_bbox.box = lig.box
+    lig.pdf_character_id = 1
+    for c in chars:
+        c.pdf_character_id = 1
+        c.box.y = 100 if c.char_unicode != "\ufb00" else 85
+        c.box.y2 = 112 if c.char_unicode != "\ufb00" else 97
+        c.visual_bbox.box = c.box
+    text = get_char_unicode_string(chars)
+    assert "stuff" in text.replace(" ", "")
+    assert "stu" not in text or "stuff" in text
+    assert "\ufb00" not in text
+
+
+def test_get_char_unicode_string_hyphen_wrap_across_markers():
+    chars = [
+        _ch("s", 50),
+        _ch("t", 56),
+        _ch("u", 62),
+        _ch("-", 68),
+        "\u3016B0\u3017",
+        _ch("\ufb00", 50),
+        "\u3016/B0\u3017",
+    ]
+    for c in chars:
+        if not isinstance(c, PdfCharacter):
+            continue
+        c.pdf_character_id = 1
+        if c.char_unicode == "\ufb00":
+            c.box.y = 85
+            c.box.y2 = 97
+            c.visual_bbox.box = c.box
+    text = get_char_unicode_string(chars)
+    assert "stuff" in text.replace(" ", "")
+    assert "\ufb00" not in text
+
+
+def test_cli_toris_known_word():
+    assert recover_latin_word_fragments("cli toris") == "clitoris"

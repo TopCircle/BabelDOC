@@ -556,78 +556,84 @@ def get_char_unicode_string(
         if chars[i].char_unicode == " ":
             continue
 
-        # 如果两个字符都是 PdfCharacter，检查间距 / 换行
-        if i < len(chars) - 1 and isinstance(chars[i + 1], PdfCharacter):
-            next_ch = chars[i + 1]
-            # Already have an explicit space glyph between words.
-            if next_ch.char_unicode and next_ch.char_unicode.isspace():
+        # Next PdfCharacter, skipping style-marker strings (〖Bn〗).
+        next_ch = None
+        next_i = None
+        skipped_space = False
+        for k in range(i + 1, len(chars)):
+            item = chars[k]
+            if isinstance(item, str):
                 continue
-            distance = next_ch.box.x - chars[i].box.x2
-            # Line wraps jump back to the left margin → distance << 0.
-            # Must still insert a word-boundary space (ATU intro: "Is"+"it"
-            # → "Isit", "of"+"Grey" → "ofGrey") when process_paragraph_spacing
-            # has stripped the trailing space glyph on the previous line.
-            # is_newline was previously unreachable due to `distance <= 0: continue`.
-            is_nl = Layout.is_newline(chars[i], next_ch)
-            gap_is_word_boundary = _gap_is_word_boundary(
-                chars[i], next_ch, distance
-            )
-            # Soft hyphen at TeX line wrap: ``ap-`` + ``proximation`` → ``approximation``
-            # (figure dual ``dispersive ap-`` / ``proximation breaks``). Do this
-            # before inserting a wrap space so MT never sees ``ap-proximation``.
-            # Peek the full next Latin token so free words (``actually``) after
-            # an intentional dash are not glued (``Trigasm-`` / ``actually``).
-            if is_nl and isinstance(chars[i], PdfCharacter) and isinstance(
-                next_ch, PdfCharacter
-            ):
-                next_word_parts: list[str] = []
-                j = i + 1
-                while j < len(chars) and isinstance(chars[j], PdfCharacter):
-                    u = chars[j].char_unicode or ""
-                    if u and u[0].isalpha() and ord(u[0]) < 128:
-                        next_word_parts.append(u[0])
-                        j += 1
-                    else:
-                        break
-                next_word = "".join(next_word_parts)
-                if text_recovery.is_soft_hyphen_line_wrap(
-                    chars[i], next_ch, next_word
-                ):
-                    # Drop the hyphen already appended for chars[i]
-                    if unicode_chars and unicode_chars[-1] in "-‐‑":
-                        unicode_chars.pop()
-                    continue  # no space; next char appends directly
-            # Drop-cap: never insert space between large ``I`` and ``f you…``
-            # Peek across 〖Bn〗 strings — ILTranslator may wrap the cap.
-            if should_suppress_space_after_drop_cap(chars[i], next_ch):
-                continue
-            peeked = next_ch
-            for k in range(i + 1, len(chars)):
-                item = chars[k]
-                if isinstance(item, str):
+            if isinstance(item, PdfCharacter):
+                if (item.char_unicode or "").isspace():
+                    skipped_space = True
                     continue
-                if isinstance(item, PdfCharacter):
-                    if (item.char_unicode or "").isspace():
-                        continue
-                    peeked = item
+                next_ch = item
+                next_i = k
                 break
-            if peeked is not next_ch and should_suppress_space_after_drop_cap(
-                chars[i], peeked
+            break
+
+        if next_ch is None or next_i is None:
+            continue
+
+        is_hyphen = (chars[i].char_unicode or "") in text_recovery.HYPHEN_CHARS
+        # Explicit space between two letters: do not insert another.
+        # Hyphen wraps still peek past a dummy wrap-space to the tail.
+        if skipped_space and not is_hyphen:
+            continue
+
+        distance = next_ch.box.x - chars[i].box.x2
+        # Line wraps jump back to the left margin → distance << 0.
+        # Must still insert a word-boundary space (ATU intro: "Is"+"it"
+        # → "Isit", "of"+"Grey" → "ofGrey") when process_paragraph_spacing
+        # has stripped the trailing space glyph on the previous line.
+        is_nl = Layout.is_newline(chars[i], next_ch)
+        gap_is_word_boundary = _gap_is_word_boundary(
+            chars[i], next_ch, distance
+        )
+        # Soft hyphen wrap: peek Latin continuation across 〖Bn〗 and
+        # expand ligatures (``stu-`` + ``ff`` ligature → stuff).
+        next_word = text_recovery.peek_latin_continuation(chars, next_i)
+        stem = "".join(unicode_chars)
+        if text_recovery.should_join_hyphen_wrap(stem, next_word):
+            # Immediate next is the tail: drop hyphen, no wrap space.
+            if next_i == i + 1:
+                if unicode_chars and unicode_chars[-1] in text_recovery.HYPHEN_CHARS:
+                    unicode_chars.pop()
+            # Else markers / dummy space sit between stem and tail — keep
+            # the hyphen so recover_latin_word_fragments glues across them.
+            continue
+        # Drop-cap: never insert space between large ``I`` and ``f you…``
+        # Peek across 〖Bn〗 strings — ILTranslator may wrap the cap.
+        if should_suppress_space_after_drop_cap(chars[i], next_ch):
+            continue
+        peeked = next_ch
+        for k in range(i + 1, len(chars)):
+            item = chars[k]
+            if isinstance(item, str):
+                continue
+            if isinstance(item, PdfCharacter):
+                if (item.char_unicode or "").isspace():
+                    continue
+                peeked = item
+            break
+        if peeked is not next_ch and should_suppress_space_after_drop_cap(
+            chars[i], peeked
+        ):
+            continue
+        if is_decorative:
+            insert = is_nl or gap_is_decorative_word_boundary(
+                distance, decorative_word_gap
+            )
+        else:
+            insert = is_nl or gap_is_word_boundary
+        if insert:
+            # Avoid CJK line-wrap spaces (source Chinese has no inter-word space).
+            if is_nl and _is_cjk_char(chars[i].char_unicode) and _is_cjk_char(
+                next_ch.char_unicode
             ):
                 continue
-            if is_decorative:
-                insert = is_nl or gap_is_decorative_word_boundary(
-                    distance, decorative_word_gap
-                )
-            else:
-                insert = is_nl or gap_is_word_boundary
-            if insert:
-                # Avoid CJK line-wrap spaces (source Chinese has no inter-word space).
-                if is_nl and _is_cjk_char(chars[i].char_unicode) and _is_cjk_char(
-                    next_ch.char_unicode
-                ):
-                    continue
-                unicode_chars.append(" ")  # 添加空格
+            unicode_chars.append(" ")  # 添加空格
 
     result = "".join(unicode_chars)
     # Normalize inline whitespace: TAB, NBSP (U+00A0), em-space (U+2003),
@@ -651,6 +657,32 @@ def get_char_unicode_string(
     normalize = unicodedata.normalize("NFKC", result)
     result = SPACE_REGEX.sub(" ", normalize).strip()
     return result
+
+
+def assemble_midcap_title_unicode(
+    paragraph: PdfParagraph,
+    chars: list,
+    *,
+    para_width: float | None = None,
+) -> str:
+    """Build MT unicode for a paragraph, applying mid-caps title normalize.
+
+    Visual-sorts glyphs when the mid-caps title gate fires so wrapped tag
+    lines (OA p59 ``S`` of SOFT last in stream) read as real words before MT.
+    No-op for 12pt body (gate false).
+    """
+    pdf_chars = [c for c in chars if isinstance(c, PdfCharacter)]
+    mixed = len(pdf_chars) != len(chars)
+    raw = get_char_unicode_string(chars, para_width=para_width)
+    if not text_recovery.should_normalize_midcap_title(paragraph, text=raw):
+        return raw
+    # Only visual-sort pure glyph lists; placeholder strings must stay put.
+    if pdf_chars and not mixed:
+        raw = get_char_unicode_string(
+            _sort_chars_into_reading_order(pdf_chars),
+            para_width=para_width,
+        )
+    return text_recovery.normalize_decorative_title_case(raw)
 
 
 def get_paragraph_max_height(paragraph: PdfParagraph) -> float:

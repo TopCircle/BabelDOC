@@ -50,13 +50,26 @@ SPACE_WIDTH_RATIO = 0.5
 LATIN_WORD_GAP_RATIO = 0.35
 LATIN_WORD_MIN_GAP_PT = 2.0
 
+# ASCII hyphen, Unicode hyphen/NB hyphen, and TeX soft hyphen (U+00AD).
+HYPHEN_CHARS = frozenset("-\u2010\u2011\u00ad")
+
 # Candidate soft-hyphen after style regroup: ``ap- proximation``.
 # Captures the full continuation token (mixed-case allowed) so we can reject
 # free English words. Decorative TOC fonts often yield ``acTuaLLy``; matching
 # only ``[a-z]+`` would capture ``ac`` (len<4), rejoin to ``TrigasMacTuaLLy``.
+# OA S7: also join across ILTranslator style markers and U+00AD, and require
+# a 2+ letter stem so ``g-spot`` / ``e-mail`` stay hyphenated.
+_STYLE_OPEN_RE = "(?:\u3016B\\d+\u3017)"
+_STYLE_CLOSE_RE = "(?:\u3016/B\\d+\u3017)"
 SOFT_HYPHEN_CANDIDATE_RE = regex.compile(
-    r"(?<=[A-Za-z])-\s+([A-Za-z][A-Za-z']*)"
+    r"(?<=[A-Za-z]{2})"
+    "[-\u2010\u2011\u00ad]"
+    r"\s*"
+    r"(?:" + _STYLE_OPEN_RE + r"\s*)?"
+    r"([A-Za-z][A-Za-z']*)"
+    r"(?:\s*" + _STYLE_CLOSE_RE + r")?"
 )
+
 
 # High-frequency free-standing English words (len>=4). Soft-hyphen
 # continuations are almost never these (``proximation``, ``ence``, ``tion``
@@ -323,24 +336,104 @@ def should_soft_rejoin(continuation: str | None) -> bool:
     return False
 
 
+
+def latin_continuation_token(text: str | None) -> str:
+    """First Latin token of *text* after ligature expand (soft-hyphen tail)."""
+    if not text:
+        return ""
+    text = expand_latin_ligatures(text.lstrip())
+    m = regex.match(r"[A-Za-z']+", text)
+    return m.group(0) if m else ""
+
+
+def peek_latin_continuation(chars: list, start: int) -> str:
+    """Collect a Latin token from *chars[start:]*, skipping ``str`` markers.
+
+    Ligatures are expanded so ``\ufb00`` counts as ``ff``. Used when a hyphen
+    wrap is interrupted by style markers (non-LLM wrap) or dummy wrap spaces.
+    """
+    parts: list[str] = []
+    j = start
+    n = len(chars)
+    while j < n:
+        item = chars[j]
+        if isinstance(item, str):
+            j += 1
+            continue
+        u = getattr(item, "char_unicode", None)
+        if u is None:
+            break
+        u = expand_latin_ligatures(u)
+        if not u or u.isspace():
+            j += 1
+            continue
+        m = regex.match(r"[A-Za-z']+", u)
+        if not m:
+            break
+        parts.append(m.group(0))
+        if m.end() < len(u):
+            break
+        j += 1
+        if sum(len(p) for p in parts) >= 48:
+            break
+    return "".join(parts)
+
+
+def mixed_chars_stem(chars: list) -> str:
+    """Rough unicode of mixed PdfCharacter/str lists (hyphen-wrap stem)."""
+    parts: list[str] = []
+    for item in chars:
+        if isinstance(item, str):
+            parts.append(item)
+            continue
+        u = getattr(item, "char_unicode", None)
+        if u is None:
+            continue
+        parts.append(expand_latin_ligatures(u))
+    return "".join(parts)
+
+
+def should_join_hyphen_wrap(left: str | None, continuation: str | None) -> bool:
+    """True when *left* ends with a hyphenated Latin stem and *continuation*
+    is a TeX line-wrap tail (not ``g-spot`` / ``Trigasm- actually``).
+
+    Same-paragraph adjacent spans/compositions use this before MT so
+    ``stu-`` + ligature ``ff`` becomes one token. Separate ``translate()``
+    calls (true two-paragraph splits) cannot join.
+    """
+    if not left:
+        return False
+    text = expand_latin_ligatures(left)
+    text = regex.sub("(?:\u3016/?B\\d+\u3017)+\\s*$", "", text.rstrip())
+    text = text.rstrip()
+    if not text or text[-1] not in HYPHEN_CHARS:
+        return False
+    stem = regex.sub("(?:\u3016/?B\\d+\u3017)+\\s*$", "", text[:-1])
+    m = regex.search(r"[A-Za-z]+$", stem)
+    if not m or len(m.group(0)) < 2:
+        return False
+    return should_soft_rejoin(latin_continuation_token(continuation))
+
+
 def is_soft_hyphen_line_wrap(
     prev: PdfCharacter,
     next_ch: PdfCharacter,
     next_word: str | None = None,
 ) -> bool:
-    """TeX soft hyphen at line wrap: ``ap-`` + ``proximation`` → join without space.
+    """TeX soft hyphen at line wrap: ``ap-`` + ``proximation`` \u2192 join without space.
 
-    Geometry: prev is ``-`` and next starts a Latin letter run.  Semantics
-    deferred to :func:`should_soft_rejoin` on the peeked continuation token.
+    Geometry: prev is ``-`` / U+00AD and next starts a Latin letter run.
+    Semantics deferred to :func:`should_soft_rejoin` on the peeked
+    continuation token (ligatures expanded). Prefer
+    :func:`should_join_hyphen_wrap` when the left stem is available so
+    ``g-spot`` is not glued.
     """
     prev_u = prev.char_unicode or ""
-    next_u = next_ch.char_unicode or ""
-    if prev_u not in "-‐‑" or not next_u or not next_u[0].isalpha():
+    next_u = expand_latin_ligatures(next_ch.char_unicode or "")
+    if prev_u not in HYPHEN_CHARS or not next_u or not next_u[0].isalpha():
         return False
-    token = next_word if next_word is not None else next_u
-    m = regex.match(r"[A-Za-z']+", token or "")
-    cont = m.group(0) if m else (token or "")
-    return should_soft_rejoin(cont)
+    token = next_word if next_word else next_u
+    return should_soft_rejoin(latin_continuation_token(token))
 
 
 def rejoin_soft_hyphens_in_text(text: str) -> str:
@@ -349,27 +442,29 @@ def rejoin_soft_hyphens_in_text(text: str) -> str:
     Keeps intentional dashes before free English words / decorative casing:
     ``Trigasm- actually`` / ``TrigasM- acTuaLLy`` must not glue.
 
-    Ligatures in the continuation (``di- ﬃcult``) are expanded first so the
+    Ligatures in the continuation (``di- \ufb03cult``) are expanded first so the
     free-word blocklist and rejoin logic see ``fficult`` not a private-use char.
+
+    OA S7: also joins style-marker wraps and U+00AD in one string.
     """
     if not text:
         return text
     text = expand_latin_ligatures(text)
-    if "-" not in text:
+    if not any(h in text for h in HYPHEN_CHARS):
         return text
 
     def _sub(m: regex.Match[str]) -> str:
         cont = expand_latin_ligatures(m.group(1))
         if should_soft_rejoin(cont):
-            return cont  # drop "- " and glue
-        return m.group(0)  # keep hyphen + space
+            return cont  # drop hyphen / markers and glue
+        return m.group(0)  # keep hyphen + space / markers
 
     return SOFT_HYPHEN_CANDIDATE_RE.sub(_sub, text)
 
 
 # Hyphen without space: ``di-fferent`` / ``ap-proximation``.
 _SOFT_HYPHEN_TIGHT_RE = regex.compile(
-    r"(?<=[A-Za-z])-([a-z]{2,})"
+    r"(?<=[A-Za-z]{2})" + "[-\u2010\u2011\u00ad]" + r"([a-z]{2,})"
 )
 
 # Full words often split by PDF gaps / soft hyphens in design ebooks (OA dual).
@@ -379,6 +474,8 @@ _KNOWN_SPLIT_WORDS = frozenset(
         "different",
         "difficult",
         "clitoral",
+        "clitoris",
+        "stuff",
         "proficient",
         "sufficient",
         "efficient",
@@ -621,8 +718,13 @@ _MIDCAP_TITLE_LABELS = frozenset({"title", "section_header"})
 
 
 def _mostly_ascii_letters(text: str) -> bool:
-    """True when *text* is short and mostly ASCII letters (title-case gate)."""
-    if not text or len(text) > 80:
+    """True when *text* is short and mostly ASCII letters (title-case gate).
+
+    Cap is 200 (not 80): OA position titles glue mid-caps name + DIRECT/THRUST
+    tags into ~90–120 chars. 12pt body brands stay protected by the *label*
+    gate in :func:`should_normalize_midcap_title`, not this length cap.
+    """
+    if not text or len(text) > 200:
         return False
     letters = [c for c in text if c.isalpha()]
     if len(letters) < 4:
@@ -661,15 +763,38 @@ def normalize_decorative_title_case(text: str) -> str:
     DeepLX mangles into ``WhohaSorgaSMS``. Lowercase short Latin titles that
     show mid-word capitals so MT sees ``who has orgasms?``.
 
-    Guards: length ≤ 80, mostly ASCII letters, :func:`has_decorative_mid_caps`.
+    Guards: length ≤ 200, mostly ASCII letters, :func:`has_decorative_mid_caps`.
     Call only from decorative/geometry-gated sites — not on full body prose
     (would smash ``iPhone`` / ``eBay``).
+
+    Proper CamelCase tokens (``LearnTheTrigasmBasics``) are spaced before
+    lowercasing so MT/glossary see real words. Mid-caps soup
+    (``SLoWcoMfortaBLe``, consecutive caps) is lowered in place — do **not**
+    run a naive ``(?<=[a-z])(?=[A-Z])`` split on that soup.
     """
     if not _mostly_ascii_letters(text or ""):
         return text
     if not has_decorative_mid_caps(text):
         return text
+    text = _space_proper_camel_case(text)
     return text.lower()
+
+
+# Proper CamelCase: starts with a capital, humps are Upper+lowers, no mid-caps soup.
+_PROPER_CAMEL_TOKEN_RE = regex.compile(r"\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b")
+_CAMEL_HUMP_RE = regex.compile(r"(?<=[a-z])(?=[A-Z])")
+
+
+def _space_proper_camel_case(text: str) -> str:
+    """``LearnTheTrigasmBasics`` → ``Learn The Trigasm Basics``.
+
+    Leaves ``SLoWcoMfortaBLe`` / ``dIrect`` / ``otWart`` untouched (those are
+    not proper CamelCase).
+    """
+    return _PROPER_CAMEL_TOKEN_RE.sub(
+        lambda m: _CAMEL_HUMP_RE.sub(" ", m.group(0)),
+        text,
+    )
 
 
 def recover_latin_word_fragments(text: str) -> str:

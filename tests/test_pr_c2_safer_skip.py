@@ -221,3 +221,42 @@ def test_translator_region_skip_uses_c2():
     assert tr.region_skip_reason(page, chrome) is not None
     assert tr.should_skip_header_footer_paragraph(page, body) is False
     assert tr.region_skip_reason(page, body) is None
+
+
+def test_large_chapter_opener_not_header_skipped():
+    """32pt Chapter 1 in the header band is an opener, not chrome."""
+    page = _page()
+    opener = _para(
+        "Chapter 1",
+        label="plain text",
+        box=Box(x=44, y=750, x2=211, y2=786),
+    )
+    opener.pdf_style = PdfStyle(font_id="f0", font_size=32.0, graphic_state=None)
+    assert is_header_chrome_exempt(opener)
+    assert not should_skip_header_footer(
+        page,
+        opener,
+        skip_header=True,
+        skip_footer=False,
+        header_height=50,
+        footer_height=40,
+    )
+
+
+def test_small_chapter_running_header_still_skipped():
+    """10pt 'Chapter 1' in the 40pt band stays chrome (existing C2 fixture)."""
+    page = _page()
+    chrome = _para(
+        "Chapter 1",
+        label="plain text",
+        box=Box(x=40, y=760, x2=120, y2=780),
+    )
+    assert not is_header_chrome_exempt(chrome)
+    assert should_skip_header_footer(
+        page,
+        chrome,
+        skip_header=True,
+        skip_footer=False,
+        header_height=50,
+        footer_height=40,
+    )

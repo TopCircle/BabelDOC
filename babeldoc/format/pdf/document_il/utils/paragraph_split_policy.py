@@ -15,7 +15,9 @@ from collections import Counter
 from babeldoc.format.pdf.document_il import Box
 from babeldoc.format.pdf.document_il import PdfLine
 from babeldoc.format.pdf.document_il import PdfParagraph
+from babeldoc.format.pdf.document_il import PdfParagraphComposition
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_bullet_point
+from babeldoc.format.pdf.document_il.utils.text_recovery import should_join_hyphen_wrap
 
 # arXiv / journal date lines glued under affiliation
 _DATE_LINE_RE = re.compile(
@@ -215,6 +217,171 @@ def is_short_centered_date_tail(
     return bool(short_tail and both_inset and (date_like or curr_w < 120.0))
 
 
+
+# OA chapter openers: Trajan "CHAPTER N" (~32pt) + display title (~56pt) often
+# share one line because the chapter NUMBER is painted at the title size
+# (Ch1 "1 Love and Sex", Ch3 "3 beanactIonMan"). Ch5 keeps the digit at 32pt
+# so line-threading already splits. Cut after the marker, not after "Chapter".
+_CHAPTER_OPENER_PREFIX_RE = re.compile(
+    r"^(?P<marker>chapter\s*\d{1,3})(?!\d)",
+    re.IGNORECASE,
+)
+# Running headers are 13–15pt; openers are 32/56pt.
+_CHAPTER_OPENER_MIN_PT = 24.0
+
+
+def _char_font_size(ch) -> float:
+    st = getattr(ch, "pdf_style", None)
+    if st is None or st.font_size is None:
+        return 0.0
+    try:
+        return float(st.font_size)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def paragraph_line_chars(paragraph: PdfParagraph) -> list:
+    """Flatten line/character compositions (pre-styles chapter split)."""
+    chars: list = []
+    for comp in paragraph.pdf_paragraph_composition or []:
+        if comp.pdf_line and comp.pdf_line.pdf_character:
+            chars.extend(comp.pdf_line.pdf_character)
+        elif comp.pdf_character:
+            chars.append(comp.pdf_character)
+        elif (
+            comp.pdf_same_style_characters
+            and comp.pdf_same_style_characters.pdf_character
+        ):
+            chars.extend(comp.pdf_same_style_characters.pdf_character)
+    return chars
+
+
+def _box_from_chars(chars) -> Box:
+    xs: list[float] = []
+    ys: list[float] = []
+    x2s: list[float] = []
+    y2s: list[float] = []
+    for ch in chars:
+        box = getattr(ch, "box", None)
+        vb = getattr(ch, "visual_bbox", None)
+        if box is None and vb is not None:
+            box = getattr(vb, "box", None)
+        if box is None or box.x is None or box.y is None:
+            continue
+        xs.append(float(box.x))
+        ys.append(float(box.y))
+        x2s.append(float(box.x2) if box.x2 is not None else float(box.x))
+        y2s.append(float(box.y2) if box.y2 is not None else float(box.y))
+    if not xs:
+        return Box(x=0, y=0, x2=0, y2=0)
+    return Box(x=min(xs), y=min(ys), x2=max(x2s), y2=max(y2s))
+
+
+def chapter_display_title_cut_index(chars: list) -> int | None:
+    """Index of the first display-title glyph after ``Chapter N``, or None.
+
+    Requires an opener-scale max font so 13pt running headers
+    (``Love and Sex Chapter 1``) stay one paragraph.
+    """
+    if not chars:
+        return None
+    raw = "".join((c.char_unicode or "") for c in chars)
+    match = _CHAPTER_OPENER_PREFIX_RE.match(raw)
+    if not match:
+        return None
+    rest = raw[match.end() :]
+    if not any(ch.isalpha() for ch in rest):
+        return None
+    max_sz = max((_char_font_size(c) for c in chars), default=0.0)
+    if max_sz < _CHAPTER_OPENER_MIN_PT:
+        return None
+    target = match.end()
+    while target < len(raw) and raw[target].isspace():
+        target += 1
+    if target >= len(raw):
+        return None
+    pos = 0
+    for i, ch in enumerate(chars):
+        u = ch.char_unicode or ""
+        n = len(u) if u else 0
+        if n == 0:
+            continue
+        if pos <= target < pos + n:
+            return i
+        pos += n
+    return None
+
+
+def split_glued_chapter_title_paragraph(
+    paragraph: PdfParagraph,
+    *,
+    new_debug_id: str,
+) -> PdfParagraph | None:
+    """Split ``Chapter N`` + display title into two paragraphs. Mutates *paragraph*.
+
+    Returns the new title paragraph, or None when no cut applies.
+    """
+    chars = paragraph_line_chars(paragraph)
+    cut = chapter_display_title_cut_index(chars)
+    if cut is None or cut <= 0 or cut >= len(chars):
+        return None
+    chapter_chars = chars[:cut]
+    title_chars = chars[cut:]
+    if not chapter_chars or not title_chars:
+        return None
+    if not any((c.char_unicode or "").strip() for c in title_chars):
+        return None
+
+    def _as_line(part) -> PdfParagraphComposition:
+        box = _box_from_chars(part)
+        return PdfParagraphComposition(
+            pdf_line=PdfLine(box=box, pdf_character=list(part))
+        )
+
+    paragraph.pdf_paragraph_composition = [_as_line(chapter_chars)]
+    paragraph.box = _box_from_chars(chapter_chars)
+    title_box = _box_from_chars(title_chars)
+    return PdfParagraph(
+        box=title_box,
+        pdf_paragraph_composition=[_as_line(title_chars)],
+        unicode="",
+        debug_id=new_debug_id,
+        layout_label=paragraph.layout_label,
+        layout_id=paragraph.layout_id,
+    )
+
+
+def split_glued_chapter_title_paragraphs(
+    paragraphs: list[PdfParagraph],
+    *,
+    new_debug_id_factory,
+) -> None:
+    """In-place: cut glued OA chapter openers into Chapter N + display title."""
+    i = 0
+    while i < len(paragraphs):
+        new_para = split_glued_chapter_title_paragraph(
+            paragraphs[i],
+            new_debug_id=new_debug_id_factory(),
+        )
+        if new_para is None:
+            i += 1
+            continue
+        paragraphs.insert(i + 1, new_para)
+        i += 2
+
+
+
+def is_hyphen_wrap_continuation(prev_line: PdfLine, curr_line: PdfLine | None) -> bool:
+    """True when *curr_line* continues a TeX soft-hyphen wrap on *prev_line*.
+
+    Keeps ``stu-`` / ligature ``ff`` in one paragraph so MT sees ``stuff``.
+    Figure labels after a hyphen (``ap-`` / ``Ancilla``) do not match.
+    """
+    if curr_line is None:
+        return False
+    return should_join_hyphen_wrap(line_text(prev_line), line_text(curr_line))
+
+
 def should_split_line_pair(
     prev_line: PdfLine,
     curr_line: PdfLine | None,
@@ -235,14 +402,19 @@ def should_split_line_pair(
     if curr_line is None:
         return False
 
+    if curr_line.pdf_character and is_bullet_point(curr_line.pdf_character[0]):
+        return True
+    # Keep hyphen-wrap tails in this paragraph (even if the ligature glyph
+    # uses a different subset font_id). Split would make two translate() calls.
+    if is_hyphen_wrap_continuation(prev_line, curr_line):
+        return False
+
     prev_width = (prev_line.box.x2 - prev_line.box.x) if prev_line.box else 0.0
     if (
         split_short_lines
         and prev_width > 0
         and prev_width < median_width * short_line_split_factor
     ):
-        return True
-    if curr_line.pdf_character and is_bullet_point(curr_line.pdf_character[0]):
         return True
     # Size jump first: same face, different pt (font.unknown title stack).
     if should_split_on_font_size_jump(prev_line, curr_line):

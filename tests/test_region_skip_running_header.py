@@ -149,3 +149,48 @@ class TestRealChromeStillSkipped:
             )
             in ("footer", "url_chrome")
         )
+
+
+    def test_abandon_learn_bar_below_default_band_skipped(self):
+        """OA S6: PART/LEARN bars at y~683 are below the default 40pt band."""
+        page = _page()
+        chrome = _para(
+            "otWart p Learn The Moves",
+            label="abandon",
+            y=683.5,
+            y2=714.8,
+            font_size=13.0,
+        )
+        assert (
+            classify_header_footer_skip(
+                page,
+                chrome,
+                skip_header=True,
+                skip_footer=True,
+                header_height=40.0,
+                footer_height=40.0,
+            )
+            == "header"
+        )
+
+    def test_abandon_learn_bar_not_skipped_when_skip_header_off(self):
+        page = _page()
+        chrome = _para(
+            "neoart p Learn The Trigasm Basics",
+            label="abandon",
+            y=683.5,
+            y2=714.8,
+            font_size=13.0,
+        )
+        assert (
+            classify_header_footer_skip(
+                page,
+                chrome,
+                skip_header=False,
+                skip_footer=True,
+                header_height=40.0,
+                footer_height=40.0,
+            )
+            is None
+        )
+
