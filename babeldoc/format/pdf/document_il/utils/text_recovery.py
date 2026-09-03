@@ -436,7 +436,7 @@ def should_join_visual_split(left: str | None, continuation: str | None) -> bool
     if text and text[-1] in HYPHEN_CHARS:
         text = text[:-1]
     m = regex.search(r"[A-Za-z]+$", text)
-    if not m or len(m.group(0)) < 2:
+    if not m:
         return False
     stem = m.group(0)
     tail = latin_continuation_token(continuation)
@@ -444,7 +444,14 @@ def should_join_visual_split(left: str | None, continuation: str | None) -> bool
         return False
     # Mid-caps heading tails (Ma + Stery) are not islower(); known-word
     # membership is the real gate (stu+Off is not a known split).
-    return (stem + tail).lower() in _KNOWN_SPLIT_WORDS
+    joined = (stem + tail).lower()
+    if joined not in _KNOWN_SPLIT_WORDS:
+        return False
+    if len(stem) >= 2:
+        return True
+    # 1-letter stems (OA p91 o+ffers, p41 a+ffecting) only when the tail
+    # is a ligature wrap. Bare ``a``+``nd`` / ``t``+``he`` stay split.
+    return tail[:2].lower() in {"ff", "fi", "fl"}
 
 
 def is_known_split_word(text: str | None) -> bool:
@@ -477,7 +484,7 @@ def rejoin_known_splits_across_markers(text: str) -> str:
         changed = False
         i = 0
         while i < len(parts) - 1:
-            if not parts[i].isalpha() or len(parts[i]) < 2:
+            if not parts[i].isalpha():
                 i += 1
                 continue
             j = i + 1
@@ -594,6 +601,10 @@ _KNOWN_SPLIT_WORDS = frozenset(
         "female",
         "affect",
         "puffy",
+        "difference",
+        "offers",
+        "affecting",
+        "off",
     }
 )
 
@@ -605,6 +616,7 @@ _ORPHAN_STRIP_PREFIXES: tuple[str, ...] = (
     "pre",
     "per",
     "dis",
+    "diff",
     "di",
     "de",
     "su",

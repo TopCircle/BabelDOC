@@ -399,6 +399,16 @@ def attempt_chain_for_paragraph(
     # widens a 157pt left gutter to ~440pt (OA p91 red bar → overlaps body).
     if role in (LayoutIntentRole.CALLOUT, LayoutIntentRole.PULL_QUOTE):
         return [LayoutAttempt.PRIMARY]
+    wrap_mode = getattr(intent, "wrap_mode", None) if intent is not None else None
+    from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
+
+    # Pinned figure wrap (OA p33 LEFT_FIXED / p19 RIGHT_FIXED): FULL_MEASURE
+    # walks CJK into the photo. Unpinned WRAP_COLUMN may still escalate.
+    if role is LayoutIntentRole.WRAP_COLUMN and wrap_mode in (
+        WrapMode.LEFT_FIXED,
+        WrapMode.RIGHT_FIXED,
+    ):
+        return [LayoutAttempt.PRIMARY]
     if shape or role is LayoutIntentRole.WRAP_COLUMN:
         return [LayoutAttempt.PRIMARY, LayoutAttempt.FULL_MEASURE]
     # Thin residual bodies also get FULL_MEASURE as second chance (CJK)
@@ -415,7 +425,9 @@ def allows_full_measure_escalation(
     CALLOUT / PULL_QUOTE must stay in their design column (OA p91 red bar,
     OA p59 wrap misread as quote). Inner typesetting retries used to ignore
     ``attempt_chain_for_paragraph`` and FULL_MEASURE into the photo.
-    WRAP_COLUMN still escalates via wrap-budget, not this gate.
+    Pinned WRAP_COLUMN (LEFT_FIXED/RIGHT_FIXED) stays PRIMARY so CJK
+    does not FULL_MEASURE into the photo (OA p33). Unpinned wrap still
+    escalates via wrap-budget.
     """
     return LayoutAttempt.FULL_MEASURE in attempt_chain_for_paragraph(
         paragraph, is_cjk=is_cjk

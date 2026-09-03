@@ -561,3 +561,36 @@ def test_visual_order_line_chunks_follow_known_split():
     assert "stuff" in compact
     assert compact.index("You") < compact.index("stuff") < compact.index("and")
     assert "\ufb00" not in text
+
+
+def test_difference_erence_rejoins():
+    """OA p45 leftover erence from difference split."""
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        repair_orphan_split_tails,
+    )
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        should_join_visual_split,
+    )
+
+    assert recover_latin_word_fragments("diff erence") == "difference"
+    assert recover_latin_word_fragments("di fference") == "difference"
+    assert repair_orphan_split_tails("erence in location") == "difference in location"
+    assert should_join_visual_split("diff", "erence")
+
+
+def test_offers_and_affecting_one_letter_ligature_stems():
+    """OA p91 o+ffers and p41 a+ffecting; do not glue a+nd / t+he."""
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        should_join_visual_split,
+    )
+
+    assert should_join_visual_split("o", "ffers")
+    assert should_join_visual_split("a", "ffecting")
+    assert should_join_visual_split("a", "ffect")
+    assert recover_latin_word_fragments("o ffers") == "offers"
+    assert recover_latin_word_fragments("a ffecting") == "affecting"
+    assert not should_join_visual_split("a", "nd")
+    assert not should_join_visual_split("t", "he")
+    assert recover_latin_word_fragments("to the left") == "to the left"
+    # do not regress stuff
+    assert recover_latin_word_fragments("stu-ﬀ") == "stuff"

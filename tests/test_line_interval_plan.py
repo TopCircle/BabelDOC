@@ -250,6 +250,25 @@ class TestAttemptChainCallout:
         )
         assert allows_full_measure_escalation(wrap, is_cjk=True) is True
 
+    def test_cjk_pinned_wrap_column_stays_primary(self):
+        """OA p33 LEFT_FIXED: do not FULL_MEASURE CJK into the model photo."""
+        from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
+
+        wrap = self._para(
+            LayoutIntentRole.WRAP_COLUMN,
+            Box(x=102, y=400, x2=427, y2=700),
+        )
+        wrap.layout_intent.wrap_shape = [(0.0, 325.0), (0.0, 180.0)]
+        wrap.layout_intent.wrap_mode = WrapMode.LEFT_FIXED
+        assert attempt_chain_for_paragraph(wrap, is_cjk=True) == [
+            LayoutAttempt.PRIMARY
+        ]
+        assert allows_full_measure_escalation(wrap, is_cjk=True) is False
+        wrap.layout_intent.wrap_mode = WrapMode.RIGHT_FIXED
+        assert attempt_chain_for_paragraph(wrap, is_cjk=True) == [
+            LayoutAttempt.PRIMARY
+        ]
+
     def test_cjk_callout_disallows_full_measure_escalation(self):
         bar = self._para(
             LayoutIntentRole.CALLOUT,
