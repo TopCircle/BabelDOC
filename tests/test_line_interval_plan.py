@@ -25,6 +25,9 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     full_measure_layout_box,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    infer_wrap_mode_beside_photo,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     infer_wrap_mode_from_line_boxes,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
@@ -50,6 +53,21 @@ class TestInferWrapMode:
     def test_ambiguous_none(self):
         lines = [(100, 200), (110, 210)]
         assert infer_wrap_mode_from_line_boxes(lines) is WrapMode.NONE
+
+    def test_photo_on_right_is_left_fixed(self):
+        design = Box(x=102, y=400, x2=400, y2=700)
+        photo = Box(x=380, y=200, x2=580, y2=720)
+        assert infer_wrap_mode_beside_photo(design, [photo]) is WrapMode.LEFT_FIXED
+
+    def test_photo_on_left_is_right_fixed(self):
+        design = Box(x=220, y=400, x2=520, y2=700)
+        photo = Box(x=40, y=200, x2=200, y2=720)
+        assert infer_wrap_mode_beside_photo(design, [photo]) is WrapMode.RIGHT_FIXED
+
+    def test_no_photo_returns_none(self):
+        design = Box(x=102, y=400, x2=400, y2=700)
+        assert infer_wrap_mode_beside_photo(design, []) is None
+        assert infer_wrap_mode_beside_photo(design, None) is None
 
 
 class TestWrapInterval:
@@ -169,6 +187,29 @@ class TestFullMeasureBoxC3:
         assert out.x2 <= 443.63 + 1e-6
         assert out.x >= 102.18 - 1e-6
 
+    def test_left_fixed_wrap_column_stays_in_design(self):
+        """OA p33/p59: FULL_MEASURE must not grow a left-pin wrap into the photo."""
+        design = Box(x=102.18, y=453.4, x2=443.63, y2=497.9)
+        para = PdfParagraph(box=design, pdf_paragraph_composition=[], unicode="x")
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.WRAP_COLUMN,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+            wrap_shape=[(0.0, 338.0), (0.8, 327.5), (0.0, 127.7)],
+            wrap_mode=WrapMode.LEFT_FIXED,
+        )
+        page = type(
+            "P",
+            (),
+            {"cropbox": type("C", (), {"box": Box(x=0, y=0, x2=612, y2=792)})()},
+        )()
+        out = full_measure_layout_box(para, design, page)
+        assert out is not None
+        assert out.x2 <= 443.63 + 1e-6
+        assert out.x >= 102.18 - 1e-6
+        assert (out.x2 - out.x) <= (443.63 - 102.18) + 1e-6
+
 
 class TestAttemptChainCallout:
     def _para(self, role: LayoutIntentRole, design: Box) -> PdfParagraph:
@@ -187,9 +228,7 @@ class TestAttemptChainCallout:
             LayoutIntentRole.CALLOUT,
             Box(x=54.18, y=375.99, x2=211.635, y2=450.99),
         )
-        assert attempt_chain_for_paragraph(bar, is_cjk=True) == [
-            LayoutAttempt.PRIMARY
-        ]
+        assert attempt_chain_for_paragraph(bar, is_cjk=True) == [LayoutAttempt.PRIMARY]
 
     def test_cjk_pull_quote_stays_primary(self):
         quote = self._para(
@@ -242,15 +281,11 @@ class TestQuoteResidualCap:
         assert _left_quote_owns_residual(idx, 211.635, y_bottom=390.0, y_top=405.0)
         assert _left_quote_owns_residual(idx, 220.0, y_bottom=390.0, y_top=405.0)
         # Different y-band (above the bar) does not own the residual.
-        assert not _left_quote_owns_residual(
-            idx, 211.635, y_bottom=200.0, y_top=220.0
-        )
+        assert not _left_quote_owns_residual(idx, 211.635, y_bottom=200.0, y_top=220.0)
 
     def test_figure_zone_does_not_own_residual(self):
         idx = self._quote_index(kind="figure")
-        assert not _left_quote_owns_residual(
-            idx, 330.0, y_bottom=400.0, y_top=420.0
-        )
+        assert not _left_quote_owns_residual(idx, 330.0, y_bottom=400.0, y_top=420.0)
 
     def test_cap_does_not_snap_over_left_quote(self):
         """Residual [211, 572] + EN wrap width ~323 stays in the pocket.

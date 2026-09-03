@@ -411,6 +411,7 @@ def should_split_line_pair(
     split_short_lines: bool,
     short_line_split_factor: float,
     soft_mid_sentence_font_split: bool = False,
+    layout_label: str | None = None,
 ) -> bool:
     """Whether to split a multi-line paragraph so ``curr_line`` starts a new para.
 
@@ -433,10 +434,17 @@ def should_split_line_pair(
         return False
 
     prev_width = (prev_line.box.x2 - prev_line.box.x) if prev_line.box else 0.0
+    caption_stack = (layout_label or "").strip().lower() in {
+        "figure_caption",
+        "figure_title",
+        "figure_text",
+        "table_caption",
+    }
     if (
         split_short_lines
         and prev_width > 0
         and prev_width < median_width * short_line_split_factor
+        and not caption_stack
     ):
         return True
     # Size jump first: same face, different pt (font.unknown title stack).

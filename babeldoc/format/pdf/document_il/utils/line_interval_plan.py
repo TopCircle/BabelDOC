@@ -94,6 +94,42 @@ def infer_wrap_mode_from_line_boxes(
     return WrapMode.NONE
 
 
+def infer_wrap_mode_beside_photo(
+    design_box: Box,
+    photo_boxes: list | None,
+) -> WrapMode | None:
+    """Pin side from a y-overlapping photo: right of text -> LEFT_FIXED.
+
+    Width-only wrap_shape synth and ambiguous line-box spreads used to
+    default to RIGHT_FIXED, which right-aligned OA p33 leftovers into the
+    model. None when no photo sits beside the column.
+    """
+    if design_box is None or not photo_boxes:
+        return None
+    if design_box.x is None or design_box.x2 is None:
+        return None
+    text_cx = (float(design_box.x) + float(design_box.x2)) / 2.0
+    dy1 = float(design_box.y) if design_box.y is not None else None
+    dy2 = float(design_box.y2) if design_box.y2 is not None else None
+    for photo in photo_boxes:
+        if photo is None or photo.x is None or photo.x2 is None:
+            continue
+        if (
+            dy1 is not None
+            and dy2 is not None
+            and photo.y is not None
+            and photo.y2 is not None
+        ):
+            if float(photo.y2) < dy1 or float(photo.y) > dy2:
+                continue
+        photo_cx = (float(photo.x) + float(photo.x2)) / 2.0
+        if photo_cx > text_cx + 20.0:
+            return WrapMode.LEFT_FIXED
+        if photo_cx < text_cx - 20.0:
+            return WrapMode.RIGHT_FIXED
+    return None
+
+
 def shape_entry(
     wrap_shape: list[tuple[float, float]],
     line_idx: int,
@@ -237,9 +273,7 @@ class LineIntervalPlan:
     ) -> list[tuple[float, float]]:
         zone_index = self.zone_index
         if zone_index and getattr(zone_index, "zones", None) and y_top > y_bottom:
-            intervals = zone_index.get_intervals_at(
-                y_bottom, y_top, box.x, box.x2
-            )
+            intervals = zone_index.get_intervals_at(y_bottom, y_top, box.x, box.x2)
             if intervals:
                 return list(intervals)
         return [(float(box.x), float(box.x2))]
@@ -439,10 +473,29 @@ def full_measure_layout_box(
     page_w = max(1.0, page_right - page_left)
     role = getattr(intent, "role", None) if intent is not None else None
     wrap_mode = getattr(intent, "wrap_mode", None) if intent is not None else None
-    # RIGHT_FIXED wrap sits left of a side photo (OA p33). Growing to the
-    # 400pt body floor paints CJK into the figure. LEFT_FIXED residual
-    # strips (p82.65) still need the body-measure widen.
-    if role is LayoutIntentRole.WRAP_COLUMN and wrap_mode is WrapMode.RIGHT_FIXED:
+    # Figure-wrap columns must not grow into the photo.
+    # RIGHT_FIXED (p19 photo on the left) already stays at design_w.
+    # LEFT_FIXED figure wrap (p33/p59 photo on the right, layout_box is
+    # the wrap column itself or the wrap_shape tapers) also stays.
+    # LEFT_FIXED residual strips (p82.65 layout x~5 vs design x~102)
+    # still need the body-measure widen.
+    stay_in_design = False
+    if role is LayoutIntentRole.WRAP_COLUMN:
+        if wrap_mode is WrapMode.RIGHT_FIXED:
+            stay_in_design = True
+        elif wrap_mode is WrapMode.LEFT_FIXED:
+            same_column = (
+                abs(float(layout_box.x) - float(design.x)) < 12.0
+                and abs(float(layout_box.x2) - float(design.x2)) < 12.0
+            )
+            shape = getattr(intent, "wrap_shape", None) or []
+            widths = [float(w) for _off, w in shape]
+            from babeldoc.format.pdf.document_il.utils.figure_wrap import (
+                is_figure_wrap_taper,
+            )
+
+            stay_in_design = same_column or is_figure_wrap_taper(widths)
+    if stay_in_design:
         target_w = design_w
     else:
         target_w = max(design_w, min_body_width, min(460.0, page_w * 0.72))

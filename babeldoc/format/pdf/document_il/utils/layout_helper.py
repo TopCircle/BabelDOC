@@ -654,7 +654,11 @@ def splice_visual_known_split_fragments(
         if not placed:
             continue
         out = rebuilt
-    return out
+    # Splice only relocates the known-split glyphs. OA p12 still sent the
+    # right-hand run ("and conspire... make life") before "You have..."
+    # because those chunks were separate text objects. LTR-sort the
+    # paragraph only when a known-split proved the stream is inverted.
+    return _sort_chars_into_reading_order(out)
 
 def prepare_chars_for_mt(
     chars: list[PdfCharacter],

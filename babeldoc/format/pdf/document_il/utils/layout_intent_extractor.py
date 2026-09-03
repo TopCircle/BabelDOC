@@ -39,6 +39,9 @@ from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    infer_wrap_mode_beside_photo,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     infer_wrap_mode_from_line_boxes,
 )
 from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
@@ -242,13 +245,15 @@ class LayoutIntentExtractor:
                     (float(line.x - design_box.x), float(line.x2 - line.x))
                     for line in meta["lines"]
                 ]
-                line_boxes = [
-                    (float(line.x), float(line.x2)) for line in meta["lines"]
-                ]
+                line_boxes = [(float(line.x), float(line.x2)) for line in meta["lines"]]
                 wrap_mode = infer_wrap_mode_from_line_boxes(line_boxes)
-                # Shape without clear edge spread: preserve historical right-pin.
+                # Ambiguous spread: photo on the right is LEFT_FIXED (OA p33).
+                # Fall back to historical right-pin only when no photo signal.
                 if wrap_mode is WrapMode.NONE:
-                    wrap_mode = WrapMode.RIGHT_FIXED
+                    wrap_mode = (
+                        infer_wrap_mode_beside_photo(design_box, photo_boxes)
+                        or WrapMode.RIGHT_FIXED
+                    )
             else:
                 # No multi-line boxes (noisy/post-cluster): synthesize from
                 # reference widths so P2 pin path still has a shape.
@@ -257,13 +262,14 @@ class LayoutIntentExtractor:
                     getattr(rm, "per_line_widths", None) if rm is not None else None
                 )
                 wrap_shape = shape_from_widths(widths)
-                # Width-only synth: no edge geometry → right-pin (legacy).
+                # Width-only synth: photo side chooses pin; else right-pin.
                 if wrap_shape:
-                    wrap_mode = WrapMode.RIGHT_FIXED
+                    wrap_mode = (
+                        infer_wrap_mode_beside_photo(design_box, photo_boxes)
+                        or WrapMode.RIGHT_FIXED
+                    )
 
-        expansion_policy, expansion_limits, overflow_policy = self._project_policy(
-            role
-        )
+        expansion_policy, expansion_limits, overflow_policy = self._project_policy(role)
         is_chrome = role is LayoutIntentRole.CHROME
         # Chrome + debug stubs never participate in text_on_photo (coding-plan §1.4).
         text_on_photo = False
@@ -549,6 +555,7 @@ class LayoutIntentExtractor:
             if getattr(form, "form_type", None) == "image" and form.box is not None:
                 boxes.append(form.box)
         return boxes
+
     @staticmethod
     def _page_width(page: Page) -> float:
         """cropbox (fallback mediabox) width, mirroring exclusion_zone."""
@@ -669,7 +676,10 @@ class LayoutIntentExtractor:
             yield composition.pdf_character
         elif composition.pdf_line is not None and composition.pdf_line.pdf_character:
             yield from composition.pdf_line.pdf_character
-        elif composition.pdf_formula is not None and composition.pdf_formula.pdf_character:
+        elif (
+            composition.pdf_formula is not None
+            and composition.pdf_formula.pdf_character
+        ):
             yield from composition.pdf_formula.pdf_character
         elif (
             composition.pdf_same_style_characters is not None

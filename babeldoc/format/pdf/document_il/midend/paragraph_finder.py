@@ -1182,6 +1182,7 @@ class ParagraphFinder:
                         self.translation_config.short_line_split_factor
                     ),
                     soft_mid_sentence_font_split=soft_font,
+                    layout_label=getattr(paragraph, "layout_label", None),
                 ):
                     new_paragraph = split_paragraph_at(
                         paragraph,

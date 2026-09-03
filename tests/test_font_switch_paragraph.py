@@ -27,7 +27,9 @@ from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.translator.fixed_map_translator import FixedMapTranslator
 
 
-def _char(ch: str, x: float, y: float, font_id: str, size: float = 10.0) -> PdfCharacter:
+def _char(
+    ch: str, x: float, y: float, font_id: str, size: float = 10.0
+) -> PdfCharacter:
     box = Box(x=x, y=y, x2=x + size * 0.5, y2=y + size)
     return PdfCharacter(
         char_unicode=ch,
@@ -37,7 +39,9 @@ def _char(ch: str, x: float, y: float, font_id: str, size: float = 10.0) -> PdfC
     )
 
 
-def _line(text: str, y: float, font_id: str, x0: float = 50.0) -> PdfParagraphComposition:
+def _line(
+    text: str, y: float, font_id: str, x0: float = 50.0
+) -> PdfParagraphComposition:
     chars = []
     x = x0
     for ch in text:
@@ -122,12 +126,8 @@ class TestFontSwitchParagraphSplit:
         ("occasional | sensationalism… never fakes"). Must not orphan the tail.
         """
         pf = ParagraphFinder(_config(ocr_workaround=True))
-        long_a = (
-            "nothing but the facts and yes theres occasional bias occasional words"
-        )
-        long_b = (
-            "sensationalism occasional inaccuracy but a responsible journalist yes"
-        )
+        long_a = "nothing but the facts and yes theres occasional bias occasional words"
+        long_b = "sensationalism occasional inaccuracy but a responsible journalist yes"
         para = PdfParagraph(
             box=Box(x=50, y=200, x2=340, y2=300),
             pdf_style=PdfStyle(font_id="Font1", font_size=11.0, graphic_state=None),
@@ -482,4 +482,28 @@ def test_hyphen_then_figure_label_still_splits():
         split_short_lines=False,
         short_line_split_factor=0.5,
         soft_mid_sentence_font_split=False,
+    )
+
+
+def test_figure_caption_short_stack_not_split():
+    """OA p35: 'The Female' / 'Vulva' stacked caption must stay one paragraph."""
+    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+        should_split_line_pair,
+    )
+
+    prev = _line("The Female", 400.0, "CaptionFont", x0=40.0)
+    curr = _line("Vulva", 385.0, "CaptionFont", x0=40.0)
+    kwargs = {
+        "median_width": 400.0,
+        "split_short_lines": True,
+        "short_line_split_factor": 0.5,
+        "soft_mid_sentence_font_split": False,
+    }
+    # Without caption label, short-line split would fire.
+    assert should_split_line_pair(prev.pdf_line, curr.pdf_line, **kwargs)
+    assert not should_split_line_pair(
+        prev.pdf_line,
+        curr.pdf_line,
+        layout_label="figure_caption",
+        **kwargs,
     )

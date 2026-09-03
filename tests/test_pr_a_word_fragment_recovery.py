@@ -47,9 +47,7 @@ def test_refuse_free_word_after_dash():
     assert "actually" in rejoin_soft_hyphens_in_text("Trigasm- actually")
     assert "-" in rejoin_soft_hyphens_in_text("Trigasm- actually")
     # must not become Trigasmatually
-    assert "Trigasmatually" not in recover_latin_word_fragments(
-        "Trigasm- actually"
-    )
+    assert "Trigasmatually" not in recover_latin_word_fragments("Trigasm- actually")
 
 
 def test_refuse_common_two_word_phrase():
@@ -159,9 +157,7 @@ def test_decorative_mid_caps_predicate_and_title_path():
 
 
 def test_full_recover_orphan_without_body_mid_cap():
-    out = recover_latin_word_fragments(
-        "Women like ﬀerent things and di fficult tasks."
-    )
+    out = recover_latin_word_fragments("Women like ﬀerent things and di fficult tasks.")
     assert "different" in out
     assert "difficult" in out
     assert "ﬀ" not in out
@@ -504,3 +500,64 @@ def test_midcap_lower_preserves_style_markers():
     assert "〖b0〗" not in out
     assert "chapter" in out
     assert "direct" in out
+
+
+def test_one_letter_hyphen_tails_manual_and_puffy():
+    """OA p102 manua-l and p35 puff-y must rejoin before MT."""
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        should_join_hyphen_wrap,
+    )
+
+    assert should_join_hyphen_wrap("manua-", "l")
+    assert should_join_hyphen_wrap("puff-", "y")
+    assert recover_latin_word_fragments("manua-l") == "manual"
+    assert recover_latin_word_fragments("manua- l") == "manual"
+    assert recover_latin_word_fragments("puff- y") == "puffy"
+    assert recover_latin_word_fragments("manu al or oral sex") == "manual or oral sex"
+    # g-spot still protected by stem length
+    assert recover_latin_word_fragments("g-spot") == "g-spot"
+
+
+def test_stiff_visual_split_and_hyphen():
+    """OA p91 sti + ff ligature must reach MT as stiff, not leftover STI."""
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        should_join_visual_split,
+    )
+
+    assert should_join_visual_split("sti", "ff")
+    assert should_join_visual_split("sti-", "\ufb00")
+    assert recover_latin_word_fragments("sti-\ufb00") == "stiff"
+    assert recover_latin_word_fragments("sti ff") == "stiff"
+    # do not regress stuff
+    assert recover_latin_word_fragments("stu-\ufb00") == "stuff"
+
+
+def test_heading_ma_stery_rejoins_after_midcap_lower():
+    """OA p34 BREAST MASTERY small-caps: Ma + Stery -> mastery, not leftover ma stery."""
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        normalize_decorative_title_case,
+    )
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        should_join_visual_split,
+    )
+
+    assert should_join_visual_split("Ma", "Stery")
+    out = normalize_decorative_title_case("breaSt Ma Stery")
+    assert "mastery" in out
+    assert "ma stery" not in out
+    assert out == "breast mastery"
+
+
+def test_visual_order_line_chunks_follow_known_split():
+    """OA p12: inverted text objects + stu+ff must read You-have...stuff...conspire."""
+    # Stream paints the right-hand run first, then the ligature, then the stem.
+    right = [_ch(c, 400.0 + 6.0 * i) for i, c in enumerate("and")]
+    lig = _ch("\ufb00", 351.0)
+    left = [_ch(c, 200.0 + 6.0 * i) for i, c in enumerate("You")]
+    stem = [_ch("s", 330.0), _ch("t", 336.0), _ch("u", 342.0)]
+    chars = _mark_ids(right + [lig] + left + stem)
+    text = get_char_unicode_string(chars)
+    compact = text.replace(" ", "")
+    assert "stuff" in compact
+    assert compact.index("You") < compact.index("stuff") < compact.index("and")
+    assert "\ufb00" not in text
