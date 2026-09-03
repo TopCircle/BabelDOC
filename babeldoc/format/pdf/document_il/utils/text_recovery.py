@@ -605,6 +605,7 @@ _KNOWN_SPLIT_WORDS = frozenset(
         "offers",
         "affecting",
         "off",
+        "foreplay",
     }
 )
 

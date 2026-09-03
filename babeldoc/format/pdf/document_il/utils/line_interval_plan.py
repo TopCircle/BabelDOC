@@ -130,6 +130,24 @@ def infer_wrap_mode_beside_photo(
     return None
 
 
+def infer_wrap_mode_from_design_side(
+    design_box: Box,
+    page_width: float | None = None,
+) -> WrapMode:
+    """When photo detection misses, pin from which half of the page the column sits in.
+
+    Left-half column (OA p33/p59 photo on the right) -> LEFT_FIXED so CJK is
+    not right-pinned onto the figure. Right-half column (OA p19) -> RIGHT_FIXED.
+    """
+    if design_box is None or design_box.x is None or design_box.x2 is None:
+        return WrapMode.LEFT_FIXED
+    pw = float(page_width) if page_width else 612.0
+    text_cx = (float(design_box.x) + float(design_box.x2)) / 2.0
+    if text_cx >= pw * 0.5:
+        return WrapMode.RIGHT_FIXED
+    return WrapMode.LEFT_FIXED
+
+
 def shape_entry(
     wrap_shape: list[tuple[float, float]],
     line_idx: int,

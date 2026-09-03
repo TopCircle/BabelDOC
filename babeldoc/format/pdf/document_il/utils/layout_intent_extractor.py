@@ -42,6 +42,9 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     infer_wrap_mode_beside_photo,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    infer_wrap_mode_from_design_side,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     infer_wrap_mode_from_line_boxes,
 )
 from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
@@ -252,7 +255,7 @@ class LayoutIntentExtractor:
                 if wrap_mode is WrapMode.NONE:
                     wrap_mode = (
                         infer_wrap_mode_beside_photo(design_box, photo_boxes)
-                        or WrapMode.RIGHT_FIXED
+                        or infer_wrap_mode_from_design_side(design_box, page_width)
                     )
             else:
                 # No multi-line boxes (noisy/post-cluster): synthesize from
@@ -266,9 +269,15 @@ class LayoutIntentExtractor:
                 if wrap_shape:
                     wrap_mode = (
                         infer_wrap_mode_beside_photo(design_box, photo_boxes)
-                        or WrapMode.RIGHT_FIXED
+                        or infer_wrap_mode_from_design_side(design_box, page_width)
                     )
 
+        if wrap_mode is WrapMode.NONE:
+            # BODY/PULL_QUOTE beside a side photo (OA p59): keep LEFT_FIXED so
+            # attempt_chain stays PRIMARY and CJK is not right-pinned onto it.
+            photo_mode = infer_wrap_mode_beside_photo(design_box, photo_boxes)
+            if photo_mode is not None:
+                wrap_mode = photo_mode
         expansion_policy, expansion_limits, overflow_policy = self._project_policy(role)
         is_chrome = role is LayoutIntentRole.CHROME
         # Chrome + debug stubs never participate in text_on_photo (coding-plan §1.4).

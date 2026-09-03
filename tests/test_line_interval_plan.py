@@ -28,6 +28,9 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     infer_wrap_mode_beside_photo,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    infer_wrap_mode_from_design_side,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     infer_wrap_mode_from_line_boxes,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
@@ -68,6 +71,16 @@ class TestInferWrapMode:
         design = Box(x=102, y=400, x2=400, y2=700)
         assert infer_wrap_mode_beside_photo(design, []) is None
         assert infer_wrap_mode_beside_photo(design, None) is None
+
+    def test_design_side_left_half_is_left_fixed(self):
+        """OA p59 wrap column ~102-341 sits in the left half."""
+        design = Box(x=101.87, y=228.59, x2=341.48, y2=393.24)
+        assert infer_wrap_mode_from_design_side(design, 612.0) is WrapMode.LEFT_FIXED
+
+    def test_design_side_right_half_is_right_fixed(self):
+        """OA p19 TAKING CHARGE column sits in the right half."""
+        design = Box(x=375.9, y=234.9, x2=569.5, y2=284.9)
+        assert infer_wrap_mode_from_design_side(design, 612.0) is WrapMode.RIGHT_FIXED
 
 
 class TestWrapInterval:
