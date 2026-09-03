@@ -29,7 +29,9 @@ from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_style_spa
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     assemble_midcap_title_unicode,
 )
+from babeldoc.format.pdf.document_il.utils.layout_helper import flatten_composition_pdf_chars
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode_string
+from babeldoc.format.pdf.document_il.utils.layout_helper import visual_known_split_char_ids
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_paragraph_unicode
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_figure_text_paragraph
 from babeldoc.format.pdf.document_il.utils.layout_helper import strip_ascii_controls
@@ -531,15 +533,26 @@ class ILTranslator:
     _CHAPTER_MARKER_RE = re.compile(r"\bChapter\s*(\d{1,3})(?!\d)", re.IGNORECASE)
     #: Rich-text bold markers that split a chapter marker ("Chapter " bold +
     #: "9" regular) and make MT fuse it into "Chapter9直接卷曲".
-    _RICH_TEXT_MARKER_RE = re.compile(r"[〖\u3016]/?B\d+[〗\u3017]")
+    _RICH_TEXT_MARKER_RE = re.compile(r"[〖\u3016]/?[Bb]\d+[〗\u3017]")
     #: A complete ``Chapter N`` marker can be translated without discarding
     #: its source style.  Split markers are handled by the legacy fallback
     #: below because there is no single style span to preserve.
     _RICH_TEXT_CHAPTER_RE = re.compile(
-        r"(?P<open>[〖\u3016]B(?P<id>\d+)[〗\u3017])"
+        r"(?P<open>[〖\u3016][Bb](?P<id>\d+)[〗\u3017])"
         r"(?P<lead>\s*)Chapter\s*(?P<number>\d{1,3})(?P<trail>\s*)"
-        r"(?P<close>[〖\u3016]/B(?P=id)[〗\u3017])",
+        r"(?P<close>[〖\u3016]/[Bb](?P=id)[〗\u3017])",
         re.IGNORECASE,
+    )
+    # DeepLX leftover after 〖b0〗chapter〖/b0〗8 → 章b08 / 章节b05 / 章b012.
+    # Span id is one digit (first emphasis run); the rest is the chapter index.
+    _MANGLED_BN_CHAPTER_RE = re.compile(
+        r"(?:章节|章)\s*[bB](?P<sid>\d)(?P<num>\d{1,3})(?!\d)"
+    )
+    # 〖b08〗 / 〖b012〗 is span 0 fused with the chapter index (embed never
+    # zero-pads: span 8 is 〖B8〗). Rewrite before the generic marker strip
+    # so the digits are not deleted as a fake span id.
+    _FUSED_B0_MARKER_RE = re.compile(
+        r"(?:章节|章)?\s*〖[Bb]0(?P<num>\d{1,3})〗(?:\s*〖/[Bb]0(?P=num)〗)?"
     )
     _CJK_CHAR_RE = re.compile(r"[\u4e00-\u9fff]")
     _CN_DIGITS = "零一二三四五六七八九"
@@ -604,6 +617,15 @@ class ILTranslator:
         protected_text = cls._RICH_TEXT_CHAPTER_RE.sub(
             _protect_rich_chapter, text
         )
+
+        def _fused(m: re.Match) -> str:
+            try:
+                n = int(m.group("num"))
+            except (TypeError, ValueError):
+                return m.group(0)
+            return "第" + cls._cn_numeral(n) + "章"
+
+        protected_text = cls._FUSED_B0_MARKER_RE.sub(_fused, protected_text)
         cleaned = cls._RICH_TEXT_MARKER_RE.sub("", protected_text)
 
         def _repl(m: re.Match) -> str:
@@ -616,6 +638,15 @@ class ILTranslator:
         fixed = cls._CHAPTER_MARKER_RE.sub(_repl, cleaned)
         for index, replacement in enumerate(protected):
             fixed = fixed.replace(f"__RICH_CHAPTER_{index}__", replacement)
+
+        def _mangled(m: re.Match) -> str:
+            try:
+                n = int(m.group("num"))
+            except (TypeError, ValueError):
+                return m.group(0)
+            return "第" + cls._cn_numeral(n) + "章"
+
+        fixed = cls._MANGLED_BN_CHAPTER_RE.sub(_mangled, fixed)
         if fixed == text:
             return text  # nothing changed: keep markers untouched
         return fixed
@@ -1080,6 +1111,9 @@ class ILTranslator:
         chars = []
         style_spans: list[StyleSpan] = []
         compositions = list(paragraph.pdf_paragraph_composition or [])
+        visual_split_ids = visual_known_split_char_ids(
+            flatten_composition_pdf_chars(compositions)
+        )
         i_comp = 0
         while i_comp < len(compositions):
             composition = compositions[i_comp]
@@ -1094,8 +1128,11 @@ class ILTranslator:
                 )
                 if text_recovery.should_join_hyphen_wrap(
                     text_recovery.mixed_chars_stem(chars), frag
+                ) or (
+                    visual_split_ids
+                    and any(id(c) in visual_split_ids for c in fchars)
                 ):
-                    # Ligature / hyphen-wrap tail misclassified as formula.
+                    # Ligature / hyphen-wrap / visual-split tail as formula.
                     chars.extend(fchars)
                     i_comp += 1
                     continue
@@ -1141,8 +1178,11 @@ class ILTranslator:
                     if text_recovery.should_join_hyphen_wrap(
                         text_recovery.mixed_chars_stem(chars),
                         get_char_unicode_string(span_chars),
+                    ) or (
+                        visual_split_ids
+                        and any(id(c) in visual_split_ids for c in span_chars)
                     ):
-                        # Do not isolate ``ﬀ`` / ``ly`` tails with 〖Bn〗.
+                        # Do not isolate ``ﬀ`` / ``ly`` / visual-split tails.
                         chars.extend(span_chars)
                         continue
                     span_id = len(style_spans)
@@ -1284,7 +1324,7 @@ class ILTranslator:
         return placeholder
 
 
-    _MARKER_RE = re.compile(r"〖B\d+〗|〖/B\d+〗")
+    _MARKER_RE = re.compile(r"〖[Bb]\d+〗|〖/[Bb]\d+〗")
 
     @staticmethod
     def _strip_style_markers(text: str) -> str:
@@ -1397,7 +1437,7 @@ class ILTranslator:
         when DeepLX strips QBS/QES but leaves the English term.
         """
         result: list[PdfParagraphComposition] = []
-        marker_re = re.compile(r"〖B(\d+)〗([\s\S]*?)〖/B\1〗")
+        marker_re = re.compile(r"〖[Bb](\d+)〗([\s\S]*?)〖/[Bb]\1〗")
 
         recovered = rewrap_styles_from_source(output, input_text.style_spans)
         if recovered:
@@ -1459,7 +1499,7 @@ class ILTranslator:
                 result.append(comp)
 
         if not result:
-            if "〖B" in output:
+            if "〖B" in output or "〖b" in output:
                 logger.warning(
                     "Markers NOT parsed but present in output (preview=%s)",
                     output[:200],
@@ -1479,7 +1519,7 @@ class ILTranslator:
                 comp.pdf_same_style_unicode_characters
                 and comp.pdf_same_style_unicode_characters.unicode
             )
-            if uni and "〖B" in uni:
+            if uni and ("〖B" in uni or "〖b" in uni):
                 comp.pdf_same_style_unicode_characters.unicode = (
                     ILTranslator._strip_style_markers(uni)
                 )
@@ -1689,7 +1729,8 @@ class ILTranslator:
             if (
                 comp.pdf_same_style_unicode_characters
                 and comp.pdf_same_style_unicode_characters.unicode
-                and "〖B" in comp.pdf_same_style_unicode_characters.unicode
+                and ("〖B" in comp.pdf_same_style_unicode_characters.unicode
+                     or "〖b" in comp.pdf_same_style_unicode_characters.unicode)
             ):
                 comp.pdf_same_style_unicode_characters.unicode = (
                     ILTranslator._strip_style_markers(
@@ -2163,19 +2204,19 @@ class ILTranslator:
                     translated_text = re.sub(
                         r"[. 。…，]{20,}", ".", translated_text
                     )
-                    # Chapter names are titles to translate (not chrome to keep
-                    # EN); MT often leaves the marker English ("Chapter9直接卷曲").
-                    # Normalize any residue to 第N章 on translated output only.
-                    if self._CJK_CHAR_RE.search(translated_text):
-                        translated_text = self.fix_untranslated_chapter_markers(
-                            translated_text
-                        )
                     if self.translation_drops_sentences(text, translated_text):
                         logger.warning(
                             "Translation still drops sentences after retry; "
                             f"keeping result. paragraph id: {paragraph.debug_id} "
                             f"output={translated_text[:80]!r}"
                         )
+
+                # Chapter running titles: "Chapter N" and DeepLX-mangled
+                # 章b08 residue on every MT output (not only the retry path).
+                if self._CJK_CHAR_RE.search(translated_text):
+                    translated_text = self.fix_untranslated_chapter_markers(
+                        translated_text
+                    )
 
                 # Acceptance V4 gate (output): if MT/LLM duplicated a sentence
                 # back-to-back in the target, fall back to the source so a

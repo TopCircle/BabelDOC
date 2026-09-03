@@ -50,6 +50,37 @@ class TestIsQuoteBlock:
         para = self._make_para(56, 300, 302, 480)
         assert is_quote_block(para, page_width=612) is False
 
+    def test_oa_p59_left_fixed_wrap_not_quote(self):
+        """OA p59 wrap beside the right photo is WRAP_COLUMN, not a pull-quote.
+
+        Box is indent 17% / width 39% / right margin 44% — the same geometry
+        as test_typical_quote_detected. Line boxes (left pinned, right
+        stepping) are the discriminator.
+        """
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfLine
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
+
+        para = self._make_para(101.87, 228.59, 341.48, 393.24)
+        # Without line geometry this is a quote (same as typical_quote).
+        assert is_quote_block(para, page_width=612) is True
+        lines = [
+            (101.87, 333.64),
+            (102.53, 340.67),
+            (102.00, 342.65),
+            (102.91, 333.62),
+            (102.28, 325.63),
+            (102.22, 322.61),
+            (102.13, 320.65),
+        ]
+        y = 390.0
+        para.pdf_paragraph_composition = [
+            PdfParagraphComposition(
+                pdf_line=PdfLine(box=il_version_1.Box(x=x, y=y - 12 * i, x2=x2, y2=y - 12 * i + 10))
+            )
+            for i, (x, x2) in enumerate(lines)
+        ]
+        assert is_quote_block(para, page_width=612) is False
+
     def test_full_width_not_quote(self):
         """全宽段落不是 Quote。"""
         para = self._make_para(0, 400, 612, 500)

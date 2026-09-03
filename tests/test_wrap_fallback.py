@@ -13,6 +13,7 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.utils.wrap_shape import count_typeset_baselines
 from babeldoc.format.pdf.document_il.utils.wrap_shape import residual_line_budget
 from babeldoc.format.pdf.document_il.utils.wrap_shape import should_fallback_residual_to_block
@@ -201,3 +202,104 @@ class TestActiveWrapParameterized:
         assert not hasattr(ts, "_disable_wrap_for_paragraph")
         assert not hasattr(ts, "_drop_all_figures_for_paragraph")
         assert getattr(ts, "_wrap_enabled", "missing") is None
+
+
+class TestCjkAbandonNarrowColumn:
+    """OA S8: callout / left-of-photo wrap must not FULL_MEASURE into the figure."""
+
+    def test_pull_quote_never_abandons(self):
+        ts = _cjk_typesetting()
+        design = Box(x=101.87, y=228.59, x2=341.48, y2=393.24)
+        para = PdfParagraph(box=design, pdf_paragraph_composition=[], unicode="是为更喜欢特技")
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.PULL_QUOTE,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+        )
+        units = [_U(380 - 14 * i) for i in range(8)]
+        assert (
+            ts._cjk_should_abandon_narrow_column(
+                para,
+                design,
+                units,
+                all_units_fit=True,
+                wrap_enabled=True,
+                drop_figure_zones=False,
+            )
+            is False
+        )
+
+    def test_callout_never_abandons(self):
+        ts = _cjk_typesetting()
+        design = Box(x=54.18, y=376.0, x2=211.64, y2=451.0)
+        para = PdfParagraph(box=design, pdf_paragraph_composition=[], unicode="红条")
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.CALLOUT,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+        )
+        units = [_U(440 - 14 * i) for i in range(6)]
+        assert (
+            ts._cjk_should_abandon_narrow_column(
+                para,
+                design,
+                units,
+                all_units_fit=True,
+                wrap_enabled=True,
+                drop_figure_zones=False,
+            )
+            is False
+        )
+
+    def test_left_fixed_wrap_fits_does_not_c3(self):
+        """Pin wrap that fits its shape must not C3-widen into the photo."""
+        ts = _cjk_typesetting()
+        design = Box(x=101.87, y=228.59, x2=341.48, y2=393.24)
+        shape = [
+            (0.0, 231.8),
+            (0.7, 238.1),
+            (0.1, 240.6),
+            (1.0, 230.7),
+            (0.4, 223.4),
+            (0.3, 220.4),
+            (0.3, 218.5),
+        ]
+        para = PdfParagraph(box=design, pdf_paragraph_composition=[], unicode="绕图")
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.WRAP_COLUMN,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+            wrap_shape=shape,
+            wrap_mode=WrapMode.LEFT_FIXED,
+        )
+        units = [_U(380 - 14 * i) for i in range(7)]
+        assert (
+            ts._cjk_should_abandon_narrow_column(
+                para,
+                design,
+                units,
+                all_units_fit=True,
+                wrap_enabled=True,
+                drop_figure_zones=False,
+            )
+            is False
+        )
+
+    def test_wrap_over_budget_still_abandons(self):
+        ts = _cjk_typesetting()
+        para = _wrap_paragraph()
+        units = [_U(500 - 10 * i) for i in range(20)]
+        assert (
+            ts._cjk_should_abandon_narrow_column(
+                para,
+                para.box,
+                units,
+                all_units_fit=False,
+                wrap_enabled=True,
+                drop_figure_zones=False,
+            )
+            is True
+        )

@@ -377,3 +377,54 @@ def test_classify_excerpt_is_not_stashed():
     tr._near_full_pullquotes = {}
     tr._classify_near_full_pullquotes(page)
     assert id(quote) not in tr._near_full_pullquotes
+
+
+P120_EXCERPT = (
+    "The importance of your partner's pleasure in your relationship "
+    "shouldn't be entirely up to you to decide. Talk to your partner "
+    "and find out how much she can commit, what resources she can "
+    "devote to learning these new skills."
+)
+P120_OPENER = "Don't make these decisions alone. "
+
+
+def test_oa_p120_omitted_opener_is_excerpt_not_near_full():
+    """OA p120 red box omits the opening sentence.
+
+    Ratio is ~0.87 (>= 0.85) but the quote is a *suffix* of the host.
+    Copying host ZH stacked the full paragraph in the box and the body.
+    EN structure is excerpt-in-box / full-in-body; ZH must match.
+    """
+    from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
+        _NEAR_FULL_RATIO,
+    )
+
+    host_text = P120_OPENER + P120_EXCERPT
+    nq = normalize_for_dup(P120_EXCERPT)
+    nh = normalize_for_dup(host_text)
+    assert nq and nh and nq in nh
+    assert nh.endswith(nq)
+    assert not nh.startswith(nq)
+    assert len(nq) / len(nh) >= _NEAR_FULL_RATIO
+    assert is_near_full_pullquote(P120_EXCERPT, host_text) is False
+
+    body = _para(host_text, x=102, x2=360)
+    callout = _para(P120_EXCERPT, x=40, x2=180)
+    page = _page(body, callout)
+    assert find_pullquote_host(callout, page) is body
+    assert is_pullquote_duplicate_of_body(callout, page) is True
+    assert is_near_full_pullquote(callout, body) is False
+    assert should_skip_side_callout_mt(callout, page) is False
+    assert should_skip_side_callout_mt(callout, page, mode="expand") is False
+
+
+def test_classify_p120_excerpt_is_not_stashed():
+    """B4a must not stash p120-style suffix excerpts for host-ZH copy."""
+    host = _para(P120_OPENER + P120_EXCERPT, x=102, x2=360)
+    quote = _para(P120_EXCERPT, x=40, x2=180)
+    page = _page(host, quote)
+    tr = object.__new__(ILTranslator)
+    tr._near_full_pullquotes = {}
+    tr._classify_near_full_pullquotes(page)
+    assert id(quote) not in tr._near_full_pullquotes
+

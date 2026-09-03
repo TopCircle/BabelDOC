@@ -456,16 +456,215 @@ def _apply_prepared_order_to_mixed(
     return out
 
 
+def _iter_visual_latin_tokens(
+    chars: list[PdfCharacter],
+    *,
+    y_tol: float = 7.5,
+) -> list[tuple[str, list[PdfCharacter], int, float]]:
+    """Latin tokens in visual reading order.
+
+    Returns ``(text, chars, line_idx, y_line)``. Letter runs break on
+    punctuation, spaces, line changes, and TeX-sized x-gaps so ``stuﬀlife``
+    does not become one token.
+    """
+    from babeldoc.format.pdf.document_il.utils.stream_order import char_visual_xy
+
+    ordered = _sort_chars_into_reading_order(chars, y_tol=y_tol)
+    tokens: list[tuple[str, list[PdfCharacter], int, float]] = []
+    line_idx = -1
+    line_y: float | None = None
+    buf_t: list[str] = []
+    buf_c: list[PdfCharacter] = []
+
+    def flush() -> None:
+        nonlocal buf_t, buf_c
+        if buf_c:
+            tokens.append(("".join(buf_t), buf_c, line_idx, line_y or 0.0))
+        buf_t, buf_c = [], []
+
+    def _gap_breaks(prev: PdfCharacter, curr: PdfCharacter) -> bool:
+        if prev.box is None or curr.box is None:
+            return False
+        gap = curr.box.x - prev.box.x2
+        if gap <= 0:
+            return False
+        prev_w = max(prev.box.x2 - prev.box.x, 1.0)
+        curr_w = max(curr.box.x2 - curr.box.x, 1.0)
+        max_w = max(prev_w, curr_w)
+        return gap > max(
+            text_recovery.LATIN_WORD_MIN_GAP_PT,
+            max_w * text_recovery.LATIN_WORD_GAP_RATIO,
+        )
+
+    for ch in ordered:
+        xy = char_visual_xy(ch)
+        y = xy[1] if xy is not None else 0.0
+        if line_y is None or abs(y - line_y) > y_tol:
+            flush()
+            line_idx += 1
+            line_y = y
+        raw = text_recovery.expand_latin_ligatures(ch.char_unicode or "")
+        if not raw or raw.isspace():
+            flush()
+            continue
+        if raw in text_recovery.HYPHEN_CHARS:
+            if buf_c:
+                buf_t.append(raw)
+                buf_c.append(ch)
+            continue
+        if raw.isalpha() or all(c.isalpha() or c == "'" for c in raw):
+            if buf_c and _gap_breaks(buf_c[-1], ch):
+                flush()
+            buf_t.append(raw)
+            buf_c.append(ch)
+            continue
+        flush()
+    flush()
+    return tokens
+
+
+def _plausible_line_wrap_pitch(y_top: float, y_next: float, height: float) -> bool:
+    """True when *y_top* → *y_next* looks like one wrapped body line."""
+    pitch = y_top - y_next
+    if height <= 0:
+        height = 12.0
+    return (0.55 * height) <= pitch <= (2.8 * height)
+
+
+def iter_visual_known_split_pairs(chars: list[PdfCharacter]):
+    """Yield ``(stem_chars, tail_chars)`` for visual-neighbor known splits.
+
+    Same-line consecutive tokens, or a plausible wrap (last token of a line
+    + first token of the next line with normal line pitch). Distant lines
+    (``stu`` vs an ``ff`` several rows away) do not join.
+    """
+    tokens = _iter_visual_latin_tokens(chars)
+    by_line: dict[int, list[int]] = {}
+    for i, tok in enumerate(tokens):
+        by_line.setdefault(tok[2], []).append(i)
+
+    def _height(tchars: list[PdfCharacter]) -> float:
+        hs = []
+        for c in tchars:
+            if c.box is not None:
+                hs.append(max(c.box.y2 - c.box.y, 0.0))
+        return max(hs) if hs else 12.0
+
+    for i in range(len(tokens) - 1):
+        left, lchars, lline, ly = tokens[i]
+        right, rchars, rline, ry = tokens[i + 1]
+        if lline == rline:
+            pass
+        elif rline == lline + 1:
+            if by_line[lline][-1] != i or by_line[rline][0] != i + 1:
+                continue
+            if not _plausible_line_wrap_pitch(ly, ry, _height(lchars + rchars)):
+                continue
+        else:
+            continue
+        if text_recovery.should_join_visual_split(left, right):
+            yield lchars, rchars
+
+
+def iter_visual_known_split_groups(chars: list[PdfCharacter]):
+    """Yield visual-order glyph groups to splice (pairs + inverted runs).
+
+    A tight visual run that already reads as a known word (``stuﬀ``) is
+    yielded as one group when stream order is inverted.
+    """
+    seen: set[int] = set()
+    for stem, tail in iter_visual_known_split_pairs(chars):
+        group = stem + tail
+        key = tuple(id(c) for c in group)
+        if key in seen:
+            continue
+        seen.add(key)
+        yield group
+    for text, tchars, _lline, _ly in _iter_visual_latin_tokens(chars):
+        if not text_recovery.is_known_split_word(text):
+            continue
+        vis_ids = [id(c) for c in tchars]
+        stream_ids = [id(c) for c in chars if id(c) in set(vis_ids)]
+        if stream_ids == vis_ids:
+            continue
+        key = tuple(vis_ids)
+        if key in seen:
+            continue
+        seen.add(key)
+        yield tchars
+
+
+def visual_known_split_char_ids(chars: list[PdfCharacter]) -> set[int]:
+    """Object ids of glyphs that belong to a visual known-split group."""
+    ids: set[int] = set()
+    for group in iter_visual_known_split_groups(chars):
+        for c in group:
+            ids.add(id(c))
+    return ids
+
+
+def flatten_composition_pdf_chars(compositions) -> list[PdfCharacter]:
+    """PdfCharacter glyphs from paragraph compositions (lines/spans/formula)."""
+    out: list[PdfCharacter] = []
+    for composition in compositions or []:
+        if getattr(composition, "pdf_line", None) is not None:
+            out.extend(composition.pdf_line.pdf_character or [])
+        elif getattr(composition, "pdf_same_style_characters", None) is not None:
+            out.extend(composition.pdf_same_style_characters.pdf_character or [])
+        elif getattr(composition, "pdf_character", None) is not None:
+            out.append(composition.pdf_character)
+        elif getattr(composition, "pdf_formula", None) is not None:
+            out.extend(composition.pdf_formula.pdf_character or [])
+    return out
+
+
+def splice_visual_known_split_fragments(
+    chars: list[PdfCharacter],
+) -> list[PdfCharacter]:
+    """Move visually neighboring known-split tails to follow their stems.
+
+    Does not fully visual-sort body prose. Relocates glyphs of groups that
+    :func:`iter_visual_known_split_groups` accepts so inverted stream
+    ``ﬀ``+``stu`` becomes adjacent ``stu``+``ﬀ`` before MT. Placement is at
+    the visual-first (stem) glyph so an early tail does not jump before
+    ``You have…``.
+    """
+    if len(chars) < 2:
+        return chars
+    groups = list(iter_visual_known_split_groups(chars))
+    if not groups:
+        return chars
+    out = list(chars)
+    for group in groups:
+        if len(group) < 2:
+            continue
+        ids = {id(c) for c in group}
+        first_id = id(group[0])
+        placed = False
+        rebuilt: list[PdfCharacter] = []
+        for c in out:
+            if id(c) in ids:
+                if id(c) == first_id and not placed:
+                    rebuilt.extend(group)
+                    placed = True
+                continue
+            rebuilt.append(c)
+        if not placed:
+            continue
+        out = rebuilt
+    return out
+
 def prepare_chars_for_mt(
     chars: list[PdfCharacter],
     *,
     para_width: float | None = None,
 ) -> list[PdfCharacter]:
-    """Single MT prep: multi-line climb reorder, then drop-cap adjacency.
+    """Single MT prep: climb reorder, drop-cap adjacency, visual split splice.
 
     Call sites that need visual reading order for translation should go through
     this helper (via ``get_char_unicode_string``) rather than re-applying climb
-    / place_drop_caps independently.
+    / place_drop_caps independently. Known-split tails that the stream painted
+    before their stem (OA p12 ``ﬀ`` then ``stu``) are moved next to the stem.
     """
     if not chars:
         return chars
@@ -485,7 +684,8 @@ def prepare_chars_for_mt(
         strip_drop_cap_padding,
     )
 
-    return strip_drop_cap_padding(place_drop_caps_before_continuations(chars))
+    chars = strip_drop_cap_padding(place_drop_caps_before_continuations(chars))
+    return splice_visual_known_split_fragments(chars)
 
 
 def get_char_unicode_string(
@@ -1825,14 +2025,12 @@ def is_quote_block(
     if width_ratio >= narrow_threshold:
         return False
 
-    # 规则 1.5: 锥形绕图列（右缘贴页边 + 多行左缘步进）不是 Quote
-    # 绕图正文列（图片在左、正文右缘贴页边）几何上"窄 + 深缩进 + 少量留白"，
-    # 容易命中规则 1/2/3 被误判为 pull-quote（OA p19 TAKING CHARGE）。
-    # 右缘贴页边本身不足以排除（右侧 pull-quote 同样深缩进且右缘靠页边），
-    # 因此同时要求"多行左缘步进 + 右缘固定"的锥形签名。
-    if box.x2 is not None and box.x2 > page_width * 0.9:
-        if is_figure_wrap_paragraph(para):
-            return False
+    # 规则 1.5: figure-wrap columns are not quotes. OA p19 (right-pinned,
+    # photo on the left) used to require x2 near the page edge; OA p59
+    # (left-pinned, photo on the right) has a large right margin and was
+    # misclassified as pull-quote, then FULL_MEASURE'd into the photo.
+    if is_figure_wrap_paragraph(para):
+        return False
 
     # 规则 2: 左侧有明显缩进（须显著大于正文页边距）
     left_indent = box.x

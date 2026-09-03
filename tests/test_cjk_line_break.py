@@ -160,6 +160,46 @@ class TestCJKDP:
         last_line_count = len(units) - last_line_start
         assert last_line_count > 2, f"最后一行只有 {last_line_count} 个字（孤行）"
 
+    def test_oa_p35_caption_avoids_single_cjk_last_char(self):
+        """OA p35 figure_caption: do not wrap the last CJK onto its own line."""
+        chars = list("图片1-雌性外阴")
+        units = []
+        for ch in chars:
+            is_cjk = "\u4e00" <= ch <= "\u9fff"
+            units.append(
+                MockUnit(
+                    width=10.0 if is_cjk else 6.0,
+                    unicode=ch,
+                    is_cjk_char=is_cjk,
+                    can_break_line=True,
+                )
+            )
+        # Total ~ 6*10 + 3*6 = 78. Line 70 fits all but last 阴.
+        result = optimal_line_break(units, [70.0, 70.0], scale=1.0, space_width=5.0)
+        assert result is not None
+        last_start = result[-1]
+        last_text = "".join(u.try_get_unicode() for u in units[last_start:])
+        assert len(units) - last_start >= 2, f"last line {last_text!r}"
+        assert last_text != "阴"
+
+    def test_oa_p35_caption_87pt_measure(self):
+        """Match xuRUB: 11pt CJK, 87.9pt measure, greedy leaves 阴."""
+        chars = list("图片 1 - 雌性外阴")
+        units = []
+        for ch in chars:
+            is_cjk = "\u4e00" <= ch <= "\u9fff"
+            if ch == " ":
+                units.append(MockUnit(width=3.9, unicode=ch, is_cjk_char=False, is_space=True, can_break_line=True))
+            elif is_cjk:
+                units.append(MockUnit(width=11.0, unicode=ch, is_cjk_char=True, can_break_line=True))
+            else:
+                units.append(MockUnit(width=6.5 if ch == "1" else 3.9, unicode=ch, is_cjk_char=False, can_break_line=True))
+        result = optimal_line_break(units, [87.9, 87.9], scale=1.0, space_width=3.0)
+        assert result is not None
+        last_text = "".join(u.try_get_unicode() for u in units[result[-1]:])
+        assert last_text != "阴", last_text
+        assert "阴" in last_text
+
     def test_cjk_mixed_latin(self):
         """CJK 和拉丁字符混排时应正确处理。"""
         units = [
@@ -236,6 +276,17 @@ class TestCJKCost:
         normal_cost = _line_cost(30, 100, 3, True, 500, cjk_mode=True)
         assert widow_cost > normal_cost
         assert widow_cost >= 500
+
+    def test_cjk_one_char_last_line_costs_more_than_two(self):
+        """OA p35 caption: 1-char last line must lose to 2-char last line."""
+        one = _line_cost(12, 80, 1, True, 500, cjk_mode=True)
+        two = _line_cost(24, 80, 2, True, 500, cjk_mode=True)
+        interior_gain = _line_cost(68, 80, 6, False, 500, cjk_mode=True) - _line_cost(
+            80, 80, 7, False, 500, cjk_mode=True
+        )
+        assert one > two
+        assert one - two >= 4000
+        assert one - two > interior_gain
 
     def test_cjk_last_line_does_not_tax_leftover(self):
         """CJK 末行允许短：剩余宽度不再用二次惩罚（否则会抽空中间行）。"""

@@ -370,6 +370,23 @@ def attempt_chain_for_paragraph(
     return [LayoutAttempt.PRIMARY, LayoutAttempt.FULL_MEASURE]
 
 
+def allows_full_measure_escalation(
+    paragraph: PdfParagraph | None,
+    *,
+    is_cjk: bool,
+) -> bool:
+    """True when CJK overflow may drop figure zones / widen to body measure.
+
+    CALLOUT / PULL_QUOTE must stay in their design column (OA p91 red bar,
+    OA p59 wrap misread as quote). Inner typesetting retries used to ignore
+    ``attempt_chain_for_paragraph`` and FULL_MEASURE into the photo.
+    WRAP_COLUMN still escalates via wrap-budget, not this gate.
+    """
+    return LayoutAttempt.FULL_MEASURE in attempt_chain_for_paragraph(
+        paragraph, is_cjk=is_cjk
+    )
+
+
 def flags_to_attempt(
     *,
     wrap_enabled: bool,

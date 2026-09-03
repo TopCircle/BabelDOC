@@ -283,3 +283,224 @@ def test_get_char_unicode_string_hyphen_wrap_across_markers():
 
 def test_cli_toris_known_word():
     assert recover_latin_word_fragments("cli toris") == "clitoris"
+
+
+def test_should_join_visual_split_gates():
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        should_join_visual_split,
+    )
+
+    assert should_join_visual_split("stu", "ff")
+    assert should_join_visual_split("stu", "\ufb00")
+    assert should_join_visual_split("stu-", "ff")
+    assert not should_join_visual_split("g-", "spot")
+    assert not should_join_visual_split("stu", "off")
+    assert not should_join_visual_split("stu", "ect")
+    assert not should_join_visual_split("off", "ff")
+
+
+def test_stu_ff_across_style_markers_no_hyphen():
+    """Inverted-stream splice still leaves 〖Bn〗 around the ligature tail."""
+    marked = "stu\u3016B0\u3017\ufb00\u3016/B0\u3017"
+    out = recover_latin_word_fragments(marked)
+    assert "stuff" in out
+    assert "\ufb00" not in out
+    spaced = "your stu \u3016B0\u3017ff\u3016/B0\u3017 something"
+    joined = recover_latin_word_fragments(spaced)
+    assert "stuff" in joined
+    assert "your stu something" not in joined
+
+
+def _mark_ids(chars):
+    for c in chars:
+        if isinstance(c, PdfCharacter):
+            c.pdf_character_id = 1
+            if c.visual_bbox is None:
+                c.visual_bbox = VisualBbox(box=c.box)
+            else:
+                c.visual_bbox.box = c.box
+    return chars
+
+
+def test_visual_order_stu_ff_same_line_stream_inverted():
+    """OA p12: RTL paint emits ﬀ before stu; visual x-order is stu+ﬀ → stuff."""
+    # Stream: life, ﬀ, stu  (ﬀ x sits between stu and life)
+    chars = _mark_ids(
+        [
+            _ch("l", 400.0),
+            _ch("i", 406.0),
+            _ch("f", 412.0),
+            _ch("e", 418.0),
+            _ch("\ufb00", 351.0),
+            _ch("s", 330.0),
+            _ch("t", 336.0),
+            _ch("u", 342.0),
+        ]
+    )
+    text = get_char_unicode_string(chars)
+    compact = text.replace(" ", "")
+    assert "stuff" in compact
+    assert "\ufb00" not in text
+    # Must not leave isolated stu once stuff is recovered
+    assert "stu" not in compact.replace("stuff", "")
+
+
+def test_visual_order_stu_ff_wrap_stream_inverted():
+    """Stream has ﬀ before stu; visual wrap: stu EOL, ﬀ next-line SOL."""
+    lig = _ch("\ufb00", 50.0)
+    lig.box.y = 85.0
+    lig.box.y2 = 97.0
+    lig.visual_bbox.box = lig.box
+    stem = [_ch("s", 200.0), _ch("t", 206.0), _ch("u", 212.0)]
+    for c in stem:
+        c.box.y = 100.0
+        c.box.y2 = 112.0
+        c.visual_bbox.box = c.box
+    chars = _mark_ids([lig] + stem)
+    text = get_char_unicode_string(chars)
+    compact = text.replace(" ", "")
+    assert "stuff" in compact
+    assert "stu" not in compact.replace("stuff", "")
+    assert "\ufb00" not in text
+
+
+def test_visual_order_stu_ff_style_markers_inverted():
+    """get_translate_input wraps the ligature; splice+recover still yield stuff."""
+    lig = _ch("\ufb00", 351.0)
+    chars = _mark_ids(
+        [
+            _ch("l", 400.0),
+            _ch("i", 406.0),
+            _ch("f", 412.0),
+            _ch("e", 418.0),
+            "\u3016B0\u3017",
+            lig,
+            "\u3016/B0\u3017",
+            _ch("s", 330.0),
+            _ch("t", 336.0),
+            _ch("u", 342.0),
+        ]
+    )
+    text = get_char_unicode_string(chars)
+    compact = text.replace(" ", "")
+    assert "stuff" in compact
+    assert "\ufb00" not in text
+
+
+def test_visual_order_does_not_glue_g_spot():
+    hyphen = _ch("-", 206.0)
+    spot_y = 85.0
+    chars = _mark_ids(
+        [
+            _ch("s", 50.0),
+            _ch("p", 56.0),
+            _ch("o", 62.0),
+            _ch("t", 68.0),
+            _ch("g", 200.0),
+            hyphen,
+        ]
+    )
+    # inverted wrap: "spot" next line first in stream, "g-" EOL above
+    for c in chars[:4]:
+        c.box.y = spot_y
+        c.box.y2 = spot_y + 12
+        c.visual_bbox.box = c.box
+    text = get_char_unicode_string(chars)
+    assert "gspot" not in text.replace(" ", "").replace("-", "")
+    assert "spot" in text
+
+
+def test_visual_order_unrelated_ff_not_joined_to_stu():
+    """``stu`` must not absorb a distant ``ff`` from ``off`` / ``affect``."""
+    # Same line: stu ... off (complete word, not a ligature tail)
+    chars = _mark_ids(
+        [
+            _ch("s", 50.0),
+            _ch("t", 56.0),
+            _ch("u", 62.0),
+            _ch("o", 220.0),
+            _ch("f", 226.0),
+            _ch("f", 232.0),
+        ]
+    )
+    text = get_char_unicode_string(chars)
+    compact = text.replace(" ", "")
+    assert "stuff" not in compact
+    assert "stu" in compact
+    assert "off" in compact
+
+    # Different non-adjacent lines: stu on y=100, ff ligature on y=50
+    far = _ch("\ufb00", 50.0)
+    far.box.y = 50.0
+    far.box.y2 = 62.0
+    far.visual_bbox.box = far.box
+    stem = [_ch("s", 50.0), _ch("t", 56.0), _ch("u", 62.0)]
+    chars2 = _mark_ids([far] + stem)
+    text2 = get_char_unicode_string(chars2)
+    # Not an immediate wrap (line gap >> y_tol) so do not invent stuff
+    assert "stuff" not in text2.replace(" ", "")
+
+
+def test_visual_wrap_keeps_hyphen_paragraph():
+    """Inverted wrap ``ﬀ`` then ``stu-`` must stay one paragraph."""
+    from babeldoc.format.pdf.document_il.il_version_1 import PdfLine
+    from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
+    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+        should_split_line_pair,
+    )
+
+    def _line_chars(text, y, x0, font="Body"):
+        chars = []
+        x = x0
+        for ch in text:
+            box = Box(x=x, y=y, x2=x + 6.0, y2=y + 12.0)
+            chars.append(
+                PdfCharacter(
+                    pdf_character_id=1,
+                    char_unicode=ch,
+                    box=box,
+                    visual_bbox=VisualBbox(box=box),
+                    pdf_style=PdfStyle(
+                        font_id=font, font_size=12.0, graphic_state=None
+                    ),
+                    scale=1.0,
+                    advance=6.0,
+                    vertical=False,
+                    xobj_id=None,
+                )
+            )
+            x += 6.0
+        return PdfParagraphComposition(
+            pdf_line=PdfLine(
+                box=Box(x=x0, y=y, x2=x, y2=y + 12.0),
+                pdf_character=chars,
+            )
+        )
+
+    # Stream-first: wrap tail on the lower line; stem on the upper line.
+    tail = _line_chars("\ufb00", 85.0, 50.0, font="LigFont")
+    # single ligature char
+    tail.pdf_line.pdf_character[0].char_unicode = "\ufb00"
+    stem = _line_chars("stu-", 100.0, 180.0, font="BodyFont")
+    assert not should_split_line_pair(
+        tail.pdf_line,
+        stem.pdf_line,
+        median_width=400.0,
+        split_short_lines=False,
+        short_line_split_factor=0.5,
+        soft_mid_sentence_font_split=False,
+    )
+
+
+def test_midcap_lower_preserves_style_markers():
+    """OA running title: do not smash 〖B0〗 into 〖b0〗 during mid-caps lower."""
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        normalize_decorative_title_case,
+    )
+
+    src = "〖B0〗cHaPteR〖/B0〗8 tHe dIrect tHruSt"
+    out = normalize_decorative_title_case(src)
+    assert "〖B0〗" in out and "〖/B0〗" in out
+    assert "〖b0〗" not in out
+    assert "chapter" in out
+    assert "direct" in out

@@ -3,9 +3,10 @@
 Two independent reasons to leave a paragraph untranslated:
 
 1. **Pull-quote near-duplicate** (Day6): side band repeats body quote text.
-   Near-full copies (ratio >= 0.85, or equal after stripping quotes) skip MT
-   and later copy host ZH. Excerpts (substring, not near-full) go through
-   normal MT once. Decided on EN at skip time.
+   Near-full copies (ratio >= 0.85 **and** quote is a prefix of the host after
+   alnum-normalize, or equal after stripping quotes) skip MT and later copy
+   host ZH. High-ratio suffixes (OA p120 omitted opener) are excerpts and go
+   through normal MT once. Decided on EN at skip time.
 2. **Ultra-narrow tall strip** (Orgasmic Addiction p8): ~80pt figure-adjacent
    column that cannot fit CJK after translation even with box expansion.
 
@@ -240,15 +241,23 @@ def is_near_full_pullquote(
 ) -> bool:
     """True when quote is essentially the whole host (EN, skip-time).
 
-    ``len(norm_quote) / len(norm_host) >= 0.85`` or the texts match after
-    stripping quotes and whitespace.
+    ``len(norm_quote) / len(norm_host) >= 0.85`` **and** the quote is a
+    prefix of the host (Day6: quote + short attribution), or the texts
+    match after stripping quotes and whitespace.
+
+    A high-ratio *suffix* is still an excerpt: OA p120 red box omits
+    ``Don't make these decisions alone.`` (~0.87 ratio) and must MT
+    independently so ZH does not copy the full host into the box.
     """
     q_text = _text_of(quote)
     h_text = _text_of(host)
     nq = normalize_for_dup(q_text)
     nh = normalize_for_dup(h_text)
     if nq and nh and len(nq) / len(nh) >= _NEAR_FULL_RATIO:
-        return True
+        # Prefix = callout covers the host from the start (attribution may
+        # follow). Suffix/mid excerpts must not inherit full host ZH.
+        if nh.startswith(nq) or nq.startswith(nh):
+            return True
     stripped = _strip_quotes_ws(q_text)
     return bool(stripped) and stripped == _strip_quotes_ws(h_text)
 

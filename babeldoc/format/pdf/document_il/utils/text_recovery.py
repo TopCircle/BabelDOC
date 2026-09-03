@@ -415,6 +415,97 @@ def should_join_hyphen_wrap(left: str | None, continuation: str | None) -> bool:
     return should_soft_rejoin(latin_continuation_token(continuation))
 
 
+def should_join_visual_split(left: str | None, continuation: str | None) -> bool:
+    """True when visual-neighbor tokens form a known split or hyphen wrap.
+
+    Stream order may put the tail *before* the stem (OA p12 RTL paint:
+    ``ﬀ`` then ``stu``). Geometry, not stream adjacency, decides. Stem must
+    be ≥2 letters so ``g-spot`` stays hyphenated. Unrelated ``ff`` (off /
+    affect) does not glue onto a random ``stu`` unless ``stem+tail`` is in
+    ``_KNOWN_SPLIT_WORDS``.
+    """
+    if should_join_hyphen_wrap(left, continuation):
+        return True
+    if not left or not continuation:
+        return False
+    text = expand_latin_ligatures(left)
+    text = regex.sub("(?:\u3016/?B\\d+\u3017)+\\s*$", "", text.rstrip())
+    text = text.rstrip()
+    if text and text[-1] in HYPHEN_CHARS:
+        text = text[:-1]
+    m = regex.search(r"[A-Za-z]+$", text)
+    if not m or len(m.group(0)) < 2:
+        return False
+    stem = m.group(0)
+    tail = latin_continuation_token(continuation)
+    if not tail or not tail.islower():
+        return False
+    return (stem + tail).lower() in _KNOWN_SPLIT_WORDS
+
+
+def is_known_split_word(text: str | None) -> bool:
+    """True if *text* (ligatures expanded) is in ``_KNOWN_SPLIT_WORDS``."""
+    if not text:
+        return False
+    return expand_latin_ligatures(text).lower() in _KNOWN_SPLIT_WORDS
+
+
+
+def _is_style_marker_token(part: str) -> bool:
+    return bool(regex.fullmatch("\u3016/?B\\d+\u3017", part))
+
+
+def rejoin_known_splits_across_markers(text: str) -> str:
+    """Glue ``stu〖B0〗ff`` / ``stu-〖B0〗ff`` when the join is a known split.
+
+    After visual splice, the tail may still sit behind ILTranslator style
+    markers. Whitespace-only known-split does not see ``〖Bn〗`` as a gap.
+    """
+    if not text:
+        return text
+    text = expand_latin_ligatures(text)
+    parts: list[str] = regex.findall(
+        r"[A-Za-z]+|\s+|" + "\u3016/?B\\d+\u3017" + r"|[^A-Za-z\s" + "\u3016\u3017]+",
+        text,
+    )
+    changed = True
+    while changed:
+        changed = False
+        i = 0
+        while i < len(parts) - 1:
+            if not parts[i].isalpha() or len(parts[i]) < 2:
+                i += 1
+                continue
+            j = i + 1
+            skipped: list[str] = []
+            while j < len(parts) and (
+                parts[j].isspace()
+                or _is_style_marker_token(parts[j])
+                or parts[j] in HYPHEN_CHARS
+            ):
+                skipped.append(parts[j])
+                j += 1
+            if j >= len(parts) or not parts[j].isalpha():
+                i += 1
+                continue
+            left = parts[i]
+            if any(s in HYPHEN_CHARS for s in skipped):
+                left = left + "-"
+            if not should_join_visual_split(left, parts[j]):
+                i += 1
+                continue
+            end = j + 1
+            if any(regex.fullmatch("\u3016B\\d+\u3017", s) for s in skipped):
+                if end < len(parts) and regex.fullmatch(
+                    "\u3016/B\\d+\u3017", parts[end]
+                ):
+                    end += 1
+            parts[i] = parts[i] + parts[j]
+            del parts[i + 1 : end]
+            changed = True
+    return "".join(parts)
+
+
 def is_soft_hyphen_line_wrap(
     prev: PdfCharacter,
     next_ch: PdfCharacter,
@@ -777,7 +868,36 @@ def normalize_decorative_title_case(text: str) -> str:
     if not has_decorative_mid_caps(text):
         return text
     text = _space_proper_camel_case(text)
-    return text.lower()
+    return _lower_preserving_style_markers(text)
+
+
+# 〖B0〗 / 〖/B0〗 must keep the B capital: .lower() on a mid-caps running
+# title turns them into 〖b0〗, DeepLX then concatenates leftover b0 with the
+# chapter index (OA p59 ``章b08 直接推送``).
+_STYLE_MARKER_TOKEN_RE = regex.compile(r"〖/?[Bb]\d+〗")
+
+
+def _canonical_style_marker(token: str) -> str:
+    """〖b0〗 / 〖/B0〗 → 〖B0〗 / 〖/B0〗 (uppercase B, digits preserved)."""
+    inner = token[1:-1]  # drop lenticular brackets
+    slash = "/" if inner.startswith("/") else ""
+    digits = inner[len(slash) :].lstrip("Bb")
+    return f"〖{slash}B{digits}〗"
+
+
+def _lower_preserving_style_markers(text: str) -> str:
+    """``.lower()`` for mid-caps titles without smashing 〖Bn〗 span ids."""
+    held: list[str] = []
+
+    def _hold(m: regex.Match) -> str:
+        held.append(_canonical_style_marker(m.group(0)))
+        return f"<<<m{len(held) - 1}>>>"
+
+    protected = _STYLE_MARKER_TOKEN_RE.sub(_hold, text)
+    lowered = protected.lower()
+    for i, tok in enumerate(held):
+        lowered = lowered.replace(f"<<<m{i}>>>", tok)
+    return lowered
 
 
 # Proper CamelCase: starts with a capital, humps are Upper+lowers, no mid-caps soup.
@@ -817,6 +937,7 @@ def recover_latin_word_fragments(text: str) -> str:
     text = rejoin_soft_hyphen_tight(text)
     text = rejoin_ligature_space_splits(text)
     text = rejoin_known_split_latin_words(text)
+    text = rejoin_known_splits_across_markers(text)
     text = repair_orphan_split_tails(text)
     text = space_chapter_number(text)
     return text

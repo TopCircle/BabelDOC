@@ -306,6 +306,12 @@ def _line_cost(
             # Must beat the interior-fill gain of parking one extra
             # 12pt glyph on the previous line (OA-scale ~1150).
             raggedness += widow_penalty * 4
+            if num_units == 1:
+                # Extra must beat interior-fill of one 12pt glyph.
+                # OA p35 caption: leftover 10.9pt vs 21.9pt → fill delta
+                # ~2166, so *4 (=2000) still chose |阴. *8 (=4000) prefers
+                # 外阴 (and any 单字末行) without taxing 2-char last lines.
+                raggedness += widow_penalty * 8
         return raggedness
 
     raggedness = remaining ** 2

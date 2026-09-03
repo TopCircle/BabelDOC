@@ -267,3 +267,33 @@ def test_char_unicode_reading_order_with_drifted_rows():
     assert "other vaginal stimulation, and" in out
     assert "to go around." in out
     assert out.index("Make sure") < out.index("to go around.")
+
+
+def test_fix_untranslated_chapter_markers_lowercase_b_span():
+    """OA running titles: 〖b0〗chapter〖/b0〗8 → 第八章, not Latin b08.
+
+    Mid-caps lowercasing used to smash 〖B0〗 into 〖b0〗; DeepLX then
+    concatenated leftover b0 with the chapter index (p35 b05 / p59 b08 /
+    p120 b012).  Both the pre-MT split span and the post-MT residue must
+    rewrite to 第N章.
+    """
+    fix = ILTranslator.fix_untranslated_chapter_markers
+    # Real OA MT inputs (logged): lowercase b span around "chapter", number outside.
+    assert fix("〖b0〗chapter〖/b0〗8 the direct thrust") == "第八章 the direct thrust"
+    assert (
+        fix("〖b0〗chapter 〖/b0〗5 sexual anatomy") == "第五章 sexual anatomy"
+    )
+    assert (
+        fix("〖b0〗chapter〖/b0〗12 make your own moves!")
+        == "第十二章 make your own moves!"
+    )
+    # Literal 〖b08〗 leftover (span-id fused with chapter 8) next to 章.
+    assert fix("章〖b08〗直接推送") == "第八章直接推送"
+    assert fix("〖b08〗 the direct thrust") == "第八章 the direct thrust"
+    # Real OA MT outputs.
+    assert fix("章b08 直接推送") == "第八章 直接推送"
+    assert fix("章节b05 性解剖学") == "第五章 性解剖学"
+    assert fix("章b012 创造你自己的动作") == "第十二章 创造你自己的动作"
+    assert fix("章 b07 间接") == "第七章 间接"
+    # Already-normalized 第N章 is stable.
+    assert fix("第八章 直接推送") == "第八章 直接推送"

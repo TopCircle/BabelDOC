@@ -23,7 +23,7 @@ from babeldoc.format.pdf.document_il.utils.layout_helper import (
 
 logger = logging.getLogger(__name__)
 
-MARKER_PAIR_RE = re.compile(r"〖B(\d+)〗([\s\S]*?)〖/B\1〗")
+MARKER_PAIR_RE = re.compile(r"〖[Bb](\d+)〗([\s\S]*?)〖/[Bb]\1〗")
 # Single Latin token (no spaces)
 _LATIN_TOKEN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9'’\-]*$")
 

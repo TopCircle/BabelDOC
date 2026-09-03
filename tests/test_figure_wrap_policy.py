@@ -116,6 +116,22 @@ class TestFigureWrapParagraph:
         aligned = [(100.0, 500.0), (100.0, 500.0)]
         assert is_figure_wrap_paragraph(self._para(lines=aligned)) is False
 
+    def test_left_fixed_oa_p59_photo_on_right(self):
+        """OA p59 wrap body: left edge pinned at ~102, right edge steps in."""
+        lines = [
+            (101.87, 333.64),
+            (102.53, 340.67),
+            (102.00, 342.65),
+            (102.91, 333.62),
+            (102.28, 325.63),
+            (102.22, 322.61),
+            (102.13, 320.65),
+        ]
+        assert is_figure_wrap_paragraph(self._para(lines=lines)) is True
+        # Flat body column (both edges pinned) is not a wrap.
+        flat = [(102.0, 340.0), (102.0, 340.0), (102.0, 338.0)]
+        assert is_figure_wrap_paragraph(self._para(lines=flat)) is False
+
 
 class TestUniformCjkReferenceWidths:
     def test_keeps_taper(self):

@@ -17,6 +17,9 @@ from babeldoc.format.pdf.document_il import PdfLine
 from babeldoc.format.pdf.document_il import PdfParagraph
 from babeldoc.format.pdf.document_il import PdfParagraphComposition
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_bullet_point
+from babeldoc.format.pdf.document_il.utils.layout_helper import (
+    iter_visual_known_split_pairs,
+)
 from babeldoc.format.pdf.document_il.utils.text_recovery import should_join_hyphen_wrap
 
 # arXiv / journal date lines glued under affiliation
@@ -382,6 +385,24 @@ def is_hyphen_wrap_continuation(prev_line: PdfLine, curr_line: PdfLine | None) -
     return should_join_hyphen_wrap(line_text(prev_line), line_text(curr_line))
 
 
+def is_visual_known_split_continuation(
+    prev_line: PdfLine, curr_line: PdfLine | None
+) -> bool:
+    """True when *prev*/*curr* glyphs form a visual known-split pair.
+
+    Covers inverted stream wraps (``ﬀ`` line before ``stu`` line) that
+    :func:`is_hyphen_wrap_continuation` misses because it is stream-ordered.
+    """
+    if curr_line is None:
+        return False
+    chars = list(prev_line.pdf_character or []) + list(
+        curr_line.pdf_character or []
+    )
+    for _ in iter_visual_known_split_pairs(chars):
+        return True
+    return False
+
+
 def should_split_line_pair(
     prev_line: PdfLine,
     curr_line: PdfLine | None,
@@ -407,6 +428,8 @@ def should_split_line_pair(
     # Keep hyphen-wrap tails in this paragraph (even if the ligature glyph
     # uses a different subset font_id). Split would make two translate() calls.
     if is_hyphen_wrap_continuation(prev_line, curr_line):
+        return False
+    if is_visual_known_split_continuation(prev_line, curr_line):
         return False
 
     prev_width = (prev_line.box.x2 - prev_line.box.x) if prev_line.box else 0.0

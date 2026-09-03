@@ -118,3 +118,9 @@ def test_coalesce_emphasis_merges_line_broken_italic():
     assert "".join(c.char_unicode for c in chars) == "The Passion Prescription"
     assert style.font_id == "MyriadPro-LightIt"
     assert nxt == 2
+
+
+def test_rewrap_recognizes_lowercase_b_pairs():
+    """〖b0〗 pairs must count as present so we do not double-wrap."""
+    output = "因〖b0〗阴道痉挛〖/b0〗（紧缩）"
+    assert rewrap_styles_from_source(output, _spans((0, "vaginismus"))) is None

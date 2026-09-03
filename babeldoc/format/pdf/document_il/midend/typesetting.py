@@ -44,6 +44,9 @@ from babeldoc.format.pdf.document_il.utils.cjk_kinsoku import (
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import LayoutAttempt
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    allows_full_measure_escalation,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     attempt_chain_for_paragraph,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import flags_to_attempt
@@ -1819,6 +1822,7 @@ class Typesetting:
         # unfittable at MIN_READABLE_SCALE; full width is better than empty.
         if (
             not drop_figure_zones
+            and allows_full_measure_escalation(paragraph, is_cjk=self.is_cjk)
             and getattr(self, "_current_zone_index", None) is not None
             and any(
                 z.kind == "figure"
@@ -3252,6 +3256,10 @@ class Typesetting:
         """
         if paragraph is None:
             return False
+        # Honor attempt_chain: callout / pull-quote stay in the design column.
+        # Inner retries used to FULL_MEASURE anyway (OA p59 ZH into the photo).
+        if not allows_full_measure_escalation(paragraph, is_cjk=True):
+            return False
         if wrap_enabled:
             shape = resolve_wrap_shape(paragraph)
             would_wrap = get_active_wrap(
@@ -3265,6 +3273,10 @@ class Typesetting:
                 all_units_fit=all_units_fit,
             ):
                 return True
+            # Pin wrap is driving. C3 (thin vs 400pt body) would paint a
+            # left-of-photo column into the figure (OA p59).
+            if would_wrap is not None:
+                return False
         if not drop_figure_zones:
             residual_w = self._max_figure_residual_width(box)
             para_w = (

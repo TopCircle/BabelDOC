@@ -43,7 +43,7 @@ _ORPHAN_BRACE_BEFORE_CJK_RE = re.compile(
     r"\{\s*(?=[\u4e00-\u9fff])",
 )
 
-_STYLE_MARKER_RE = re.compile(r"〖B\d+〗|〖/B\d+〗")
+_STYLE_MARKER_RE = re.compile(r"〖[Bb]\d+〗|〖/[Bb]\d+〗")
 _MULTI_SPACE_RE = re.compile(r"[ \t\u00a0]{2,}")
 
 # Token → replacement (empty = delete). Longer keys matched first via alternation order.
@@ -188,7 +188,7 @@ def normalize_translated_text(
         return text
     out = strip_ascii_controls(text)
     out = _scrub_mt_debris(out, keep_formula_placeholders=keep_formula_placeholders)
-    if out and "〖B" in out:
+    if out and ("〖B" in out or "〖b" in out):
         out = _STYLE_MARKER_RE.sub("", out)
     out = expand_latin_ligatures(out)
     out = _nfkc_cjk_compatibility(out)

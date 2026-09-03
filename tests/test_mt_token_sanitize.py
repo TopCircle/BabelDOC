@@ -130,3 +130,12 @@ class TestNormalizeTranslatedText:
         s = "刺激她的 G-spot，访问 www.GabrielleMoore.com"
         out = normalize_translated_text(s)
         assert out == s
+
+    def test_lowercase_style_markers_stripped(self):
+        """DeepLX / mid-caps lowercasing can leave 〖bN〗 instead of 〖BN〗."""
+        s = "你好〖b1〗世界〖/b1〗"
+        out = normalize_translated_text(s)
+        assert out is not None
+        assert "〖b" not in out and "〖B" not in out
+        assert "你好" in out and "世界" in out
+        assert "b08" not in (normalize_translated_text("第八章〖b08〗直接推送") or "")

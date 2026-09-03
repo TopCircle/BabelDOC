@@ -48,13 +48,15 @@ def is_figure_wrap_paragraph(para: il_version_1.PdfParagraph) -> bool:
        translation, survives ILTranslator, so it works at quote-zone build
        time (after translation destroyed ``pdf_line`` compositions) and in
        typesetting.
-    2. Pre-MT line-box geometry: multi-line with the left edge stepping right
-       (>=12pt spread) while the right edge stays pinned (<=4pt spread).
+    2. Pre-MT line-box geometry: multi-line with one edge pinned (<=4pt
+       spread) and the free edge stepping (>=12pt). Right-pinned / left-
+       stepping is OA p19 (photo on the left). Left-pinned / right-stepping
+       is OA p59 (photo on the right).
 
     Signal 2 is also the fallback for noisy reference widths (fallback-line
     clustering can split a wrap tail into odd word chunks, e.g. OA p19
     ``the work plans...`` → [52, 100, 63]) — the geometry still shows the
-    right-pinned wrap shape, and aligned body lines never match it.
+    wrap shape, and aligned body lines never match it.
     """
     rm = getattr(para, "reference_metrics", None)
     if rm is not None:
@@ -78,4 +80,6 @@ def is_figure_wrap_paragraph(para: il_version_1.PdfParagraph) -> bool:
     x2s = [float(l[1]) for l in lines]
     left_spread = max(xs) - min(xs)
     right_spread = max(x2s) - min(x2s)
-    return left_spread >= 12.0 and right_spread <= 4.0
+    right_fixed = left_spread >= 12.0 and right_spread <= 4.0
+    left_fixed = right_spread >= 12.0 and left_spread <= 4.0
+    return right_fixed or left_fixed

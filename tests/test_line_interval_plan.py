@@ -14,6 +14,9 @@ from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import LayoutAttempt
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    allows_full_measure_escalation,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     attempt_chain_for_paragraph,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
@@ -205,6 +208,22 @@ class TestAttemptChainCallout:
         assert LayoutAttempt.FULL_MEASURE in attempt_chain_for_paragraph(
             wrap, is_cjk=True
         )
+        assert allows_full_measure_escalation(wrap, is_cjk=True) is True
+
+    def test_cjk_callout_disallows_full_measure_escalation(self):
+        bar = self._para(
+            LayoutIntentRole.CALLOUT,
+            Box(x=54.18, y=375.99, x2=211.635, y2=450.99),
+        )
+        assert allows_full_measure_escalation(bar, is_cjk=True) is False
+
+    def test_cjk_pull_quote_disallows_full_measure_escalation(self):
+        """OA p59 wrap-beside-photo was PULL_QUOTE; must not overlay the figure."""
+        quote = self._para(
+            LayoutIntentRole.PULL_QUOTE,
+            Box(x=101.87, y=228.59, x2=341.48, y2=393.24),
+        )
+        assert allows_full_measure_escalation(quote, is_cjk=True) is False
 
 
 class TestQuoteResidualCap:
