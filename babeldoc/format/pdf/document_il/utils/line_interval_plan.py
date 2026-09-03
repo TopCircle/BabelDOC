@@ -402,12 +402,9 @@ def attempt_chain_for_paragraph(
     wrap_mode = getattr(intent, "wrap_mode", None) if intent is not None else None
     from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 
-    # Pinned figure wrap (OA p33 LEFT_FIXED / p19 RIGHT_FIXED): FULL_MEASURE
-    # walks CJK into the photo. Unpinned WRAP_COLUMN may still escalate.
-    if role is LayoutIntentRole.WRAP_COLUMN and wrap_mode in (
-        WrapMode.LEFT_FIXED,
-        WrapMode.RIGHT_FIXED,
-    ):
+    # Pinned figure wrap (OA p33/p59 LEFT_FIXED, p19 RIGHT_FIXED): FULL_MEASURE
+    # walks CJK into the photo. Role may be BODY if wrap classification missed.
+    if wrap_mode in (WrapMode.LEFT_FIXED, WrapMode.RIGHT_FIXED):
         return [LayoutAttempt.PRIMARY]
     if shape or role is LayoutIntentRole.WRAP_COLUMN:
         return [LayoutAttempt.PRIMARY, LayoutAttempt.FULL_MEASURE]

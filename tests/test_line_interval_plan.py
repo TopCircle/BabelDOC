@@ -269,6 +269,21 @@ class TestAttemptChainCallout:
             LayoutAttempt.PRIMARY
         ]
 
+    def test_cjk_pinned_body_stays_primary(self):
+        """OA p59: wrap-beside-photo may land as BODY + LEFT_FIXED."""
+        from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
+
+        body = self._para(
+            LayoutIntentRole.BODY,
+            Box(x=102, y=228, x2=340, y2=393),
+        )
+        body.layout_intent.wrap_mode = WrapMode.LEFT_FIXED
+        body.layout_intent.wrap_shape = [(0.0, 238.0), (0.0, 160.0)]
+        assert attempt_chain_for_paragraph(body, is_cjk=True) == [
+            LayoutAttempt.PRIMARY
+        ]
+        assert allows_full_measure_escalation(body, is_cjk=True) is False
+
     def test_cjk_callout_disallows_full_measure_escalation(self):
         bar = self._para(
             LayoutIntentRole.CALLOUT,
