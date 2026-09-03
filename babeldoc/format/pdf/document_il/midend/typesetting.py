@@ -19,29 +19,21 @@ from babeldoc.format.pdf.document_il import PdfCurve
 from babeldoc.format.pdf.document_il import PdfForm
 from babeldoc.format.pdf.document_il import PdfFormula
 from babeldoc.format.pdf.document_il import PdfParagraphComposition
-from babeldoc.format.pdf.document_il import PdfSameStyleUnicodeCharacters
 from babeldoc.format.pdf.document_il import PdfStyle
 from babeldoc.format.pdf.document_il import il_version_1
-from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
-from babeldoc.format.pdf.document_il.utils.formular_helper import update_formula_data
-from babeldoc.format.pdf.document_il.midend.line_break_optimizer import optimal_line_break
-from babeldoc.format.pdf.document_il.utils.layout_helper import box_to_tuple
-from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
+from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
+    optimal_line_break,
+)
 from babeldoc.format.pdf.document_il.utils import list_marker_repair as _list_markers
-from babeldoc.format.pdf.document_il.utils.cjk_dict import (
-    is_cjk_three_char_word,
-    is_cjk_two_char_word,
-)
+from babeldoc.format.pdf.document_il.utils.cjk_dict import is_cjk_three_char_word
+from babeldoc.format.pdf.document_il.utils.cjk_dict import is_cjk_two_char_word
+from babeldoc.format.pdf.document_il.utils.cjk_kinsoku import is_cjk_line_end_forbidden
 from babeldoc.format.pdf.document_il.utils.cjk_kinsoku import (
-    CJK_LINE_END_FORBIDDEN as _CJK_LINE_END_FORBIDDEN,
-)
-from babeldoc.format.pdf.document_il.utils.cjk_kinsoku import (
-    CJK_LINE_START_FORBIDDEN as _CJK_LINE_START_FORBIDDEN,
-)
-from babeldoc.format.pdf.document_il.utils.cjk_kinsoku import (
-    is_cjk_line_end_forbidden,
     is_cjk_line_start_forbidden,
 )
+from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
+from babeldoc.format.pdf.document_il.utils.formular_helper import update_formula_data
+from babeldoc.format.pdf.document_il.utils.layout_helper import box_to_tuple
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import LayoutAttempt
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     allows_full_measure_escalation,
@@ -56,16 +48,24 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     layout_box_is_thin_vs_full_measure,
 )
-from babeldoc.format.pdf.document_il.utils.line_interval_plan import resolve_line_interval_plan
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    resolve_line_interval_plan,
+)
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import wrap_interval
+from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
 from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import layout_intent_wrap_enabled
 from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
 from babeldoc.format.pdf.document_il.utils.wrap_shape import sanitize_wrap_shape_for_cjk
-from babeldoc.format.pdf.document_il.utils.wrap_shape import CJK_WRAP_MIN_LINE_WIDTH
-from babeldoc.format.pdf.document_il.utils.wrap_shape import should_fallback_residual_to_block
-from babeldoc.format.pdf.document_il.utils.wrap_shape import should_fallback_wrap_to_block
-from babeldoc.format.pdf.document_il.utils.wrap_shape import should_skip_pre_expand_for_wrap
+from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+    should_fallback_residual_to_block,
+)
+from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+    should_fallback_wrap_to_block,
+)
+from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+    should_skip_pre_expand_for_wrap,
+)
 from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.format.pdf.translation_config import WatermarkOutputMode
 
@@ -165,16 +165,16 @@ _CJK_MEASURE_AFTER_DIGIT = frozenset("卷章节页条款项年月日时分秒")
 _CJK_ORDINAL_BEFORE_DIGIT = frozenset("第")
 
 
-def _unit_char(unit: 'TypesettingUnit') -> str:
+def _unit_char(unit: TypesettingUnit) -> str:
     return unit.try_get_unicode() or ""
 
 
-def _is_digit_unit(unit: 'TypesettingUnit') -> bool:
+def _is_digit_unit(unit: TypesettingUnit) -> bool:
     ch = _unit_char(unit)
     return len(ch) == 1 and ch.isdigit()
 
 
-def merge_cjk_units(units: list['TypesettingUnit']) -> list['TypesettingUnit']:
+def merge_cjk_units(units: list[TypesettingUnit]) -> list[TypesettingUnit]:
     """Secondary CJK glue: dict words + kinsoku + digit quantifiers.
 
     Marks ``can_break_line=False`` so DP/greedy avoid illegal break points:
@@ -1703,7 +1703,11 @@ class Typesetting:
             if expand_space_flag < 2 and scale >= 0.85:
                 from babeldoc.format.pdf.document_il.utils.box_expand import (
                     expand_axis_order,
+                )
+                from babeldoc.format.pdf.document_il.utils.box_expand import (
                     prefer_expand_down,
+                )
+                from babeldoc.format.pdf.document_il.utils.box_expand import (
                     try_expand_axis,
                 )
 
@@ -2376,8 +2380,8 @@ class Typesetting:
             except Exception:
                 pass
 
+        from babeldoc.format.pdf.document_il.utils.box_expand import box_width
         from babeldoc.format.pdf.document_il.utils.box_expand import (
-            box_width,
             try_pre_expand_for_content,
         )
 
@@ -2635,7 +2639,7 @@ class Typesetting:
         except Exception:
             paragraph.pdf_paragraph_composition = old_compositions
             logger.warning(
-                f"Failed to retypeset paragraph, rolled back."
+                "Failed to retypeset paragraph, rolled back."
             )
             return False
         finally:
@@ -2806,6 +2810,8 @@ class Typesetting:
         # Layout-First P1: gap hooks only (utils/layout_gap_hooks).
         from babeldoc.format.pdf.document_il.utils.layout_gap_hooks import (
             post_typeset_gap_pass,
+        )
+        from babeldoc.format.pdf.document_il.utils.layout_gap_hooks import (
             pre_typeset_gap_pass,
         )
 
@@ -3222,8 +3228,8 @@ class Typesetting:
         zone_index = getattr(self, "_current_zone_index", None)
         if zone_index is None or not zone_index.zones:
             return None
+        from babeldoc.format.pdf.document_il.midend.exclusion_zone import ZONE_FIGURE
         from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
-            ZONE_FIGURE,
             _max_horizontal_residual,
         )
 

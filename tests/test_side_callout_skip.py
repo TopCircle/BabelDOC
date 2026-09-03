@@ -395,9 +395,7 @@ def test_oa_p120_omitted_opener_is_excerpt_not_near_full():
     Copying host ZH stacked the full paragraph in the box and the body.
     EN structure is excerpt-in-box / full-in-body; ZH must match.
     """
-    from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
-        _NEAR_FULL_RATIO,
-    )
+    from babeldoc.format.pdf.document_il.utils.side_callout_skip import _NEAR_FULL_RATIO
 
     host_text = P120_OPENER + P120_EXCERPT
     nq = normalize_for_dup(P120_EXCERPT)

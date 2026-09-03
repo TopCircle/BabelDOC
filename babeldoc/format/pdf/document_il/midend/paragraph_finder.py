@@ -1,6 +1,5 @@
 import logging
 import random
-import re
 
 import numpy as np
 
@@ -22,23 +21,22 @@ from babeldoc.format.pdf.document_il.utils.layout_helper import (
 )
 from babeldoc.format.pdf.document_il.utils.layout_helper import SPACE_REGEX
 from babeldoc.format.pdf.document_il.utils.layout_helper import Layout
+from babeldoc.format.pdf.document_il.utils.layout_helper import _cluster_chars_by_line
 from babeldoc.format.pdf.document_il.utils.layout_helper import add_space_dummy_chars
 from babeldoc.format.pdf.document_il.utils.layout_helper import build_layout_index
 from babeldoc.format.pdf.document_il.utils.layout_helper import calculate_iou_for_boxes
-from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode_string
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_character_layout
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_bullet_point
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     is_character_in_formula_layout,
 )
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_text_layout
-from babeldoc.format.pdf.document_il.utils.layout_helper import _cluster_chars_by_line
 from babeldoc.format.pdf.document_il.utils.paragraph_helper import is_cid_paragraph
-from babeldoc.format.pdf.document_il.utils.style_helper import INDIGO
-from babeldoc.format.pdf.document_il.utils.style_helper import WHITE
 from babeldoc.format.pdf.document_il.utils.stream_order import (
     reorder_plain_paragraph_runs_if_stream_climbs,
 )
+from babeldoc.format.pdf.document_il.utils.style_helper import INDIGO
+from babeldoc.format.pdf.document_il.utils.style_helper import WHITE
 from babeldoc.format.pdf.translation_config import TranslationConfig
 
 logger = logging.getLogger(__name__)
@@ -294,14 +292,18 @@ class ParagraphFinder:
         # MT climb + drop-cap live only in get_char_unicode_string → prepare_chars_for_mt.
         from babeldoc.format.pdf.document_il.utils.layout_helper import (
             _is_decorative_text,
+        )
+        from babeldoc.format.pdf.document_il.utils.layout_helper import (
+            assemble_midcap_title_unicode,
+        )
+        from babeldoc.format.pdf.document_il.utils.layout_helper import (
             compute_decorative_tracking,
         )
         from babeldoc.format.pdf.document_il.utils.stream_order import (
             maybe_reorder_reversed_stream,
-            sort_line_compositions_if_stream_climbs,
         )
-        from babeldoc.format.pdf.document_il.utils.layout_helper import (
-            assemble_midcap_title_unicode,
+        from babeldoc.format.pdf.document_il.utils.stream_order import (
+            sort_line_compositions_if_stream_climbs,
         )
 
         page = page if page is not None else getattr(self, "_current_page", None)
@@ -1142,6 +1144,8 @@ class ParagraphFinder:
     ):
         from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
             should_split_line_pair,
+        )
+        from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
             split_paragraph_at,
         )
 

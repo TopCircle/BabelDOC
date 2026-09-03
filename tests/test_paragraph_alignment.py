@@ -5,7 +5,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
 from babeldoc.format.pdf.document_il.il_version_1 import PdfLine
@@ -15,7 +14,9 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
 from babeldoc.format.pdf.document_il.midend.typesetting import TypesettingUnit
-from babeldoc.format.pdf.document_il.utils.layout_helper import detect_paragraph_alignment
+from babeldoc.format.pdf.document_il.utils.layout_helper import (
+    detect_paragraph_alignment,
+)
 
 
 def _char(x: float, x2: float, y: float = 100.0, y2: float = 112.0, ch: str = "a"):
@@ -637,7 +638,8 @@ class TestReattachTrailingListMarkers:
             "5."
         )
         # Document pass also normalizes leading ``6。`` → ``6.``
-        from babeldoc.format.pdf.document_il.il_version_1 import Document, Page
+        from babeldoc.format.pdf.document_il.il_version_1 import Document
+        from babeldoc.format.pdf.document_il.il_version_1 import Page
 
         doc = Document(
             page=[Page(pdf_paragraph=[p3, p4, p5, p6], page_number=0)]
@@ -1198,10 +1200,10 @@ class TestLayoutStyleConsistency:
 
     def test_indent_noop_when_zone_already_past_indent(self):
         """Left figure residual starts past box.x+indent → no extra indent shift."""
+        from babeldoc.format.pdf.document_il.midend.exclusion_zone import ZONE_FIGURE
+        from babeldoc.format.pdf.document_il.midend.exclusion_zone import ExclusionZone
         from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
-            ExclusionZone,
             ExclusionZoneIndex,
-            ZONE_FIGURE,
         )
 
         ts = self._typesetting()

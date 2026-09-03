@@ -6,14 +6,11 @@
 - 多 zone 的交互
 """
 
-import pytest
 from babeldoc.format.pdf.document_il import il_version_1
-from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
-    ExclusionZone,
-    ExclusionZoneIndex,
-    ZONE_QUOTE,
-    ZONE_FIGURE,
-)
+from babeldoc.format.pdf.document_il.midend.exclusion_zone import ZONE_FIGURE
+from babeldoc.format.pdf.document_il.midend.exclusion_zone import ZONE_QUOTE
+from babeldoc.format.pdf.document_il.midend.exclusion_zone import ExclusionZone
+from babeldoc.format.pdf.document_il.midend.exclusion_zone import ExclusionZoneIndex
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_quote_block
 
 

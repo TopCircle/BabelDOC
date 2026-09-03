@@ -4,18 +4,12 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pymupdf
-
 from babeldoc.docvision.doclayout import DocLayoutModel
 from babeldoc.format.pdf import high_level
-from babeldoc.format.pdf.document_il.midend.detect_scanned_file import (
-    enable_ocr_workaround_for_searchable_image,
-)
 from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.format.pdf.translation_config import WatermarkOutputMode
 from babeldoc.translator.fixed_map_translator import FixedMapTranslator

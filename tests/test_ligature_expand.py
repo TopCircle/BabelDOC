@@ -6,12 +6,8 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
-from babeldoc.format.pdf.document_il.utils.layout_helper import (
-    get_char_unicode_string,
-)
-from babeldoc.format.pdf.document_il.utils.text_recovery import (
-    expand_latin_ligatures,
-)
+from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode_string
+from babeldoc.format.pdf.document_il.utils.text_recovery import expand_latin_ligatures
 from babeldoc.format.pdf.document_il.utils.text_recovery import (
     rejoin_soft_hyphens_in_text,
 )

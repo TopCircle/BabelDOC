@@ -5,7 +5,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
@@ -13,6 +12,9 @@ from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import LayoutAttempt
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    _left_quote_owns_residual,
+)
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     allows_full_measure_escalation,
 )
@@ -23,15 +25,14 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     full_measure_layout_box,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
-    _left_quote_owns_residual,
-)
-from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     infer_wrap_mode_from_line_boxes,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     layout_box_is_thin_vs_full_measure,
 )
-from babeldoc.format.pdf.document_il.utils.line_interval_plan import resolve_line_interval_plan
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    resolve_line_interval_plan,
+)
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import wrap_interval
 
 

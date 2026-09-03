@@ -73,8 +73,10 @@ def test_no_sort_when_mixed_non_line_composition():
 def test_multiline_stream_climb_reorders_callout_body():
     """OA TAKING CHARGE: paint bottom line first → MT must see top line first."""
     from babeldoc.format.pdf.document_il.utils.stream_order import (
-        maybe_reorder_multiline_stream_climb,
         is_multiline_stream_climbing,
+    )
+    from babeldoc.format.pdf.document_il.utils.stream_order import (
+        maybe_reorder_multiline_stream_climb,
     )
 
     # Stream order: tip (low y) first, then climb (PDF y-up)
@@ -107,7 +109,9 @@ def test_multiline_stream_climb_reorders_callout_body():
 
 def test_wide_body_with_drop_cap_reorders():
     """OA p19 intro: wide column + drop-cap still gets visual order for MT."""
-    from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode_string
+    from babeldoc.format.pdf.document_il.utils.layout_helper import (
+        get_char_unicode_string,
+    )
     from babeldoc.format.pdf.document_il.utils.stream_order import (
         maybe_reorder_multiline_stream_climb,
     )

@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pymupdf
 import pytest
-
 from babeldoc.assets import assets
 from babeldoc.format.pdf.document_il.backend import pdf_creater as pc
 from babeldoc.format.pdf.document_il.utils import font_subset as fs

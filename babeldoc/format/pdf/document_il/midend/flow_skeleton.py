@@ -16,7 +16,8 @@
 
 import logging
 import statistics
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field
 from enum import Enum
 
 from babeldoc.format.pdf.document_il import il_version_1
@@ -536,7 +537,7 @@ def determine_flow_state(x_min: float, x_max: float,
 
 def determine_intervals_from_glyphs(x_min: float, x_max: float,
                                      objects: list[VisualObject],
-                                     page: il_version_1.Page) -> list[tuple[float, float]]:
+                                     _page: il_version_1.Page) -> list[tuple[float, float]]:
     """
     从 glyph 占位确定区间。
 
@@ -596,7 +597,7 @@ def can_merge(current: FlowRegion, new_state: FlowStateType,
         return False
 
     # 区间宽度变化不大（< 20pt）
-    for (cx1, cx2), (nx1, nx2) in zip(current.intervals, new_intervals):
+    for (cx1, cx2), (nx1, nx2) in zip(current.intervals, new_intervals, strict=False):
         if abs((cx2 - cx1) - (nx2 - nx1)) > 20:
             return False
 

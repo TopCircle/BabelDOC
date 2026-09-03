@@ -17,20 +17,19 @@ Phase 2: 修复（Resolver + Executor + Fixer）— 待实现。
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from dataclasses import dataclass
 from dataclasses import field
+
+# 避免循环导入：TYPE_CHECKING 时导入 Typesetting
+from typing import TYPE_CHECKING
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import Document
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
-
-# 避免循环导入：TYPE_CHECKING 时导入 Typesetting
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
@@ -259,8 +258,10 @@ class GeometryCache:
         """
         try:
             from babeldoc.format.pdf.document_il.utils.layout_helper import (
-                count_lines_from_compositions,
                 compute_per_line_widths,
+            )
+            from babeldoc.format.pdf.document_il.utils.layout_helper import (
+                count_lines_from_compositions,
             )
         except ImportError:
             return None

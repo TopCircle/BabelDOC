@@ -86,7 +86,7 @@ def run(
     skip_header: bool,
     header_height: float,
 ) -> Path:
-    translate, TranslationConfig, WatermarkOutputMode, FixedMapTranslator = (
+    translate, TranslationConfig, WatermarkOutputMode, FixedMapTranslator = (  # noqa: N806
         _import_babeldoc()
     )
     working_dir = out_dir / "working"

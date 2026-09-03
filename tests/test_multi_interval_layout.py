@@ -10,9 +10,9 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
+from babeldoc.format.pdf.document_il.midend.exclusion_zone import ZONE_FIGURE
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import ExclusionZone
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import ExclusionZoneIndex
-from babeldoc.format.pdf.document_il.midend.exclusion_zone import ZONE_FIGURE
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
 from babeldoc.format.pdf.document_il.midend.typesetting import TypesettingUnit
 from babeldoc.format.pdf.translation_config import TranslationConfig

@@ -329,7 +329,7 @@ class TestCJKCost:
 
         pts = [0] + breaks + [len(units)]
         lines = []
-        for a, b in zip(pts[:-1], pts[1:]):
+        for a, b in zip(pts[:-1], pts[1:], strict=False):
             chunk = "".join(u.try_get_unicode() for u in units[a:b])
             width = _compute_line_width(units, a, b, 1.0, 6.0, 0.0)
             lines.append((chunk, width))

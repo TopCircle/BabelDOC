@@ -2,25 +2,22 @@
 
 from __future__ import annotations
 
-import pytest
-
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import Document
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
+from babeldoc.format.pdf.document_il.midend.post_layout_processor import DocumentContext
+from babeldoc.format.pdf.document_il.midend.post_layout_processor import FixAction
+from babeldoc.format.pdf.document_il.midend.post_layout_processor import GeometryCache
+from babeldoc.format.pdf.document_il.midend.post_layout_processor import LayoutIssue
+from babeldoc.format.pdf.document_il.midend.post_layout_processor import OverlapDetector
+from babeldoc.format.pdf.document_il.midend.post_layout_processor import OverlapFixer
+from babeldoc.format.pdf.document_il.midend.post_layout_processor import OverlapResolver
 from babeldoc.format.pdf.document_il.midend.post_layout_processor import (
-    DocumentContext,
-    FixAction,
-    GeometryCache,
-    LayoutIssue,
-    OverlapDetector,
-    OverlapFixer,
-    OverlapResolver,
     PostLayoutProcessor,
 )
-
 
 # ──────────────────────────────────────────────────────────────
 # Helpers

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import math
 
+from babeldoc.format.pdf.document_il.utils.raster_geometry import DEFAULT_MAX_PIXELS
+from babeldoc.format.pdf.document_il.utils.raster_geometry import RasterGeometry
+from babeldoc.format.pdf.document_il.utils.raster_geometry import _pixel_dimensions
 from babeldoc.format.pdf.document_il.utils.raster_geometry import (
-    DEFAULT_MAX_PIXELS,
-    RasterGeometry,
-    _pixel_dimensions,
     max_dpi_within_pixel_budget,
 )
 

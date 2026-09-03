@@ -4,7 +4,8 @@ import tempfile
 from pathlib import Path
 
 from babeldoc.format.pdf.document_il import il_version_1
-from babeldoc.format.pdf.document_il.midend.flow_debug_svg import FlowDebugSvg, SvgBuilder
+from babeldoc.format.pdf.document_il.midend.flow_debug_svg import FlowDebugSvg
+from babeldoc.format.pdf.document_il.midend.flow_debug_svg import SvgBuilder
 
 
 def test_svg_builder():

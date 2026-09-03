@@ -9,7 +9,6 @@ import tempfile
 from pathlib import Path
 
 import pymupdf
-
 from babeldoc.docvision.doclayout import DocLayoutModel
 from babeldoc.format.pdf import high_level
 from babeldoc.format.pdf.translation_config import TranslationConfig

@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
-from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
 from babeldoc.format.pdf.document_il.il_version_1 import PdfLine
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
@@ -61,6 +59,8 @@ def test_space_chapter_number():
 def test_normalize_decorative_title_case():
     from babeldoc.format.pdf.document_il.utils.text_recovery import (
         normalize_decorative_title_case,
+    )
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
         recover_latin_word_fragments,
     )
 
@@ -76,7 +76,7 @@ def test_plain_text_mid_page_decorative_reverse_single_call():
     """Single stream_order policy reorders mid-page plain decorative reverse."""
     letters = list("Who haS orgaSMS?")
     xs = list(range(100, 100 + 10 * len(letters), 10))
-    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
+    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs), strict=False)]
     ordered = maybe_reorder_reversed_stream(
         stream, layout_label="plain text", in_page_top_band=False
     )
@@ -88,7 +88,7 @@ def test_plain_text_top_band_reorders_reverse_title():
     """PR-B: mis-labeled plain text in top band may reverse-reorder."""
     letters = list("Who haS orgaSMS?")
     xs = list(range(100, 100 + 10 * len(letters), 10))
-    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
+    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs), strict=False)]
     ordered = maybe_reorder_reversed_stream(
         stream, layout_label="plain text", in_page_top_band=True
     )
@@ -102,7 +102,7 @@ def test_plain_text_top_band_reorders_reverse_title():
 def test_1chapter_plain_becomes_chapter_1():
     chapter = list("Chapter")
     xs_ch = [44.0 + i * 9 for i in range(len(chapter))]
-    stream = [_ch("1", 199.0)] + [_ch(c, x) for c, x in zip(chapter, xs_ch)]
+    stream = [_ch("1", 199.0)] + [_ch(c, x) for c, x in zip(chapter, xs_ch, strict=False)]
     ordered = maybe_reorder_reversed_stream(
         stream, layout_label="plain text", in_page_top_band=False
     )
@@ -182,7 +182,7 @@ def _mixed_opener_para(chapter: str, title: str, *, ch_size=32.0, title_size=56.
     """OA Ch1/Ch3: Chapter @32pt + digit/title @56pt on one visual line."""
     chars = []
     x = 44.0
-    for i, ch in enumerate(chapter):
+    for _i, ch in enumerate(chapter):
         chars.append(_ch(ch, x, y=661.0, w=ch_size * 0.55, font_size=ch_size))
         x += ch_size * 0.55 + 1
     x += 8.0
@@ -268,9 +268,7 @@ def test_midcap_display_title_lowers_without_tracking():
     from babeldoc.format.pdf.document_il.utils.text_recovery import (
         should_normalize_midcap_title,
     )
-    from babeldoc.format.pdf.document_il.utils.vertical_gap import (
-        DISPLAY_TITLE_SIZE_PT,
-    )
+    from babeldoc.format.pdf.document_il.utils.vertical_gap import DISPLAY_TITLE_SIZE_PT
 
     title = "SLoWcoMfortabLe ScreW"
     para = _line_para(

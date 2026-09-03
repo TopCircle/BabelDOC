@@ -161,9 +161,7 @@ def _looks_like_side_callout(paragraph: PdfParagraph, page: Page) -> bool:
         if right_ratio > _PULLQUOTE_LEFT_RATIO:
             return True
     try:
-        from babeldoc.format.pdf.document_il.utils.layout_helper import (
-            is_quote_block,
-        )
+        from babeldoc.format.pdf.document_il.utils.layout_helper import is_quote_block
 
         return is_quote_block(paragraph, page_width)
     except Exception:

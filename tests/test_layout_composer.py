@@ -1,22 +1,13 @@
 """Test Layout Composer"""
 
 from babeldoc.format.pdf.document_il import il_version_1
-from babeldoc.format.pdf.document_il.midend.flow_skeleton import (
-    PublisherSkeleton,
-    FlowRegion,
-    FlowStateType,
-    StyleRegion,
-    VisualObject,
-    Padding,
-    ConstraintPriority,
-)
-from babeldoc.format.pdf.document_il.midend.layout_composer import (
-    ConstraintComposer,
-    TypesettingUnit,
-    compute_avg_height,
-    commit_line,
-    create_typesetting_units_from_paragraph,
-)
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import FlowRegion
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import FlowStateType
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import PublisherSkeleton
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import StyleRegion
+from babeldoc.format.pdf.document_il.midend.layout_composer import ConstraintComposer
+from babeldoc.format.pdf.document_il.midend.layout_composer import TypesettingUnit
+from babeldoc.format.pdf.document_il.midend.layout_composer import compute_avg_height
 
 
 def test_typesetting_unit():

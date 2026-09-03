@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from babeldoc.format.pdf.document_il.il_version_1 import PdfFont
+from babeldoc.format.pdf.document_il.utils.font_resolve import PAGE_STREAM_XOBJ_ID
 from babeldoc.format.pdf.document_il.utils.font_resolve import (
-    PAGE_STREAM_XOBJ_ID,
     make_synthetic_style_probe,
-    normalize_xobj_id,
-    resolve_style_font,
+)
+from babeldoc.format.pdf.document_il.utils.font_resolve import normalize_xobj_id
+from babeldoc.format.pdf.document_il.utils.font_resolve import resolve_style_font
+from babeldoc.format.pdf.document_il.utils.font_resolve import (
     resolve_style_font_for_typesetting,
 )
 

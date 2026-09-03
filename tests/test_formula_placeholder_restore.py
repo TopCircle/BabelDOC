@@ -12,7 +12,9 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
 from babeldoc.format.pdf.document_il.midend.il_translator import FormulaPlaceholder
 from babeldoc.format.pdf.document_il.midend.il_translator import ILTranslator
-from babeldoc.format.pdf.document_il.midend.il_translator import ParagraphTranslateTracker
+from babeldoc.format.pdf.document_il.midend.il_translator import (
+    ParagraphTranslateTracker,
+)
 from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.translator.fixed_map_translator import FixedMapTranslator
 

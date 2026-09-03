@@ -3,18 +3,16 @@
 from __future__ import annotations
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
-from babeldoc.format.pdf.document_il.utils.box_expand import (
-    NARROW_COLUMN_MAX_WIDTH,
-    content_expand_ratio_need,
-    expand_axis_order,
-    is_narrow_column,
-    is_right_blocked,
-    prefer_expand_down,
-    try_expand_axis,
-    try_expand_down,
-    try_expand_right,
-    try_pre_expand_for_content,
-)
+from babeldoc.format.pdf.document_il.utils.box_expand import NARROW_COLUMN_MAX_WIDTH
+from babeldoc.format.pdf.document_il.utils.box_expand import content_expand_ratio_need
+from babeldoc.format.pdf.document_il.utils.box_expand import expand_axis_order
+from babeldoc.format.pdf.document_il.utils.box_expand import is_narrow_column
+from babeldoc.format.pdf.document_il.utils.box_expand import is_right_blocked
+from babeldoc.format.pdf.document_il.utils.box_expand import prefer_expand_down
+from babeldoc.format.pdf.document_il.utils.box_expand import try_expand_axis
+from babeldoc.format.pdf.document_il.utils.box_expand import try_expand_down
+from babeldoc.format.pdf.document_il.utils.box_expand import try_expand_right
+from babeldoc.format.pdf.document_il.utils.box_expand import try_pre_expand_for_content
 
 
 def _box(x=100.0, y=100.0, x2=200.0, y2=200.0) -> Box:
@@ -22,11 +20,11 @@ def _box(x=100.0, y=100.0, x2=200.0, y2=200.0) -> Box:
 
 
 def test_is_narrow_column_threshold():
+    from babeldoc.format.pdf.document_il.utils.box_expand import RATIO_ULTRA_NARROW
     from babeldoc.format.pdf.document_il.utils.box_expand import (
         ULTRA_NARROW_COLUMN_MAX_WIDTH,
-        is_ultra_narrow_column,
-        RATIO_ULTRA_NARROW,
     )
+    from babeldoc.format.pdf.document_il.utils.box_expand import is_ultra_narrow_column
 
     assert is_narrow_column(_box(x=0, x2=NARROW_COLUMN_MAX_WIDTH - 1))
     assert not is_narrow_column(_box(x=0, x2=NARROW_COLUMN_MAX_WIDTH))

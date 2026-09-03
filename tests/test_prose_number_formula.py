@@ -88,12 +88,10 @@ class TestProseNumberRun:
         """TeX-split ``99``/``.``/``00``/``%which`` → one ``99.00%`` + Latin."""
         from types import SimpleNamespace
 
-        from babeldoc.format.pdf.document_il.il_version_1 import (
-            PdfParagraph,
-            PdfParagraphComposition,
-            PdfSameStyleCharacters,
-        )
         from babeldoc.format.pdf.document_il.il_version_1 import Page
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfSameStyleCharacters
 
         def style_comp(text: str, font_id: str) -> PdfParagraphComposition:
             chars = [_ch(c, x=i * 6) for i, c in enumerate(text)]

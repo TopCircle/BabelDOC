@@ -14,15 +14,19 @@ from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfFigure
 from babeldoc.format.pdf.document_il.il_version_1 import PdfForm
 from babeldoc.format.pdf.document_il.il_version_1 import PdfFormSubtype
+from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
+    MIN_USABLE_LINE_WIDTH_PT,
+)
+from babeldoc.format.pdf.document_il.midend.exclusion_zone import ZONE_FIGURE
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import ExclusionZone
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import ExclusionZoneBuilder
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import ExclusionZoneIndex
-from babeldoc.format.pdf.document_il.midend.exclusion_zone import MIN_USABLE_LINE_WIDTH_PT
-from babeldoc.format.pdf.document_il.midend.exclusion_zone import ZONE_FIGURE
-from babeldoc.format.pdf.document_il.midend.exclusion_zone import _collect_figure_zones
-from babeldoc.format.pdf.document_il.midend.exclusion_zone import _max_horizontal_residual
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
     _all_residual_intervals,
+)
+from babeldoc.format.pdf.document_il.midend.exclusion_zone import _collect_figure_zones
+from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
+    _max_horizontal_residual,
 )
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
     _subtract_blocked_from_range,
@@ -31,7 +35,6 @@ from babeldoc.format.pdf.document_il.midend.exclusion_zone import min_usable_lin
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
     polygon_scanline_blocked_intervals,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

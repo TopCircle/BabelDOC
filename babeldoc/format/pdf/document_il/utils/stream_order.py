@@ -224,7 +224,7 @@ def sort_chars_visual_order(
 
 
 def _same_order(a: list[PdfCharacter], b: list[PdfCharacter]) -> bool:
-    return len(a) == len(b) and all(x is y for x, y in zip(a, b))
+    return len(a) == len(b) and all(x is y for x, y in zip(a, b, strict=False))
 
 
 def label_allows_stream_reorder(
@@ -306,7 +306,7 @@ def sort_line_compositions_if_stream_climbs(
 
     climbs = 0
     drops = 0
-    for a, b in zip(line_y2, line_y2[1:]):
+    for a, b in zip(line_y2, line_y2[1:], strict=False):
         if b > a + _LINE_Y_EPS_PT:
             climbs += 1
         elif b < a - _LINE_Y_EPS_PT:
@@ -362,8 +362,8 @@ def reorder_plain_paragraph_runs_if_stream_climbs(
                 box is not None and box.x is not None and box.x2 is not None
                 for box in boxes
             ):
-                climbs = sum(b > a + 2.0 for a, b in zip(y2_values, y2_values[1:]))
-                drops = sum(b < a - 2.0 for a, b in zip(y2_values, y2_values[1:]))
+                climbs = sum(b > a + 2.0 for a, b in zip(y2_values, y2_values[1:], strict=False))
+                drops = sum(b < a - 2.0 for a, b in zip(y2_values, y2_values[1:], strict=False))
                 # A wrapped continuation can be much narrower than the
                 # surrounding body paragraphs. Use the median text span
                 # rather than requiring every fragment to share one width.
@@ -429,7 +429,7 @@ def _climb_drop_counts(
         return 0, 0, len(lines)
     climbs = 0
     drops = 0
-    for (y_a, _), (y_b, _) in zip(lines, lines[1:]):
+    for (y_a, _), (y_b, _) in zip(lines, lines[1:], strict=False):
         if y_b > y_a + _LINE_Y_EPS_PT:
             climbs += 1
         elif y_b < y_a - _LINE_Y_EPS_PT:

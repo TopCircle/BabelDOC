@@ -23,11 +23,8 @@ from babeldoc.format.pdf.document_il.midend.il_translator import ILTranslator
 from babeldoc.format.pdf.document_il.utils.callout_merge import (
     merge_stacked_narrow_callout_paragraphs,
 )
-from babeldoc.format.pdf.document_il.utils.layout_helper import (
-    get_char_unicode_string,
-    get_paragraph_unicode,
-)
-
+from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode_string
+from babeldoc.format.pdf.document_il.utils.layout_helper import get_paragraph_unicode
 
 # --------------------------------------------------------------------------
 # helpers

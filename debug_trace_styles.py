@@ -17,7 +17,10 @@ import pymupdf
 from babeldoc.format.pdf.document_il.midend.layout_parser import LayoutParser
 from babeldoc.format.pdf.document_il.midend.paragraph_finder import ParagraphFinder
 from babeldoc.format.pdf.document_il.midend.styles_and_formulas import StylesAndFormulas
-from babeldoc.format.pdf.document_il.utils.layout_helper import is_same_style, is_same_style_except_size
+from babeldoc.format.pdf.document_il.utils.layout_helper import is_same_style
+from babeldoc.format.pdf.document_il.utils.layout_helper import (
+    is_same_style_except_size,
+)
 from babeldoc.format.pdf.parse_only import parse_with_legacy_ir
 from babeldoc.format.pdf.parse_shared import _ParseOnlyDocLayoutModel
 from babeldoc.format.pdf.translation_config import TranslationConfig

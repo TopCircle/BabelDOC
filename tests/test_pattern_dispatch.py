@@ -1,20 +1,15 @@
 """Test Pattern Dispatch"""
 
 from babeldoc.format.pdf.document_il import il_version_1
-from babeldoc.format.pdf.document_il.midend.flow_skeleton import (
-    PublisherSkeleton,
-    FlowRegion,
-    FlowStateType,
-    VisualObject,
-    Padding,
-    ConstraintPriority,
-)
-from babeldoc.format.pdf.document_il.midend.pattern_dispatch import (
-    PatternDispatcher,
-    PatternType,
-    PatternMatch,
-    PatternComposer,
-)
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import ConstraintPriority
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import FlowRegion
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import FlowStateType
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import Padding
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import PublisherSkeleton
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import VisualObject
+from babeldoc.format.pdf.document_il.midend.pattern_dispatch import PatternDispatcher
+from babeldoc.format.pdf.document_il.midend.pattern_dispatch import PatternMatch
+from babeldoc.format.pdf.document_il.midend.pattern_dispatch import PatternType
 
 
 def test_pattern_type():

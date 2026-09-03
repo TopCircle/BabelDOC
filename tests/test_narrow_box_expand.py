@@ -4,11 +4,10 @@ and readable scale floor.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 import statistics
+from types import SimpleNamespace
 
 import pytest
-
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
 
@@ -174,10 +173,8 @@ class TestPreExpandNarrowBox:
 
     def test_scale_search_axis_order_matches_prefer_down(self):
         """Scale loop must use the same prefer_down policy as pre-expand."""
-        from babeldoc.format.pdf.document_il.utils.box_expand import (
-            expand_axis_order,
-            prefer_expand_down,
-        )
+        from babeldoc.format.pdf.document_il.utils.box_expand import expand_axis_order
+        from babeldoc.format.pdf.document_il.utils.box_expand import prefer_expand_down
 
         narrow = Box(x=102.0, y=78.0, x2=207.0, y2=168.0)
         prefer = prefer_expand_down(

@@ -36,7 +36,7 @@ def _ch(text: str, x: float, y: float = 100.0, w: float = 8.0) -> PdfCharacter:
 def test_maybe_reorder_plain_mid_page_decorative_reverse():
     letters = list("Who haS orgaSMS?")
     xs = list(range(100, 100 + 10 * len(letters), 10))
-    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
+    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs), strict=False)]
     ordered = maybe_reorder_reversed_stream(
         stream, layout_label="plain text", in_page_top_band=False
     )
@@ -47,7 +47,7 @@ def test_maybe_reorder_plain_mid_page_decorative_reverse():
 def test_update_paragraph_reorders_mid_page_who_has():
     letters = list("Who haS orgaSMS?")
     xs = list(range(100, 100 + 10 * len(letters), 10))
-    stream = [_ch(ch, x, y=400) for ch, x in zip(reversed(letters), reversed(xs))]
+    stream = [_ch(ch, x, y=400) for ch, x in zip(reversed(letters), reversed(xs), strict=False)]
     line = PdfLine(
         box=Box(x=100, y=400, x2=260, y2=412),
         pdf_character=stream,

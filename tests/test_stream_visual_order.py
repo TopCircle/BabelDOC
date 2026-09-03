@@ -7,9 +7,7 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
-from babeldoc.format.pdf.document_il.utils.layout_helper import (
-    get_char_unicode_string,
-)
+from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode_string
 from babeldoc.format.pdf.document_il.utils.stream_order import (
     is_stream_visually_reversed,
 )
@@ -17,11 +15,9 @@ from babeldoc.format.pdf.document_il.utils.stream_order import (
     maybe_reorder_reversed_stream,
 )
 from babeldoc.format.pdf.document_il.utils.stream_order import (
-    sort_chars_visual_order,
-)
-from babeldoc.format.pdf.document_il.utils.stream_order import (
     reorder_plain_paragraph_runs_if_stream_climbs,
 )
+from babeldoc.format.pdf.document_il.utils.stream_order import sort_chars_visual_order
 
 
 def _ch(text: str, x: float, y: float = 100.0, w: float = 8.0) -> PdfCharacter:
@@ -47,7 +43,7 @@ def test_who_has_orgasms_reverse_stream_detected():
     # Paint order right-to-left; visual LTR: Who haS orgaSMS?
     letters = list("Who haS orgaSMS?")
     xs = list(range(100, 100 + 10 * len(letters), 10))
-    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
+    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs), strict=False)]
 
     assert is_stream_visually_reversed(stream) is True
     # Plain or title: decorative reverse reorders (geometry gate)
@@ -84,7 +80,7 @@ def test_long_body_not_reordered_even_if_partially_rtl():
     letters = list("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789xxx")
     assert len(letters) > 64
     xs = list(range(100, 100 + 5 * len(letters), 5))
-    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
+    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs), strict=False)]
     # may be reverse-dominant geometrically
     assert is_stream_visually_reversed(stream) is True
     # but maybe_reorder refuses long runs
@@ -107,7 +103,7 @@ def test_1chapter_misplaced_digit_becomes_chapter_1():
     # Stream: digit at x=199 first, then Chapter LTR from x=44 (tight kerning)
     chapter = list("Chapter")
     xs_ch = [44.0 + i * 9 for i in range(len(chapter))]
-    stream = [_ch("1", 199.0)] + [_ch(c, x) for c, x in zip(chapter, xs_ch)]
+    stream = [_ch("1", 199.0)] + [_ch(c, x) for c, x in zip(chapter, xs_ch, strict=False)]
     assert "".join(c.char_unicode for c in stream) == "1Chapter"
     # plain or title: misplaced digit + decorative short run
     ordered = maybe_reorder_reversed_stream(stream, layout_label="plain text")
@@ -124,7 +120,7 @@ def test_plain_decorative_reverse_reorders_single_policy():
     """Geometry+label policy: plain mid-page decorative reverse reorders once."""
     letters = list("Who haS orgaSMS?")
     xs = list(range(100, 100 + 10 * len(letters), 10))
-    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs))]
+    stream = [_ch(ch, x) for ch, x in zip(reversed(letters), reversed(xs), strict=False)]
     assert is_stream_visually_reversed(stream) is True
     for label in (None, "", "plain text", "paragraph", "text", "title"):
         ordered = maybe_reorder_reversed_stream(

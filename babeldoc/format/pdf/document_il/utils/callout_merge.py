@@ -18,8 +18,8 @@ Entry: :func:`merge_stacked_narrow_callout_paragraphs` (name kept for callers).
 from __future__ import annotations
 
 import logging
-import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+from typing import Any
 
 if TYPE_CHECKING:
     from babeldoc.format.pdf.document_il.il_version_1 import Page

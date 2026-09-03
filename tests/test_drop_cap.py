@@ -6,12 +6,12 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
-from babeldoc.format.pdf.document_il.utils.drop_cap import (
-    is_drop_cap_pair,
-    rejoin_drop_cap_in_text,
-)
+from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_pair
+from babeldoc.format.pdf.document_il.utils.drop_cap import rejoin_drop_cap_in_text
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode_string
-from babeldoc.format.pdf.document_il.utils.text_recovery import recover_latin_word_fragments
+from babeldoc.format.pdf.document_il.utils.text_recovery import (
+    recover_latin_word_fragments,
+)
 
 
 def _ch(
@@ -177,8 +177,8 @@ def test_drop_cap_padding_spaces_do_not_split_welcome():
 
 def test_oa_p7_we_are_told_drop_cap():
     """OA p7: Trajan W at end of the body stream rejoins We, not from."""
+    from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_style_span
     from babeldoc.format.pdf.document_il.utils.drop_cap import (
-        is_drop_cap_style_span,
         place_drop_caps_before_continuations,
     )
 

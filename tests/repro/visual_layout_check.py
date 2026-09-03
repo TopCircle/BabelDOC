@@ -560,7 +560,7 @@ def check_v2_gap(page: PageRun, en: dict, th: Thresholds) -> list[CheckResult]:
     return results
 
 
-def check_v3_wrap_right(page: PageRun, en: dict, th: Thresholds) -> list[CheckResult]:
+def check_v3_wrap_right(page: PageRun, _en: dict, th: Thresholds) -> list[CheckResult]:
     """Wrap-column lines must pin to the design right edge (±0.5)."""
     violations: list[str] = []
     wrap_paras = [
@@ -591,7 +591,7 @@ def check_v3_wrap_right(page: PageRun, en: dict, th: Thresholds) -> list[CheckRe
     ]
 
 
-def check_v3_orphan(page: PageRun, en: dict, th: Thresholds) -> list[CheckResult]:
+def check_v3_orphan(page: PageRun, _en: dict, th: Thresholds) -> list[CheckResult]:
     """No single-char orphan line (width < 1.6 * font_size; last line exempt)."""
     orphans: list[str] = []
     targets = [
@@ -626,7 +626,7 @@ def check_v3_orphan(page: PageRun, en: dict, th: Thresholds) -> list[CheckResult
     ]
 
 
-def check_v3_font_scale(page: PageRun, en: dict, th: Thresholds) -> list[CheckResult]:
+def check_v3_font_scale(page: PageRun, en: dict, _th: Thresholds) -> list[CheckResult]:
     """Effective font size must stay >= min_scale * EN original (per role)."""
     orig_sizes = (en.get("invariants") or {}).get("original_font_sizes") or {}
     fails: list[str] = []
@@ -658,7 +658,7 @@ def check_v3_font_scale(page: PageRun, en: dict, th: Thresholds) -> list[CheckRe
     ]
 
 
-def check_v4_repeats(page: PageRun, en: dict, th: Thresholds) -> list[CheckResult]:
+def check_v4_repeats(page: PageRun, _en: dict, th: Thresholds) -> list[CheckResult]:
     """No sentence (or line) repeated >= repeat_min times consecutively."""
     paragraphs = _content_paras(page)
     text = "\n".join(p.unicode for p in paragraphs)
@@ -688,7 +688,7 @@ def check_v4_repeats(page: PageRun, en: dict, th: Thresholds) -> list[CheckResul
     ]
 
 
-def check_v4_dangling(page: PageRun, en: dict, th: Thresholds) -> list[CheckResult]:
+def check_v4_dangling(page: PageRun, _en: dict, _th: Thresholds) -> list[CheckResult]:
     """No dangling punctuation: line must not open with sentence-end punct or
     close with an opening bracket, and must not be punctuation alone."""
     bad: list[str] = []
@@ -715,7 +715,7 @@ def check_v4_dangling(page: PageRun, en: dict, th: Thresholds) -> list[CheckResu
     ]
 
 
-def check_v5_callout(page: PageRun, en: dict, th: Thresholds) -> list[CheckResult]:
+def check_v5_callout(page: PageRun, en: dict, _th: Thresholds) -> list[CheckResult]:
     """Callout sentences must not duplicate body sentences (one-to-one)."""
     callouts = [
         p for p in _content_paras(page) if p.role == "callout"
@@ -734,7 +734,7 @@ def check_v5_callout(page: PageRun, en: dict, th: Thresholds) -> list[CheckResul
     for c in callouts:
         sentences = split_sentences(c.unicode)
         normalized = [_normalize(s) for s in sentences]
-        for s, n in zip(sentences, normalized):
+        for s, n in zip(sentences, normalized, strict=False):
             if n and n in body_sentences:
                 cross.append(f"callout {c.debug_id}: {s!r} also in body")
         for i in range(1, len(normalized)):

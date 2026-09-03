@@ -13,7 +13,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 import visual_layout_check as vlc
 
 GOLDEN_DIR = Path(__file__).resolve().parent / "golden"

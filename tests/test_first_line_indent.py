@@ -12,7 +12,6 @@ from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
 from babeldoc.format.pdf.document_il.midend.paragraph_finder import (
     _compute_visual_first_line_indent,
 )
-from babeldoc.format.pdf.document_il.midend.paragraph_finder import ParagraphFinder
 
 
 def _char(x: float, x2: float, y: float, y2: float, ch: str = "a"):

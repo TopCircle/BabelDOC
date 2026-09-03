@@ -1,21 +1,16 @@
 """Test Flow Skeleton extraction"""
 
 from babeldoc.format.pdf.document_il import il_version_1
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import ConstraintPriority
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import FlowRegion
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import FlowStateType
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import Padding
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import VisualObject
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import analyze_topology
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import can_merge
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import determine_flow_state
 from babeldoc.format.pdf.document_il.midend.flow_skeleton import (
-    PublisherSkeleton,
-    FlowRegion,
-    FlowStateType,
-    VisualObject,
-    Padding,
-    ConstraintPriority,
     extract_publisher_skeleton,
-    extract_visual_objects,
-    extract_glyph_lines,
-    build_flow_regions,
-    determine_flow_state,
-    determine_intervals_from_glyphs,
-    can_merge,
-    analyze_topology,
 )
 
 
@@ -100,16 +95,16 @@ def test_can_merge():
     )
 
     # Test merge with same state and intervals
-    assert can_merge(region, FlowStateType.FULL, [(50, 300)], 210) == True
+    assert can_merge(region, FlowStateType.FULL, [(50, 300)], 210)
 
     # Test merge with different state
-    assert can_merge(region, FlowStateType.LEFT_WRAP, [(50, 300)], 210) == False
+    assert not can_merge(region, FlowStateType.LEFT_WRAP, [(50, 300)], 210)
 
     # Test merge with different intervals
-    assert can_merge(region, FlowStateType.FULL, [(50, 400)], 210) == False
+    assert not can_merge(region, FlowStateType.FULL, [(50, 400)], 210)
 
     # Test merge with too far y distance
-    assert can_merge(region, FlowStateType.FULL, [(50, 300)], 300) == False
+    assert not can_merge(region, FlowStateType.FULL, [(50, 300)], 300)
 
     print("can_merge test passed!")
 

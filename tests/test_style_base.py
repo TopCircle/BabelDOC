@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
-from babeldoc.format.pdf.document_il.utils.style_base import (
-    calculate_base_style,
-    filter_styles_for_base,
-    mode_value,
-)
+from babeldoc.format.pdf.document_il.utils.style_base import calculate_base_style
+from babeldoc.format.pdf.document_il.utils.style_base import filter_styles_for_base
+from babeldoc.format.pdf.document_il.utils.style_base import mode_value
 
 
 def _st(font_id: str, size: float) -> PdfStyle:

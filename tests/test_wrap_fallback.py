@@ -16,8 +16,12 @@ from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.utils.wrap_shape import count_typeset_baselines
 from babeldoc.format.pdf.document_il.utils.wrap_shape import residual_line_budget
-from babeldoc.format.pdf.document_il.utils.wrap_shape import should_fallback_residual_to_block
-from babeldoc.format.pdf.document_il.utils.wrap_shape import should_fallback_wrap_to_block
+from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+    should_fallback_residual_to_block,
+)
+from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+    should_fallback_wrap_to_block,
+)
 from babeldoc.format.pdf.document_il.utils.wrap_shape import wrap_line_budget
 from babeldoc.format.pdf.translation_config import TranslationConfig
 

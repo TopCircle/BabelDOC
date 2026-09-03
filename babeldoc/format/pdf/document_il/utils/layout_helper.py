@@ -15,13 +15,17 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
 from babeldoc.format.pdf.document_il.utils import text_recovery
 from babeldoc.format.pdf.document_il.utils.decorative_spacing import (
-    compute_decorative_tracking,
-    decorative_word_gap_threshold,
-    gap_is_decorative_word_boundary,
-    is_decorative_text,
+    compute_decorative_tracking,  # noqa: F401
 )
+from babeldoc.format.pdf.document_il.utils.decorative_spacing import (
+    decorative_word_gap_threshold,
+)
+from babeldoc.format.pdf.document_il.utils.decorative_spacing import (
+    gap_is_decorative_word_boundary,
+)
+from babeldoc.format.pdf.document_il.utils.decorative_spacing import is_decorative_text
+from babeldoc.format.pdf.document_il.utils.drop_cap import rejoin_drop_cap_in_text
 from babeldoc.format.pdf.document_il.utils.drop_cap import (
-    rejoin_drop_cap_in_text,
     should_suppress_space_after_drop_cap,
 )
 
@@ -392,10 +396,8 @@ def _apply_prepared_order_to_mixed(
     prepared: list[PdfCharacter],
 ) -> list[PdfCharacter | str]:
     """Replay climb/drop-cap order onto a mixed marker+char token list."""
-    from babeldoc.format.pdf.document_il.utils.drop_cap import (
-        is_drop_cap_letter,
-        is_drop_cap_pair,
-    )
+    from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_letter
+    from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_pair
 
     groups = _attach_string_groups(_group_mt_tokens(chars))
     id_to_group: dict[int, int] = {}
@@ -680,9 +682,7 @@ def prepare_chars_for_mt(
         # Climb reorder uses fixed-width y buckets that split drifted rows;
         # re-stabilize into clean top-to-bottom, left-to-right rows.
         chars = _sort_chars_into_reading_order(climbed)
-    from babeldoc.format.pdf.document_il.utils.drop_cap import (
-        strip_drop_cap_padding,
-    )
+    from babeldoc.format.pdf.document_il.utils.drop_cap import strip_drop_cap_padding
 
     chars = strip_drop_cap_padding(place_drop_caps_before_continuations(chars))
     return splice_visual_known_split_fragments(chars)
@@ -1901,7 +1901,11 @@ def _line_x_ranges_from_para(para: PdfParagraph) -> list[tuple[float, float]]:
 # page-symmetric center). Re-export for stable import paths.
 from babeldoc.format.pdf.document_il.utils.paragraph_alignment import (  # noqa: E402
     detect_paragraph_alignment,
+)
+from babeldoc.format.pdf.document_il.utils.paragraph_alignment import (  # noqa: E402, F401
     dominant_body_column_left,
+)
+from babeldoc.format.pdf.document_il.utils.paragraph_alignment import (  # noqa: E402, F401
     flush_with_body_column,
 )
 
@@ -1969,8 +1973,10 @@ def compute_reference_metrics(para: PdfParagraph, page=None):
         para.alignment = "left"
 
 
-from babeldoc.format.pdf.document_il.utils.figure_wrap import (
+from babeldoc.format.pdf.document_il.utils.figure_wrap import (  # noqa: E402
     is_figure_wrap_paragraph,
+)
+from babeldoc.format.pdf.document_il.utils.figure_wrap import (  # noqa: E402, F401
     is_figure_wrap_taper,
 )
 

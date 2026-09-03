@@ -19,17 +19,15 @@
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field
 from enum import Enum
 
 from babeldoc.format.pdf.document_il import il_version_1
-from babeldoc.format.pdf.document_il.midend.flow_skeleton import (
-    PublisherSkeleton,
-    FlowRegion,
-    FlowStateType,
-    VisualObject,
-    ConstraintPriority,
-)
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import FlowRegion
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import FlowStateType
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import PublisherSkeleton
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import VisualObject
 
 logger = logging.getLogger(__name__)
 
@@ -384,7 +382,9 @@ class PatternComposer:
                            pattern: PatternMatch) -> list[il_version_1.PdfParagraph]:
         """全文字排版策略：简单回放。"""
         # 使用 ConstraintComposer 进行排版
-        from babeldoc.format.pdf.document_il.midend.layout_composer import ConstraintComposer
+        from babeldoc.format.pdf.document_il.midend.layout_composer import (
+            ConstraintComposer,
+        )
         composer = ConstraintComposer(self.skeleton)
 
         # 这里简化处理，实际应该遍历所有段落
@@ -394,7 +394,9 @@ class PatternComposer:
                               pattern: PatternMatch) -> list[il_version_1.PdfParagraph]:
         """右侧图片排版策略：保持轮廓。"""
         # 使用 ConstraintComposer 进行排版
-        from babeldoc.format.pdf.document_il.midend.layout_composer import ConstraintComposer
+        from babeldoc.format.pdf.document_il.midend.layout_composer import (
+            ConstraintComposer,
+        )
         composer = ConstraintComposer(self.skeleton)
 
         # 这里简化处理，实际应该根据 LEFT_WRAP 区域调整
@@ -404,7 +406,9 @@ class PatternComposer:
                              pattern: PatternMatch) -> list[il_version_1.PdfParagraph]:
         """左侧图片排版策略：镜像。"""
         # 使用 ConstraintComposer 进行排版
-        from babeldoc.format.pdf.document_il.midend.layout_composer import ConstraintComposer
+        from babeldoc.format.pdf.document_il.midend.layout_composer import (
+            ConstraintComposer,
+        )
         composer = ConstraintComposer(self.skeleton)
 
         # 这里简化处理，实际应该根据 RIGHT_WRAP 区域调整
@@ -414,7 +418,9 @@ class PatternComposer:
                                pattern: PatternMatch) -> list[il_version_1.PdfParagraph]:
         """中间图片排版策略：跨区间流动。"""
         # 使用 ConstraintComposer 进行排版
-        from babeldoc.format.pdf.document_il.midend.layout_composer import ConstraintComposer
+        from babeldoc.format.pdf.document_il.midend.layout_composer import (
+            ConstraintComposer,
+        )
         composer = ConstraintComposer(self.skeleton)
 
         # 这里简化处理，实际应该根据 MULTI_COLUMN 区域调整
@@ -424,7 +430,9 @@ class PatternComposer:
                             pattern: PatternMatch) -> list[il_version_1.PdfParagraph]:
         """Pull Quote 排版策略：Obstacle 绕排。"""
         # 使用 ConstraintComposer 进行排版
-        from babeldoc.format.pdf.document_il.midend.layout_composer import ConstraintComposer
+        from babeldoc.format.pdf.document_il.midend.layout_composer import (
+            ConstraintComposer,
+        )
         composer = ConstraintComposer(self.skeleton)
 
         # 这里简化处理，实际应该根据 QUOTE 区域调整
@@ -434,7 +442,9 @@ class PatternComposer:
                          pattern: PatternMatch) -> list[il_version_1.PdfParagraph]:
         """图片说明排版策略：Anchor。"""
         # 使用 ConstraintComposer 进行排版
-        from babeldoc.format.pdf.document_il.midend.layout_composer import ConstraintComposer
+        from babeldoc.format.pdf.document_il.midend.layout_composer import (
+            ConstraintComposer,
+        )
         composer = ConstraintComposer(self.skeleton)
 
         # 这里简化处理，实际应该根据图片位置调整
@@ -444,7 +454,9 @@ class PatternComposer:
                          pattern: PatternMatch) -> list[il_version_1.PdfParagraph]:
         """侧栏排版策略：Obstacle。"""
         # 使用 ConstraintComposer 进行排版
-        from babeldoc.format.pdf.document_il.midend.layout_composer import ConstraintComposer
+        from babeldoc.format.pdf.document_il.midend.layout_composer import (
+            ConstraintComposer,
+        )
         composer = ConstraintComposer(self.skeleton)
 
         # 这里简化处理，实际应该根据侧栏位置调整
@@ -454,7 +466,9 @@ class PatternComposer:
                                pattern: PatternMatch) -> list[il_version_1.PdfParagraph]:
         """页眉页脚排版策略：Mask。"""
         # 使用 ConstraintComposer 进行排版
-        from babeldoc.format.pdf.document_il.midend.layout_composer import ConstraintComposer
+        from babeldoc.format.pdf.document_il.midend.layout_composer import (
+            ConstraintComposer,
+        )
         composer = ConstraintComposer(self.skeleton)
 
         # 这里简化处理，实际应该根据 header/footer 位置调整
@@ -470,7 +484,9 @@ class PatternComposer:
                                pattern: PatternMatch) -> list[il_version_1.PdfParagraph]:
         """步骤标题排版策略：Anchor。"""
         # 使用 ConstraintComposer 进行排版
-        from babeldoc.format.pdf.document_il.midend.layout_composer import ConstraintComposer
+        from babeldoc.format.pdf.document_il.midend.layout_composer import (
+            ConstraintComposer,
+        )
         composer = ConstraintComposer(self.skeleton)
 
         # 这里简化处理，实际应该根据步骤标题位置调整
@@ -480,7 +496,9 @@ class PatternComposer:
                                pattern: PatternMatch) -> list[il_version_1.PdfParagraph]:
         """圆角图片排版策略：contour。"""
         # 使用 ConstraintComposer 进行排版
-        from babeldoc.format.pdf.document_il.midend.layout_composer import ConstraintComposer
+        from babeldoc.format.pdf.document_il.midend.layout_composer import (
+            ConstraintComposer,
+        )
         composer = ConstraintComposer(self.skeleton)
 
         # 这里简化处理，实际应该根据圆角图片轮廓调整
@@ -490,7 +508,9 @@ class PatternComposer:
                                pattern: PatternMatch) -> list[il_version_1.PdfParagraph]:
         """人物抠图排版策略：mask。"""
         # 使用 ConstraintComposer 进行排版
-        from babeldoc.format.pdf.document_il.midend.layout_composer import ConstraintComposer
+        from babeldoc.format.pdf.document_il.midend.layout_composer import (
+            ConstraintComposer,
+        )
         composer = ConstraintComposer(self.skeleton)
 
         # 这里简化处理，实际应该根据人物抠图轮廓调整

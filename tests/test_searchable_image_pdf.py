@@ -10,11 +10,16 @@ from unittest.mock import MagicMock
 
 import pymupdf
 import pytest
-
 from babeldoc.format.pdf.document_il.midend.detect_scanned_file import (
     enable_ocr_workaround_for_searchable_image,
+)
+from babeldoc.format.pdf.document_il.midend.detect_scanned_file import (
     is_searchable_image_pdf,
+)
+from babeldoc.format.pdf.document_il.midend.detect_scanned_file import (
     page_has_fullpage_image,
+)
+from babeldoc.format.pdf.document_il.midend.detect_scanned_file import (
     page_has_invisible_text_layer,
 )
 from babeldoc.format.pdf.translation_config import TranslationConfig

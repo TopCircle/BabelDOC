@@ -15,21 +15,21 @@ from babeldoc.format.pdf.document_il.utils.gap_contract_pass import (
 from babeldoc.format.pdf.document_il.utils.layout_audit import LayoutAuditReport
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+from babeldoc.format.pdf.document_il.utils.vertical_gap import DEFAULT_MIN_GAP_PT
+from babeldoc.format.pdf.document_il.utils.vertical_gap import MAX_SINGLE_JUMP_DY_PT
+from babeldoc.format.pdf.document_il.utils.vertical_gap import RELATIVE_GAP_EPS_PT
+from babeldoc.format.pdf.document_il.utils.vertical_gap import boxes_x_overlap
+from babeldoc.format.pdf.document_il.utils.vertical_gap import enforce_title_body_gaps
 from babeldoc.format.pdf.document_il.utils.vertical_gap import (
-    DEFAULT_MIN_GAP_PT,
-    MAX_SINGLE_JUMP_DY_PT,
-    RELATIVE_GAP_EPS_PT,
-    boxes_x_overlap,
-    enforce_title_body_gaps,
     enforce_title_body_gaps_legacy,
-    gap_deficit,
-    ink_box,
-    is_display_title,
-    measured_ink_gap,
-    relative_gap_ok,
-    resolve_en_gap_contract,
-    shift_paragraph_y,
 )
+from babeldoc.format.pdf.document_il.utils.vertical_gap import gap_deficit
+from babeldoc.format.pdf.document_il.utils.vertical_gap import ink_box
+from babeldoc.format.pdf.document_il.utils.vertical_gap import is_display_title
+from babeldoc.format.pdf.document_il.utils.vertical_gap import measured_ink_gap
+from babeldoc.format.pdf.document_il.utils.vertical_gap import relative_gap_ok
+from babeldoc.format.pdf.document_il.utils.vertical_gap import resolve_en_gap_contract
+from babeldoc.format.pdf.document_il.utils.vertical_gap import shift_paragraph_y
 
 RELATIVE_TOL = RELATIVE_GAP_EPS_PT + 0.5
 

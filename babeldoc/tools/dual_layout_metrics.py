@@ -133,7 +133,7 @@ def max_left_col_gap(
     ]
     body_sorted = sorted(body, key=lambda b: (b[1], b[0]))
     max_gap = 0.0
-    for a, b in zip(body_sorted, body_sorted[1:]):
+    for a, b in zip(body_sorted, body_sorted[1:], strict=False):
         gap = b[1] - a[3]
         if 0 < gap < _GAP_CAP:
             max_gap = max(max_gap, gap)

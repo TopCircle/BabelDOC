@@ -75,7 +75,7 @@ class TestSplitGluedQuizParagraphs:
         # Each option lower on the page (smaller y2 in PDF coords)
         assert y2s == sorted(y2s, reverse=True)
         # Distinct baselines (not all equal)
-        assert len(set(round(y, 1) for y in y2s)) == len(y2s)
+        assert len({round(y, 1) for y in y2s}) == len(y2s)
         # Adjacent pitch ≈ constant and fits the source band
         pitches = [y2s[i] - y2s[i + 1] for i in range(len(y2s) - 1)]
         assert all(p > 10 for p in pitches)

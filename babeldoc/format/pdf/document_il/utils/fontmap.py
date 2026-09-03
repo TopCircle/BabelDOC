@@ -1,6 +1,7 @@
 import enum
 import functools
 import logging
+import re
 from pathlib import Path
 
 import pymupdf
@@ -10,8 +11,8 @@ from babeldoc.format.pdf.document_il import PdfFont
 from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.utils.face_traits import (
     infer_face_traits_from_name,
-    normalize_ps_font_name,
 )
+from babeldoc.format.pdf.document_il.utils.face_traits import normalize_ps_font_name
 from babeldoc.format.pdf.translation_config import TranslationConfig
 
 # Re-export for callers/tests that imported from fontmap.

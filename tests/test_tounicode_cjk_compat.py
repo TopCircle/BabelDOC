@@ -8,12 +8,10 @@ OA dual left column extracted U+F967 (不) instead of U+4E0D (不) because:
 from __future__ import annotations
 
 import re
-import unicodedata
 from pathlib import Path
 
 import pymupdf
 import pytest
-
 from babeldoc.format.pdf.document_il.backend.pdf_creater import (
     _font_is_babeldoc_embedding_for_cmap,
 )

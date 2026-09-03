@@ -16,7 +16,11 @@ from babeldoc.format.pdf.document_il.midend.paragraph_finder import ParagraphFin
 from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
 from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
     line_ends_sentence,
+)
+from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
     should_split_on_font_face_switch,
+)
+from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
     should_split_on_font_size_jump,
 )
 from babeldoc.format.pdf.translation_config import TranslationConfig
@@ -441,6 +445,8 @@ def test_hyphen_wrap_ligature_face_switch_not_split():
     """OA S7: ``stu-`` body + ligature tail on another face stay one paragraph."""
     from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
         is_hyphen_wrap_continuation,
+    )
+    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
         should_split_line_pair,
     )
 
@@ -461,6 +467,8 @@ def test_hyphen_then_figure_label_still_splits():
     """``ap-`` + ``Ancilla`` is a figure label, not a wrap tail."""
     from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
         is_hyphen_wrap_continuation,
+    )
+    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
         should_split_line_pair,
     )
 

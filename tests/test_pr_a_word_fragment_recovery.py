@@ -6,9 +6,7 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
-from babeldoc.format.pdf.document_il.utils.layout_helper import (
-    get_char_unicode_string,
-)
+from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode_string
 from babeldoc.format.pdf.document_il.utils.text_recovery import (
     recover_latin_word_fragments,
 )
@@ -18,9 +16,7 @@ from babeldoc.format.pdf.document_il.utils.text_recovery import (
 from babeldoc.format.pdf.document_il.utils.text_recovery import (
     rejoin_ligature_space_splits,
 )
-from babeldoc.format.pdf.document_il.utils.text_recovery import (
-    rejoin_soft_hyphen_tight,
-)
+from babeldoc.format.pdf.document_il.utils.text_recovery import rejoin_soft_hyphen_tight
 from babeldoc.format.pdf.document_il.utils.text_recovery import (
     rejoin_soft_hyphens_in_text,
 )
@@ -114,8 +110,8 @@ def test_get_char_unicode_string_rejoins_cross_run_ligature_gap():
 
 
 def test_orphan_tail_derived_from_known_words():
+    from babeldoc.format.pdf.document_il.utils.text_recovery import _ORPHAN_TAIL_TO_WORD
     from babeldoc.format.pdf.document_il.utils.text_recovery import (
-        _ORPHAN_TAIL_TO_WORD,
         repair_orphan_split_tails,
     )
 
@@ -148,6 +144,8 @@ def test_ligature_space_only_joins_known_words():
 def test_decorative_mid_caps_predicate_and_title_path():
     from babeldoc.format.pdf.document_il.utils.text_recovery import (
         has_decorative_mid_caps,
+    )
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
         normalize_decorative_title_case,
     )
 
@@ -175,6 +173,8 @@ def test_midcap_normalize_surfaces_oa_s6():
     """OA S6: CamelCase splits; mid-caps soup only lowers (no hump split)."""
     from babeldoc.format.pdf.document_il.utils.text_recovery import (
         has_decorative_mid_caps,
+    )
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
         normalize_decorative_title_case,
     )
 

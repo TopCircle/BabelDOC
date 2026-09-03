@@ -6,12 +6,9 @@ from pathlib import Path
 
 import pymupdf
 import pytest
-
-from babeldoc.tools.dual_layout_metrics import (
-    DualLayoutReport,
-    analyze_dual_pdf,
-    parse_pages_spec,
-)
+from babeldoc.tools.dual_layout_metrics import DualLayoutReport
+from babeldoc.tools.dual_layout_metrics import analyze_dual_pdf
+from babeldoc.tools.dual_layout_metrics import parse_pages_spec
 from babeldoc.tools.dual_quality_check import main as dual_quality_main
 
 

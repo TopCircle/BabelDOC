@@ -329,8 +329,10 @@ def should_soft_rejoin(continuation: str | None) -> bool:
         return True
     if any(continuation.endswith(s) for s in _SOFT_HYPHEN_SUFFIXES):
         return True
-    # Short pure tails (ing/ed already partially covered); keep len 2–5 open
-    if 2 <= len(continuation) <= 5:
+    # Short pure tails (ing/ed already partially covered). Len 1 is a real
+    # TeX wrap (OA p35 puff-y, p102 manua-l) now that stem >= 2 is required
+    # by should_join_hyphen_wrap (g-spot / e-mail stay hyphenated).
+    if 1 <= len(continuation) <= 5:
         return True
     # Longer tokens without suffix shape are full words (syndrome, detection)
     return False
@@ -438,8 +440,10 @@ def should_join_visual_split(left: str | None, continuation: str | None) -> bool
         return False
     stem = m.group(0)
     tail = latin_continuation_token(continuation)
-    if not tail or not tail.islower():
+    if not tail or not tail.isalpha():
         return False
+    # Mid-caps heading tails (Ma + Stery) are not islower(); known-word
+    # membership is the real gate (stu+Off is not a known split).
     return (stem + tail).lower() in _KNOWN_SPLIT_WORDS
 
 
@@ -555,7 +559,7 @@ def rejoin_soft_hyphens_in_text(text: str) -> str:
 
 # Hyphen without space: ``di-fferent`` / ``ap-proximation``.
 _SOFT_HYPHEN_TIGHT_RE = regex.compile(
-    r"(?<=[A-Za-z]{2})" + "[-\u2010\u2011\u00ad]" + r"([a-z]{2,})"
+    r"(?<=[A-Za-z]{2})" + "[-\u2010\u2011\u00ad]" + r"([a-z]+)"
 )
 
 # Full words often split by PDF gaps / soft hyphens in design ebooks (OA dual).
@@ -584,6 +588,12 @@ _KNOWN_SPLIT_WORDS = frozenset(
         "overwhelmingly",
         "understanding",
         "selfunderstanding",  # after hyphen strip variants
+        "manual",
+        "stiff",
+        "mastery",
+        "female",
+        "affect",
+        "puffy",
     }
 )
 
@@ -868,7 +878,9 @@ def normalize_decorative_title_case(text: str) -> str:
     if not has_decorative_mid_caps(text):
         return text
     text = _space_proper_camel_case(text)
-    return _lower_preserving_style_markers(text)
+    text = _lower_preserving_style_markers(text)
+    # Geometric gaps in small-caps headings (Ma Stery) only rejoin after lower.
+    return rejoin_known_split_latin_words(text)
 
 
 # 〖B0〗 / 〖/B0〗 must keep the B capital: .lower() on a mid-caps running

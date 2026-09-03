@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from babeldoc.format.pdf.document_il.utils.face_traits import font_name_tokens
 from babeldoc.format.pdf.document_il.utils.face_traits import (
-    font_name_tokens,
     infer_face_traits_from_name,
-    normalize_ps_font_name,
 )
+from babeldoc.format.pdf.document_il.utils.face_traits import normalize_ps_font_name
 
 
 def test_tokens_split_camel_and_subset():

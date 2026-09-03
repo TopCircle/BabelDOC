@@ -23,18 +23,21 @@ from babeldoc.format.pdf.document_il import PdfParagraphComposition
 from babeldoc.format.pdf.document_il import PdfSameStyleCharacters
 from babeldoc.format.pdf.document_il import PdfSameStyleUnicodeCharacters
 from babeldoc.format.pdf.document_il import PdfStyle
-from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
-from babeldoc.format.pdf.document_il.utils.layout_helper import FIGURE_TEXT_COVERAGE_THRESHOLD
+from babeldoc.format.pdf.document_il.utils import text_recovery
 from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_style_span
+from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
+from babeldoc.format.pdf.document_il.utils.layout_helper import (
+    FIGURE_TEXT_COVERAGE_THRESHOLD,
+)
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     assemble_midcap_title_unicode,
 )
-from babeldoc.format.pdf.document_il.utils.layout_helper import flatten_composition_pdf_chars
+from babeldoc.format.pdf.document_il.utils.layout_helper import (
+    flatten_composition_pdf_chars,
+)
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_char_unicode_string
-from babeldoc.format.pdf.document_il.utils.layout_helper import visual_known_split_char_ids
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_paragraph_unicode
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_figure_text_paragraph
-from babeldoc.format.pdf.document_il.utils.layout_helper import strip_ascii_controls
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_same_style
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     is_same_style_except_font,
@@ -42,15 +45,23 @@ from babeldoc.format.pdf.document_il.utils.layout_helper import (
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     is_same_style_except_size,
 )
+from babeldoc.format.pdf.document_il.utils.layout_helper import (
+    visual_known_split_char_ids,
+)
 from babeldoc.format.pdf.document_il.utils.mt_token_sanitize import (
     normalize_translated_text,
 )
 from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
     is_placeholder_only_paragraph,
 )
-from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
-    find_pullquote_host,
+from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
+    is_pure_numeric_paragraph,
 )
+from babeldoc.format.pdf.document_il.utils.region_skip import (
+    classify_header_footer_skip,
+)
+from babeldoc.format.pdf.document_il.utils.region_skip import should_skip_header_footer
+from babeldoc.format.pdf.document_il.utils.side_callout_skip import find_pullquote_host
 from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
     is_near_full_pullquote,
 )
@@ -63,27 +74,17 @@ from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
 from babeldoc.format.pdf.document_il.utils.side_callout_skip import (
     side_callout_debug_extra,
 )
-from babeldoc.format.pdf.document_il.utils.region_skip import (
-    classify_header_footer_skip,
-)
-from babeldoc.format.pdf.document_il.utils.region_skip import (
-    should_skip_header_footer,
-)
 from babeldoc.format.pdf.document_il.utils.skip_audit import SkipReason
 from babeldoc.format.pdf.document_il.utils.skip_audit import SkipReport
+from babeldoc.format.pdf.document_il.utils.style_helper import GRAY80
 from babeldoc.format.pdf.document_il.utils.style_marker_recover import StyleSpan
 from babeldoc.format.pdf.document_il.utils.style_marker_recover import (
     coalesce_emphasis_style_run,
 )
-from babeldoc.format.pdf.document_il.utils import text_recovery
 from babeldoc.format.pdf.document_il.utils.style_marker_recover import (
     rewrap_styles_from_source,
 )
 from babeldoc.format.pdf.document_il.utils.style_marker_recover import style_by_id
-from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
-    is_pure_numeric_paragraph,
-)
-from babeldoc.format.pdf.document_il.utils.style_helper import GRAY80
 from babeldoc.format.pdf.translation_config import TitleContextSnapshot
 from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.translator.translator import BaseTranslator
@@ -510,7 +511,7 @@ class ILTranslator:
         """
         sentences = cls.split_sentences(text)
         out: list[tuple[str, str]] = []
-        for a, b in zip(sentences, sentences[1:]):
+        for a, b in zip(sentences, sentences[1:], strict=False):
             na, ta = cls._sentence_tokens(a)
             nb, tb = cls._sentence_tokens(b)
             if na and na == nb and len(na) >= min_chars:
@@ -1536,7 +1537,9 @@ class ILTranslator:
 
         # Trace translation I/O to file for diagnosis (Docker truncates logs)
         try:
-            with open("/tmp/translation_io.log", "a", encoding="utf-8") as _f:
+            with Path("/tmp/translation_io.log").open(  # noqa: S108
+                "a", encoding="utf-8"
+            ) as _f:
                 _f.write(f"IN={input_text.unicode!r}\nOUT={output!r}\n---\n")
         except Exception:
             pass

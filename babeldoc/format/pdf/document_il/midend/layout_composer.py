@@ -10,17 +10,12 @@
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from babeldoc.format.pdf.document_il import il_version_1
-from babeldoc.format.pdf.document_il.midend.flow_skeleton import (
-    PublisherSkeleton,
-    FlowRegion,
-    FlowStateType,
-    VisualObject,
-    ConstraintPriority,
-    Padding,
-)
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import ConstraintPriority
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import PublisherSkeleton
+from babeldoc.format.pdf.document_il.midend.flow_skeleton import VisualObject
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +190,9 @@ class ConstraintComposer:
         复用现有 optimal_line_break（line_break_optimizer.py）。
         """
         try:
-            from babeldoc.format.pdf.document_il.midend.line_break_optimizer import optimal_line_break
+            from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
+                optimal_line_break,
+            )
             return optimal_line_break(
                 units, line_widths, scale,
                 space_width=self._get_space_width(units),

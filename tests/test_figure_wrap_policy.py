@@ -10,10 +10,8 @@ from __future__ import annotations
 
 from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
-from babeldoc.format.pdf.document_il.utils.figure_wrap import (
-    is_figure_wrap_paragraph,
-    is_figure_wrap_taper,
-)
+from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_paragraph
+from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_taper
 from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
 
 
@@ -219,9 +217,8 @@ class TestTypesetWrapLine:
         assert left == 300.0 - 160.0
 
     def test_wrap_line_rejects_none_design_box(self):
-        from babeldoc.format.pdf.document_il.utils.wrap_shape import typeset_wrap_line
-
         import pytest
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import typeset_wrap_line
 
         with pytest.raises(TypeError):
             typeset_wrap_line(None, [(0.0, 100.0)], 0)  # type: ignore[arg-type]
@@ -230,11 +227,9 @@ class TestTypesetWrapLine:
         """WRAP_COLUMN + wrap_shape=None still pins via reference widths."""
         from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
         from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
-        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
-            get_active_wrap,
-            resolve_wrap_shape,
-            typeset_wrap_line,
-        )
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import typeset_wrap_line
 
         design = il_version_1.Box(x=375.9, y=234.9, x2=569.5, y2=284.9)
         para = TestFigureWrapParagraph._para(widths=[194, 174, 143, 67])
@@ -512,10 +507,8 @@ class TestCjkWrapShapeSanitizeWiring:
     def test_resolve_line_intervals_uses_sanitized_shape(self):
         from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
         from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
-        from babeldoc.format.pdf.document_il.utils.layout_intent import (
-            LayoutIntentRole,
-            WrapMode,
-        )
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+        from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 
         ts = Typesetting.__new__(Typesetting)
         ts.is_cjk = True

@@ -23,10 +23,6 @@ import logging
 from dataclasses import dataclass
 from typing import Literal
 
-# polygon_scanline_blocked_intervals 的类型别名
-# 每个元素是一个 (x_start, x_end) 区间，表示多边形在该 y 处覆盖的 x 范围
-BlockedInterval = tuple[float, float]
-
 from rtree import index as rtree_index
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
@@ -34,10 +30,16 @@ from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.utils.layout_helper import box_to_tuple
 from babeldoc.format.pdf.document_il.utils.layout_helper import calculate_box_iou
+from babeldoc.format.pdf.document_il.utils.layout_helper import (
+    get_adaptive_image_padding,
+)
 from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
-from babeldoc.format.pdf.document_il.utils.layout_helper import get_adaptive_image_padding
 
 logger = logging.getLogger(__name__)
+
+# polygon_scanline_blocked_intervals 的类型别名
+# 每个元素是一个 (x_start, x_end) 区间，表示多边形在该 y 处覆盖的 x 范围
+BlockedInterval = tuple[float, float]
 
 # ExclusionZone 类型常量
 ZONE_QUOTE = "quote"
@@ -238,7 +240,9 @@ def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZ
             continue
 
         # 计算含边距的排除区域（自适应 padding）
-        from babeldoc.format.pdf.document_il.midend.flow_skeleton import get_paragraph_font_size
+        from babeldoc.format.pdf.document_il.midend.flow_skeleton import (
+            get_paragraph_font_size,
+        )
         font_size = get_paragraph_font_size(para)
         adaptive_margin = get_adaptive_image_padding(font_size)
         # 将自适应 margin 转为相对于页面尺寸的比例

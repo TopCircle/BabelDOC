@@ -8,9 +8,10 @@ Intent fields that do not change intervals are not deliverables.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
 
 from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole

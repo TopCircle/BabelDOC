@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import Cropbox
 from babeldoc.format.pdf.document_il.il_version_1 import Document
@@ -12,17 +10,16 @@ from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
+from babeldoc.format.pdf.document_il.midend.post_layout_processor import DocumentContext
+from babeldoc.format.pdf.document_il.midend.post_layout_processor import FixAction
+from babeldoc.format.pdf.document_il.midend.post_layout_processor import LayoutIssue
 from babeldoc.format.pdf.document_il.midend.post_layout_processor import (
-    DocumentContext,
-    FixAction,
-    LayoutIssue,
-    QuoteDetector,
-    QuoteFixer,
-    QuoteResolver,
     PostLayoutProcessor,
 )
+from babeldoc.format.pdf.document_il.midend.post_layout_processor import QuoteDetector
+from babeldoc.format.pdf.document_il.midend.post_layout_processor import QuoteFixer
+from babeldoc.format.pdf.document_il.midend.post_layout_processor import QuoteResolver
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_quote_block
-
 
 # ──────────────────────────────────────────────────────────────
 # Helpers

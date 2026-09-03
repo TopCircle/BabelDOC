@@ -2,7 +2,9 @@ name: Lint Code
 permissions:
   contents: read
   pull-requests: write
-on: [push]
+on:
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   lint:

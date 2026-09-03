@@ -14,7 +14,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.parse_only import parse_with_legacy_ir
 from babeldoc.format.pdf.parse_shared import _ParseOnlyDocLayoutModel
 from babeldoc.format.pdf.translation_config import TranslationConfig
@@ -42,15 +41,15 @@ def run_paragraph_finder(il):
     return finder
 
 
-def analyze_page(page, page_num, font_registry):
+def analyze_page(page, _page_num, font_registry):
     """Compact analysis focusing on keyword matches and structural issues."""
     chars = page.pdf_character
     if not chars:
-        print(f"  (no chars)")
+        print("  (no chars)")
         return
 
     # Group by visual line
-    LINE_Y_TOLERANCE = 5
+    LINE_Y_TOLERANCE = 5  # noqa: N806
     lines = []
     sorted_chars = sorted(chars, key=lambda c: (c.visual_bbox.box.y if c.visual_bbox else 0))
     for c in sorted_chars:
@@ -119,7 +118,7 @@ def analyze_page(page, page_num, font_registry):
 
     # Show all interesting lines
     print(f"\n  Interesting lines: {len(keyword_lines)} (multi-font: {multi_font_lines})")
-    for li, line, text, fids, xids, reasons in keyword_lines:
+    for li, line, text, _fids, _xids, reasons in keyword_lines:
         lchars = sorted(line["chars"], key=lambda c: c.visual_bbox.box.x if c.visual_bbox else 0)
         print(f"\n  L{li} y={line['y']:.0f} | {' '.join(reasons)}")
         print(f"    text: {repr(text[:200])}")

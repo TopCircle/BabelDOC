@@ -24,10 +24,8 @@ from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.utils.layout_audit import LayoutAuditReport
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
-from babeldoc.format.pdf.document_il.utils.region_skip import (
-    is_chrome_paragraph,
-    is_layout_debug_stub,
-)
+from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
+from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
 
 logger = logging.getLogger(__name__)
 

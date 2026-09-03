@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import pytest
-
 from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
     _compute_line_width,
-    _line_cost,
+)
+from babeldoc.format.pdf.document_il.midend.line_break_optimizer import _line_cost
+from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
     optimal_line_break,
 )
-
 
 # ──────────────────────────────────────────────────────────────
 # Mock TypesettingUnit

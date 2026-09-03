@@ -33,7 +33,7 @@ def is_figure_wrap_taper(reference_widths) -> bool:
     distinct = len({round(w, 1) for w in usable})
     if distinct < 3:
         return False
-    for a, b in zip(usable, usable[1:]):
+    for a, b in zip(usable, usable[1:], strict=False):
         if b > a - 8.0:
             return False
     return usable[-1] < usable[0] * 0.75

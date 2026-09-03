@@ -142,12 +142,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _run_dual_metrics(args: argparse.Namespace) -> int:
-    from babeldoc.tools.dual_layout_metrics import (
-        analyze_dual_pdf,
-        format_page_line,
-        parse_pages_spec,
-        write_report_json,
-    )
+    from babeldoc.tools.dual_layout_metrics import analyze_dual_pdf
+    from babeldoc.tools.dual_layout_metrics import format_page_line
+    from babeldoc.tools.dual_layout_metrics import parse_pages_spec
+    from babeldoc.tools.dual_layout_metrics import write_report_json
 
     if args.mode == "ssim":
         print(

@@ -6,22 +6,17 @@ Without this, Identity-H dual PDFs extract spaces as U+0001 SOH.
 from __future__ import annotations
 
 import io
-import os
 import re
 from pathlib import Path
 
 import freetype
 import pymupdf
 import pytest
-
 from babeldoc.format.pdf.document_il.backend.pdf_creater import make_tounicode
 from babeldoc.format.pdf.document_il.backend.pdf_creater import parse_truetype_data
 from babeldoc.format.pdf.document_il.backend.pdf_creater import reproduce_cmap
 
-
-FONT_PATH = Path(
-    os.path.expanduser("~/.cache/babeldoc/fonts/SourceHanSerifCN-Regular.ttf")
-)
+FONT_PATH = Path.home() / ".cache/babeldoc/fonts/SourceHanSerifCN-Regular.ttf"
 
 
 @pytest.mark.skipif(not FONT_PATH.is_file(), reason="SourceHanSerifCN not cached")

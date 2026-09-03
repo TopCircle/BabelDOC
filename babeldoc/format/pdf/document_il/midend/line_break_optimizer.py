@@ -77,7 +77,7 @@ def optimal_line_break(
         return None  # 一行放得下，不需要断行
 
     # 前向 DP
-    INF = float("inf")
+    INF = float("inf")  # noqa: N806
     # cost[i] = 排好 units[0..i) 的最小代价
     cost = [INF] * (n + 1)
     cost[0] = 0.0

@@ -13,7 +13,9 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
 from babeldoc.format.pdf.document_il.midend.paragraph_finder import ParagraphFinder
-from babeldoc.format.pdf.document_il.utils.layout_helper import detect_paragraph_alignment
+from babeldoc.format.pdf.document_il.utils.layout_helper import (
+    detect_paragraph_alignment,
+)
 from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.translator.fixed_map_translator import FixedMapTranslator
 

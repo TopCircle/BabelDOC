@@ -447,5 +447,5 @@ class SvgBuilder:
 {chr(10).join(self.elements)}
 </svg>"""
 
-        with open(file_path, "w", encoding="utf-8") as f:
+        with Path(file_path).open("w", encoding="utf-8") as f:
             f.write(svg_content)

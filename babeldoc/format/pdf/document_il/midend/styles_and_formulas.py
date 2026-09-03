@@ -2,8 +2,6 @@ import logging
 import math
 import re
 
-logger = logging.getLogger(__name__)
-
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import Document
 from babeldoc.format.pdf.document_il.il_version_1 import GraphicState
@@ -14,8 +12,8 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfLine
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
 from babeldoc.format.pdf.document_il.il_version_1 import PdfSameStyleCharacters
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
-from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
 from babeldoc.format.pdf.document_il.utils import prose_numbers as _prose_numbers
+from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
 from babeldoc.format.pdf.document_il.utils.formular_helper import (
     collect_page_formula_font_ids,
 )
@@ -31,6 +29,9 @@ from babeldoc.format.pdf.document_il.utils.layout_helper import calculate_iou_fo
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     calculate_y_true_iou_for_boxes,
 )
+from babeldoc.format.pdf.document_il.utils.layout_helper import (
+    get_paragraph_bounding_box,
+)
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_bullet_point
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     is_curve_in_figure_table_layout,
@@ -38,14 +39,13 @@ from babeldoc.format.pdf.document_il.utils.layout_helper import (
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     is_curve_overlapping_with_paragraphs,
 )
-from babeldoc.format.pdf.document_il.utils.layout_helper import (
-    get_paragraph_bounding_box,
-)
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_same_style
 from babeldoc.format.pdf.document_il.utils.spatial_analyzer import (
     is_element_contained_in_formula,
 )
 from babeldoc.format.pdf.translation_config import TranslationConfig
+
+logger = logging.getLogger(__name__)
 
 
 class StylesAndFormulas:
@@ -705,7 +705,7 @@ class StylesAndFormulas:
                         _f = _matched[0]
                         _font_info = f" font_name={_f.name} bold={_f.bold} xref={_f.xref_id}"
                     else:
-                        _font_info = f" (font_id not found in page.pdf_font)"
+                        _font_info = " (font_id not found in page.pdf_font)"
                 logger.warning(
                     "Title base_style: font_id=%s font_size=%s%s paragraph=%s text=%s",
                     base_style.font_id,
@@ -1391,7 +1391,7 @@ def _curve_within_paragraph_vertical_bounds(curve_box: Box, para_boxes: list[Box
     paragraph's character boxes.  We check vertical overlap with a small
     margin rather than IoU, which fails for 0.5pt-tall lines.
     """
-    MARGIN = 3.0  # pts — covers descenders + underline offset
+    MARGIN = 3.0  # noqa: N806  # pts — covers descenders + underline offset
     curve_mid_y = (curve_box.y + curve_box.y2) / 2
     for para_box in para_boxes:
         # Check vertical containment with margin

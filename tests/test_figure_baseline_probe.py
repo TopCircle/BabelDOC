@@ -6,16 +6,13 @@ from pathlib import Path
 
 import pymupdf
 import pytest
-
-from babeldoc.tools.figure_baseline_probe import (
-    DEFAULT_CRUSH_RATIO_MAX,
-    DEFAULT_MAX_LEFT_COL_GAP,
-    DEFAULT_PAGE_CENTER,
-    ProbeThresholds,
-    evaluate_metrics,
-    main as probe_main,
-    probe_dual_pdf,
-)
+from babeldoc.tools.figure_baseline_probe import DEFAULT_CRUSH_RATIO_MAX
+from babeldoc.tools.figure_baseline_probe import DEFAULT_MAX_LEFT_COL_GAP
+from babeldoc.tools.figure_baseline_probe import DEFAULT_PAGE_CENTER
+from babeldoc.tools.figure_baseline_probe import ProbeThresholds
+from babeldoc.tools.figure_baseline_probe import evaluate_metrics
+from babeldoc.tools.figure_baseline_probe import main as probe_main
+from babeldoc.tools.figure_baseline_probe import probe_dual_pdf
 
 GOLDEN_DUAL = (
     Path(__file__).resolve().parent
@@ -184,7 +181,7 @@ class TestProbeDualPdf:
 
 class TestCli:
     def test_self_check_exit_zero(self):
-        assert probe_main(["--self-check", "--work-dir", "/tmp/babeldoc_probe_sc"]) == 0
+        assert probe_main(["--self-check", "--work-dir", "/tmp/babeldoc_probe_sc"]) == 0  # noqa: S108
 
     def test_missing_dual_exit_2(self):
         assert probe_main([]) == 2

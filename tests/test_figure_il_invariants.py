@@ -91,7 +91,7 @@ def test_figure_golden_paragraph_finder_key_phrases(tmp_path: Path):
         str(out),
     ]
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603
             cmd,
             cwd=str(Path(__file__).resolve().parents[1]),
             capture_output=True,
@@ -148,6 +148,8 @@ def test_figure_il_invariants_unit_plain_text_gate():
     from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
     from babeldoc.format.pdf.document_il.utils.stream_order import (
         is_stream_visually_reversed,
+    )
+    from babeldoc.format.pdf.document_il.utils.stream_order import (
         maybe_reorder_reversed_stream,
     )
 
@@ -167,7 +169,7 @@ def test_figure_il_invariants_unit_plain_text_gate():
 
     letters = list("Who haS orgaSMS?")
     xs = list(range(100, 100 + 10 * len(letters), 10))
-    stream = [ch(c, x) for c, x in zip(reversed(letters), reversed(xs))]
+    stream = [ch(c, x) for c, x in zip(reversed(letters), reversed(xs), strict=False)]
     assert is_stream_visually_reversed(stream)
     # Plain decorative reverse reorders (geometry gate); abandon never.
     assert maybe_reorder_reversed_stream(stream, layout_label="plain text") is not stream

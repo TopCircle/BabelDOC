@@ -1042,7 +1042,7 @@ def _do_translate_single(
 
         debug_svg_dir = translation_config.get_working_file_path("flow_debug_svg")
         FlowDebugSvg(translation_config).process(docs, debug_svg_dir)
-        logger.debug(f"finish flow debug SVG generation")
+        logger.debug("finish flow debug SVG generation")
 
     translate_engine = translation_config.translator
     term_extraction_engine = translation_config.get_term_extraction_translator()
@@ -1106,7 +1106,11 @@ def _do_translate_single(
     if translation_config.enable_post_layout_optimization:
         from babeldoc.format.pdf.document_il.midend.post_layout_processor import (
             DocumentContext,
+        )
+        from babeldoc.format.pdf.document_il.midend.post_layout_processor import (
             OverlapDetector,
+        )
+        from babeldoc.format.pdf.document_il.midend.post_layout_processor import (
             PostLayoutProcessor,
         )
 
@@ -1124,7 +1128,7 @@ def _do_translate_single(
             debug_path = translation_config.get_working_file_path(
                 "post_layout_report.json"
             )
-            with open(debug_path, "w", encoding="utf-8") as f:
+            with Path(debug_path).open("w", encoding="utf-8") as f:
                 json.dump(report.debug_output, f, indent=2, ensure_ascii=False)
             logger.debug(f"PostLayout report saved to {debug_path}")
 

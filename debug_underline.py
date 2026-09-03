@@ -3,6 +3,7 @@
 Runs in Docker container: python3 /app/BabelDOC/debug_underline.py
 """
 import sys
+
 sys.path.insert(0, "/app")
 
 # Step 1: Check raw PDF curves

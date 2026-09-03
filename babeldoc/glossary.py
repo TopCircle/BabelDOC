@@ -229,8 +229,8 @@ class Glossary:
         if not source:
             return re.compile(r"(?!)")  # never matches
         words = source.split()
-        open_m = rf"(?:〖B\d+〗)?"
-        close_m = rf"(?:〖/B\d+〗)?"
+        open_m = r"(?:〖B\d+〗)?"
+        close_m = r"(?:〖/B\d+〗)?"
         if len(words) == 1:
             body = re.escape(words[0])
         else:

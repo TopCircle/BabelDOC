@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Diagnose decorative text detection — find spaced-out text like 'G e n t l y'."""
 import sys
+
 sys.path.insert(0, "/app")
 
 from babeldoc.format.pdf.parse_only import parse_with_legacy_ir
