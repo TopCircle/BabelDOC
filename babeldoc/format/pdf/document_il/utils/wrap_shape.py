@@ -19,6 +19,7 @@ from __future__ import annotations
 from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.utils.figure_wrap import body_line_widths
 from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_paragraph
+from babeldoc.format.pdf.document_il.utils.figure_wrap import taper_prefix_widths
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 
@@ -41,10 +42,11 @@ def shape_from_widths(
     ``left_offset`` is unused by ``typeset_wrap_line`` (right-pin uses width
     only); store 0.0 so the tuple shape matches extractor output.
 
-    Midcap / page-number slivers are dropped via ``body_line_widths`` so a
-    polluted OA p19 width list still synthesizes the body taper.
+    Midcap slivers and non-monotonic clustered tails are dropped via
+    ``taper_prefix_widths`` (else ``body_line_widths``) so OA p19 still
+    synthesizes the body cone.
     """
-    cleaned = body_line_widths(widths)
+    cleaned = taper_prefix_widths(widths) or body_line_widths(widths)
     if not cleaned:
         return None
     return [(0.0, w) for w in cleaned]

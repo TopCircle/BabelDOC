@@ -12,6 +12,7 @@ from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
 from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_paragraph
 from babeldoc.format.pdf.document_il.utils.figure_wrap import body_line_widths
+from babeldoc.format.pdf.document_il.utils.figure_wrap import taper_prefix_widths
 from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_taper
 from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
 
@@ -46,6 +47,17 @@ class TestIsFigureWrapTaper:
     def test_full_en_p19_body_taper(self):
         body = [258.6, 249.6, 231.6, 197.6, 177.6, 146.7, 122.6, 103.6, 63.7]
         assert is_figure_wrap_taper(body) is True
+
+    def test_noisy_tail_prefix_oa_p19(self):
+        """Fallback-clustered tail 51.6→99.6 must not kill the body cone."""
+        noisy = [254.6, 246.0, 228.3, 193.6, 174.1, 142.6, 51.6, 99.6, 63.0]
+        assert taper_prefix_widths(noisy) == [
+            254.6, 246.0, 228.3, 193.6, 174.1, 142.6, 51.6,
+        ]
+        assert is_figure_wrap_taper(noisy) is True
+        assert is_figure_wrap_paragraph(
+            TestFigureWrapParagraph._para(widths=noisy)
+        ) is True
 
 
 class TestIsLayoutDebugStub:

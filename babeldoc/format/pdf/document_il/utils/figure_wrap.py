@@ -15,6 +15,10 @@ Decorative mid-caps titles (OA p19 ``t``/``ak``/``I``/``ng `` fragments,
 widths ~3–42pt) often share the same paragraph as the wrap body. Those
 slivers must be stripped before taper / pin geometry checks, otherwise
 detection fails and CJK falls back to a flat BODY pin on the photo.
+
+Fallback-line clustering can also split the wrap *tail* into non-monotonic
+chunks (OA p19 ``…51.6, 99.6, 63.0``). Detection uses the longest monotonic
+taper *prefix* so a noisy tail cannot kill WRAP_COLUMN.
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from babeldoc.format.pdf.document_il import il_version_1
 # the peak (and never below an absolute floor that still admits taper tips).
 _BODY_WIDTH_PEAK_RATIO = 0.20
 _BODY_WIDTH_ABS_FLOOR = 48.0
+_TAPER_MIN_STEP = 8.0
 
 
 def body_line_widths(reference_widths) -> list[float]:
@@ -69,6 +74,36 @@ def body_line_spans(
     return out
 
 
+def _is_strict_taper(usable: list[float]) -> bool:
+    """True when *usable* alone is a 3+ line monotonic figure-wrap taper."""
+    if len(usable) < 3:
+        return False
+    distinct = len({round(w, 1) for w in usable})
+    if distinct < 3:
+        return False
+    for a, b in zip(usable, usable[1:], strict=False):
+        if b > a - _TAPER_MIN_STEP:
+            return False
+    return usable[-1] < usable[0] * 0.75
+
+
+def taper_prefix_widths(reference_widths) -> list[float]:
+    """Longest body-width prefix that forms a valid figure-wrap taper.
+
+    Midcaps are stripped first; a non-monotonic clustered tail is dropped so
+    OA p19 ``[254.6…142.6, 51.6, 99.6, 63.0]`` still yields the real cone.
+    """
+    usable = body_line_widths(reference_widths)
+    if len(usable) < 3:
+        return []
+    best: list[float] = []
+    for end in range(3, len(usable) + 1):
+        prefix = usable[:end]
+        if _is_strict_taper(prefix):
+            best = prefix
+    return best
+
+
 def is_figure_wrap_taper(reference_widths) -> bool:
     """True when per-line widths form a genuine figure-wrap taper.
 
@@ -77,18 +112,10 @@ def is_figure_wrap_taper(reference_widths) -> bool:
     short last line ([467,467,258]) and flat narrow columns stay flat
     ([180,180,175,100]) — neither is a taper.
 
-    Decorative midcap prefixes are stripped via ``body_line_widths`` first.
+    Decorative midcap prefixes and noisy clustered tails are ignored via
+    ``taper_prefix_widths``.
     """
-    usable = body_line_widths(reference_widths)
-    if len(usable) < 3:
-        return False
-    distinct = len({round(w, 1) for w in usable})
-    if distinct < 3:
-        return False
-    for a, b in zip(usable, usable[1:], strict=False):
-        if b > a - 8.0:
-            return False
-    return usable[-1] < usable[0] * 0.75
+    return bool(taper_prefix_widths(reference_widths))
 
 
 def is_figure_wrap_paragraph(para: il_version_1.PdfParagraph) -> bool:

@@ -34,6 +34,7 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.utils.box_expand import is_callout_column
 from babeldoc.format.pdf.document_il.utils.figure_wrap import body_line_spans
 from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_paragraph
+from babeldoc.format.pdf.document_il.utils.figure_wrap import taper_prefix_widths
 from babeldoc.format.pdf.document_il.utils.layout_helper import calculate_box_iou
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_quote_block
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
@@ -255,6 +256,11 @@ class LayoutIntentExtractor:
                     (float(x - design_box.x), float(x2 - x))
                     for x, x2 in line_boxes
                 ]
+                # Truncate non-monotonic clustered tails (OA p19 51.6/99.6/63).
+                prefix = taper_prefix_widths([w for _o, w in wrap_shape])
+                if prefix and len(prefix) < len(wrap_shape):
+                    wrap_shape = wrap_shape[: len(prefix)]
+                    line_boxes = line_boxes[: len(prefix)]
                 wrap_mode = infer_wrap_mode_from_line_boxes(line_boxes)
                 # Ambiguous spread: photo on the right is LEFT_FIXED (OA p33).
                 # Fall back to historical right-pin only when no photo signal.
