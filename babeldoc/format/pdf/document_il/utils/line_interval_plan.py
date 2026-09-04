@@ -275,6 +275,20 @@ class LineIntervalPlan:
                 mode,
                 layout_box=box,
             )
+            # Carve quote/callout exclusion inside the pin (OA p91 red bar).
+            # Without this, wrap short-circuits zone residuals and CJK paints
+            # over the left callout.
+            zone_index = self.zone_index
+            if (
+                zone_index
+                and getattr(zone_index, "zones", None)
+                and y_top > y_bottom
+            ):
+                carved = zone_index.get_intervals_at(
+                    y_bottom, y_top, pocket[0], pocket[1]
+                )
+                if carved:
+                    return list(carved)
             return [pocket]
 
         # PRIMARY: zone residual + optional reference cap

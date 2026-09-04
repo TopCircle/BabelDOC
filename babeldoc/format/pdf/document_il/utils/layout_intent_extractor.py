@@ -275,17 +275,19 @@ class LayoutIntentExtractor:
         if wrap_mode is WrapMode.NONE:
             # BODY/PULL_QUOTE beside a side photo (OA p59): keep LEFT_FIXED so
             # attempt_chain stays PRIMARY and CJK is not right-pinned onto it.
+            # Only for *narrow* wrap columns — a full body measure (OA p91)
+            # that merely y-overlaps a figure must keep zone residuals so the
+            # left callout exclusion still carves the red bar.
             photo_mode = infer_wrap_mode_beside_photo(design_box, photo_boxes)
-            if photo_mode is not None:
-                wrap_mode = photo_mode
-                # Without a shape the pin flag alone still uses zone residuals,
-                # and CJK can jump into a photo pocket (OA p59 first line).
-                if wrap_shape is None and design_box is not None:
-                    try:
-                        w = float(design_box.x2) - float(design_box.x)
-                    except (TypeError, ValueError):
-                        w = 0.0
-                    if w >= 8.0:
+            if photo_mode is not None and design_box is not None:
+                try:
+                    w = float(design_box.x2) - float(design_box.x)
+                except (TypeError, ValueError):
+                    w = 0.0
+                pw = float(page_width) if page_width else 612.0
+                if w >= 8.0 and w <= pw * 0.55:
+                    wrap_mode = photo_mode
+                    if wrap_shape is None:
                         wrap_shape = [(0.0, w)]
         expansion_policy, expansion_limits, overflow_policy = self._project_policy(role)
         is_chrome = role is LayoutIntentRole.CHROME
