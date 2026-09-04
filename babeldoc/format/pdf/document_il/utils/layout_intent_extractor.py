@@ -257,10 +257,18 @@ class LayoutIntentExtractor:
                     for x, x2 in line_boxes
                 ]
                 # Keep the longest contiguous taper window (drop p19 noisy
-                # tails and p59 rising heads).
+                # tails and p59 rising heads). When clustering leaves only an
+                # envelope cone (not a raw subsequence), rebuild wrap_shape
+                # from the envelope widths so CJK does not consume the zigzag.
                 widths = [w for _o, w in wrap_shape]
                 window = taper_prefix_widths(widths)
-                if window and len(window) < len(wrap_shape):
+                if window and (
+                    len(window) < len(wrap_shape)
+                    or any(
+                        abs(float(widths[i]) - float(window[i])) > 0.05
+                        for i in range(min(len(widths), len(window)))
+                    )
+                ):
                     # Locate first matching run of window widths.
                     start = None
                     for i in range(len(widths) - len(window) + 1):
@@ -274,6 +282,9 @@ class LayoutIntentExtractor:
                         end = start + len(window)
                         wrap_shape = wrap_shape[start:end]
                         line_boxes = line_boxes[start:end]
+                    else:
+                        # Peak→cummin envelope is not a contiguous subsequence.
+                        wrap_shape = [(0.0, float(w)) for w in window]
                 wrap_mode = infer_wrap_mode_from_line_boxes(line_boxes)
                 # Ambiguous spread: photo on the right is LEFT_FIXED (OA p33).
                 # Fall back to historical right-pin only when no photo signal.

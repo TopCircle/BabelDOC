@@ -78,6 +78,15 @@ def resolve_wrap_shape(
     if intent is not None:
         shape = getattr(intent, "wrap_shape", None)
         if shape:
+            # Re-clean zigzag intent shapes (envelope) so CJK pin path never
+            # consumes clustered rises even if extract stored the raw list.
+            widths = [float(w) for _o, w in shape]
+            cleaned = taper_prefix_widths(widths)
+            if cleaned and (
+                len(cleaned) != len(widths)
+                or any(abs(cleaned[i] - widths[i]) > 0.05 for i in range(len(cleaned)))
+            ):
+                return [(0.0, float(w)) for w in cleaned]
             return list(shape)
         role = getattr(intent, "role", None)
         mode = getattr(intent, "wrap_mode", None)
