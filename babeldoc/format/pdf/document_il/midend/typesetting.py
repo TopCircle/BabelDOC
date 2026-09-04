@@ -51,6 +51,7 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     resolve_line_interval_plan,
 )
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import wrap_flush_alignment
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import wrap_interval
 from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
 from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
@@ -3811,13 +3812,13 @@ class Typesetting:
             ocr_workaround=ocr_mode,
             is_cjk=bool(self.is_cjk),
         )
-        # Figure-wrap is right-edge pinned. Placement is LTR inside each
-        # envelope; underfilled CJK lines would sit mid-photo unless we
-        # flush them to design.x2 (EN lines nearly fill the envelope so
-        # left-align looks right-pinned; CJK often does not).
+        # Figure-wrap pin flush: LTR placement leaves underfilled CJK mid-pocket
+        # unless flushed to the pinned edge (EN nearly fills so left-align
+        # looked right-pinned; CJK often does not). LEFT_FIXED → left;
+        # RIGHT_FIXED / legacy → right.
         wrap_active = self._active_wrap(paragraph, box)
         if wrap_active is not None:
-            alignment = "right"
+            alignment = wrap_flush_alignment(paragraph)
             audit = getattr(self, "_page_layout_audit", None)
             if audit is not None:
                 design, shape = wrap_active

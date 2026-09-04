@@ -39,6 +39,7 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     resolve_line_interval_plan,
 )
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import wrap_flush_alignment
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import wrap_interval
 
 
@@ -397,3 +398,81 @@ class TestQuoteResidualCap:
         )[0]
         assert x1 == pytest.approx(110.0)
         assert x2 == pytest.approx(310.0)
+
+
+class TestWrapFlushAlignment:
+    """Mode-aware flush for underfilled wrap lines (OA p59 left / p19 right)."""
+
+    def _para(self, mode: WrapMode | None) -> PdfParagraph:
+        design = Box(x=102.0, y=100.0, x2=320.0, y2=400.0)
+        para = PdfParagraph(box=design, pdf_paragraph_composition=[], unicode="x")
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.WRAP_COLUMN,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+            wrap_mode=mode if mode is not None else WrapMode.NONE,
+            wrap_shape=[(0.0, 200.0), (0.0, 150.0)],
+        )
+        return para
+
+    def test_left_fixed_flushes_left(self):
+        assert wrap_flush_alignment(self._para(WrapMode.LEFT_FIXED)) == "left"
+
+    def test_right_fixed_flushes_right(self):
+        assert wrap_flush_alignment(self._para(WrapMode.RIGHT_FIXED)) == "right"
+
+    def test_legacy_shape_without_mode_flushes_right(self):
+        para = self._para(WrapMode.NONE)
+        # effective_wrap_mode defaults RIGHT_FIXED when shape present
+        assert wrap_flush_alignment(para, shape_present=True) == "right"
+
+    def test_apply_left_keeps_underfilled_at_pin(self):
+        """LEFT_FIXED short line must stay at available_x (no right shift)."""
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
+        from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
+        from babeldoc.format.pdf.document_il.midend.typesetting import TypesettingUnit
+
+        def unit_at(x: float, width: float = 10.0) -> TypesettingUnit:
+            box = Box(x=x, y=100.0, x2=x + width, y2=112.0)
+            ch = PdfCharacter(
+                char_unicode="中",
+                box=box,
+                visual_bbox=VisualBbox(box=Box(x=x, y=100.0, x2=x + width, y2=112.0)),
+                pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+            )
+            return TypesettingUnit(char=ch)
+
+        units = [unit_at(102.0), unit_at(112.0), unit_at(122.0)]
+        align = wrap_flush_alignment(self._para(WrapMode.LEFT_FIXED))
+        Typesetting._apply_line_horizontal_alignment(
+            units, 0, 3, available_x=102.0, available_x2=300.0, alignment=align
+        )
+        assert units[0].box.x == pytest.approx(102.0)
+        assert units[2].box.x2 == pytest.approx(132.0)
+
+    def test_apply_right_pins_underfilled_to_x2(self):
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
+        from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
+        from babeldoc.format.pdf.document_il.midend.typesetting import TypesettingUnit
+
+        def unit_at(x: float, width: float = 10.0) -> TypesettingUnit:
+            box = Box(x=x, y=100.0, x2=x + width, y2=112.0)
+            ch = PdfCharacter(
+                char_unicode="中",
+                box=box,
+                visual_bbox=VisualBbox(box=Box(x=x, y=100.0, x2=x + width, y2=112.0)),
+                pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+            )
+            return TypesettingUnit(char=ch)
+
+        units = [unit_at(250.0), unit_at(260.0), unit_at(270.0)]
+        align = wrap_flush_alignment(self._para(WrapMode.RIGHT_FIXED))
+        Typesetting._apply_line_horizontal_alignment(
+            units, 0, 3, available_x=200.0, available_x2=400.0, alignment=align
+        )
+        # line width 30 → target left = 400-30 = 370
+        assert units[0].box.x == pytest.approx(370.0, abs=0.1)
+        assert units[2].box.x2 == pytest.approx(400.0, abs=0.1)

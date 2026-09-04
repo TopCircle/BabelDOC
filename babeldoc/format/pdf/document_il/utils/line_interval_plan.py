@@ -361,6 +361,23 @@ def effective_wrap_mode(
     return mode
 
 
+def wrap_flush_alignment(
+    paragraph: PdfParagraph | None,
+    *,
+    shape_present: bool = True,
+) -> str:
+    """Horizontal flush for underfilled wrap lines.
+
+    Placement is LTR inside each pocket. Short CJK lines would sit mid-photo
+    unless flushed to the pinned edge: LEFT_FIXED (OA p33/p59) → left;
+    RIGHT_FIXED (OA p19) / legacy → right.
+    """
+    mode = effective_wrap_mode(paragraph, shape_present=shape_present)
+    if mode is WrapMode.LEFT_FIXED:
+        return "left"
+    return "right"
+
+
 def resolve_line_interval_plan(
     paragraph: PdfParagraph | None,
     layout_box: Box,
