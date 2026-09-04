@@ -31,7 +31,7 @@
 - push 前按 AGENTS.md 做质量门；push 后同步更新仓库根目录 GROK_BOT_HANDOFF.md 与 docs/CURRENT-STATUS.md。
 
 【当前快照 — 2026-09-04】
-- HEAD：f8cc557 · 版本 0.6.4.93 · 分支 main（已与 origin 同步）。
+- HEAD：以 main 尖端为准（写快照时见 git log -1；本批交接提交为 7a4d4c2）· 版本 0.6.4.93。
 - 关键 wrap P0（p19 锥形 / p59 左钉 / p91 引文 vs wrap）已基本清完；日志噪音已收（84981ed）；仓库卫生与文档入口已整理（f8cc557）。
 - Circle 正在用 0.6.4.93 整本 dual 验证；tmp/ 已清空，需重新生成输出。
 
@@ -50,7 +50,7 @@
 5. 等 Circle 整本验证反馈后再定下一刀系统问题。
 
 【接手后立刻做】
-1. git -C /Users/yun/workspace/BabelDOC fetch && git log -1 --oneline；确认 const 版本 = 0.6.4.93（或本文件「当前快照」里的更新值）。
+1. git -C /Users/yun/workspace/BabelDOC fetch && git log -1 --oneline；先 git log -1 核对尖端；const 版本当前为 0.6.4.93。
 2. 读 docs/CURRENT-STATUS.md 与本文件，对齐遗留列表。
 3. 若 Circle 已有整本验证结论：按反馈修系统问题 → 测试 → bump 版本 → push → 更新本文件与 CURRENT-STATUS。
 4. 若暂无验证结论：待命或按 Circle 下一句指令；不要从 archive 旧计划擅自开大波次。

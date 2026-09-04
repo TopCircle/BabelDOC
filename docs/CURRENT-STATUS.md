@@ -1,6 +1,6 @@
 # BabelDOC / OA dual — 当前状况（2026-09-04）
 
-**HEAD:** `f8cc557` · **版本:** `0.6.4.93` · 仓库 `TopCircle/BabelDOC` `main`  
+**HEAD:** `7a4d4c2`（以 main 尖端为准）· **版本:** `0.6.4.93` · 仓库 `TopCircle/BabelDOC` `main`  
 **本文件是当前操作员入口。** 若与旧 wave / layout-first 计划冲突，以本文件 + `PLAN-INDEX.md` 为准。
 
 ## 仓库卫生（同日）
