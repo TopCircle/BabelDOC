@@ -715,7 +715,7 @@ class TestSanitizeCjkWrapShape:
         assert mid_out[-1][1] == 67.0
 
     def test_right_fixed_cone_deepen_oa_p19(self):
-        """Dense CJK under-fills upper bands; deepen scales into the tip."""
+        """Dense CJK under-fills upper bands; freeze head, deepen taper into tip."""
         from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
         from babeldoc.format.pdf.document_il.utils.wrap_shape import (
             sanitize_wrap_shape_for_cjk,
@@ -746,9 +746,10 @@ class TestSanitizeCjkWrapShape:
         assert widths[-1] == widths[-2]
         assert widths[-1] >= 42.0
         assert widths[-1] < widths[0] * 0.70
-        # Deepened: head preserved (≥75% EN peak); tip still consumed.
-        assert widths[0] >= 254.6 * 0.75
-        assert widths[0] <= 254.6 * 0.97 + 1e-6 or widths[-1] <= widths[0] * 0.70
+        # Deepened: head frozen near EN peak (≥90%); tip still consumed.
+        assert widths[0] >= 254.6 * 0.90
+        assert widths[0] <= 254.6 + 1e-6
+        assert widths[-1] <= widths[0] * 0.70
         # No deepen without content_width / when content fills.
         assert (
             sanitize_wrap_shape_for_cjk(shape, wrap_mode=WrapMode.RIGHT_FIXED)

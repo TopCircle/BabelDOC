@@ -324,7 +324,23 @@ class LayoutIntentExtractor:
                 if w >= 8.0 and w <= pw * 0.55:
                     wrap_mode = photo_mode
                     if wrap_shape is None:
-                        wrap_shape = [(0.0, w)]
+                        # Prefer metrics cone over flat design_w synth when
+                        # BODY+photo already has a taper (OA p19 [254…63]).
+                        rm = getattr(para, "reference_metrics", None)
+                        widths = (
+                            getattr(rm, "per_line_widths", None)
+                            if rm is not None
+                            else None
+                        )
+                        synth = shape_from_widths(widths)
+                        if synth and len(synth) >= 3:
+                            sw = [float(x) for _o, x in synth]
+                            if max(sw) - min(sw) >= 40.0:
+                                wrap_shape = synth
+                            else:
+                                wrap_shape = [(0.0, w)]
+                        else:
+                            wrap_shape = [(0.0, w)]
         expansion_policy, expansion_limits, overflow_policy = self._project_policy(role)
         is_chrome = role is LayoutIntentRole.CHROME
         # Chrome + debug stubs never participate in text_on_photo (coding-plan §1.4).
