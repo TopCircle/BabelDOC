@@ -117,6 +117,13 @@ class TestIsFigureWrapTaper:
             pdf_paragraph_composition=[],
         )
         assert is_figure_wrap_tip_crumb(tip, page_width=612.0) is True
+        tip_en = il_version_1.PdfParagraph(
+            unicode="make the",
+            layout_label="fallback_line",
+            box=il_version_1.Box(x=502.4, y=228.0, x2=569.5, y2=240.0),
+            pdf_paragraph_composition=[],
+        )
+        assert is_figure_wrap_tip_crumb(tip_en, page_width=612.0) is True
         body = il_version_1.PdfParagraph(
             unicode="为了完成本书中的练习，你需要掌控你的性生活",
             layout_label="plain text",

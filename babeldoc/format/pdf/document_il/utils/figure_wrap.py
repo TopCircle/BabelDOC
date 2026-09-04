@@ -183,10 +183,13 @@ def is_figure_wrap_tip_crumb(
     # Stub class-name unicode is not a crumb.
     if uni.lower() in {"fallback_line", "plain text", "title"}:
         return False
-    # Short translated tip (「，使」) or already-blanked tip with fallback_line label.
-    if uni and len(uni) <= 4:
-        return label == "fallback_line" or width <= 40.0
-    if not uni and label == "fallback_line":
+    # Pre-MT tip fragments can be a few English words ("make the"); post-MT
+    # they shrink to 「，使」. Label + tip geometry is the stable signal.
+    if label == "fallback_line":
+        return True
+    if uni and len(uni) <= 4 and width <= 40.0:
+        return True
+    if not uni and width <= 40.0:
         return True
     return False
 
