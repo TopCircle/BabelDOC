@@ -292,12 +292,46 @@ def should_fallback_residual_to_block(
 #: **only** on the CJK consumption path.
 CJK_WRAP_MIN_LINE_WIDTH = 24.0
 
+#: When CJK content width is below this fraction of Σ(wrap_shape), RIGHT_FIXED
+#: cones under-consume the tip (OA p19: ZH stops ~4 lines / w≈168 while EN
+#: continues to ~64pt). Scale widths so reflow reaches deeper tip bands.
+CJK_WRAP_UNDERCONSUME_RATIO = 0.70
+
+#: Headroom on content width when deepening so the last line is not jammed
+#: into a tip-crumb-sized pocket.
+CJK_WRAP_DEEPEN_HEADROOM = 1.02
+
+
+def estimate_cjk_wrap_content_width(
+    paragraph: PdfParagraph | None,
+    *,
+    default_em: float = 12.0,
+) -> float | None:
+    """Rough CJK ink width (em × char count) for wrap tip-consumption deepen.
+
+    Full-width CJK advances ≈ 1em. Used only to detect under-consumption of a
+    RIGHT_FIXED cone; not a substitute for real glyph metrics.
+    """
+    if paragraph is None:
+        return None
+    uni = (getattr(paragraph, "unicode", None) or "").strip()
+    if not uni:
+        return None
+    size = float(default_em)
+    style = getattr(paragraph, "pdf_style", None)
+    if style is not None:
+        fs = getattr(style, "font_size", None)
+        if fs:
+            size = float(fs)
+    return len(uni) * size
+
 
 def sanitize_wrap_shape_for_cjk(
     wrap_shape: list[tuple[float, float]] | None,
     *,
     min_width: float = CJK_WRAP_MIN_LINE_WIDTH,
     wrap_mode: WrapMode | None = None,
+    content_width: float | None = None,
 ) -> list[tuple[float, float]] | None:
     """Replace degenerate wrap pockets that CJK reflow would orphan.
 
@@ -309,14 +343,23 @@ def sanitize_wrap_shape_for_cjk(
     else the floor), so the surrounding text reflows onto a real line instead
     of creating an orphan.
 
+    Trailing cone tip (OA p19 ~52–64pt): keep absolute ``min_width`` tips even
+    when they fall under the relative sliver cut. Replacing them with the
+    previous body width flattened RIGHT_FIXED cones to ~143pt and blocked tip
+    consumption. Mid-body relative slivers (42pt shred lines) still expand.
+
     LEFT_FIXED tip soften (OA p59): EN tip ~67pt matches Latin ("and
     flexibility.") but CJK stacks two underfilled tip lines (~46/~68pt) because
     the remaining clause needs ~100pt. Hoist the trailing tip up to the
-    penultimate width so one CJK line can fill. RIGHT_FIXED (OA p19) keeps the
-    sharp cone tip unchanged.
+    penultimate width so one CJK line can fill.
 
-    Idempotent: when every entry is already usable and no tip hoist applies,
-    the input list is returned unchanged.
+    RIGHT_FIXED tip deepen (OA p19): dense CJK finishes in the upper bands
+    (~4 lines / w≈168) while EN continues to the tip. When ``content_width``
+    under-fills the shape, uniformly scale widths (ratios preserved — cone not
+    flattened) so reflow reaches deeper tip bands, floored at ``min_width``.
+
+    Idempotent: when every entry is already usable and no tip hoist / deepen
+    applies, the input list is returned unchanged.
     """
     if not wrap_shape:
         return wrap_shape
@@ -325,33 +368,37 @@ def sanitize_wrap_shape_for_cjk(
     max_valid = max(floor_valid) if floor_valid else min_width
     # Relative slivers (OA p19 42pt vs 193pt peak) are usable by the 24pt
     # floor but still force a 3–4 CJK shred line. Treat < 25% of the peak
-    # as degenerate too.
+    # as degenerate too — except the trailing tip (see below).
     sliver_cut = max(min_width, max_valid * 0.25) if max_valid > 0 else min_width
+    last_i = len(widths) - 1
 
-    def _usable(w: float) -> bool:
-        return w >= sliver_cut
+    def _usable(w: float, i: int) -> bool:
+        if w >= sliver_cut:
+            return True
+        # Trailing cone tip: absolute floor only (OA p19 51.6pt tip).
+        return i == last_i and w >= min_width
 
-    if all(_usable(w) for w in widths):
+    if all(_usable(w, i) for i, w in enumerate(widths)):
         result: list[tuple[float, float]] = wrap_shape
         unchanged = True
     else:
-        valid = [w for w in widths if _usable(w)]
+        valid = [w for i, w in enumerate(widths) if _usable(w, i)]
         if valid:
             max_valid = max(valid)
         result = []
         for i, (_off, w) in enumerate(wrap_shape):
             w = float(w)
-            if _usable(w):
+            if _usable(w, i):
                 result.append((_off, w))
                 continue
             replacement: float | None = None
             for j in range(i + 1, len(widths)):
-                if _usable(widths[j]):
+                if _usable(widths[j], j):
                     replacement = widths[j]
                     break
             if replacement is None:
                 for j in range(i - 1, -1, -1):
-                    if _usable(widths[j]):
+                    if _usable(widths[j], j):
                         replacement = widths[j]
                         break
             if replacement is None:
@@ -375,6 +422,32 @@ def sanitize_wrap_shape_for_cjk(
                 result = list(wrap_shape)
                 unchanged = False
             result[-1] = (last_off, prev_w)
+
+    # RIGHT_FIXED only: deepen under-consumed cones (OA p19 tip empty bands).
+    if (
+        wrap_mode is WrapMode.RIGHT_FIXED
+        and content_width is not None
+        and content_width > 0
+        and len(result) >= 5
+    ):
+        cur_widths = [float(w) for _o, w in result]
+        total = sum(cur_widths)
+        if total > 0 and content_width < total * CJK_WRAP_UNDERCONSUME_RATIO:
+            target = min(total, content_width * CJK_WRAP_DEEPEN_HEADROOM)
+            scale = target / total
+            tip = cur_widths[-1]
+            # Keep tip at absolute CJK floor only — raising the floor here
+            # re-blocks tip bands (OA p19 needs ~36–52pt tips reachable).
+            if tip > 0 and tip * scale < min_width:
+                scale = min_width / tip
+            if scale < 0.97:
+                if unchanged:
+                    result = list(wrap_shape)
+                    unchanged = False
+                result = [
+                    (off, max(min_width, float(w) * scale))
+                    for off, w in result
+                ]
 
     if unchanged:
         return wrap_shape

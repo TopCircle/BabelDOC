@@ -57,6 +57,7 @@ from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import layout_intent_wrap_enabled
 from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
+from babeldoc.format.pdf.document_il.utils.wrap_shape import estimate_cjk_wrap_content_width
 from babeldoc.format.pdf.document_il.utils.wrap_shape import sanitize_wrap_shape_for_cjk
 from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_tip_crumb
 from babeldoc.format.pdf.document_il.utils.wrap_shape import (
@@ -3396,7 +3397,9 @@ class Typesetting:
             and len(intervals) == 1
         ):
             cleaned = sanitize_wrap_shape_for_cjk(
-                plan.wrap_shape, wrap_mode=plan.wrap_mode
+                plan.wrap_shape,
+                wrap_mode=plan.wrap_mode,
+                content_width=estimate_cjk_wrap_content_width(paragraph),
             )
             if cleaned:
                 intervals = [

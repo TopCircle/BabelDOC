@@ -682,6 +682,109 @@ class TestSanitizeCjkWrapShape:
         assert out is shape
         assert out[-1][1] == 63.7
 
+    def test_right_fixed_trailing_tip_preserved_below_sliver_cut(self):
+        """OA p19 tip ~51.6pt must not flatten to previous body width."""
+        from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            sanitize_wrap_shape_for_cjk,
+        )
+
+        # Peak 254.6 → relative cut ~63.65; tip 51.6 is below cut but >=24.
+        shape = [
+            (0.0, 254.6),
+            (0.0, 246.0),
+            (0.0, 228.3),
+            (0.0, 193.6),
+            (0.0, 174.1),
+            (0.0, 142.6),
+            (0.0, 51.6),
+        ]
+        out = sanitize_wrap_shape_for_cjk(shape, wrap_mode=WrapMode.RIGHT_FIXED)
+        assert out is not None
+        assert out[-1][1] == 51.6
+        # Mid-body relative shred still expands.
+        mid = [
+            (0.0, 193.6),
+            (0.0, 42.4),
+            (0.0, 137.0),
+            (0.0, 67.0),
+        ]
+        mid_out = sanitize_wrap_shape_for_cjk(mid, wrap_mode=WrapMode.RIGHT_FIXED)
+        assert mid_out[1][1] >= 100.0
+        assert mid_out[-1][1] == 67.0
+
+    def test_right_fixed_cone_deepen_oa_p19(self):
+        """Dense CJK under-fills upper bands; deepen scales into the tip."""
+        from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            sanitize_wrap_shape_for_cjk,
+        )
+
+        shape = [
+            (0.0, 254.6),
+            (0.0, 246.0),
+            (0.0, 228.3),
+            (0.0, 193.6),
+            (0.0, 174.1),
+            (0.0, 142.6),
+            (0.0, 51.6),
+        ]
+        # 74 CJK chars × 12em ≈ 888pt; shape Σ ≈ 1291 with tip kept.
+        out = sanitize_wrap_shape_for_cjk(
+            shape,
+            wrap_mode=WrapMode.RIGHT_FIXED,
+            content_width=888.0,
+        )
+        assert out is not None
+        assert out is not shape
+        widths = [w for _o, w in out]
+        # Cone ratios preserved (monotone); tip still a real tip pocket.
+        assert widths == sorted(widths, reverse=True)
+        assert widths[-1] < widths[0] * 0.45
+        assert widths[-1] >= 24.0
+        # Deepened: upper bands narrower than EN source so ZH needs more lines.
+        assert widths[0] < 254.6 * 0.97
+        # No deepen without content_width / when content fills.
+        assert (
+            sanitize_wrap_shape_for_cjk(shape, wrap_mode=WrapMode.RIGHT_FIXED)
+            is shape
+            or sanitize_wrap_shape_for_cjk(
+                shape, wrap_mode=WrapMode.RIGHT_FIXED
+            )[-1][1]
+            == 51.6
+        )
+        full = sanitize_wrap_shape_for_cjk(
+            shape,
+            wrap_mode=WrapMode.RIGHT_FIXED,
+            content_width=2000.0,
+        )
+        assert [w for _o, w in full] == [w for _o, w in shape]
+
+    def test_left_fixed_deepen_not_applied(self):
+        """LEFT_FIXED tip hoist path must not run RIGHT_FIXED deepen."""
+        from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            sanitize_wrap_shape_for_cjk,
+        )
+
+        shape = [
+            (0.0, 221.6),
+            (0.0, 210.6),
+            (0.0, 201.7),
+            (0.0, 176.7),
+            (0.0, 133.6),
+            (0.0, 67.0),
+        ]
+        out = sanitize_wrap_shape_for_cjk(
+            shape,
+            wrap_mode=WrapMode.LEFT_FIXED,
+            content_width=400.0,
+        )
+        assert out is not None
+        # Tip hoist still wins; body not uniformly scaled down.
+        assert out[-1][1] == 133.6
+        assert out[0][1] == 221.6
+
 
 class TestCjkWrapShapeSanitizeWiring:
     """CJK consumption path must sanitize before interval planning (p19)."""
