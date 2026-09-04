@@ -1,11 +1,11 @@
 # BabelDOC / OA dual — 当前状况（2026-09-04）
 
-**HEAD:** `470d3b9` · **版本:** `0.6.4.93` · 仓库 `TopCircle/BabelDOC` `main`  
+**HEAD:** `f8cc557` · **版本:** `0.6.4.93` · 仓库 `TopCircle/BabelDOC` `main`  
 **本文件是当前操作员入口。** 若与旧 wave / layout-first 计划冲突，以本文件 + `PLAN-INDEX.md` 为准。
 
 ## 仓库卫生（同日）
 
-- `470d3b9`：`docs/CURRENT-STATUS.md` 入口；旧计划 → `docs/archive/`；`tmp/` 清空并 gitignore；根目录 debug 脚本 → `tools/debug/`
+- `f8cc557`：`docs/CURRENT-STATUS.md` 入口；旧计划 → `docs/archive/`；`tmp/` 清空并 gitignore；根目录 debug 脚本 → `tools/debug/`
 - 根目录交接 prompt：`GROK_BOT_HANDOFF.md`（换账号粘贴即可接手；**每次 push 须同步更新**）
 
 ## 已完成（本轮 wrap / 引文 P0）
