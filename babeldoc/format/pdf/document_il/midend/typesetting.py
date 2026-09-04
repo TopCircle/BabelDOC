@@ -4042,6 +4042,9 @@ class Typesetting:
             # CJK end-of-paragraph 孤行 (acceptance V3): never open a new line
             # that would hold only 1–2 leftovers (OA p19 tip 「下去」). Mid-
             # paragraph orphan_pull_back below skips the final units.
+            # Exception: left-gutter / design-column callouts must not
+            # horizontally overflow past the measure to dodge a short last
+            # line (OA p91 red bar last line → x≈234 in the wrap gutter).
             if (
                 self.is_cjk
                 and need_break
@@ -4053,7 +4056,14 @@ class Typesetting:
                     if not getattr(u, "is_space", False)
                 )
                 if 0 < n_next <= 2:
-                    need_break = False
+                    from babeldoc.format.pdf.document_il.utils.box_expand import (
+                        is_left_gutter_bar,
+                    )
+                    skip_orphan_suppress = is_design_column_role(
+                        paragraph
+                    ) or is_left_gutter_bar(box)
+                    if not skip_orphan_suppress:
+                        need_break = False
             # Units re-emitted on the next line when we pull illegal EOL tails
             # (open paren / mid-word / mid-number) back off the finished line.
             pull_to_next: list[TypesettingUnit] = []
