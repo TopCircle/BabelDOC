@@ -347,14 +347,11 @@ CJK_WRAP_UNDERCONSUME_RATIO = 0.70
 #: into a tip-crumb-sized pocket.
 CJK_WRAP_DEEPEN_HEADROOM = 1.02
 
-#: Fraction of EN peak kept on leading head band(s) under CJK deepen.
-#: Linear lerp floors (0.75→~182pt) still left OA p19 ZH head short of EN ~256;
-#: freeze the head near full amplitude and compress the taper instead.
-CJK_WRAP_DEEPEN_HEAD_FLOOR = 0.90
-
-#: How many leading cone bands keep ``CJK_WRAP_DEEPEN_HEAD_FLOOR`` (rest scaled
-#: uniformly to the deepen target so tip bands remain reachable).
-CJK_WRAP_DEEPEN_HEAD_BANDS = 1
+#: Fraction of EN peak kept on the cone head under CJK deepen.
+#: Hard head-freeze + uniform tip scale left OA p19 band0→band1 cliff
+#: (~217→114). Curved taper keeps the head near EN peak while easing the
+#: mid-cone steps; 1.0 aims at full EN head amplitude when the cliff is soft.
+CJK_WRAP_DEEPEN_HEAD_FLOOR = 1.0
 
 
 def estimate_cjk_wrap_content_width(
@@ -410,10 +407,11 @@ def sanitize_wrap_shape_for_cjk(
 
     RIGHT_FIXED tip deepen (OA p19): dense CJK finishes in the upper bands
     (~4 lines / w≈168) while EN continues to the tip. When ``content_width``
-    under-fills the shape, freeze leading head band(s) near the EN peak and
-    scale the taper so reflow reaches deeper tip bands, floored at
-    ``min_width``. Skip deepen when content already fills the tip zone at
-    full metrics widths.
+    under-fills the shape, keep the head near the EN peak
+    (``CJK_WRAP_DEEPEN_HEAD_FLOOR``) and apply a curved (linear-in-index)
+    scale down to the tip so reflow reaches deeper bands without a hard
+    mid-cone cliff, floored at ``min_width``. Skip deepen when content
+    already fills the tip zone at full metrics widths.
 
     Idempotent: when every entry is already usable and no tip hoist / deepen
     applies, the input list is returned unchanged.
@@ -481,9 +479,10 @@ def sanitize_wrap_shape_for_cjk(
             result[-1] = (last_off, prev_w)
 
     # RIGHT_FIXED only: deepen under-consumed cones (OA p19 tip empty bands).
-    # Uniform / linear-lerp scale crushed upper amplitude (EN ~256→64 flattened
-    # to ~137–182pt head). Freeze leading head band(s) near the EN peak and
-    # compress the taper tail so tip bands still get consumed.
+    # Hard head-freeze + uniform tip scale made a steep band0→band1 cliff
+    # (OA p19 ~217→114) after head rose to ≥90% EN. Curved taper: pin the
+    # head at HEAD_FLOOR and lerp scale toward the tip so mid-cone steps
+    # stay gentle while Σ widths still hit the deepen target.
     if (
         wrap_mode is WrapMode.RIGHT_FIXED
         and content_width is not None
@@ -508,33 +507,37 @@ def sanitize_wrap_shape_for_cjk(
             if not already_consumed:
                 target = min(total, content_width * CJK_WRAP_DEEPEN_HEADROOM)
                 n = len(cur_widths)
-                head_n = max(1, min(CJK_WRAP_DEEPEN_HEAD_BANDS, n - 2))
                 # Mild deepen (target close to total) may keep head above floor.
                 head_scale = max(target / total, CJK_WRAP_DEEPEN_HEAD_FLOOR)
                 head_scale = min(head_scale, 1.0)
-                head_sum = sum(cur_widths[i] * head_scale for i in range(head_n))
-                # Head alone saturating the target would starve the tip — skip.
-                if head_sum < target * 0.98:
-                    tail = cur_widths[head_n:]
-                    tail_sum = sum(tail)
-                    target_tail = target - head_sum
-                    if tail_sum > 1e-6 and target_tail > min_width:
-                        tip_scale = target_tail / tail_sum
-                        tip = tail[-1]
-                        if tip > 0 and tip * tip_scale < min_width:
-                            tip_scale = min_width / tip
-                        # Only deepen when the taper actually compresses.
-                        if tip_scale < 0.97 or head_scale < 0.97:
-                            if unchanged:
-                                result = list(wrap_shape)
-                                unchanged = False
-                            new_rows: list[tuple[float, float]] = []
-                            for i, (off, w) in enumerate(result):
-                                s = head_scale if i < head_n else tip_scale
-                                new_rows.append(
-                                    (off, max(min_width, float(w) * s))
-                                )
-                            result = new_rows
+                # Solve tip_scale so Σ w_i * lerp(head_scale, tip_scale, i) ≈ target.
+                # width_i' = w_i * (head_scale + (tip_scale - head_scale) * t_i)
+                weights_t = [
+                    cur_widths[i] * (i / (n - 1)) for i in range(n)
+                ]
+                sum_wt = sum(weights_t)
+                if sum_wt > 1e-6:
+                    # head_scale≈1 with target<total → tip_scale<1 (compresses
+                    # the taper). Skip only when the solved curve is nearly flat.
+                    tip_scale = (
+                        (target - head_scale * total) / sum_wt + head_scale
+                    )
+                    tip = cur_widths[-1]
+                    if tip > 0 and tip * tip_scale < min_width:
+                        tip_scale = min_width / tip
+                    # Only deepen when the taper actually compresses.
+                    if tip_scale < 0.97 or head_scale < 0.97:
+                        if unchanged:
+                            result = list(wrap_shape)
+                            unchanged = False
+                        new_rows: list[tuple[float, float]] = []
+                        for i, (off, w) in enumerate(result):
+                            t = i / (n - 1)
+                            s = head_scale + (tip_scale - head_scale) * t
+                            new_rows.append(
+                                (off, max(min_width, float(w) * s))
+                            )
+                        result = new_rows
 
             # After deepen, a needle tip (<~3.5 CJK cells) strands end-of-
             # paragraph leftovers as 双字孤行 (OA p19 「下去」) because V3
