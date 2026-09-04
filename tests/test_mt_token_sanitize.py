@@ -150,3 +150,11 @@ def test_strip_title_first_trailing_chapter_running_header():
     assert normalize_translated_text("第八章直接推送") == "第八章直接推送"
     assert normalize_translated_text("第五章性解剖学") == "第五章性解剖学"
     assert normalize_translated_text("第十二章创造你自己的动作") == "第十二章创造你自己的动作"
+
+def test_scrub_cjk_embedded_english_oa_crumbs():
+    assert "you" not in (normalize_translated_text("你很快就you 功课来发现") or "")
+    assert "有功课" in (normalize_translated_text("你很快就you 功课来发现") or "")
+    assert "有机缘" in (normalize_translated_text("所以这里you 机缘让你") or "")
+    nbsp = "专门介绍e" + "\xa0" + "艺术"
+    assert normalize_translated_text(nbsp) == "专门介绍前戏艺术"
+    assert normalize_translated_text("介绍e艺术") == "介绍前戏艺术"

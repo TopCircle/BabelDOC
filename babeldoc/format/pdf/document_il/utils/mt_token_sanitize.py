@@ -10,6 +10,7 @@ DeepLX/MT residual shapes (Day 6 dual):
   paths — e.g. ``不`` → ``不``, ``刺`` → ``刺`` (OA dual P0-1)
 * Latin ligature/OCR shards left in ZH (``erent`` / ``ffdi.ff`` / isolated
   ``ff``/``di``) when design-PDF recovery did not fully rejoin before MT
+* Embedded English shards in CJK (``就you 功课`` / ``介绍e艺术``)
 * Known catastrophic chapter-title mistranslations (Indirect→不正确)
 * Title-first running headers that glue a trailing ``第N章`` onto the
   chapter name (OA ``成为行动派第三章``) while a separate opener already
@@ -85,6 +86,45 @@ _ISOLATED_LIGATURE_SHARD_RE = re.compile(
     rf"(?<=[{_CJK_OR_PUNCT}])(?:ff|fi|fl|ffi|ffl|di)(?=[{_CJK_OR_PUNCT}]|$)",
     re.IGNORECASE,
 )
+
+# Isolated English leftovers glued into CJK (OA p35 "就you 功课" / "这里you 机缘";
+# OA p33 "介绍e艺术" from foreplay). High-precision only.
+_YOU_HAVE_NOUN_RE = re.compile(
+    r"(?<=[\u4e00-\u9fff])\s*you\s+(?=功课|作业|机会|机缘|机会让)",
+    re.IGNORECASE,
+)
+_ISOLATED_YOU_RE = re.compile(
+    r"(?<=[\u4e00-\u9fff])\s*you\s*(?=[\u4e00-\u9fff])",
+    re.IGNORECASE,
+)
+# Single Latin letter between CJK (foreplay → 介绍e艺术).
+_ISOLATED_LATIN_LETTER_RE = re.compile(
+    r"(?<=[\u4e00-\u9fff])\s*[A-Za-z]\s*(?=[\u4e00-\u9fff])"
+)
+
+
+def _scrub_cjk_embedded_english(text: str) -> str:
+    """Remove/replace short English shards embedded between CJK characters."""
+    if not text:
+        return text
+    # Specific OA repairs before generic letter strip (keep 前戏).
+    out = text
+    for bad, good in (
+        ("专门介绍e\xa0艺术", "专门介绍前戏艺术"),
+        ("专门介绍e 艺术", "专门介绍前戏艺术"),
+        ("专门介绍e艺术", "专门介绍前戏艺术"),
+        ("介绍e\xa0艺术", "介绍前戏艺术"),
+        ("介绍e 艺术", "介绍前戏艺术"),
+        ("介绍e艺术", "介绍前戏艺术"),
+    ):
+        out = out.replace(bad, good)
+    out = _YOU_HAVE_NOUN_RE.sub("有", out)
+    out = _ISOLATED_YOU_RE.sub("", out)
+    out = _ISOLATED_LATIN_LETTER_RE.sub("", out)
+    out = re.sub(r"[^\S\n]{2,}", " ", out)
+    return out
+
+
 
 # Catastrophic chapter-title mistranslations (EN Indirect/Curl → 不正确…).
 _CHAPTER_TITLE_FIXES: list[tuple[re.Pattern[str], str]] = [
@@ -168,6 +208,7 @@ def _scrub_mt_debris(text: str, *, keep_formula_placeholders: bool = False) -> s
         out = _FORMULA_V_TOKEN_RE.sub("", out)
     out = _ORPHAN_BRACE_BEFORE_CJK_RE.sub("", out)
     out = _scrub_latin_ligature_debris(out)
+    out = _scrub_cjk_embedded_english(out)
     out = _fix_chapter_title_mistranslations(out)
     out = _strip_title_first_trailing_chapter(out)
     out = _MULTI_SPACE_RE.sub(" ", out)
