@@ -84,7 +84,11 @@ def _is_strict_taper(usable: list[float]) -> bool:
     for a, b in zip(usable, usable[1:], strict=False):
         if b > a - _TAPER_MIN_STEP:
             return False
-    return usable[-1] < usable[0] * 0.75
+    peak = max(usable)
+    # Prefer a clearly short tip; also accept a solid absolute drop when the
+    # clustered tip lines were dropped from reference_metrics (OA p59 often
+    # logs [218…172] without the 66pt tip).
+    return usable[-1] < peak * 0.80 or (peak - usable[-1]) >= 40.0
 
 
 def taper_prefix_widths(reference_widths) -> list[float]:
