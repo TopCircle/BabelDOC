@@ -14,4 +14,5 @@
 - Primary consumer: PDFMathTranslate-next + DeepLX (non-LLM) dual PDFs.
 - Prefer dual visual quality and reproducible midend behavior over large refactors.
 - **Current status / residuals:** `docs/CURRENT-STATUS.md` (index: `docs/PLAN-INDEX.md`).
+- **Account handoff prompt:** `GROK_BOT_HANDOFF.md` at repo root — update on every push to `main`.
 - Historical wave / layout-first plans live under `docs/archive/` — do **not** schedule from them.

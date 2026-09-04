@@ -11,6 +11,7 @@ Last updated: 2026-09-04。**If two docs disagree on what to do next, this table
 | Doc | Role |
 |-----|------|
 | **[`CURRENT-STATUS.md`](CURRENT-STATUS.md)** | **Active status + residuals.** Start here. |
+| [`../GROK_BOT_HANDOFF.md`](../GROK_BOT_HANDOFF.md) | **换账号粘贴 prompt**；每次 push 必须同步更新。 |
 | [`../tests/golden/SCORECARD.md`](../tests/golden/SCORECARD.md) | Dual-quality checklist + F1–F4 freeze (criteria, not a work queue). |
 | [`../AGENTS.md`](../AGENTS.md) | Commit bar + pointer to CURRENT-STATUS. |
 | [`visual-layout-acceptance.md`](visual-layout-acceptance.md) | V1–V5 visual bars (criteria). |
