@@ -51,14 +51,21 @@ def clamp_callout_measure_to_design(
     gutter when body ink at x≈246 looks free (OA p91 last quote line →
     x≈234 while design.x2≈211). Exclusion still tracks design_box, so
     glyphs must not use the inflated measure.
+
+    Also clamps left-gutter bars (x≈54, width≲180) when ``design_box`` is
+    present even if role was misclassified as BODY.
     """
     if layout_box is None or layout_box.x2 is None:
         return layout_box
-    if not is_design_column_role(paragraph):
-        return layout_box
-    intent = getattr(paragraph, "layout_intent", None)
+    intent = getattr(paragraph, "layout_intent", None) if paragraph else None
     design = getattr(intent, "design_box", None) if intent is not None else None
     if design is None or design.x2 is None:
+        return layout_box
+    from babeldoc.format.pdf.document_il.utils.box_expand import is_left_gutter_bar
+
+    if not is_design_column_role(paragraph) and not is_left_gutter_bar(
+        design
+    ) and not is_left_gutter_bar(layout_box):
         return layout_box
     design_x2 = float(design.x2)
     if float(layout_box.x2) <= design_x2 + 0.5:

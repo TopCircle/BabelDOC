@@ -6,6 +6,7 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.utils.box_expand import NARROW_COLUMN_MAX_WIDTH
 from babeldoc.format.pdf.document_il.utils.box_expand import content_expand_ratio_need
 from babeldoc.format.pdf.document_il.utils.box_expand import expand_axis_order
+from babeldoc.format.pdf.document_il.utils.box_expand import expand_axes_for_box
 from babeldoc.format.pdf.document_il.utils.box_expand import is_left_gutter_bar
 from babeldoc.format.pdf.document_il.utils.box_expand import is_narrow_column
 from babeldoc.format.pdf.document_il.utils.box_expand import is_right_blocked
@@ -262,3 +263,12 @@ def test_left_gutter_prefers_expand_down():
         bar, ocr_mode=False, get_max_right=lambda b: 246.0
     )
     assert expand_axis_order(prefer_down=True)[0] == "down"
+
+
+def test_left_gutter_expand_axes_deepen_only():
+    """Mid-loop must not offer a right axis for the OA p91 red bar."""
+    bar = _box(x=54.18, y=375.99, x2=211.635, y2=450.99)
+    axes = expand_axes_for_box(
+        bar, ocr_mode=False, get_max_right=lambda b: 246.0
+    )
+    assert axes == ("down",)

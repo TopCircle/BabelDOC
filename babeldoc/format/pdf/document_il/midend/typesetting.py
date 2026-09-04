@@ -1723,26 +1723,29 @@ class Typesetting:
             # Trigger as soon as scale drops below ~full size (not only < 0.7).
             if expand_space_flag < 2 and scale >= 0.85:
                 from babeldoc.format.pdf.document_il.utils.box_expand import (
-                    expand_axis_order,
+                    expand_axes_for_box,
                 )
                 from babeldoc.format.pdf.document_il.utils.box_expand import (
-                    prefer_expand_down,
+                    is_left_gutter_bar,
                 )
                 from babeldoc.format.pdf.document_il.utils.box_expand import (
                     try_expand_axis,
                 )
 
-                # OA p91 CALLOUT/PULL_QUOTE: deepen only — never right-expand
-                # into the wrap gutter (body ink at x≈246 looks "free").
+                # OA p91: design-column roles AND left-gutter geometry deepen
+                # only — mid-loop must not right-expand into the wrap gutter
+                # even when layout_intent role is missing/BODY.
                 design_col = is_design_column_role(paragraph)
-                prefer_down = design_col or prefer_expand_down(
-                    box,
-                    ocr_mode=ocr_mode,
-                    get_max_right=lambda b: self.get_max_right_space(b, page),
-                )
-                axes = expand_axis_order(prefer_down=prefer_down)
-                if design_col:
-                    axes = tuple(a for a in axes if a != "right") or ("down",)
+                if design_col or is_left_gutter_bar(box):
+                    axes = ("down",)
+                else:
+                    axes = expand_axes_for_box(
+                        box,
+                        ocr_mode=ocr_mode,
+                        get_max_right=lambda b: self.get_max_right_space(
+                            b, page
+                        ),
+                    )
                 axis = axes[min(expand_space_flag, len(axes) - 1)]
                 expanded_box = try_expand_axis(
                     box,
@@ -1770,8 +1773,13 @@ class Typesetting:
             # Late expansion fallback (legacy path) if early expand was skipped
             if scale < 0.7 and expand_space_flag < 2:
                 space_expanded = False
-                # Design-column callouts: deepen only (same as mid-loop).
-                design_col = is_design_column_role(paragraph)
+                # Design-column / left-gutter: deepen only (same as mid-loop).
+                from babeldoc.format.pdf.document_il.utils.box_expand import (
+                    is_left_gutter_bar,
+                )
+                design_col = is_design_column_role(paragraph) or is_left_gutter_bar(
+                    box
+                )
                 expand_down_first = ocr_mode or design_col
                 retry_scale = 1.0 if ocr_mode else initial_scale
                 if expand_space_flag == 0:

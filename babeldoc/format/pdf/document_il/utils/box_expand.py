@@ -125,11 +125,26 @@ def prefer_expand_down(
     return is_narrow_column(box) and is_right_blocked(box, get_max_right)
 
 
-def expand_axis_order(*, prefer_down: bool) -> tuple[Axis, Axis]:
+def expand_axis_order(*, prefer_down: bool) -> tuple[Axis, ...]:
     """Ordered expansion attempts (at most two axes)."""
     if prefer_down:
         return ("down", "right")
     return ("right", "down")
+
+
+def expand_axes_for_box(
+    box: Box,
+    *,
+    ocr_mode: bool,
+    get_max_right: GetMaxRight,
+) -> tuple[Axis, ...]:
+    """Axis order for mid-loop expand, with left-gutter deepen-only (OA p91)."""
+    if is_left_gutter_bar(box):
+        return ("down",)
+    prefer_down = prefer_expand_down(
+        box, ocr_mode=ocr_mode, get_max_right=get_max_right
+    )
+    return expand_axis_order(prefer_down=prefer_down)
 
 
 def try_expand_right(
