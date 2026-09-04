@@ -1397,7 +1397,7 @@ class Typesetting:
             )
             if widened is not None:
                 paragraph.box = widened
-                logger.info(
+                logger.debug(
                     "FULL_MEASURE layout_box → [%.0f,%.0f] debug_id=%s",
                     widened.x,
                     widened.x2,
@@ -1570,7 +1570,7 @@ class Typesetting:
                             drop_figure_zones=drop_figure_zones,
                         )
                     ):
-                        logger.info(
+                        logger.debug(
                             "CJK narrow-column → LayoutAttempt.FULL_MEASURE "
                             "(line budget; debug_id=%s)",
                             getattr(paragraph, "debug_id", None),
@@ -1643,7 +1643,7 @@ class Typesetting:
                                     else:
                                         # S3: DP plan rejected — place used different
                                         # capacity or inserted extra breaks.
-                                        logger.info(
+                                        logger.debug(
                                             "DP_REJECT reason=place_mismatch "
                                             "debug_id=%s breaks=%s opt_fit=%s "
                                             "n_units=%s scale=%.3f",
@@ -1937,7 +1937,7 @@ class Typesetting:
                 drop_figure_zones=drop_figure_zones,
             )
         ):
-            logger.info(
+            logger.debug(
                 "CJK narrow-column → LayoutAttempt.FULL_MEASURE "
                 "(floor; debug_id=%s)",
                 getattr(paragraph, "debug_id", None),
@@ -2972,6 +2972,7 @@ class Typesetting:
         max_iterations = getattr(
             self.translation_config, "post_layout_max_iterations", 3
         )
+        retypeset_fail_count = 0
         for _ in range(max_iterations):
             overlap_found = False
 
@@ -3045,9 +3046,11 @@ class Typesetting:
                             rendered_boxes[id(shrink)] = new_box
                     except Exception:
                         shrink.pdf_paragraph_composition = old_compositions
-                        logger.warning(
-                            f"Page {page.page_number}: 段落重新排版失败，"
-                            "已恢复原始 composition。"
+                        retypeset_fail_count += 1
+                        logger.debug(
+                            "Page %s: 段落重新排版失败，已恢复原始 composition。",
+                            page.page_number,
+                            exc_info=True,
                         )
 
             if not overlap_found:
@@ -3056,6 +3059,12 @@ class Typesetting:
             logger.warning(
                 f"Page {page.page_number}: 重叠修正达到最大迭代次数，"
                 "可能仍存在未解决的重叠。"
+            )
+        if retypeset_fail_count:
+            logger.warning(
+                "Page %s: 重叠修正中段落重新排版失败 %d 次（已恢复；细节见 DEBUG）",
+                page.page_number,
+                retypeset_fail_count,
             )
 
     def add_watermark(self, page: il_version_1.Page):
@@ -4344,7 +4353,7 @@ class Typesetting:
         # DP 模式下如果贪心插入了额外断行，说明 DP 的行宽估算与实际不匹配，
         # 返回 all_units_fit=False 以触发回退到纯贪心布局。
         if dp_break_mismatch:
-            logger.info(
+            logger.debug(
                 "DP_REJECT reason=extra_greedy_breaks "
                 "debug_id=%s n_placed=%s (S3 width loop mismatch)",
                 getattr(paragraph, "debug_id", None),
@@ -4465,9 +4474,9 @@ class Typesetting:
                     )
                     continue
                 font = get_font(font_id, paragraph.xobj_id)
-                # Log font info for all translated compositions (title detection + bold)
+                # Title/bold font probe — debug only (was WARNING; flooded dual logs)
                 if getattr(paragraph, "layout_label", None) == "title":
-                    logger.warning(
+                    logger.debug(
                         "typesetting: TITLE font_id=%s name=%s bold=%s size=%.1f text=%r",
                         font_id, getattr(font, "name", "?"),
                         getattr(font, "bold", None),
@@ -4475,7 +4484,7 @@ class Typesetting:
                         (composition.pdf_same_style_unicode_characters.unicode or "")[:40],
                     )
                 elif getattr(font, "bold", None):
-                    logger.warning(
+                    logger.debug(
                         "typesetting: BOLD font_id=%s name=%s size=%.1f text=%r",
                         font_id, getattr(font, "name", "?"),
                         style.font_size,
