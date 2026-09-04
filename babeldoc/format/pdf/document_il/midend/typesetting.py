@@ -4007,6 +4007,21 @@ class Typesetting:
                     )
                 )
             )
+            # CJK end-of-paragraph 孤行 (acceptance V3): never open a new line
+            # that would hold only 1–2 leftovers (OA p19 tip 「下去」). Mid-
+            # paragraph orphan_pull_back below skips the final units.
+            if (
+                self.is_cjk
+                and need_break
+                and not unit.is_space
+            ):
+                n_next = sum(
+                    1
+                    for u in typesetting_units[i:]
+                    if not getattr(u, "is_space", False)
+                )
+                if 0 < n_next <= 2:
+                    need_break = False
             # Units re-emitted on the next line when we pull illegal EOL tails
             # (open paren / mid-word / mid-number) back off the finished line.
             pull_to_next: list[TypesettingUnit] = []
