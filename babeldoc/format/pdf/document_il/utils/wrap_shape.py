@@ -449,6 +449,17 @@ def sanitize_wrap_shape_for_cjk(
                     for off, w in result
                 ]
 
+            # After deepen, a needle tip (<~3.5 CJK cells) strands end-of-
+            # paragraph leftovers as 双字孤行 (OA p19 「下去」) because V3
+            # orphan pull-back skips the final units. Hoist to penultimate.
+            if len(result) >= 2:
+                last_off, last_w = result[-1]
+                prev_w = float(result[-2][1])
+                last_w_f = float(last_w)
+                _SAFE_TIP = max(min_width * 1.75, 42.0)
+                if last_w_f < _SAFE_TIP and last_w_f < prev_w * 0.55:
+                    result[-1] = (last_off, prev_w)
+
     if unchanged:
         return wrap_shape
     return result

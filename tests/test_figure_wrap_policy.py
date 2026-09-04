@@ -740,8 +740,11 @@ class TestSanitizeCjkWrapShape:
         widths = [w for _o, w in out]
         # Cone ratios preserved (monotone); tip still a real tip pocket.
         assert widths == sorted(widths, reverse=True)
-        assert widths[-1] < widths[0] * 0.45
-        assert widths[-1] >= 24.0
+        # Deepen + safe-tip hoist: tip matches penultimate (≥42pt), still
+        # narrower than the cone head (not flattened to peak).
+        assert widths[-1] == widths[-2]
+        assert widths[-1] >= 42.0
+        assert widths[-1] < widths[0] * 0.70
         # Deepened: upper bands narrower than EN source so ZH needs more lines.
         assert widths[0] < 254.6 * 0.97
         # No deepen without content_width / when content fills.
