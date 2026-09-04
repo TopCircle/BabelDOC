@@ -19,6 +19,7 @@ from __future__ import annotations
 from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_paragraph
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 
 Box = il_version_1.Box
 PdfParagraph = il_version_1.PdfParagraph
@@ -79,10 +80,20 @@ def resolve_wrap_shape(
         if shape:
             return list(shape)
         role = getattr(intent, "role", None)
-        if role is LayoutIntentRole.WRAP_COLUMN:
+        mode = getattr(intent, "wrap_mode", None)
+        if role is LayoutIntentRole.WRAP_COLUMN or mode in (
+            WrapMode.LEFT_FIXED,
+            WrapMode.RIGHT_FIXED,
+        ):
             synth = shape_from_widths(_widths_from_paragraph(paragraph))
             if synth:
                 return synth
+            # Last resort: one pocket from design_box width (OA p59 BODY+photo).
+            design = getattr(intent, "design_box", None)
+            if design is not None and design.x is not None and design.x2 is not None:
+                w = float(design.x2) - float(design.x)
+                if w >= 8.0:
+                    return [(0.0, w)]
     # Extract failed / no intent: still pin when taper/geometry detection hits.
     if is_figure_wrap_paragraph(paragraph):
         return shape_from_widths(_widths_from_paragraph(paragraph))

@@ -278,6 +278,15 @@ class LayoutIntentExtractor:
             photo_mode = infer_wrap_mode_beside_photo(design_box, photo_boxes)
             if photo_mode is not None:
                 wrap_mode = photo_mode
+                # Without a shape the pin flag alone still uses zone residuals,
+                # and CJK can jump into a photo pocket (OA p59 first line).
+                if wrap_shape is None and design_box is not None:
+                    try:
+                        w = float(design_box.x2) - float(design_box.x)
+                    except (TypeError, ValueError):
+                        w = 0.0
+                    if w >= 8.0:
+                        wrap_shape = [(0.0, w)]
         expansion_policy, expansion_limits, overflow_policy = self._project_policy(role)
         is_chrome = role is LayoutIntentRole.CHROME
         # Chrome + debug stubs never participate in text_on_photo (coding-plan §1.4).
