@@ -10,11 +10,63 @@ Canonical examples (per-line widths):
   taper TRUE : [194, 174, 143, 67]      # OA p19 TAKING CHARGE
   taper FALSE: [467, 467, 258]          # EN body, one short last line
   taper FALSE: [180, 180, 175, 100]     # flat narrow figure column
+
+Decorative mid-caps titles (OA p19 ``t``/``ak``/``I``/``ng `` fragments,
+widths ~3–42pt) often share the same paragraph as the wrap body. Those
+slivers must be stripped before taper / pin geometry checks, otherwise
+detection fails and CJK falls back to a flat BODY pin on the photo.
 """
 
 from __future__ import annotations
 
 from babeldoc.format.pdf.document_il import il_version_1
+
+# Midcap / page-number fragments vs wrap body (OA p19: midcaps ≤42pt,
+# body peak ~259pt, taper tip ~64pt). Keep lines at least this fraction of
+# the peak (and never below an absolute floor that still admits taper tips).
+_BODY_WIDTH_PEAK_RATIO = 0.20
+_BODY_WIDTH_ABS_FLOOR = 48.0
+
+
+def body_line_widths(reference_widths) -> list[float]:
+    """Drop decorative midcap / page-number slivers; keep wrap-body widths.
+
+    Used by taper detection, wrap_shape synth, and line-box pin checks so
+    OA p19's TAKING CHARGE midcaps cannot poison the body taper.
+    """
+    if not reference_widths:
+        return []
+    usable = [
+        float(w) for w in reference_widths if w is not None and float(w) >= 12.0
+    ]
+    if not usable:
+        return []
+    peak = max(usable)
+    floor = max(_BODY_WIDTH_ABS_FLOOR, peak * _BODY_WIDTH_PEAK_RATIO)
+    return [w for w in usable if w >= floor]
+
+
+def body_line_spans(
+    lines: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    """Same midcap filter for ``(x, x2)`` line spans."""
+    if not lines:
+        return []
+    widths = [float(x2) - float(x) for x, x2 in lines]
+    kept_w = body_line_widths(widths)
+    if not kept_w:
+        return []
+    # Preserve order; match by width membership with multiplicity.
+    remaining = list(kept_w)
+    out: list[tuple[float, float]] = []
+    for (x, x2), w in zip(lines, widths, strict=False):
+        wf = float(w)
+        for i, kw in enumerate(remaining):
+            if abs(kw - wf) <= 0.05:
+                out.append((float(x), float(x2)))
+                del remaining[i]
+                break
+    return out
 
 
 def is_figure_wrap_taper(reference_widths) -> bool:
@@ -24,10 +76,10 @@ def is_figure_wrap_taper(reference_widths) -> bool:
     step >= 8pt and a clearly short tail. English body paragraphs have ONE
     short last line ([467,467,258]) and flat narrow columns stay flat
     ([180,180,175,100]) — neither is a taper.
+
+    Decorative midcap prefixes are stripped via ``body_line_widths`` first.
     """
-    if not reference_widths:
-        return False
-    usable = [float(w) for w in reference_widths if w is not None and float(w) >= 12.0]
+    usable = body_line_widths(reference_widths)
     if len(usable) < 3:
         return False
     distinct = len({round(w, 1) for w in usable})
@@ -74,6 +126,7 @@ def is_figure_wrap_paragraph(para: il_version_1.PdfParagraph) -> bool:
         if line.box.x is None or line.box.x2 is None:
             continue
         lines.append((line.box.x, line.box.x2))
+    lines = body_line_spans([(float(a), float(b)) for a, b in lines])
     if len(lines) < 2:
         return False
     xs = [float(l[0]) for l in lines]

@@ -11,6 +11,7 @@ from __future__ import annotations
 from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
 from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_paragraph
+from babeldoc.format.pdf.document_il.utils.figure_wrap import body_line_widths
 from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_taper
 from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
 
@@ -29,6 +30,22 @@ class TestIsFigureWrapTaper:
         assert is_figure_wrap_taper(None) is False
         assert is_figure_wrap_taper([]) is False
         assert is_figure_wrap_taper([194, 174]) is False
+
+    def test_midcap_prefix_stripped_oa_p19(self):
+        """OA p19 TAKING CHARGE midcaps (~3–42pt) must not kill body taper."""
+        polluted = [
+            7.1, 16.6, 2.7, 22.4, 8.2, 41.4,
+            258.6, 249.6, 231.6, 197.6, 177.6, 146.7, 122.6, 103.6, 63.7,
+            10.2,
+        ]
+        assert body_line_widths(polluted) == [
+            258.6, 249.6, 231.6, 197.6, 177.6, 146.7, 122.6, 103.6, 63.7,
+        ]
+        assert is_figure_wrap_taper(polluted) is True
+
+    def test_full_en_p19_body_taper(self):
+        body = [258.6, 249.6, 231.6, 197.6, 177.6, 146.7, 122.6, 103.6, 63.7]
+        assert is_figure_wrap_taper(body) is True
 
 
 class TestIsLayoutDebugStub:
@@ -107,6 +124,13 @@ class TestFigureWrapParagraph:
     def test_taper_via_reference_metrics(self):
         assert is_figure_wrap_paragraph(self._para(widths=[194, 174, 143, 67])) is True
         assert is_figure_wrap_paragraph(self._para(widths=[467, 467, 258])) is False
+
+    def test_taper_via_polluted_midcap_widths(self):
+        polluted = [
+            7.1, 16.6, 2.7, 22.4, 8.2, 41.4,
+            258.6, 249.6, 231.6, 197.6, 177.6, 146.7, 122.6, 103.6, 63.7,
+        ]
+        assert is_figure_wrap_paragraph(self._para(widths=polluted)) is True
 
     def test_line_box_fallback(self):
         taper_lines = [(375.9, 569.5), (395.5, 569.5), (426.9, 569.5)]

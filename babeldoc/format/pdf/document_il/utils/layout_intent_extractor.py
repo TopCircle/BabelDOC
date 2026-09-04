@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.utils.box_expand import is_callout_column
+from babeldoc.format.pdf.document_il.utils.figure_wrap import body_line_spans
 from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_paragraph
 from babeldoc.format.pdf.document_il.utils.layout_helper import calculate_box_iou
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_quote_block
@@ -243,12 +244,17 @@ class LayoutIntentExtractor:
         wrap_shape = None
         wrap_mode = WrapMode.NONE
         if role is LayoutIntentRole.WRAP_COLUMN:
-            if len(meta["lines"]) >= 2:
+            # Drop decorative midcap / page-number line boxes (OA p19 TAKING
+            # CHARGE fragments) so wrap_shape is the body taper only.
+            raw_line_boxes = [
+                (float(line.x), float(line.x2)) for line in meta["lines"]
+            ]
+            line_boxes = body_line_spans(raw_line_boxes) or raw_line_boxes
+            if len(line_boxes) >= 2:
                 wrap_shape = [
-                    (float(line.x - design_box.x), float(line.x2 - line.x))
-                    for line in meta["lines"]
+                    (float(x - design_box.x), float(x2 - x))
+                    for x, x2 in line_boxes
                 ]
-                line_boxes = [(float(line.x), float(line.x2)) for line in meta["lines"]]
                 wrap_mode = infer_wrap_mode_from_line_boxes(line_boxes)
                 # Ambiguous spread: photo on the right is LEFT_FIXED (OA p33).
                 # Fall back to historical right-pin only when no photo signal.

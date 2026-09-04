@@ -17,6 +17,7 @@ Replace matrix (flag on + active wrap):
 from __future__ import annotations
 
 from babeldoc.format.pdf.document_il import il_version_1
+from babeldoc.format.pdf.document_il.utils.figure_wrap import body_line_widths
 from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_paragraph
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
@@ -39,17 +40,14 @@ def shape_from_widths(
 
     ``left_offset`` is unused by ``typeset_wrap_line`` (right-pin uses width
     only); store 0.0 so the tuple shape matches extractor output.
+
+    Midcap / page-number slivers are dropped via ``body_line_widths`` so a
+    polluted OA p19 width list still synthesizes the body taper.
     """
-    if not widths:
+    cleaned = body_line_widths(widths)
+    if not cleaned:
         return None
-    out: list[tuple[float, float]] = []
-    for w in widths:
-        if w is None:
-            continue
-        wf = float(w)
-        if wf >= 8.0:
-            out.append((0.0, wf))
-    return out or None
+    return [(0.0, w) for w in cleaned]
 
 
 def _widths_from_paragraph(
