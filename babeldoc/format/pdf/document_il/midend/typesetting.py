@@ -4015,16 +4015,24 @@ class Typesetting:
             )
             # DP 断行：在指定位置强制断行；否则使用贪心判断
             # DP 断行仍需检查 hung punctuation 守卫
+            # Left-gutter / design-column: no hanging past measure (OA p91
+            # Chinese comma hung to x≈225 past design.x2≈211).
+            from babeldoc.format.pdf.document_il.utils.box_expand import (
+                is_left_gutter_bar,
+            )
+            allow_hung = unit.is_hung_punctuation and not (
+                is_design_column_role(paragraph) or is_left_gutter_bar(box)
+            )
             dp_break = (
                 break_points is not None
                 and i in break_points
-                and not unit.is_hung_punctuation
+                and not allow_hung
             )
             # Greedy wrap only when the unit cannot sit in the current pocket.
             # Skip English "2× open-paren" early wrap on CJK/OCR — that left
             # 「第11卷（」 alone on a line before 1989.
             need_break = dp_break or (
-                not unit.is_hung_punctuation and (
+                not allow_hung and (
                     (not fits_current)
                     or (
                         use_lookahead
