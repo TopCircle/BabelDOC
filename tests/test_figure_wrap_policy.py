@@ -104,6 +104,25 @@ class TestIsFigureWrapTaper:
         got59 = taper_prefix_widths(p59)
         assert got59 and got59[0] >= got59[-1]
         assert is_figure_wrap_taper(p59) is True
+        # Soft free-edge max must not lock onto the 89pt spike (needle tip).
+        assert got59[-1] >= 180.0, got59
+        assert got59 == [
+            237.5, 227.9, 219.8, 217.6, 214.6, 213.0, 210.0, 193.1,
+        ]
+
+    def test_soft_envelope_preserves_gentle_p59_hull(self):
+        """OA p59 zigzag envelope matches EN upper free-edge hull, not cummin."""
+        from babeldoc.format.pdf.document_il.utils.figure_wrap import (
+            _taper_envelope_from_peak,
+        )
+
+        zigzag = [
+            213.6, 227.6, 157.8, 204.6, 235.0, 218.8, 237.5, 212.1,
+            227.9, 206.9, 219.8, 204.3, 217.6, 179.2, 214.6, 198.3,
+            213.9, 191.6, 213.0, 89.1, 181.6, 210.0, 167.7, 193.1,
+        ]
+        # Hard cummin would tip at 89.1; soft max tips near EN ~193.
+        assert _taper_envelope_from_peak(body_line_widths(zigzag))[-1] >= 180.0
 
     def test_figure_wrap_tip_crumb_oa_p19(self):
         from babeldoc.format.pdf.document_il.utils.figure_wrap import (

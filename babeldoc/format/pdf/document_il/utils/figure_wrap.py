@@ -101,12 +101,19 @@ def _is_strict_taper(usable: list[float]) -> bool:
 
 
 def _taper_envelope_from_peak(usable: list[float]) -> list[float]:
-    """Peak-then-cumulative-min cone when clustered widths have no clean window.
+    """Soft free-edge max envelope when clustered widths have no clean window.
 
     Fallback-line clustering on OA p19/p59 injects mid-paragraph rises so no
     contiguous strict taper exists, yet WRAP_COLUMN geometry still detected a
     pin. Without this envelope, ``layout_intent`` keeps the raw zigzag
     ``wrap_shape`` and CJK left/right edges wander (p59 left spread ~120pt).
+
+    Plain peak→cummin locks onto transient narrow spikes (OA p59 ~89pt dip that
+    recovers to ~210), producing a steeper cone than EN's gentle free-edge
+    profile and needle tips (~63–86pt). Soften by taking a short look-ahead
+    **max** (free-edge upper hull per band) before cummin so left-pinned wraps
+    keep design.x≈102 with EN-like right clearance, while genuine unrecovered
+    tips (OA p19 ~52pt) still taper.
     """
     if len(usable) < 3:
         return []
@@ -114,9 +121,16 @@ def _taper_envelope_from_peak(usable: list[float]) -> list[float]:
     seq = usable[peak_i:]
     if len(seq) < 3:
         return []
-    out = [float(seq[0])]
-    for w in seq[1:]:
-        out.append(min(out[-1], float(w)))
+    # Look-ahead max band (i..i+2): free-edge upper hull, then cummin.
+    _LOOKAHEAD = 2
+    n = len(seq)
+    softened = [
+        max(float(w) for w in seq[i : min(i + 1 + _LOOKAHEAD, n)])
+        for i in range(n)
+    ]
+    out = [softened[0]]
+    for w in softened[1:]:
+        out.append(min(out[-1], w))
     # Collapse plateaus from rises that cummin flattened, keep a compact cone.
     compact = [out[0]]
     for w in out[1:]:
@@ -138,8 +152,8 @@ def taper_prefix_widths(reference_widths) -> list[float]:
     ``[213.8, 216.8, 218.3, 207.7…66]`` keeps the LEFT_FIXED cone.
 
     When clustering leaves *no* contiguous taper window (OA p19/p59 zigzag
-    shapes that still pass pin geometry), fall back to a peak→cummin envelope
-    so WRAP_COLUMN still gets a usable cone instead of the raw zigzag.
+    shapes that still pass pin geometry), fall back to a soft free-edge max
+    envelope so WRAP_COLUMN still gets a gentle cone instead of a needle.
     """
     usable = body_line_widths(reference_widths)
     if len(usable) < 3:

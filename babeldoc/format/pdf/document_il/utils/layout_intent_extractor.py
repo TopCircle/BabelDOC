@@ -283,7 +283,7 @@ class LayoutIntentExtractor:
                         wrap_shape = wrap_shape[start:end]
                         line_boxes = line_boxes[start:end]
                     else:
-                        # Peak→cummin envelope is not a contiguous subsequence.
+                        # Soft free-edge max envelope is not a contiguous subsequence.
                         wrap_shape = [(0.0, float(w)) for w in window]
                 wrap_mode = infer_wrap_mode_from_line_boxes(line_boxes)
                 # Ambiguous spread: photo on the right is LEFT_FIXED (OA p33).
