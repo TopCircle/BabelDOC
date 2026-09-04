@@ -88,19 +88,23 @@ def _is_strict_taper(usable: list[float]) -> bool:
 
 
 def taper_prefix_widths(reference_widths) -> list[float]:
-    """Longest body-width prefix that forms a valid figure-wrap taper.
+    """Longest contiguous body-width window that forms a figure-wrap taper.
 
-    Midcaps are stripped first; a non-monotonic clustered tail is dropped so
-    OA p19 ``[254.6…142.6, 51.6, 99.6, 63.0]`` still yields the real cone.
+    Midcaps are stripped first. A non-monotonic clustered *tail* is dropped so
+    OA p19 ``[254.6…142.6, 51.6, 99.6, 63.0]`` still yields the real cone. A
+    short rising/flat *head* is also skipped so OA p59
+    ``[213.8, 216.8, 218.3, 207.7…66]`` keeps the LEFT_FIXED cone.
     """
     usable = body_line_widths(reference_widths)
     if len(usable) < 3:
         return []
     best: list[float] = []
-    for end in range(3, len(usable) + 1):
-        prefix = usable[:end]
-        if _is_strict_taper(prefix):
-            best = prefix
+    n = len(usable)
+    for start in range(n - 2):
+        for end in range(start + 3, n + 1):
+            window = usable[start:end]
+            if _is_strict_taper(window) and len(window) >= len(best):
+                best = window
     return best
 
 

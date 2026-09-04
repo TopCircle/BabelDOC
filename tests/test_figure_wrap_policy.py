@@ -59,6 +59,17 @@ class TestIsFigureWrapTaper:
             TestFigureWrapParagraph._para(widths=noisy)
         ) is True
 
+    def test_rising_head_then_taper_oa_p59(self):
+        """OA p59 LEFT_FIXED: slight rise then cone must still count as taper."""
+        widths = [213.8, 216.8, 218.3, 207.7, 197.6, 172.6, 129.2, 66.0]
+        assert taper_prefix_widths(widths) == [
+            218.3, 207.7, 197.6, 172.6, 129.2, 66.0,
+        ]
+        assert is_figure_wrap_taper(widths) is True
+        assert is_figure_wrap_paragraph(
+            TestFigureWrapParagraph._para(widths=widths)
+        ) is True
+
 
 class TestIsLayoutDebugStub:
     @staticmethod

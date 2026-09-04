@@ -256,11 +256,24 @@ class LayoutIntentExtractor:
                     (float(x - design_box.x), float(x2 - x))
                     for x, x2 in line_boxes
                 ]
-                # Truncate non-monotonic clustered tails (OA p19 51.6/99.6/63).
-                prefix = taper_prefix_widths([w for _o, w in wrap_shape])
-                if prefix and len(prefix) < len(wrap_shape):
-                    wrap_shape = wrap_shape[: len(prefix)]
-                    line_boxes = line_boxes[: len(prefix)]
+                # Keep the longest contiguous taper window (drop p19 noisy
+                # tails and p59 rising heads).
+                widths = [w for _o, w in wrap_shape]
+                window = taper_prefix_widths(widths)
+                if window and len(window) < len(wrap_shape):
+                    # Locate first matching run of window widths.
+                    start = None
+                    for i in range(len(widths) - len(window) + 1):
+                        if all(
+                            abs(widths[i + j] - window[j]) <= 0.05
+                            for j in range(len(window))
+                        ):
+                            start = i
+                            break
+                    if start is not None:
+                        end = start + len(window)
+                        wrap_shape = wrap_shape[start:end]
+                        line_boxes = line_boxes[start:end]
                 wrap_mode = infer_wrap_mode_from_line_boxes(line_boxes)
                 # Ambiguous spread: photo on the right is LEFT_FIXED (OA p33).
                 # Fall back to historical right-pin only when no photo signal.
