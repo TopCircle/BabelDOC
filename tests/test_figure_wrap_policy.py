@@ -629,6 +629,60 @@ class TestSanitizeCjkWrapShape:
         assert out[1][1] == 193.6
 
 
+
+    def test_left_fixed_tip_hoist_oa_p59(self):
+        """OA p59 tip ~67pt underfills CJK; LEFT_FIXED hoists to penultimate."""
+        from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            sanitize_wrap_shape_for_cjk,
+        )
+
+        shape = [
+            (0.0, 221.6),
+            (0.0, 210.6),
+            (0.0, 201.7),
+            (0.0, 176.7),
+            (0.0, 133.6),
+            (0.0, 67.0),
+        ]
+        out = sanitize_wrap_shape_for_cjk(shape, wrap_mode=WrapMode.LEFT_FIXED)
+        assert out is not None
+        assert out[-1][1] == 133.6
+        assert out[-2][1] == 133.6
+        # Body of cone unchanged.
+        assert [w for _o, w in out[:-1]] == [221.6, 210.6, 201.7, 176.7, 133.6]
+
+    def test_right_fixed_tip_preserved_oa_p19(self):
+        """OA p19 RIGHT_FIXED cone tip stays sharp; LEFT_FIXED would hoist."""
+        from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            sanitize_wrap_shape_for_cjk,
+        )
+
+        # Tip 67pt is above the 25%-of-peak sliver cut (193.6*0.25≈48) so the
+        # generic sanitizer leaves it alone; only LEFT_FIXED tip-soften hoists.
+        shape = [(0.0, 193.6), (19.6, 174.0), (50.0, 143.0), (126.0, 67.0)]
+        right = sanitize_wrap_shape_for_cjk(shape, wrap_mode=WrapMode.RIGHT_FIXED)
+        assert right is shape
+        assert right[-1][1] == 67.0
+        left = sanitize_wrap_shape_for_cjk(shape, wrap_mode=WrapMode.LEFT_FIXED)
+        assert left is not shape
+        assert left[-1][1] == 143.0
+
+    def test_left_fixed_gentle_tip_not_hoisted(self):
+        """Tip above ratio*penultimate stays (no false widen)."""
+        from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+            sanitize_wrap_shape_for_cjk,
+        )
+
+        # 63.7 >= 103.6 * 0.55 → keep tip
+        shape = [(0.0, 103.6), (0.0, 63.7)]
+        out = sanitize_wrap_shape_for_cjk(shape, wrap_mode=WrapMode.LEFT_FIXED)
+        assert out is shape
+        assert out[-1][1] == 63.7
+
+
 class TestCjkWrapShapeSanitizeWiring:
     """CJK consumption path must sanitize before interval planning (p19)."""
 

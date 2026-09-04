@@ -3395,7 +3395,9 @@ class Typesetting:
             and intervals
             and len(intervals) == 1
         ):
-            cleaned = sanitize_wrap_shape_for_cjk(plan.wrap_shape)
+            cleaned = sanitize_wrap_shape_for_cjk(
+                plan.wrap_shape, wrap_mode=plan.wrap_mode
+            )
             if cleaned:
                 intervals = [
                     wrap_interval(

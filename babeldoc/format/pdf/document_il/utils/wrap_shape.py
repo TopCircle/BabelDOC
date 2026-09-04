@@ -297,6 +297,7 @@ def sanitize_wrap_shape_for_cjk(
     wrap_shape: list[tuple[float, float]] | None,
     *,
     min_width: float = CJK_WRAP_MIN_LINE_WIDTH,
+    wrap_mode: WrapMode | None = None,
 ) -> list[tuple[float, float]] | None:
     """Replace degenerate wrap pockets that CJK reflow would orphan.
 
@@ -308,8 +309,14 @@ def sanitize_wrap_shape_for_cjk(
     else the floor), so the surrounding text reflows onto a real line instead
     of creating an orphan.
 
-    Idempotent: when every entry is already >= ``min_width`` the input list is
-    returned unchanged.
+    LEFT_FIXED tip soften (OA p59): EN tip ~67pt matches Latin ("and
+    flexibility.") but CJK stacks two underfilled tip lines (~46/~68pt) because
+    the remaining clause needs ~100pt. Hoist the trailing tip up to the
+    penultimate width so one CJK line can fill. RIGHT_FIXED (OA p19) keeps the
+    sharp cone tip unchanged.
+
+    Idempotent: when every entry is already usable and no tip hoist applies,
+    the input list is returned unchanged.
     """
     if not wrap_shape:
         return wrap_shape
@@ -325,27 +332,50 @@ def sanitize_wrap_shape_for_cjk(
         return w >= sliver_cut
 
     if all(_usable(w) for w in widths):
-        return wrap_shape
-    valid = [w for w in widths if _usable(w)]
-    if valid:
-        max_valid = max(valid)
-    out: list[tuple[float, float]] = []
-    for i, (_off, w) in enumerate(wrap_shape):
-        w = float(w)
-        if _usable(w):
-            out.append((_off, w))
-            continue
-        replacement: float | None = None
-        for j in range(i + 1, len(widths)):
-            if _usable(widths[j]):
-                replacement = widths[j]
-                break
-        if replacement is None:
-            for j in range(i - 1, -1, -1):
+        result: list[tuple[float, float]] = wrap_shape
+        unchanged = True
+    else:
+        valid = [w for w in widths if _usable(w)]
+        if valid:
+            max_valid = max(valid)
+        result = []
+        for i, (_off, w) in enumerate(wrap_shape):
+            w = float(w)
+            if _usable(w):
+                result.append((_off, w))
+                continue
+            replacement: float | None = None
+            for j in range(i + 1, len(widths)):
                 if _usable(widths[j]):
                     replacement = widths[j]
                     break
-        if replacement is None:
-            replacement = max_valid
-        out.append((_off, replacement))
-    return out
+            if replacement is None:
+                for j in range(i - 1, -1, -1):
+                    if _usable(widths[j]):
+                        replacement = widths[j]
+                        break
+            if replacement is None:
+                replacement = max_valid
+            result.append((_off, replacement))
+        unchanged = False
+
+    # LEFT_FIXED only: hoist needle tip to penultimate (OA p59 tip underfill).
+    # Keep RIGHT_FIXED cone tips (OA p19 ~64pt) intact.
+    _TIP_ABS = 90.0
+    _TIP_RATIO = 0.55
+    if (
+        wrap_mode is WrapMode.LEFT_FIXED
+        and len(result) >= 2
+    ):
+        last_off, last_w = result[-1]
+        prev_w = float(result[-2][1])
+        last_w_f = float(last_w)
+        if last_w_f < _TIP_ABS and last_w_f < prev_w * _TIP_RATIO:
+            if unchanged:
+                result = list(wrap_shape)
+                unchanged = False
+            result[-1] = (last_off, prev_w)
+
+    if unchanged:
+        return wrap_shape
+    return result
