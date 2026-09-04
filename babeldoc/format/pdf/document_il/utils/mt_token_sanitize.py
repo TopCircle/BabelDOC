@@ -11,6 +11,9 @@ DeepLX/MT residual shapes (Day 6 dual):
 * Latin ligature/OCR shards left in ZH (``erent`` / ``ffdi.ff`` / isolated
   ``ff``/``di``) when design-PDF recovery did not fully rejoin before MT
 * Known catastrophic chapter-title mistranslations (Indirect→不正确)
+* Title-first running headers that glue a trailing ``第N章`` onto the
+  chapter name (OA ``成为行动派第三章``) while a separate opener already
+  paints ``第三章`` — strip the trailing marker from short headers
 
 Call :func:`normalize_translated_text` **once** per final text unit (paragraph
 unicode or composition), not a chain of ad-hoc scrubbers. Always run
@@ -114,6 +117,37 @@ def _scrub_latin_ligature_debris(text: str) -> str:
     return out
 
 
+
+# Title-first OA running header: "成为行动派第三章" / "爱与性第一章".
+# Chapter-first openers ("第八章直接推送") start with 第 and are left alone.
+_TITLE_FIRST_TRAILING_CHAPTER_RE = re.compile(
+    r"^(?P<title>.+?)(?P<chapter>第[零一二三四五六七八九十百两\d]{1,6}章)$"
+)
+# Running headers are short; body sentences must not lose a trailing 第N章.
+_TITLE_FIRST_HEADER_MAX_LEN = 28
+
+
+def _strip_title_first_trailing_chapter(text: str) -> str:
+    """Drop trailing ``第N章`` from short title-first running headers.
+
+    EN merges ``be an actIon Man Chapter 3`` into one 15pt header; MT yields
+    ``成为行动派第三章`` while the Trajan opener already typesets ``第三章``.
+    Stripping the duplicate marker restores the EN visual (title only in the
+    Microstyle band). Chapter-first strings and long body lines are unchanged.
+    """
+    if not text or len(text) > _TITLE_FIRST_HEADER_MAX_LEN:
+        return text
+    m = _TITLE_FIRST_TRAILING_CHAPTER_RE.match(text.strip())
+    if not m:
+        return text
+    title = m.group("title")
+    if not title or title.startswith("第"):
+        return text
+    if not any("\u4e00" <= ch <= "\u9fff" or ch.isalpha() for ch in title):
+        return text
+    return title
+
+
 def _fix_chapter_title_mistranslations(text: str) -> str:
     """Rewrite known chapter-title disasters (Indirect/Curl etc.)."""
     if not text:
@@ -135,6 +169,7 @@ def _scrub_mt_debris(text: str, *, keep_formula_placeholders: bool = False) -> s
     out = _ORPHAN_BRACE_BEFORE_CJK_RE.sub("", out)
     out = _scrub_latin_ligature_debris(out)
     out = _fix_chapter_title_mistranslations(out)
+    out = _strip_title_first_trailing_chapter(out)
     out = _MULTI_SPACE_RE.sub(" ", out)
     out = re.sub(r" +\n", "\n", out)
     out = re.sub(r"([^\s]) +([。．.!？?，,；;：:])", r"\1\2", out)

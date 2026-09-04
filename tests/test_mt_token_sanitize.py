@@ -139,3 +139,14 @@ class TestNormalizeTranslatedText:
         assert "〖b" not in out and "〖B" not in out
         assert "你好" in out and "世界" in out
         assert "b08" not in (normalize_translated_text("第八章〖b08〗直接推送") or "")
+
+
+def test_strip_title_first_trailing_chapter_running_header():
+    """OA title-first running header must not repeat 第N章 beside the opener."""
+    assert normalize_translated_text("成为行动派第三章") == "成为行动派"
+    assert normalize_translated_text("爱与性第一章") == "爱与性"
+    assert normalize_translated_text("个人责任第二章") == "个人责任"
+    # Chapter-first openers keep the marker.
+    assert normalize_translated_text("第八章直接推送") == "第八章直接推送"
+    assert normalize_translated_text("第五章性解剖学") == "第五章性解剖学"
+    assert normalize_translated_text("第十二章创造你自己的动作") == "第十二章创造你自己的动作"
