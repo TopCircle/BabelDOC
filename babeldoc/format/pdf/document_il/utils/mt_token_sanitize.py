@@ -110,12 +110,15 @@ def _scrub_cjk_embedded_english(text: str) -> str:
     # Specific OA repairs before generic letter strip (keep 前戏).
     out = text
     for bad, good in (
-        ("专门介绍e\xa0艺术", "专门介绍前戏艺术"),
-        ("专门介绍e 艺术", "专门介绍前戏艺术"),
-        ("专门介绍e艺术", "专门介绍前戏艺术"),
-        ("介绍e\xa0艺术", "介绍前戏艺术"),
-        ("介绍e 艺术", "介绍前戏艺术"),
-        ("介绍e艺术", "介绍前戏艺术"),
+        ('专门介绍e\xa0艺术', '专门介绍前戏艺术'),
+        ('专门介绍e 艺术', '专门介绍前戏艺术'),
+        ('专门介绍e艺术', '专门介绍前戏艺术'),
+        ('介绍e\xa0艺术', '介绍前戏艺术'),
+        ('介绍e 艺术', '介绍前戏艺术'),
+        ('介绍e艺术', '介绍前戏艺术'),
+        ('就功课', '就有功课'),
+        ('这里机缘', '这里有机缘'),
+        ('这里机会', '这里有机会'),
     ):
         out = out.replace(bad, good)
     out = _YOU_HAVE_NOUN_RE.sub("有", out)

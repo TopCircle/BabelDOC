@@ -158,3 +158,5 @@ def test_scrub_cjk_embedded_english_oa_crumbs():
     nbsp = "专门介绍e" + "\xa0" + "艺术"
     assert normalize_translated_text(nbsp) == "专门介绍前戏艺术"
     assert normalize_translated_text("介绍e艺术") == "介绍前戏艺术"
+    assert normalize_translated_text("你很快就功课来发现") == "你很快就有功课来发现"
+    assert "有机缘" in (normalize_translated_text("所以这里机缘让你") or "")
