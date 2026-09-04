@@ -470,6 +470,9 @@ def sanitize_wrap_shape_for_cjk(
             result[-1] = (last_off, prev_w)
 
     # RIGHT_FIXED only: deepen under-consumed cones (OA p19 tip empty bands).
+    # Uniform scale crushed upper amplitude (EN 258→64 flattened to ~137pt
+    # head). Keep the cone head near EN peak; put most compression on the
+    # taper tail so tip bands still get consumed.
     if (
         wrap_mode is WrapMode.RIGHT_FIXED
         and content_width is not None
@@ -480,20 +483,39 @@ def sanitize_wrap_shape_for_cjk(
         total = sum(cur_widths)
         if total > 0 and content_width < total * CJK_WRAP_UNDERCONSUME_RATIO:
             target = min(total, content_width * CJK_WRAP_DEEPEN_HEADROOM)
-            scale = target / total
+            n = len(cur_widths)
+            peak = cur_widths[0]
+            # Head scale floor: preserve ≥75% of EN peak (OA p19 upper amp).
+            head_scale = max(target / total, 0.75)
+            # Solve tip scale so Σ w_i * lerp(head_scale, tip_scale, i) ≈ target.
+            # width_i' = w_i * (head_scale + (tip_scale - head_scale) * t_i)
+            # Σ w_i*hs + (ts-hs)*Σ w_i*t_i = target
+            weights_t = [
+                cur_widths[i] * (i / (n - 1)) for i in range(n)
+            ]
+            sum_w = total
+            sum_wt = sum(weights_t)
+            if sum_wt > 1e-6:
+                tip_scale = (
+                    (target - head_scale * sum_w) / sum_wt + head_scale
+                )
+            else:
+                tip_scale = head_scale
+            # Tip must stay reachable (≥ min_width after scale).
             tip = cur_widths[-1]
-            # Keep tip at absolute CJK floor only — raising the floor here
-            # re-blocks tip bands (OA p19 needs ~36–52pt tips reachable).
-            if tip > 0 and tip * scale < min_width:
-                scale = min_width / tip
-            if scale < 0.97:
+            if tip > 0 and tip * tip_scale < min_width:
+                tip_scale = min_width / tip
+            # Only deepen when tip side actually compresses.
+            if tip_scale < 0.97 or head_scale < 0.97:
                 if unchanged:
                     result = list(wrap_shape)
                     unchanged = False
-                result = [
-                    (off, max(min_width, float(w) * scale))
-                    for off, w in result
-                ]
+                new_rows: list[tuple[float, float]] = []
+                for i, (off, w) in enumerate(result):
+                    t = i / (n - 1)
+                    s = head_scale + (tip_scale - head_scale) * t
+                    new_rows.append((off, max(min_width, float(w) * s)))
+                result = new_rows
 
             # After deepen, a needle tip (<~3.5 CJK cells) strands end-of-
             # paragraph leftovers as 双字孤行 (OA p19 「下去」) because V3
@@ -503,7 +525,9 @@ def sanitize_wrap_shape_for_cjk(
                 prev_w = float(result[-2][1])
                 last_w_f = float(last_w)
                 _SAFE_TIP = max(min_width * 1.75, 42.0)
-                if last_w_f < _SAFE_TIP and last_w_f < prev_w * 0.55:
+                if last_w_f <= min_width + 0.5 or (
+                    last_w_f < _SAFE_TIP and last_w_f < prev_w * 0.60
+                ):
                     result[-1] = (last_off, prev_w)
 
     if unchanged:

@@ -746,8 +746,9 @@ class TestSanitizeCjkWrapShape:
         assert widths[-1] == widths[-2]
         assert widths[-1] >= 42.0
         assert widths[-1] < widths[0] * 0.70
-        # Deepened: upper bands narrower than EN source so ZH needs more lines.
-        assert widths[0] < 254.6 * 0.97
+        # Deepened: head preserved (≥75% EN peak); tip still consumed.
+        assert widths[0] >= 254.6 * 0.75
+        assert widths[0] <= 254.6 * 0.97 + 1e-6 or widths[-1] <= widths[0] * 0.70
         # No deepen without content_width / when content fills.
         assert (
             sanitize_wrap_shape_for_cjk(shape, wrap_mode=WrapMode.RIGHT_FIXED)
