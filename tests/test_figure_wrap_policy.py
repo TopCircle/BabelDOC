@@ -59,6 +59,15 @@ class TestIsFigureWrapTaper:
             TestFigureWrapParagraph._para(widths=noisy)
         ) is True
 
+    def test_gentle_multi_step_taper_oa_p59(self):
+        """Gentle cone with sub-8pt intermediate steps must still count."""
+        widths = [
+            231.8, 235.0, 237.5, 227.9, 223.4, 220.4,
+            214.6, 213.9, 213.0, 210.0, 193.1,
+        ]
+        assert is_figure_wrap_taper(widths) is True
+        assert taper_prefix_widths(widths)[0] == 237.5
+
     def test_p59_taper_without_tip_lines(self):
         """When tip lines are missing from reference_metrics, absolute drop still counts."""
         widths = [213.8, 216.8, 218.3, 207.7, 197.6, 172.7]

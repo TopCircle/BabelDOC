@@ -75,15 +75,24 @@ def body_line_spans(
 
 
 def _is_strict_taper(usable: list[float]) -> bool:
-    """True when *usable* alone is a 3+ line monotonic figure-wrap taper."""
+    """True when *usable* alone is a 3+ line monotonic figure-wrap taper.
+
+    Every step must be non-increasing. At least two steps must drop by
+    ``_TAPER_MIN_STEP`` so a single short last line ([467,467,258]) stays
+    false, while a gentle cone with small intermediate steps (OA p59
+    ``[237.5, 227.9, 223.4…193]``) still counts.
+    """
     if len(usable) < 3:
         return False
     distinct = len({round(w, 1) for w in usable})
     if distinct < 3:
         return False
-    for a, b in zip(usable, usable[1:], strict=False):
-        if b > a - _TAPER_MIN_STEP:
-            return False
+    drops = [a - b for a, b in zip(usable, usable[1:], strict=False)]
+    # Allow tiny float noise upward; anything larger is not a taper.
+    if any(d < -0.05 for d in drops):
+        return False
+    if sum(1 for d in drops if d >= _TAPER_MIN_STEP) < 2:
+        return False
     peak = max(usable)
     # Prefer a clearly short tip; also accept a solid absolute drop when the
     # clustered tip lines were dropped from reference_metrics (OA p59 often
