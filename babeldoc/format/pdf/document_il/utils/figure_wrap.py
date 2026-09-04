@@ -100,6 +100,35 @@ def _is_strict_taper(usable: list[float]) -> bool:
     return usable[-1] < peak * 0.80 or (peak - usable[-1]) >= 40.0
 
 
+def _taper_envelope_from_peak(usable: list[float]) -> list[float]:
+    """Peak-then-cumulative-min cone when clustered widths have no clean window.
+
+    Fallback-line clustering on OA p19/p59 injects mid-paragraph rises so no
+    contiguous strict taper exists, yet WRAP_COLUMN geometry still detected a
+    pin. Without this envelope, ``layout_intent`` keeps the raw zigzag
+    ``wrap_shape`` and CJK left/right edges wander (p59 left spread ~120pt).
+    """
+    if len(usable) < 3:
+        return []
+    peak_i = max(range(len(usable)), key=lambda i: usable[i])
+    seq = usable[peak_i:]
+    if len(seq) < 3:
+        return []
+    out = [float(seq[0])]
+    for w in seq[1:]:
+        out.append(min(out[-1], float(w)))
+    # Collapse plateaus from rises that cummin flattened, keep a compact cone.
+    compact = [out[0]]
+    for w in out[1:]:
+        if abs(w - compact[-1]) >= 1.0:
+            compact.append(w)
+    if _is_strict_taper(compact):
+        return compact
+    if _is_strict_taper(out):
+        return out
+    return []
+
+
 def taper_prefix_widths(reference_widths) -> list[float]:
     """Longest contiguous body-width window that forms a figure-wrap taper.
 
@@ -107,6 +136,10 @@ def taper_prefix_widths(reference_widths) -> list[float]:
     OA p19 ``[254.6…142.6, 51.6, 99.6, 63.0]`` still yields the real cone. A
     short rising/flat *head* is also skipped so OA p59
     ``[213.8, 216.8, 218.3, 207.7…66]`` keeps the LEFT_FIXED cone.
+
+    When clustering leaves *no* contiguous taper window (OA p19/p59 zigzag
+    shapes that still pass pin geometry), fall back to a peak→cummin envelope
+    so WRAP_COLUMN still gets a usable cone instead of the raw zigzag.
     """
     usable = body_line_widths(reference_widths)
     if len(usable) < 3:
@@ -118,7 +151,44 @@ def taper_prefix_widths(reference_widths) -> list[float]:
             window = usable[start:end]
             if _is_strict_taper(window) and len(window) >= len(best):
                 best = window
-    return best
+    if best:
+        return best
+    return _taper_envelope_from_peak(usable)
+
+
+def is_figure_wrap_tip_crumb(
+    para: il_version_1.PdfParagraph,
+    *,
+    page_width: float = 612.0,
+) -> bool:
+    """True for OA p19 cone-tip leftovers (``，使``) that must not typeset.
+
+    LayoutParser labels tip word fragments ``fallback_line``; after MT they
+    become 1–4 char pull-quote-shaped crumbs right-pinned at the wrap tip.
+    """
+    if page_width <= 0:
+        return False
+    label = (getattr(para, "layout_label", None) or "").strip().lower()
+    uni = (getattr(para, "unicode", None) or "").strip()
+    box = getattr(para, "box", None)
+    if box is None or box.x is None or box.x2 is None:
+        return False
+    width = float(box.x2) - float(box.x)
+    right_gap = float(page_width) - float(box.x2)
+    # Right-pinned tip sliver (OA p19: x≈502..570, w≈67).
+    if width > 90.0:
+        return False
+    if right_gap > float(page_width) * 0.12:
+        return False
+    # Stub class-name unicode is not a crumb.
+    if uni.lower() in {"fallback_line", "plain text", "title"}:
+        return False
+    # Short translated tip (「，使」) or already-blanked tip with fallback_line label.
+    if uni and len(uni) <= 4:
+        return label == "fallback_line" or width <= 40.0
+    if not uni and label == "fallback_line":
+        return True
+    return False
 
 
 def is_figure_wrap_taper(reference_widths) -> bool:

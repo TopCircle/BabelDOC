@@ -86,6 +86,46 @@ class TestIsFigureWrapTaper:
         ) is True
 
 
+    def test_zigzag_envelope_fallback_oa_p19_p59(self):
+        """Clustered zigzag widths (no contiguous window) still yield a cone."""
+        p19 = [
+            252.7, 244.1, 227.8, 239.3, 202.3, 228.3, 133.7, 193.6,
+            155.6, 174.1, 114.5, 142.6, 51.6, 86.6, 99.6,
+        ]
+        got = taper_prefix_widths(p19)
+        assert got, "envelope fallback must return a cone"
+        assert got[0] >= got[-1]
+        assert is_figure_wrap_taper(p19) is True
+        p59 = [
+            213.6, 227.6, 157.8, 204.6, 235.0, 218.8, 237.5, 212.1,
+            227.9, 206.9, 219.8, 204.3, 217.6, 179.2, 214.6, 198.3,
+            213.9, 191.6, 213.0, 89.1, 181.6, 210.0, 167.7, 193.1,
+        ]
+        got59 = taper_prefix_widths(p59)
+        assert got59 and got59[0] >= got59[-1]
+        assert is_figure_wrap_taper(p59) is True
+
+    def test_figure_wrap_tip_crumb_oa_p19(self):
+        from babeldoc.format.pdf.document_il.utils.figure_wrap import (
+            is_figure_wrap_tip_crumb,
+        )
+
+        tip = il_version_1.PdfParagraph(
+            unicode="，使",
+            layout_label="fallback_line",
+            box=il_version_1.Box(x=502.4, y=228.0, x2=569.5, y2=240.0),
+            pdf_paragraph_composition=[],
+        )
+        assert is_figure_wrap_tip_crumb(tip, page_width=612.0) is True
+        body = il_version_1.PdfParagraph(
+            unicode="为了完成本书中的练习，你需要掌控你的性生活",
+            layout_label="plain text",
+            box=il_version_1.Box(x=315.0, y=198.0, x2=570.0, y2=330.0),
+            pdf_paragraph_composition=[],
+        )
+        assert is_figure_wrap_tip_crumb(body, page_width=612.0) is False
+
+
 class TestIsLayoutDebugStub:
     @staticmethod
     def _stub(unicode_: str):

@@ -57,6 +57,7 @@ from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import layout_intent_wrap_enabled
 from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
 from babeldoc.format.pdf.document_il.utils.wrap_shape import sanitize_wrap_shape_for_cjk
+from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_tip_crumb
 from babeldoc.format.pdf.document_il.utils.wrap_shape import (
     should_fallback_residual_to_block,
 )
@@ -1243,6 +1244,17 @@ class Typesetting:
                 all_paragraphs.append(paragraph)
                 unit_count = 0
                 try:
+                    # OA p19 cone-tip crumbs (layout_label=fallback_line, ≤4 chars
+                    # right-pinned) — blank them so MT leftovers like 「，使」vanish.
+                    try:
+                        pw = float(page.cropbox.box.x2 - page.cropbox.box.x)
+                    except Exception:
+                        pw = 612.0
+                    if is_figure_wrap_tip_crumb(paragraph, page_width=pw):
+                        paragraph.pdf_paragraph_composition = []
+                        paragraph.unicode = ""
+                        paragraph.optimal_scale = 1.0
+                        continue
                     typesetting_units = self.create_typesetting_units(paragraph, fonts)
                     unit_count = len(typesetting_units)
                     for unit in typesetting_units:
@@ -3055,6 +3067,14 @@ class Typesetting:
             il_version_1.PdfFont | dict[str, il_version_1.PdfFont],
         ],
     ):
+        try:
+            pw = float(page.cropbox.box.x2 - page.cropbox.box.x)
+        except Exception:
+            pw = 612.0
+        if is_figure_wrap_tip_crumb(paragraph, page_width=pw):
+            paragraph.pdf_paragraph_composition = []
+            paragraph.unicode = ""
+            return
         # 诊断：记录原版段落的行结构
         rm = getattr(paragraph, 'reference_metrics', None)
         if rm:

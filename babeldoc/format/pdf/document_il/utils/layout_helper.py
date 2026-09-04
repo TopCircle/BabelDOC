@@ -2042,6 +2042,15 @@ def is_quote_block(
     if is_figure_wrap_paragraph(para):
         return False
 
+    # 规则 1.6: right-pinned wrap tip slivers (OA p19 ``，使`` / N55YU at
+    # x≈502..570) are cone leftovers, not centered pull-quotes.
+    from babeldoc.format.pdf.document_il.utils.figure_wrap import (
+        is_figure_wrap_tip_crumb,
+    )
+
+    if is_figure_wrap_tip_crumb(para, page_width=page_width):
+        return False
+
     # 规则 2: 左侧有明显缩进（须显著大于正文页边距）
     left_indent = box.x
     indent_ratio = left_indent / page_width

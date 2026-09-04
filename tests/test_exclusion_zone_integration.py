@@ -78,6 +78,14 @@ class TestIsQuoteBlock:
         ]
         assert is_quote_block(para, page_width=612) is False
 
+    def test_oa_p19_tip_crumb_not_quote(self):
+        """OA p19 cone-tip fallback_line crumb must not become a pull-quote."""
+        para = self._make_para(502.4, 228.0, 569.5, 240.0)
+        para.unicode = "，使"
+        para.layout_label = "fallback_line"
+        assert is_quote_block(para, page_width=612) is False
+
+
     def test_full_width_not_quote(self):
         """全宽段落不是 Quote。"""
         para = self._make_para(0, 400, 612, 500)
