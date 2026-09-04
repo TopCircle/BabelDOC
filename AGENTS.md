@@ -13,5 +13,5 @@
 
 - Primary consumer: PDFMathTranslate-next + DeepLX (non-LLM) dual PDFs.
 - Prefer dual visual quality and reproducible midend behavior over large refactors.
-- **Current work queue:** `docs/oa-dual-quality-wave-0.6.4.69.md` (index: `docs/PLAN-INDEX.md`).
-- Long-horizon architecture: `docs/architecture-optimization-plan.md`. Do **not** schedule from its stale “next L4” line — L4 is conditional in the wave doc (B4d).
+- **Current status / residuals:** `docs/CURRENT-STATUS.md` (index: `docs/PLAN-INDEX.md`).
+- Historical wave / layout-first plans live under `docs/archive/` — do **not** schedule from them.

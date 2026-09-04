@@ -258,7 +258,7 @@ Resume only with a **new plan** (not more one-off glue / dict / pull-back patche
 
 **Post-freeze “next three” (S1 / S1.1 / S2 / S3) = complete.** L3 shipped.
 
-**Current operator queue (2026-08-13):** [`docs/oa-dual-quality-wave-0.6.4.69.md`](../../docs/oa-dual-quality-wave-0.6.4.69.md) — not “start L4”. L4 only if wave B4d’s skip_report proves a chapter-title header skip. Index: [`docs/PLAN-INDEX.md`](../../docs/PLAN-INDEX.md).
+**Current operator status (2026-09-04):** [`docs/CURRENT-STATUS.md`](../../docs/CURRENT-STATUS.md). Historical wave doc archived. Index: [`docs/PLAN-INDEX.md`](../../docs/PLAN-INDEX.md).
 
 ### Operator sample: All Tied Up (record only — 2026-07-20)
 

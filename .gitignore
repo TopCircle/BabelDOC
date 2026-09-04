@@ -55,3 +55,6 @@ temp.jpg
 # EN block references are deterministic original-PDF geometry (acceptance goldens).
 # Machine-specific digests (synth_layout.json) stay ignored.
 !tests/repro/golden/en_p*.json
+
+# Local OA dual / agent scratch (never commit)
+tmp/
