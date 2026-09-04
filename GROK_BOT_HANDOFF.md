@@ -31,8 +31,8 @@
 - push 前按 AGENTS.md 做质量门；push 后同步更新仓库根目录 GROK_BOT_HANDOFF.md 与 docs/CURRENT-STATUS.md。
 
 【当前快照 — 2026-09-04】
-- HEAD：0c3d179 · 版本 0.6.4.93 · 分支 main（已与 origin 同步）。
-- 关键 wrap P0（p19 锥形 / p59 左钉 / p91 引文 vs wrap）已基本清完；日志噪音已收（84981ed）；仓库卫生与文档入口已整理（0c3d179）。
+- HEAD：470d3b9 · 版本 0.6.4.93 · 分支 main（已与 origin 同步）。
+- 关键 wrap P0（p19 锥形 / p59 左钉 / p91 引文 vs wrap）已基本清完；日志噪音已收（84981ed）；仓库卫生与文档入口已整理（470d3b9）。
 - Circle 正在用 0.6.4.93 整本 dual 验证；tmp/ 已清空，需重新生成输出。
 
 【已完成要点】
