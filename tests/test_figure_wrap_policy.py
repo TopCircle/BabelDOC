@@ -51,8 +51,9 @@ class TestIsFigureWrapTaper:
     def test_noisy_tail_prefix_oa_p19(self):
         """Fallback-clustered tail 51.6→99.6 must not kill the body cone."""
         noisy = [254.6, 246.0, 228.3, 193.6, 174.1, 142.6, 51.6, 99.6, 63.0]
+        # Prefer envelope tip [...99.6, 63] over strict crumb tip 51.6.
         assert taper_prefix_widths(noisy) == [
-            254.6, 246.0, 228.3, 193.6, 174.1, 142.6, 51.6,
+            254.6, 246.0, 228.3, 193.6, 174.1, 142.6, 99.6, 63.0,
         ]
         assert is_figure_wrap_taper(noisy) is True
         assert is_figure_wrap_paragraph(
@@ -837,3 +838,30 @@ class TestCjkWrapShapeSanitizeWiring:
         assert x2 - x1 >= 24.0
         # Non-mutating: the intent's shape stays the raw extractor output.
         assert para.layout_intent.wrap_shape[2][1] == 0.972
+
+
+class TestResolveWrapShapeConeRecovery:
+    def test_flat_body_photo_synth_recovers_metrics_cone(self):
+        """BODY+RIGHT_FIXED flat design_w pocket must not hide OA p19 cone."""
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+        from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
+
+        noisy = [254.6, 246.0, 228.3, 193.6, 174.1, 142.6, 51.6, 99.6, 63.0]
+        para = TestFigureWrapParagraph._para(widths=noisy)
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.BODY,
+            design_box=il_version_1.Box(x=375.9, y=200.0, x2=572.7, y2=330.0),
+            top_inset=0.0,
+            bottom_inset=0.0,
+            wrap_shape=[(0.0, 196.8)],
+            wrap_mode=WrapMode.RIGHT_FIXED,
+        )
+        got = resolve_wrap_shape(para)
+        assert got is not None
+        widths = [w for _o, w in got]
+        assert len(widths) >= 6
+        assert widths[0] >= 250.0
+        assert widths[-1] <= 70.0
+        assert widths[0] - widths[-1] >= 150.0

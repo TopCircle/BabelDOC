@@ -52,6 +52,20 @@ def shape_from_widths(
     return [(0.0, w) for w in cleaned]
 
 
+
+def _shape_lacks_cone_amplitude(
+    shape: list[tuple[float, float]] | None,
+    *,
+    min_lines: int = 3,
+    min_drop: float = 40.0,
+) -> bool:
+    """True when shape is a flat synth pocket, not an EN figure-wrap cone."""
+    if not shape or len(shape) < min_lines:
+        return True
+    widths = [float(w) for _o, w in shape]
+    return max(widths) - min(widths) < min_drop
+
+
 def _widths_from_paragraph(
     paragraph: PdfParagraph,
 ) -> list[float] | None:
@@ -77,6 +91,7 @@ def resolve_wrap_shape(
     intent = getattr(paragraph, "layout_intent", None)
     if intent is not None:
         shape = getattr(intent, "wrap_shape", None)
+        mode = getattr(intent, "wrap_mode", None)
         if shape:
             # Re-clean zigzag intent shapes (envelope) so CJK pin path never
             # consumes clustered rises even if extract stored the raw list.
@@ -86,10 +101,23 @@ def resolve_wrap_shape(
                 len(cleaned) != len(widths)
                 or any(abs(cleaned[i] - widths[i]) > 0.05 for i in range(len(cleaned)))
             ):
-                return [(0.0, float(w)) for w in cleaned]
-            return list(shape)
+                resolved: list[tuple[float, float]] = [
+                    (0.0, float(w)) for w in cleaned
+                ]
+            else:
+                resolved = list(shape)
+            # BODY+photo flat synth [(0, design_w)] loses OA p19 cone while
+            # reference_metrics still hold [254…63]. Prefer the metrics cone.
+            if _shape_lacks_cone_amplitude(resolved) and mode in (
+                WrapMode.LEFT_FIXED,
+                WrapMode.RIGHT_FIXED,
+                None,
+            ):
+                synth = shape_from_widths(_widths_from_paragraph(paragraph))
+                if synth and not _shape_lacks_cone_amplitude(synth):
+                    return synth
+            return resolved
         role = getattr(intent, "role", None)
-        mode = getattr(intent, "wrap_mode", None)
         if role is LayoutIntentRole.WRAP_COLUMN or mode in (
             WrapMode.LEFT_FIXED,
             WrapMode.RIGHT_FIXED,
@@ -135,6 +163,24 @@ def get_active_wrap(
         design = getattr(paragraph, "box", None)
     if design is None or design.x2 is None:
         return None
+    # Grow free edge so wrap_shape heads (OA p19 ~254) are not clamped by a
+    # short design_box (~194) left over from flat BODY+photo synth.
+    try:
+        max_w = max(float(w) for _o, w in shape)
+        dx = float(design.x)
+        dx2 = float(design.x2)
+    except (TypeError, ValueError):
+        return design, shape
+    mode = None
+    if intent is not None:
+        mode = getattr(intent, "wrap_mode", None)
+    if max_w > (dx2 - dx) + 1.0:
+        from babeldoc.format.pdf.document_il.il_version_1 import Box as _Box
+
+        if mode is WrapMode.RIGHT_FIXED:
+            design = _Box(x=dx2 - max_w, y=design.y, x2=dx2, y2=design.y2)
+        elif mode is WrapMode.LEFT_FIXED:
+            design = _Box(x=dx, y=design.y, x2=dx + max_w, y2=design.y2)
     return design, shape
 
 

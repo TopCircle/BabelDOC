@@ -166,6 +166,22 @@ def taper_prefix_widths(reference_widths) -> list[float]:
             if _is_strict_taper(window) and len(window) >= len(best):
                 best = window
     if best:
+        # OA p19 clustered tip crumb: strict window ends at ~51.6 then usable
+        # recovers to 99.6→63. Prefer soft envelope tip so CJK does not lock
+        # onto the crumb needle (prior: prefer [...99.6, 63.0] over ...51.6).
+        end = None
+        for i in range(len(usable) - len(best) + 1):
+            if all(abs(usable[i + j] - best[j]) <= 0.05 for j in range(len(best))):
+                end = i + len(best)
+                break
+        if (
+            end is not None
+            and end < len(usable)
+            and float(usable[end]) > float(best[-1]) + 8.0
+        ):
+            env = _taper_envelope_from_peak(usable)
+            if env and len(env) >= 3 and float(env[-1]) >= 24.0:
+                return env
         return best
     return _taper_envelope_from_peak(usable)
 
