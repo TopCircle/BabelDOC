@@ -6,6 +6,7 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.utils.box_expand import NARROW_COLUMN_MAX_WIDTH
 from babeldoc.format.pdf.document_il.utils.box_expand import content_expand_ratio_need
 from babeldoc.format.pdf.document_il.utils.box_expand import expand_axis_order
+from babeldoc.format.pdf.document_il.utils.box_expand import is_left_gutter_bar
 from babeldoc.format.pdf.document_il.utils.box_expand import is_narrow_column
 from babeldoc.format.pdf.document_il.utils.box_expand import is_right_blocked
 from babeldoc.format.pdf.document_il.utils.box_expand import prefer_expand_down
@@ -251,3 +252,13 @@ def test_left_gutter_callout_does_not_right_expand_into_wrap():
     assert out.x == bar.x
     assert out.x2 == bar.x2  # deepen only — never widen into wrap
     assert out.y < bar.y
+
+
+def test_left_gutter_prefers_expand_down():
+    """OA p91: wrap ink at x≈246 must not make mid-loop choose right first."""
+    bar = _box(x=54.18, y=375.99, x2=211.635, y2=450.99)
+    assert is_left_gutter_bar(bar)
+    assert prefer_expand_down(
+        bar, ocr_mode=False, get_max_right=lambda b: 246.0
+    )
+    assert expand_axis_order(prefer_down=True)[0] == "down"

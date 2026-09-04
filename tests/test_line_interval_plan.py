@@ -19,6 +19,12 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     allows_full_measure_escalation,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    clamp_callout_measure_to_design,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    is_design_column_role,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     attempt_chain_for_paragraph,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
@@ -333,6 +339,58 @@ class TestAttemptChainCallout:
             Box(x=101.87, y=228.59, x2=341.48, y2=393.24),
         )
         assert allows_full_measure_escalation(quote, is_cjk=True) is False
+
+
+class TestCalloutMeasureClamp:
+    """OA p91: callout measure stays at design_box.x2, not wrap-gutter inflate."""
+
+    def test_clamp_inflated_layout_box_to_design_x2(self):
+        design = Box(x=54.18, y=375.99, x2=211.635, y2=450.99)
+        inflated = Box(x=54.18, y=348.0, x2=241.0, y2=450.99)
+        para = PdfParagraph(box=inflated, pdf_paragraph_composition=[], unicode="x")
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.CALLOUT,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+        )
+        assert is_design_column_role(para) is True
+        out = clamp_callout_measure_to_design(para, inflated)
+        assert out.x2 == pytest.approx(211.635)
+        assert out.y == inflated.y  # deepen preserved
+        assert out.x == inflated.x
+
+    def test_resolve_plan_intervals_use_design_x2(self):
+        design = Box(x=54.18, y=375.99, x2=211.635, y2=450.99)
+        inflated = Box(x=54.18, y=348.0, x2=241.0, y2=450.99)
+        para = PdfParagraph(box=inflated, pdf_paragraph_composition=[], unicode="x")
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.CALLOUT,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+        )
+        plan = resolve_line_interval_plan(
+            para, inflated, attempt=LayoutAttempt.PRIMARY, wrap_enabled=False
+        )
+        assert plan.layout_box.x2 == pytest.approx(211.635)
+        iv = plan.intervals_at(380.0, 400.0, line_idx=0)
+        assert len(iv) == 1
+        assert iv[0][1] == pytest.approx(211.635)
+
+    def test_body_not_clamped(self):
+        design = Box(x=102.0, y=100.0, x2=500.0, y2=400.0)
+        wide = Box(x=102.0, y=100.0, x2=560.0, y2=400.0)
+        para = PdfParagraph(box=wide, pdf_paragraph_composition=[], unicode="x")
+        para.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.BODY,
+            design_box=design,
+            top_inset=0.0,
+            bottom_inset=0.0,
+        )
+        assert is_design_column_role(para) is False
+        out = clamp_callout_measure_to_design(para, wide)
+        assert out.x2 == pytest.approx(560.0)
 
 
 class TestQuoteResidualCap:

@@ -61,6 +61,13 @@ def is_callout_column(box: Box | None) -> bool:
     return 0 < w < CALLOUT_COLUMN_MAX_WIDTH
 
 
+def is_left_gutter_bar(box: Box | None) -> bool:
+    """OA p91 left-gutter red bar (x≈54, width ≲180pt)."""
+    if box is None or box.x is None:
+        return False
+    return float(box.x) < 80.0 and 0.0 < box_width(box) < LEFT_GUTTER_BAR_MAX_WIDTH
+
+
 def is_short_heading_text(text: str | None, layout_label: str | None) -> bool:
     t = (text or "").strip()
     label = (layout_label or "").lower()
@@ -111,6 +118,9 @@ def prefer_expand_down(
     # Ultra-narrow right strips almost always sit against a figure — prefer
     # down even if a few points remain to the right (PR-D).
     if is_ultra_narrow_column(box):
+        return True
+    # Left-gutter callout: wrap-column ink looks free on the right (OA p91).
+    if is_left_gutter_bar(box):
         return True
     return is_narrow_column(box) and is_right_blocked(box, get_max_right)
 
@@ -238,11 +248,7 @@ def try_pre_expand_for_content(
     # Do NOT treat every width<230 box as a callout — short body/subheads would
     # force full-page left expand and destroy dual layout.
     right_blocked = is_right_blocked(box, get_max_right)
-    left_gutter_bar = (
-        box.x is not None
-        and float(box.x) < 80.0
-        and 0.0 < box_width(box) < LEFT_GUTTER_BAR_MAX_WIDTH
-    )
+    left_gutter_bar = is_left_gutter_bar(box)
     force_callout = is_ultra_narrow_column(box) or (
         is_callout_column(box) and right_blocked
     )

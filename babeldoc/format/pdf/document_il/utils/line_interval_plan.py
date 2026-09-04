@@ -29,6 +29,48 @@ CapFn = Callable[
 ]
 
 
+
+def is_design_column_role(paragraph: PdfParagraph | None) -> bool:
+    """True for CALLOUT / PULL_QUOTE — stay in design_box measure."""
+    if paragraph is None:
+        return False
+    intent = getattr(paragraph, "layout_intent", None)
+    if intent is None:
+        return False
+    role = getattr(intent, "role", None)
+    return role in (LayoutIntentRole.CALLOUT, LayoutIntentRole.PULL_QUOTE)
+
+
+def clamp_callout_measure_to_design(
+    paragraph: PdfParagraph | None,
+    layout_box: Box | None,
+) -> Box | None:
+    """Clamp callout/pull-quote measure to ``design_box.x2``.
+
+    Mid-loop / late right-expand can widen ``paragraph.box`` into the wrap
+    gutter when body ink at x≈246 looks free (OA p91 last quote line →
+    x≈234 while design.x2≈211). Exclusion still tracks design_box, so
+    glyphs must not use the inflated measure.
+    """
+    if layout_box is None or layout_box.x2 is None:
+        return layout_box
+    if not is_design_column_role(paragraph):
+        return layout_box
+    intent = getattr(paragraph, "layout_intent", None)
+    design = getattr(intent, "design_box", None) if intent is not None else None
+    if design is None or design.x2 is None:
+        return layout_box
+    design_x2 = float(design.x2)
+    if float(layout_box.x2) <= design_x2 + 0.5:
+        return layout_box
+    return Box(
+        x=layout_box.x,
+        y=layout_box.y,
+        x2=design_x2,
+        y2=layout_box.y2,
+    )
+
+
 class LayoutAttempt(str, Enum):
     """Overflow chain: rebuild plan, do not recurse wrap/drop flags forever."""
 
@@ -426,6 +468,9 @@ def resolve_line_interval_plan(
     FULL_MEASURE ignores wrap and figure carving (full layout_box width).
     PRIMARY uses wrap pin when active, else zones + reference cap.
     """
+    # OA p91: callout/pull-quote measure is design_box, not an inflated
+    # paragraph.box from mid-loop right-expand into the wrap gutter.
+    layout_box = clamp_callout_measure_to_design(paragraph, layout_box)
     active = get_active_wrap(
         paragraph,
         enabled=wrap_enabled and attempt is LayoutAttempt.PRIMARY,

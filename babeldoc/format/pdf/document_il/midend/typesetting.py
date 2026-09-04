@@ -37,6 +37,8 @@ from babeldoc.format.pdf.document_il.utils.layout_helper import box_to_tuple
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import LayoutAttempt
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     allows_full_measure_escalation,
+    clamp_callout_measure_to_design,
+    is_design_column_role,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     attempt_chain_for_paragraph,
@@ -1517,6 +1519,11 @@ class Typesetting:
         box = self._pre_expand_narrow_box(
             box, paragraph, page, typesetting_units, apply_layout=apply_layout
         )
+        clamped = clamp_callout_measure_to_design(paragraph, box)
+        if clamped is not None and clamped is not box:
+            box = clamped
+            if apply_layout:
+                paragraph.box = clamped
 
         # OCR dual-layer: claim free width/height before crushing scale so ZH
         # can use the white-fill region instead of shrinking into the top band.
@@ -1725,14 +1732,18 @@ class Typesetting:
                     try_expand_axis,
                 )
 
-                axes = expand_axis_order(
-                    prefer_down=prefer_expand_down(
-                        box,
-                        ocr_mode=ocr_mode,
-                        get_max_right=lambda b: self.get_max_right_space(b, page),
-                    )
+                # OA p91 CALLOUT/PULL_QUOTE: deepen only — never right-expand
+                # into the wrap gutter (body ink at x≈246 looks "free").
+                design_col = is_design_column_role(paragraph)
+                prefer_down = design_col or prefer_expand_down(
+                    box,
+                    ocr_mode=ocr_mode,
+                    get_max_right=lambda b: self.get_max_right_space(b, page),
                 )
-                axis = axes[expand_space_flag]
+                axes = expand_axis_order(prefer_down=prefer_down)
+                if design_col:
+                    axes = tuple(a for a in axes if a != "right") or ("down",)
+                axis = axes[min(expand_space_flag, len(axes) - 1)]
                 expanded_box = try_expand_axis(
                     box,
                     axis,
@@ -1741,6 +1752,9 @@ class Typesetting:
                 )
                 expand_space_flag += 1
                 if expanded_box is not None:
+                    expanded_box = clamp_callout_measure_to_design(
+                        paragraph, expanded_box
+                    )
                     box = expanded_box
                     if apply_layout:
                         paragraph.box = expanded_box
@@ -1756,7 +1770,9 @@ class Typesetting:
             # Late expansion fallback (legacy path) if early expand was skipped
             if scale < 0.7 and expand_space_flag < 2:
                 space_expanded = False
-                expand_down_first = ocr_mode
+                # Design-column callouts: deepen only (same as mid-loop).
+                design_col = is_design_column_role(paragraph)
+                expand_down_first = ocr_mode or design_col
                 retry_scale = 1.0 if ocr_mode else initial_scale
                 if expand_space_flag == 0:
                     if expand_down_first:
@@ -1774,15 +1790,19 @@ class Typesetting:
                             pass
                     else:
                         try:
-                            max_x = self.get_max_right_space(box, page) - 5
-                            if max_x > box.x2 + 1:
-                                expanded_box = Box(
-                                    x=box.x, y=box.y, x2=max_x, y2=box.y2
-                                )
-                                box = expanded_box
-                                if apply_layout:
-                                    paragraph.box = expanded_box
-                                space_expanded = True
+                            if not design_col:
+                                max_x = self.get_max_right_space(box, page) - 5
+                                if max_x > box.x2 + 1:
+                                    expanded_box = Box(
+                                        x=box.x, y=box.y, x2=max_x, y2=box.y2
+                                    )
+                                    expanded_box = clamp_callout_measure_to_design(
+                                        paragraph, expanded_box
+                                    )
+                                    box = expanded_box
+                                    if apply_layout:
+                                        paragraph.box = expanded_box
+                                    space_expanded = True
                         except Exception:
                             pass
                     expand_space_flag = 1
@@ -1792,15 +1812,19 @@ class Typesetting:
                 elif expand_space_flag == 1:
                     if expand_down_first:
                         try:
-                            max_x = self.get_max_right_space(box, page) - 5
-                            if max_x > box.x2 + 1:
-                                expanded_box = Box(
-                                    x=box.x, y=box.y, x2=max_x, y2=box.y2
-                                )
-                                box = expanded_box
-                                if apply_layout:
-                                    paragraph.box = expanded_box
-                                space_expanded = True
+                            if not design_col:
+                                max_x = self.get_max_right_space(box, page) - 5
+                                if max_x > box.x2 + 1:
+                                    expanded_box = Box(
+                                        x=box.x, y=box.y, x2=max_x, y2=box.y2
+                                    )
+                                    expanded_box = clamp_callout_measure_to_design(
+                                        paragraph, expanded_box
+                                    )
+                                    box = expanded_box
+                                    if apply_layout:
+                                        paragraph.box = expanded_box
+                                    space_expanded = True
                         except Exception:
                             pass
                     else:
