@@ -111,6 +111,27 @@ class TestWrapInterval:
         assert x2 <= 200 + 1e-6
         assert x1 < x2
 
+    def test_right_fixed_not_crushed_by_residual_layout(self):
+        """OA p19: residual-narrow layout must not flatten upper cone bands."""
+        design = Box(x=375.9, y=0, x2=569.5, y2=100)
+        # Residual strip beside figure (~137pt) — old intersect crushed the cone.
+        layout = Box(x=433.0, y=0, x2=569.5, y2=100)
+        shape = [(0.0, 254.6), (0.0, 246.0), (0.0, 51.6)]
+        x1, x2 = wrap_interval(
+            design, shape, 0, WrapMode.RIGHT_FIXED, layout_box=layout
+        )
+        assert abs(x2 - 569.5) < 1e-6
+        assert abs((x2 - x1) - 254.6) < 1e-6
+        assert x1 < 433.0  # free edge past residual left
+
+    def test_right_fixed_shape_wider_than_design(self):
+        """Cone head may exceed design_box width (EN 258 vs design ~194)."""
+        design = Box(x=375.9, y=0, x2=569.5, y2=100)
+        shape = [(0.0, 254.6)]
+        x1, x2 = wrap_interval(design, shape, 0, WrapMode.RIGHT_FIXED)
+        assert abs(x2 - 569.5) < 1e-6
+        assert abs((x2 - x1) - 254.6) < 1e-6
+
 
 class TestResolvePlan:
     def _para_left_fixed(self):

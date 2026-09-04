@@ -171,45 +171,65 @@ def wrap_interval(
 ) -> tuple[float, float]:
     """Single wrap pocket for one line under LEFT_FIXED or RIGHT_FIXED.
 
-    Always clamps into ``intersect(design_box, layout_box)`` and never lets
-    requested width push the free edge past the pin (prevents x→page-edge
-    drift when width > available).
+    Pin edge comes from ``design_box``. Free edge follows ``wrap_shape``
+    width (EN-measured clearance around the figure) and is **not** crushed
+    into ``intersect(design_box, layout_box)`` — that residual strip flattened
+    OA p19 RIGHT_FIXED upper bands to ~137pt while EN runs 258→64.
+
+    ``layout_box`` may expand the free side outward only. Pathological
+    widths (>> design span) still clamp so a bad shape cannot drift to the
+    page edge.
     """
     if design_box is None:
         raise TypeError("wrap_interval requires design_box")
     if wrap_mode is WrapMode.NONE:
         raise ValueError("wrap_interval requires LEFT_FIXED or RIGHT_FIXED")
 
-    # Intersection of design + layout (layout may expand; pin still from design)
-    lo_x = float(design_box.x)
-    lo_x2 = float(design_box.x2)
+    pin_x = float(design_box.x)
+    pin_x2 = float(design_box.x2)
+    design_w = pin_x2 - pin_x
+    if design_w <= 0:
+        return pin_x, pin_x2
+
+    # Expand-only free-edge floor/ceil from layout (never residual-shrink).
+    free_floor = pin_x
+    free_ceil = pin_x2
     if layout_box is not None and layout_box.x is not None:
-        lo_x = max(lo_x, float(layout_box.x))
-        lo_x2 = min(lo_x2, float(layout_box.x2))
-    if lo_x2 <= lo_x:
-        lo_x, lo_x2 = float(design_box.x), float(design_box.x2)
+        lx = float(layout_box.x)
+        lx2 = float(layout_box.x2)
+        free_floor = min(free_floor, lx)
+        free_ceil = max(free_ceil, lx2)
 
     if not wrap_shape:
-        return lo_x, lo_x2
+        if wrap_mode is WrapMode.RIGHT_FIXED:
+            return free_floor, pin_x2
+        return pin_x, free_ceil
 
     _off, width = shape_entry(wrap_shape, line_idx)
     width = float(width)
     if width < 8.0:
         width = 8.0
-    avail = lo_x2 - lo_x
-    if width > avail:
-        width = avail
+    # Runaway guard (OA tests: 500pt into a ~100pt design). Cone heads that
+    # modestly exceed design_w (p19 254 vs design ~194) must pass.
+    if width > max(design_w * 2.0, 400.0):
+        width = design_w
 
     if wrap_mode is WrapMode.RIGHT_FIXED:
-        x2 = lo_x2
+        x2 = pin_x2
         x1 = x2 - width
+        # Allow free edge left of design.x when shape is wider; never raise
+        # x1 due to a residual-narrow layout_box.
+        if x1 > free_floor and width <= design_w + 0.5:
+            # within design: keep numerical floor
+            x1 = max(x1, free_floor)
     else:  # LEFT_FIXED
-        x1 = lo_x
+        x1 = pin_x
         x2 = x1 + width
+        if x2 < free_ceil and width <= design_w + 0.5:
+            x2 = min(x2, free_ceil)
 
-    # Final clamp (numerical safety)
-    x1 = max(lo_x, min(x1, lo_x2))
-    x2 = max(x1, min(x2, lo_x2))
+    if x2 <= x1:
+        return pin_x, pin_x2
     return x1, x2
 
 
@@ -276,19 +296,31 @@ class LineIntervalPlan:
                 layout_box=box,
             )
             # Carve quote/callout exclusion inside the pin (OA p91 red bar).
-            # Without this, wrap short-circuits zone residuals and CJK paints
-            # over the left callout.
+            # Figures must NOT carve here: rectangular figure residuals flatten
+            # RIGHT_FIXED cones to a ~137pt strip (OA p19). Wrap_shape already
+            # encodes EN clearance around the photo.
             zone_index = self.zone_index
             if (
                 zone_index
                 and getattr(zone_index, "zones", None)
                 and y_top > y_bottom
             ):
-                carved = zone_index.get_intervals_at(
-                    y_bottom, y_top, pocket[0], pocket[1]
+                from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
+                    ZONE_QUOTE,
+                    ExclusionZoneIndex,
                 )
-                if carved:
-                    return list(carved)
+
+                quote_zones = [
+                    z
+                    for z in zone_index.zones
+                    if getattr(z, "kind", None) == ZONE_QUOTE
+                ]
+                if quote_zones:
+                    carved = ExclusionZoneIndex(quote_zones).get_intervals_at(
+                        y_bottom, y_top, pocket[0], pocket[1]
+                    )
+                    if carved:
+                        return list(carved)
             return [pocket]
 
         # PRIMARY: zone residual + optional reference cap
