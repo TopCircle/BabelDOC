@@ -257,6 +257,12 @@ def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZ
             bottom_margin=adaptive_bottom,
         )
         left_margin, top_margin, right_margin, bottom_margin = margins
+        # Left-gutter callout (OA p91 x≈54): EN body wrap starts ~35pt past
+        # quote ink (211→246). Adaptive pad (~12pt) leaves CJK body at ~223,
+        # which collides when the bar also right-expands toward wrap ink.
+        if box.x is not None and float(box.x) < 80.0:
+            en_like_gap = max(float(font_size) * 2.2, page_width * 0.055)
+            right_margin = max(right_margin, en_like_gap)
 
         exclusion_box = Box(
             x=box.x - left_margin,

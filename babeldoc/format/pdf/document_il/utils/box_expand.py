@@ -22,6 +22,9 @@ NARROW_COLUMN_MAX_WIDTH = 150.0
 ULTRA_NARROW_COLUMN_MAX_WIDTH = 100.0
 # Design callout column after line-merge (OA TAKING CHARGE ~180–220pt).
 CALLOUT_COLUMN_MAX_WIDTH = 230.0
+# Left-gutter red bar (OA p91 ~157pt). Wider left-edge strips (~200pt body)
+# must still be allowed to right-expand.
+LEFT_GUTTER_BAR_MAX_WIDTH = 180.0
 
 # Content-width / box-width thresholds before we attempt expansion.
 RATIO_SHORT_HEADING = 1.15
@@ -235,22 +238,32 @@ def try_pre_expand_for_content(
     # Do NOT treat every width<230 box as a callout — short body/subheads would
     # force full-page left expand and destroy dual layout.
     right_blocked = is_right_blocked(box, get_max_right)
+    left_gutter_bar = (
+        box.x is not None
+        and float(box.x) < 80.0
+        and 0.0 < box_width(box) < LEFT_GUTTER_BAR_MAX_WIDTH
+    )
     force_callout = is_ultra_narrow_column(box) or (
         is_callout_column(box) and right_blocked
     )
     # Even callouts: no expand when content already fits the box.
     if content_w <= box_w + 1.0:
         return None
-    if not force_callout and content_w < box_w * ratio_need:
+    if not force_callout and not left_gutter_bar and content_w < box_w * ratio_need:
         return None
 
+    # OA p91 left-gutter red bar (x≈54): body wrap ink at x≈246 looks like free
+    # right space, so right_blocked is false and the general path would widen
+    # the bar into the wrap pocket while exclusion still tracks design_box.
+    # Deepen only — never right-expand into the wrap column.
+    if left_gutter_bar:
+        return try_expand_down(box, get_max_bottom)
+
     # Ultra-narrow / right-blocked callout column: modest left, then right, down.
-    # Left-gutter bars (OA p91 x≈54) must not walk off the painted box.
     if force_callout:
-        left_gutter = box.x is not None and float(box.x) < 80.0
         left = (
             try_expand_left(box, get_max_left, need_width=content_w)
-            if get_max_left is not None and not left_gutter
+            if get_max_left is not None
             else None
         )
         work = left if left is not None else box

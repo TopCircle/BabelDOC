@@ -228,3 +228,26 @@ def test_left_gutter_callout_expands_down_not_off_bar():
     assert out.x == bar.x
     assert out.y < bar.y
     assert out.x2 == bar.x2
+
+
+def test_left_gutter_callout_does_not_right_expand_into_wrap():
+    """OA p91: body wrap ink at x≈246 must not pull the red bar right.
+
+    get_max_right often returns the wrap column left edge. Right-expanding
+    the callout into that gap paints CJK over the carved body residual while
+    the exclusion zone still tracks design_box (~223).
+    """
+    bar = _box(x=54.18, y=375.99, x2=211.635, y2=450.99)
+    out = try_pre_expand_for_content(
+        bar,
+        content_w=400.0,
+        text="这本书主要是教你新技巧" * 3,
+        layout_label="plain text",
+        get_max_right=lambda b: 246.0,  # EN wrap left looks "free"
+        get_max_bottom=lambda b: 348.0,
+        get_max_left=lambda b: 5.0,
+    )
+    assert out is not None
+    assert out.x == bar.x
+    assert out.x2 == bar.x2  # deepen only — never widen into wrap
+    assert out.y < bar.y

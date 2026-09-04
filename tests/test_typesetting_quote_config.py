@@ -148,8 +148,9 @@ class TestQuoteZoneConfigFromTranslationConfig:
         assert len(quote_zones) == 1
         z = quote_zones[0].box
         # Zone must track the red-bar design width, not the inflated box.
+        # Left-gutter EN-like body gap (~35pt) → x2≈246, still << inflated 494.
         assert z.x2 <= 250.0
-        assert z.x2 >= 211.0
+        assert z.x2 >= 240.0, z.x2
         assert z.x <= 54.18 + 1.0
 
     def test_p91_body_available_x_starts_after_callout_zone(self):
@@ -180,5 +181,5 @@ class TestQuoteZoneConfigFromTranslationConfig:
         zones = ts._build_page_exclusion_zones(page)
         index = ExclusionZoneIndex(zones)
         x1, x2 = index.get_available_x_range(380.0, 400.0, 102.18, 572.57)
-        assert x1 >= 211.0
+        assert x1 >= 240.0, x1
         assert x2 == 572.57
