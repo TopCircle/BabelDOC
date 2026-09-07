@@ -160,3 +160,28 @@ def test_scrub_cjk_embedded_english_oa_crumbs():
     assert normalize_translated_text("介绍e艺术") == "介绍前戏艺术"
     assert normalize_translated_text("你很快就功课来发现") == "你很快就有功课来发现"
     assert "有机缘" in (normalize_translated_text("所以这里机缘让你") or "")
+
+
+def test_scrub_s30_latin_crumb_classes():
+    """Systematic OA Latin crumb classes (leftover / hyphen / debug / ligature)."""
+    assert "enjoyable" not in (normalize_translated_text("更好、更 enjoyable 的角度") or "")
+    assert "愉悦" in (normalize_translated_text("更好、更 enjoyable 的角度") or "")
+    assert "inandout" not in (normalize_translated_text("inandout 行为就足以") or "")
+    assert "抽插" in (normalize_translated_text("inandout 行为就足以") or "")
+    assert "vag" not in (normalize_translated_text("被阴蒂和 vag 夹住") or "").lower()
+    assert "阴道" in (normalize_translated_text("被阴蒂和 vag 夹住") or "")
+    assert "her" not in (normalize_translated_text("抚摸 her 阴蒂") or "").lower().split()
+    assert "传教士" in (normalize_translated_text("第一门 missi onary）") or "")
+    assert "间接" in (normalize_translated_text("专为 indi rect 阴蒂") or "")
+    assert "手指" in (normalize_translated_text("插入她的 ngers，卷曲") or "")
+    assert "从后方全进" in (
+        normalize_translated_text("直接卷曲 all infro mbeh ind),") or ""
+    )
+    dirty = (
+        '她的臀瓣 # commented: was causing face "cheeks" (p33) → '
+        '臀瓣 false positive; rely on "cheek 之间'
+    )
+    clean = normalize_translated_text(dirty) or ""
+    assert "commented" not in clean.lower()
+    assert "false positive" not in clean.lower()
+    assert "臀瓣" in clean

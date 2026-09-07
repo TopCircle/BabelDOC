@@ -23,7 +23,7 @@
 - DeepLX / glossary / 直播配置：~/.config/pdf2zh/（deeplx_v3.2.1-production-final.py、glossaries、oa-deeplx.toml）；生产同步 Nextcloud → /opt/workspace/config。DeepLX post_clean 不在 BabelDOC git 内。
 - 相关仓：TopCircle/deeplx（Worker https://deeplx.topcircle.workers.dev）、TopCircle/xdpl-proxy。
 - OA dual 脚本：~/.config/pdf2zh/run_oa_dual.sh（默认安静；OA_DEBUG=1 才开 --debug）。源书 OneDrive Gabrielle Moore / Orgasmic Addiction.pdf。输出 tmp/oa_w1_deeplx/（已 gitignore）。
-- 验证 dual（Circle 整本 0.6.4.93 · 118 页）：OneDrive …/Orgasmic Addiction.no_watermark.zh-CN.dual.pdf ；**ZH 左 | EN 右**（mid=612）。
+- 验证 dual（Circle 整本 0.6.4.94 · 118 页）：OneDrive …/Orgasmic Addiction.no_watermark.zh-CN.dual.pdf ；**ZH 左 | EN 右**（mid=612）。
 - 直播 toml：~/.config/pdf2zh/oa-deeplx.toml → debug = false。
 
 【代码约束】
@@ -32,29 +32,25 @@
 - push 前按 AGENTS.md 做质量门；push 后同步更新仓库根目录 GROK_BOT_HANDOFF.md 与 docs/CURRENT-STATUS.md。
 
 【当前快照 — 2026-09-07】
-- HEAD：以 main 尖端为准 · 版本 0.6.4.93。
-- s29 复核：Circle OneDrive dual 0.6.4.93（118 页）已扫；p19 锥形 / p59 左钉≈101.87 / p91 body≈245 仍好；无新 wrap P0。
-- 证据：tmp/oa_w1_deeplx/s29-verify/ + s29-residual-scan.json（本地，gitignore）。
+- HEAD：以 main 尖端为准 · 版本 0.6.4.94（s30 Latin crumb scrub）。
+- s29 wrap P0 仍成立；s30 已修 Latin 碎屑根因（glossary 调试注释泄漏 / 硬断行连字符 / 残留英文 / sanitize+post_clean），抽页验证进行中。
+- 证据：tmp/oa_w1_deeplx/s29-residual-scan.json；DeepLX live `…norm_en_cache_v6` + glossary `butt cheeks` 已恢复。
 
 【已完成要点】
-- p19 RIGHT_FIXED：锥深/头宽/断崖软化（约 0.6.4.81–86）；s29 tip 宽平台≈132。
-- p59 LEFT_FIXED：envelope 软化、左齐 flush、tip hoist；左缘 ≈101.9（实测 101.87）。
-- p91：左栏 callout 只加深不右扩、body 侧 pad、measure 钳 design_box.x2（约 0.6.4.87–91）；body x0≈245。
-- MT 碎屑：sanitize + DeepLX post_clean（介绍e→前戏艺术；you/就功课→有功课）；全书中后段仍有残留。
-- 日志：重叠重排失败改为每页一条汇总；探测类 INFO/WARNING → DEBUG；run_oa_dual 默认无 debug。
+- p19/p59/p91 wrap P0：见 0.6.4.81–91；s29 复核仍好。
+- s30 MT 碎屑根因：`butt # cheeks` 伪注释仍匹配 `butt cheeks`→注释进 PDF；load_glossary 拒绝键内 `#`；normalize 拼 hard hyphen；post_clean+mt_token_sanitize 系统性 scrub。
+- 日志安静化：0.6.4.93。
 
-【遗留（非阻塞 backlog · s29）】
-1. P1 MT：Latin 碎屑（enjoyable/inandout/vag/her/Stim/missi…）；焦点 wrap 页基本干净。
+【遗留（非阻塞 backlog）】
+1. P1：抽页确认 s30 碎屑清干净；花体标题撕碎仍可能需表面补丁。
 2. P1 潜伏：重叠修正 retypeset 失败根因（静态不可见）。
-3. P2：短末行仍在 — p59「度。」、p91「世界。」、pdf117「内容」。
-4. P2 可选：p19 tip-band 再加深（碎屑风险）。
-5. P2 装饰：PR-B1i 红色策略（源设计，非排版缺陷）。
-6. 备注：wide_on_photo 矩形 bbox 易误报绕排走廊，勿当 P0。
+3. P2：短末行 — p59「度。」、p91「世界。」、pdf117「内容」。
+4. P2 可选：p19 tip-band 再加深；PR-B1i 红色；wide_on_photo bbox 勿当 P0。
 
 【接手后立刻做】
-1. git -C /Users/yun/workspace/BabelDOC fetch && git log -1 --oneline；核对 const 版本 0.6.4.93。
-2. 读 docs/CURRENT-STATUS.md 与本文件，对齐遗留列表。
-3. 下一刀优先：系统性 MT 碎屑清理（glossary/post_clean）或 retypeset 根因；不要重开已确认的 wrap P0。
+1. git -C /Users/yun/workspace/BabelDOC fetch && git log -1 --oneline；核对 0.6.4.94。
+2. 读 docs/CURRENT-STATUS.md；确认 s30 抽页结果。
+3. 下一刀：未清碎屑补丁 / retypeset 根因；不要重开 wrap P0。
 4. 不要从 archive 旧计划擅自开大波次。
 
 【交接自检】

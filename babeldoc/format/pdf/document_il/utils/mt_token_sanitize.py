@@ -10,7 +10,9 @@ DeepLX/MT residual shapes (Day 6 dual):
   paths — e.g. ``不`` → ``不``, ``刺`` → ``刺`` (OA dual P0-1)
 * Latin ligature/OCR shards left in ZH (``erent`` / ``ffdi.ff`` / isolated
   ``ff``/``di``) when design-PDF recovery did not fully rejoin before MT
-* Embedded English shards in CJK (``就you 功课`` / ``介绍e艺术``)
+* Embedded English shards in CJK (``就you 功课`` / ``介绍e艺术`` /
+  ``enjoyable`` / hyphen splits ``missi onary`` / ligature ``ngers`` /
+  glossary debug ``# commented:`` leaks)
 * Known catastrophic chapter-title mistranslations (Indirect→不正确)
 * Title-first running headers that glue a trailing ``第N章`` onto the
   chapter name (OA ``成为行动派第三章``) while a separate opener already
@@ -119,11 +121,81 @@ def _scrub_cjk_embedded_english(text: str) -> str:
         ('就功课', '就有功课'),
         ('这里机缘', '这里有机缘'),
         ('这里机会', '这里有机会'),
+        ('inandout', '抽插'),
+        ('in-and-out', '抽插'),
+        ('theone-handedwonder', '单手妙招'),
+        ('theone‑handedwonder', '单手妙招'),
     ):
         out = out.replace(bad, good)
+    # Glossary debug-note leak defense (CSV `# commented:` values)
+    out = re.sub(r"[#＃]\s*commented\s*:.*?(?=\n|$)", "", out, flags=re.I)
+    out = re.sub(
+        r"false\s*positive\s*;?\s*rely\s*on\s*[\"\'\"「]?\s*",
+        "",
+        out,
+        flags=re.I,
+    )
+    out = re.sub(r"\(p\d+\)\s*→\s*", "", out)
+    # Hyphen / line-break shards
+    out = re.sub(r"missi[\s\xa0\u3000\-‑]*onary", "传教士", out, flags=re.I)
+    out = re.sub(r"indi[\s\xa0\u3000\-‑]*rect", "间接", out, flags=re.I)
+    out = re.sub(
+        r"all[\s\xa0\u3000]*infro[\s\xa0\u3000]*mbeh[\s\xa0\u3000]*ind",
+        "从后方全进",
+        out,
+        flags=re.I,
+    )
+    out = re.sub(
+        r"(?:(?<=[\u4e00-\u9fff])[\s\xa0\u3000]*|^(?=[A-Za-z]))(?:ngers|gers)(?=[\s\xa0\u3000\u4e00-\u9fff，。！？、：；]|$)",
+        "手指",
+        out,
+        flags=re.I | re.M,
+    )
+    out = re.sub(
+        r"(?<=[\u4e00-\u9fff])[\s\xa0\u3000]*vag[\s\xa0\u3000\.]*?(?=[\u4e00-\u9fff]|$)",
+        "阴道",
+        out,
+        flags=re.I,
+    )
+    out = re.sub(
+        r"(?<=[\u4e00-\u9fff])[\s\xa0\u3000]*enemas[\s\xa0\u3000]*(?=[\u4e00-\u9fff]|$)",
+        "灌肠",
+        out,
+        flags=re.I,
+    )
+    out = re.sub(
+        r"(?:(?<=[\u4e00-\u9fff])[\s\xa0\u3000]+|^)water(?=[\s\xa0\u3000]*[\u4e00-\u9fff。．.!?]|$)",
+        "水",
+        out,
+        flags=re.I | re.M,
+    )
+    out = re.sub(
+        r"(?<=[\u4e00-\u9fff])[\s\xa0\u3000]*Stim[\s\xa0\u3000\-‑]*",
+        "",
+        out,
+    )
+    out = re.sub(
+        r"(?<=[\u4e00-\u9fff])[\s\xa0\u3000]*(?:The|to|mic|di|her)[\s\xa0\u3000]*(?=[\u4e00-\u9fff])",
+        "",
+        out,
+        flags=re.I,
+    )
+    # enjoyable / leftover adjectives between CJK
+    out = re.sub(
+        r"(?<=[\u4e00-\u9fff])[\s\xa0\u3000]*enjoyable[\s\xa0\u3000]*(?=[\u4e00-\u9fff])",
+        "愉悦",
+        out,
+        flags=re.I,
+    )
     out = _YOU_HAVE_NOUN_RE.sub("有", out)
     out = _ISOLATED_YOU_RE.sub("", out)
     out = _ISOLATED_LATIN_LETTER_RE.sub("", out)
+    # Generic leftover Latin word (2–12 letters) between CJK
+    out = re.sub(
+        r"(?<=[\u4e00-\u9fff])[\s\xa0\u3000]+[A-Za-z]{2,12}[\s\xa0\u3000]+(?=[\u4e00-\u9fff])",
+        "",
+        out,
+    )
     out = re.sub(r"[^\S\n]{2,}", " ", out)
     return out
 
