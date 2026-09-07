@@ -1,12 +1,12 @@
 # BabelDOC / OA dual — 当前状况（2026-09-07）
 
-**HEAD:** 以 main 尖端为准 · **版本:** `0.6.4.94`（s30 Latin crumb scrub） · 仓库 `TopCircle/BabelDOC` `main`  
+**HEAD:** 以 main 尖端为准 · **版本:** `0.6.4.95`（s30 Latin crumb scrub） · 仓库 `TopCircle/BabelDOC` `main`  
 **本文件是当前操作员入口。** 若与旧 wave / layout-first 计划冲突，以本文件 + `PLAN-INDEX.md` 为准。
 
 ## 验证 dual（Circle 整本 · 已确认）
 
 - **路径:** `/Users/yun/Library/CloudStorage/OneDrive-Personal/Documentos/Books/Gabrielle Moore/Orgasmic Addiction/Orgasmic Addiction.no_watermark.zh-CN.dual.pdf`
-- **Producer:** `BabelDOCv0.6.4.93_…`（s29 整本验证）· **118 页** · 页幅 `1224×792`（对页）；s30 抽页用 0.6.4.94
+- **Producer:** `BabelDOCv0.6.4.93_…`（s29 整本验证）· **118 页** · 页幅 `1224×792`（对页）；s30 抽页用 0.6.4.95
 - **朝向（重要）:** 本 dual 为 **ZH 左 | EN 右**（`mid=612`）。旧 brief「EN 左 ZH 右」对本文件不适用。
 - **页码映射:** 有页脚的内容页约 `book_page ≈ pdf_idx + 3`（例：书 p19→pdf[16]，p59→[56]，p91→[88]；书 ~120「内容」→pdf[117]）
 - **证据:** `tmp/oa_w1_deeplx/s29-verify/` · 汇总 JSON：`tmp/oa_w1_deeplx/s29-residual-scan.json`（gitignore）
@@ -42,7 +42,7 @@
 
 1. **Latin MT 碎屑（s30 已系统性处理，抽页已确认）** — 根因分类与修复：
    - **调试注释泄漏：** `sextips_v3.1_cleaned.csv` 把 `butt cheeks` 写成 `butt # cheeks,… # commented:…`；DeepLX 分词把 `#` 剥掉后仍匹配 `butt cheeks`，把注释塞进译文（pdf≈103）。已恢复 `butt cheeks,臀瓣`；`load_glossary` 拒绝键内 `#` / 值内 `commented`；`post_clean`+`mt_token_sanitize` 双端剥离。
-   - **硬断行连字符未拼：** EN `Stim-`/`indi-`/`fin-` 折行 → ZH 残片；`normalize_extracted_en` 现拼回；`post_clean` 修 `missi onary`/`indi rect`/`ngers` 等。
+   - **硬断行连字符；`{vN}her`/`{vN}enemas` 公式粘连未拼：** EN `Stim-`/`indi-`/`fin-` 折行 → ZH 残片；`normalize_extracted_en` 现拼回；`post_clean` 修 `missi onary`/`indi rect`/`ngers` 等。
    - **残留英文词：** `enjoyable`/`inandout`/`vag`/`her`/`enemas` 等 DeepLX 未译完；phrase+regex 进 `post_clean_zh` 与 BabelDOC sanitize。
    - **花体标题撕碎：** `all infro mbeh ind` 等仍靠表面补丁；URL 有意保留。
    - **缓存：** cache-hit **仍跑** `post_clean_zh`（已确认）。DeepLX `VERSION` → `…v6`。

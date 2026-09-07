@@ -185,3 +185,18 @@ def test_scrub_s30_latin_crumb_classes():
     assert "commented" not in clean.lower()
     assert "false positive" not in clean.lower()
     assert "臀瓣" in clean
+
+
+def test_scrub_formula_glued_latin():
+    """OA: Latin leftovers stuck to {vN} must not survive keep_formula path."""
+    s = "挤压式抚摸 {v1}her 阴蒂夹在你的手指和"
+    out = normalize_translated_text(s, keep_formula_placeholders=True) or ""
+    assert "{v1}" in out
+    assert "her" not in out.lower()
+    assert "阴蒂" in out
+    s2 = "使用 {v1}enemas 来保持"
+    out2 = normalize_translated_text(s2, keep_formula_placeholders=True) or ""
+    assert "{v1}" in out2
+    assert "enemas" not in out2.lower()
+    assert "灌肠" in out2
+    assert (normalize_translated_text("her 阴蒂夹在") or "").startswith("阴蒂")

@@ -23,7 +23,7 @@
 - DeepLX / glossary / 直播配置：~/.config/pdf2zh/（deeplx_v3.2.1-production-final.py、glossaries、oa-deeplx.toml）；生产同步 Nextcloud → /opt/workspace/config。DeepLX post_clean 不在 BabelDOC git 内。
 - 相关仓：TopCircle/deeplx（Worker https://deeplx.topcircle.workers.dev）、TopCircle/xdpl-proxy。
 - OA dual 脚本：~/.config/pdf2zh/run_oa_dual.sh（默认安静；OA_DEBUG=1 才开 --debug）。源书 OneDrive Gabrielle Moore / Orgasmic Addiction.pdf。输出 tmp/oa_w1_deeplx/（已 gitignore）。
-- 验证 dual（Circle 整本 0.6.4.94 · 118 页）：OneDrive …/Orgasmic Addiction.no_watermark.zh-CN.dual.pdf ；**ZH 左 | EN 右**（mid=612）。
+- 验证 dual（Circle 整本 0.6.4.95 · 118 页）：OneDrive …/Orgasmic Addiction.no_watermark.zh-CN.dual.pdf ；**ZH 左 | EN 右**（mid=612）。
 - 直播 toml：~/.config/pdf2zh/oa-deeplx.toml → debug = false。
 
 【代码约束】
@@ -32,8 +32,8 @@
 - push 前按 AGENTS.md 做质量门；push 后同步更新仓库根目录 GROK_BOT_HANDOFF.md 与 docs/CURRENT-STATUS.md。
 
 【当前快照 — 2026-09-07】
-- HEAD：以 main 尖端为准 · 版本 0.6.4.94（s30 Latin crumb scrub）。
-- s29 wrap P0 仍成立；s30 已修 Latin 碎屑根因（glossary 调试注释泄漏 / 硬断行连字符 / 残留英文 / sanitize+post_clean），抽页 23/37/38/41/46/63/77/81/85/103 已确认干净。
+- HEAD：以 main 尖端为准 · 版本 0.6.4.95（s30 Latin crumb scrub）。
+- s29 wrap P0 仍成立；s30 已修 Latin 碎屑根因（glossary 调试注释泄漏 / 硬断行连字符；`{vN}her`/`{vN}enemas` 公式粘连 / 残留英文 / sanitize+post_clean），抽页 23/37/38/41/46/63/77/81/85/103 已确认干净。
 - 证据：tmp/oa_w1_deeplx/s29-residual-scan.json；DeepLX live `…norm_en_cache_v6` + glossary `butt cheeks` 已恢复。
 
 【已完成要点】
@@ -48,7 +48,7 @@
 4. P2 可选：p19 tip-band 再加深；PR-B1i 红色；wide_on_photo bbox 勿当 P0。
 
 【接手后立刻做】
-1. git -C /Users/yun/workspace/BabelDOC fetch && git log -1 --oneline；核对 0.6.4.94。
+1. git -C /Users/yun/workspace/BabelDOC fetch && git log -1 --oneline；核对 0.6.4.95。
 2. 读 docs/CURRENT-STATUS.md；确认 s30 抽页结果。
 3. 下一刀：未清碎屑补丁 / retypeset 根因；不要重开 wrap P0。
 4. 不要从 archive 旧计划擅自开大波次。

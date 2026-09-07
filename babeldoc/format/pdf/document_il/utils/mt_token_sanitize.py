@@ -190,6 +190,34 @@ def _scrub_cjk_embedded_english(text: str) -> str:
     out = _YOU_HAVE_NOUN_RE.sub("有", out)
     out = _ISOLATED_YOU_RE.sub("", out)
     out = _ISOLATED_LATIN_LETTER_RE.sub("", out)
+    # Formula-glued leftovers: "抚摸 {v1}her 阴蒂" (placeholders kept for parse)
+    _FORMULA_GLUED = {
+        "her": "",
+        "enemas": "灌肠",
+        "vag": "阴道",
+        "water": "水",
+        "enjoyable": "愉悦",
+        "inandout": "抽插",
+    }
+
+    def _formula_glued_repl(m: re.Match[str]) -> str:
+        return m.group(1) + _FORMULA_GLUED.get(m.group(2).lower(), "")
+
+    out = re.sub(
+        r"(\{v\d+\})\s*(her|enemas|vag|water|enjoyable|inandout)(?=[\s\xa0\u3000]*[\u4e00-\u9fff])",
+        _formula_glued_repl,
+        out,
+        flags=re.I,
+    )
+    out = re.sub(
+        r"(\{v\d+\})\s*([A-Za-z]{2,12})(?=[\s\xa0\u3000]*[\u4e00-\u9fff])",
+        r"\1",
+        out,
+    )
+    # Orphan Latin at fragment start after formula split ("her 阴蒂…")
+    out = re.sub(r"(?m)^her\s*(?=[\u4e00-\u9fff])", "", out, flags=re.I)
+    out = re.sub(r"(?m)^enemas\s*(?=[\u4e00-\u9fff])", "灌肠", out, flags=re.I)
+    out = re.sub(r"(?m)^vag\s*(?=[\u4e00-\u9fff])", "阴道", out, flags=re.I)
     # Generic leftover Latin word (2–12 letters) between CJK
     out = re.sub(
         r"(?<=[\u4e00-\u9fff])[\s\xa0\u3000]+[A-Za-z]{2,12}[\s\xa0\u3000]+(?=[\u4e00-\u9fff])",
