@@ -3,6 +3,12 @@
 **HEAD:** 以 main 尖端为准 · **版本:** `0.6.4.95`（s30 Latin crumb scrub；s31 整本复核） · 仓库 `TopCircle/BabelDOC` `main`  
 **本文件是当前操作员入口。** 若与旧 wave / layout-first 计划冲突，以本文件 + `PLAN-INDEX.md` 为准。
 
+## 发布与手改策略（2026-09-07）
+
+- **最终发布物：中文 mono**（`Anal Pleasure For Her/Orgasmic Addiction.no_watermark.zh-CN.mono.pdf`，0.6.4.95 / 121 页）。
+- **dual 只做对照**，不作为粗腰/正式产出。
+- 剩余 P2（短末行「度。」「世界。」「内容」、零星 `majora`/`allin`、章题红等）：若代码难维护或易副作用 → **直接手改 mono**，不再为它们做系统性排版/sanitize 大改。
+
 ## 验证 dual（Circle 整本 · 0.6.4.95 · 已确认）
 
 - **Canonical 路径:** `/Users/yun/Library/CloudStorage/OneDrive-Personal/Documentos/Books/Gabrielle Moore/Anal Pleasure For Her/Orgasmic Addiction.no_watermark.zh-CN.dual.pdf`

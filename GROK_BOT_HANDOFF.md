@@ -46,6 +46,10 @@
 - s31：Circle 确认的 0.6.4.95 整本 dual 路径（Anal Pleasure For Her/）已写入文档；旧 93 dual 标明勿用。
 - 日志安静化：0.6.4.93。
 
+【发布策略】
+- 最终发布物是中文 mono（Anal Pleasure For Her 目录下 0.6.4.95 mono），不是 dual。
+- P2 短末行/零星碎屑/章题红：代码难维护或易副作用则手改 mono，勿为它们开大刀。
+
 【遗留（非阻塞 backlog）】
 1. P1 潜伏：重叠修正 retypeset 失败根因（静态不可见）。
 2. P2：Latin 碎屑 4 条（BDSM×2 / majora / allin）— 非系统。
