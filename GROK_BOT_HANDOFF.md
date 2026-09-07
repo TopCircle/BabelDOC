@@ -33,7 +33,7 @@
 
 【当前快照 — 2026-09-07】
 - HEAD：以 main 尖端为准 · 版本 0.6.4.95（s30 Latin crumb scrub）。
-- s29 wrap P0 仍成立；s30 已修 Latin 碎屑根因（glossary 调试注释泄漏 / 硬断行连字符；`{vN}her`/`{vN}enemas` 公式粘连 / 残留英文 / sanitize+post_clean），抽页 23/37/38/41/46/63/77/81/85/103 已确认干净。
+- s29 wrap P0 仍成立；s30/s30b 已修 Latin 碎屑根因（含 `{vN}her` 公式粘连；HEAD `111b27e`）（glossary 调试注释泄漏 / 硬断行连字符；`{vN}her`/`{vN}enemas` 公式粘连 / 残留英文 / sanitize+post_clean），抽页 23/37/38/41/46/63/77/81/85/103 已确认干净。
 - 证据：tmp/oa_w1_deeplx/s29-residual-scan.json；DeepLX live `…norm_en_cache_v6` + glossary `butt cheeks` 已恢复。
 
 【已完成要点】
