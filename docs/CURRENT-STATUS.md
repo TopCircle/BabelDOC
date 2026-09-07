@@ -7,7 +7,7 @@
 
 - **最终发布物：中文 mono**（`Anal Pleasure For Her/Orgasmic Addiction.no_watermark.zh-CN.mono.pdf`，0.6.4.95 / 121 页）。
 - **dual 只做对照**，不作为粗腰/正式产出。
-- 剩余 P2（短末行「度。」「世界。」「内容」、零星 `majora`/`allin`、章题红等）：若代码难维护或易副作用 → **直接手改 mono**，不再为它们做系统性排版/sanitize 大改。
+- P2 手改 mono：`tmp/oa_mono_publish/`（WORKING + ORIGINAL backup + FIXLOG + page_audit）。**Wave1d 已清**已知 tip orphans 与 majora/allin/, you；已同步 OneDrive mono。其余逐页润色继续；勿为它们做系统性排版大改。
 
 ## 验证 dual（Circle 整本 · 0.6.4.95 · 已确认）
 
