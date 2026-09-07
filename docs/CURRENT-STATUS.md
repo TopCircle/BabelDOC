@@ -1,4 +1,4 @@
-# BabelDOC / OA dual — 当前状况（2026-09-07 · mono polish）
+# BabelDOC / OA dual — 当前状况（2026-09-07 · mono polish Wave2）
 
 **HEAD:** 以 main 尖端为准 · **版本:** `0.6.4.95`（s30 Latin crumb scrub；s31 整本复核） · 仓库 `TopCircle/BabelDOC` `main`  
 **本文件是当前操作员入口。** 若与旧 wave / layout-first 计划冲突，以本文件 + `PLAN-INDEX.md` 为准。
@@ -7,7 +7,7 @@
 
 - **最终发布物：中文 mono**（`Anal Pleasure For Her/Orgasmic Addiction.no_watermark.zh-CN.mono.pdf`，0.6.4.95 / 121 页）。
 - **dual 只做对照**，不作为粗腰/正式产出。
-- P2 手改 mono：`tmp/oa_mono_publish/`（WORKING + ORIGINAL backup + FIXLOG + page_audit）。**Wave1d 已清**已知 tip orphans 与 majora/allin/, you；已同步 OneDrive mono。其余逐页润色继续；勿为它们做系统性排版大改。
+- P2 手改 mono：`tmp/oa_mono_publish/`（WORKING + ORIGINAL backup + FIXLOG + page_audit）。**Wave1d** 已知 tip orphans / majora/allin/, you；**Wave2** 已做 book p1–40 语言/版式美化（china-ss）；已同步 OneDrive mono。继续 41–60…；勿为它们做系统性排版大改。
 
 ## 验证 dual（Circle 整本 · 0.6.4.95 · 已确认）
 
@@ -55,7 +55,7 @@
 3. **短末行 / tip orphans（mono 手改）** — **Wave1d 已处理**：p59「度。」并入 tip；p91「世界。」并入 callout；p120「内容」重排为「加入一些内容」（列左缘）。证据：`tmp/oa_mono_publish/FIXLOG.md` + `review/`。
 4. **p19 tip-band 可选加深** — 锥形可接受；尖端宽平台≈132；再填有碎屑风险
 5. **PR-B1i 红色** — 装饰/色策略；ZH 章题多为黑，红多在 EN part 头 / 小节题 / callout（源设计 `#d12027`）
-6. **Mono 全书逐页润色（进行中）** — 审计：`tmp/oa_mono_publish/page_audit.json`（121 页）。已知 P2 已落 WORKING + OneDrive mono；其余语言/版式美化按批推进。重写 span 暂用 PyMuPDF `china-ss`（Source Han OTF 嵌入会乱码）。
+6. **Mono 全书逐页润色（进行中）** — 审计：`tmp/oa_mono_publish/page_audit.json`（121 页）。**Wave2 完成 book p1–40**（orphans/URL crumbs/awkward glue）；WORKING + OneDrive 已同步。下一刀 **41–60**。重写 span 暂用 PyMuPDF `china-ss`（Source Han 文件嵌入仍 mojibake；证据 `work/review/font_wave2_test.png`）。
 
 ### 启发式备注（勿当 P0）
 
