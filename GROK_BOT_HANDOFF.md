@@ -23,7 +23,10 @@
 - DeepLX / glossary / 直播配置：~/.config/pdf2zh/（deeplx_v3.2.1-production-final.py、glossaries、oa-deeplx.toml）；生产同步 Nextcloud → /opt/workspace/config。DeepLX post_clean 不在 BabelDOC git 内。
 - 相关仓：TopCircle/deeplx（Worker https://deeplx.topcircle.workers.dev）、TopCircle/xdpl-proxy。
 - OA dual 脚本：~/.config/pdf2zh/run_oa_dual.sh（默认安静；OA_DEBUG=1 才开 --debug）。源书 OneDrive Gabrielle Moore / Orgasmic Addiction.pdf。输出 tmp/oa_w1_deeplx/（已 gitignore）。
-- 验证 dual（Circle 整本 0.6.4.95 · 118 页）：OneDrive …/Orgasmic Addiction.no_watermark.zh-CN.dual.pdf ；**ZH 左 | EN 右**（mid=612）。
+- **验证 dual（Circle 整本 0.6.4.95 · 121 页 · mtime 2026-09-07 ~13:17 CST）：**
+  `/Users/yun/Library/CloudStorage/OneDrive-Personal/Documentos/Books/Gabrielle Moore/Anal Pleasure For Her/Orgasmic Addiction.no_watermark.zh-CN.dual.pdf`
+  **ZH 左 | EN 右**（mid=612）。页码映射 book≈pdf_idx+1（p19→18, p59→58, p91→90）。
+- **勿用** `…/Orgasmic Addiction/Orgasmic Addiction.no_watermark.zh-CN.dual.pdf`（旧 0.6.4.93 / 118 页）。同目录有 symlink `….dual.0.6.4.95.pdf` 与 README-DUAL-PATH-0.6.4.95.txt。
 - 直播 toml：~/.config/pdf2zh/oa-deeplx.toml → debug = false。
 
 【代码约束】
@@ -31,34 +34,37 @@
 - 改前读 docs/CURRENT-STATUS.md、docs/PLAN-INDEX.md、AGENTS.md。不要从 docs/archive/ 旧 wave/layout-first 文档排期。
 - push 前按 AGENTS.md 做质量门；push 后同步更新仓库根目录 GROK_BOT_HANDOFF.md 与 docs/CURRENT-STATUS.md。
 
-【当前快照 — 2026-09-07】
-- HEAD：以 main 尖端为准 · 版本 0.6.4.95（s30 Latin crumb scrub）。
-- s29 wrap P0 仍成立；s30/s30b 已修 Latin 碎屑根因（含 `{vN}her` 公式粘连；HEAD `111b27e`）（glossary 调试注释泄漏 / 硬断行连字符；`{vN}her`/`{vN}enemas` 公式粘连 / 残留英文 / sanitize+post_clean），抽页 23/37/38/41/46/63/77/81/85/103 已确认干净。
-- 证据：tmp/oa_w1_deeplx/s29-residual-scan.json；DeepLX live `…norm_en_cache_v6` + glossary `butt cheeks` 已恢复。
+【当前快照 — 2026-09-07 s31】
+- HEAD：以 main 尖端为准 · 版本 0.6.4.95。
+- s31 整本复核：producer 0.6.4.95 / 121 页 / ZH左|EN右；wrap P0（p19/p59/p91）仍好。
+- Latin MT suspects：**48→4**（−44）；s29 示例词全清；剩 BDSM×2 / majora / allin — **非系统，未 bump**。
+- 证据：tmp/oa_w1_deeplx/s31-verify/ + s31-residual-scan.json。
 
 【已完成要点】
-- p19/p59/p91 wrap P0：见 0.6.4.81–91；s29 复核仍好。
-- s30 MT 碎屑根因：`butt # cheeks` 伪注释仍匹配 `butt cheeks`→注释进 PDF；load_glossary 拒绝键内 `#`；normalize 拼 hard hyphen；post_clean+mt_token_sanitize 系统性 scrub。
+- p19/p59/p91 wrap P0：见 0.6.4.81–91；s29/s31 复核仍好。
+- s30 MT 碎屑根因：glossary 伪注释 / hard hyphen / `{vN}her`/`enemas` 公式粘连 / sanitize+post_clean；DeepLX live `…norm_en_cache_v6`。
+- s31：Circle 确认的 0.6.4.95 整本 dual 路径（Anal Pleasure For Her/）已写入文档；旧 93 dual 标明勿用。
 - 日志安静化：0.6.4.93。
 
 【遗留（非阻塞 backlog）】
-1. P1：s30 样页碎屑已清；花体标题撕碎若再现再补表面；全书未重跑。
-2. P1 潜伏：重叠修正 retypeset 失败根因（静态不可见）。
-3. P2：短末行 — p59「度。」、p91「世界。」、pdf117「内容」。
+1. P1 潜伏：重叠修正 retypeset 失败根因（静态不可见）。
+2. P2：Latin 碎屑 4 条（BDSM×2 / majora / allin）— 非系统。
+3. P2：短末行 — p59「度。」(pdf58)、p91「世界。」(pdf90)、pdf119「内容」。
 4. P2 可选：p19 tip-band 再加深；PR-B1i 红色；wide_on_photo bbox 勿当 P0。
 
 【接手后立刻做】
 1. git -C /Users/yun/workspace/BabelDOC fetch && git log -1 --oneline；核对 0.6.4.95。
-2. 读 docs/CURRENT-STATUS.md；确认 s30 抽页结果。
-3. 下一刀：未清碎屑补丁 / retypeset 根因；不要重开 wrap P0。
+2. 读 docs/CURRENT-STATUS.md；打开 canonical 0.6.4.95 dual（Anal Pleasure For Her 路径），勿用旧 93。
+3. 下一刀：retypeset 根因，或 P2 短末行 / 残余 majora·allin 表面补丁；不要重开 wrap P0；无系统碎屑则不必 bump。
 4. 不要从 archive 旧计划擅自开大波次。
 
 【交接自检】
 - [ ] 用中文回复
 - [ ] 知道 main HEAD / 版本号
-- [ ] 知道 dual 朝向 ZH左|EN右 与 OneDrive 验证路径
+- [ ] 知道 dual 朝向 ZH左|EN右 与 **Anal Pleasure For Her** canonical 路径（121 页 / 0.6.4.95）
+- [ ] 知道旧 Orgasmic Addiction/ dual 是 0.6.4.93 勿用
 - [ ] 知道 run_oa_dual / OA_DEBUG / toml debug=false
-- [ ] 知道遗留 backlog，不把已清 P0 当未做
+- [ ] 知道遗留 backlog，不把已清 P0 / 已大幅清碎屑当未做
 - [ ] 每次 push 更新 GROK_BOT_HANDOFF.md
 ```
 
