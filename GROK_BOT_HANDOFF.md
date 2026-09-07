@@ -34,11 +34,11 @@
 - 改前读 docs/CURRENT-STATUS.md、docs/PLAN-INDEX.md、AGENTS.md。不要从 docs/archive/ 旧 wave/layout-first 文档排期。
 - push 前按 AGENTS.md 做质量门；push 后同步更新仓库根目录 GROK_BOT_HANDOFF.md 与 docs/CURRENT-STATUS.md。
 
-【当前快照 — 2026-09-07 s31】
+【当前快照 — 2026-09-07 mono polish Wave1d】
 - HEAD：以 main 尖端为准 · 版本 0.6.4.95。
-- s31 整本复核：producer 0.6.4.95 / 121 页 / ZH左|EN右；wrap P0（p19/p59/p91）仍好。
-- Latin MT suspects：**48→4**（−44）；s29 示例词全清；剩 BDSM×2 / majora / allin — **非系统，未 bump**。
-- 证据：tmp/oa_w1_deeplx/s31-verify/ + s31-residual-scan.json。
+- s31 dual 复核仍有效；**最终发布物是 ZH mono**（Anal Pleasure For Her 目录）。
+- Mono 手改 Wave1d：p59/p91/p120 tip orphans；majora→大阴唇；allin→全进式；p22 `, you`；p73 URL `you` 粘连。已同步 OneDrive mono；ORIGINAL 在 tmp/oa_mono_publish/。
+- 证据：tmp/oa_mono_publish/FIXLOG.md + page_audit.json + review/。重写 span 用 china-ss（Source Han OTF 嵌入乱码）。
 
 【已完成要点】
 - p19/p59/p91 wrap P0：见 0.6.4.81–91；s29/s31 复核仍好。
@@ -48,19 +48,19 @@
 
 【发布策略】
 - 最终发布物是中文 mono（Anal Pleasure For Her 目录下 0.6.4.95 mono），不是 dual。
-- P2 短末行/零星碎屑/章题红：代码难维护或易副作用则手改 mono，勿为它们开大刀。
+- P2：手改 mono（tmp/oa_mono_publish）；Wave1d 已知 orphans/crumbs 已清并同步 OneDrive。
 
 【遗留（非阻塞 backlog）】
 1. P1 潜伏：重叠修正 retypeset 失败根因（静态不可见）。
-2. P2：Latin 碎屑 4 条（BDSM×2 / majora / allin）— 非系统。
-3. P2：短末行 — p59「度。」(pdf58)、p91「世界。」(pdf90)、pdf119「内容」。
-4. P2 可选：p19 tip-band 再加深；PR-B1i 红色；wide_on_photo bbox 勿当 P0。
+2. Mono 全书逐页语言/版式美化（audit 已建；Wave1d 仅清已知 P2）。
+3. BDSM 保留；章题红可选；p19 tip-band 可选加深。
+4. 重写 span 字体：china-ss 权宜；寻求 Source Han 正确嵌入。
 
 【接手后立刻做】
 1. git -C /Users/yun/workspace/BabelDOC fetch && git log -1 --oneline；核对 0.6.4.95。
-2. 读 docs/CURRENT-STATUS.md；打开 canonical 0.6.4.95 dual（Anal Pleasure For Her 路径），勿用旧 93。
-3. 下一刀：retypeset 根因，或 P2 短末行 / 残余 majora·allin 表面补丁；不要重开 wrap P0；无系统碎屑则不必 bump。
-4. 不要从 archive 旧计划擅自开大波次。
+2. 读 docs/CURRENT-STATUS.md；最终发布看 **ZH mono** WORKING/OneDrive；dual 仅对照。
+3. 下一刀：继续 mono 逐页润色（page_audit.json 批次 1–20…）；已知 P2 orphans/crumbs 已清，勿重开。可选：china-ss→匹配 Source Han 的可靠嵌入。
+4. 不要从 archive 旧计划擅自开大波次；勿为残余 P2 bump 版本。
 
 【交接自检】
 - [ ] 用中文回复

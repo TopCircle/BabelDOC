@@ -1,4 +1,4 @@
-# BabelDOC / OA dual — 当前状况（2026-09-07）
+# BabelDOC / OA dual — 当前状况（2026-09-07 · mono polish）
 
 **HEAD:** 以 main 尖端为准 · **版本:** `0.6.4.95`（s30 Latin crumb scrub；s31 整本复核） · 仓库 `TopCircle/BabelDOC` `main`  
 **本文件是当前操作员入口。** 若与旧 wave / layout-first 计划冲突，以本文件 + `PLAN-INDEX.md` 为准。
@@ -51,10 +51,11 @@
 
 ### P2 / backlog
 
-2. **Latin MT 碎屑（s30/s31 已大幅清）** — 全书 suspects **4**（s29 为 48）。剩余：`BDSM`×2（外来语，或可接受）、`majora`(pdf96)、`allin`(pdf107)。s29 示例词（enjoyable/inandout/vag/Stim/her/enemas/…/commented）**已全部清除**。非系统，不 bump。
-3. **短末行微瑕** — **仍在**：p59 tip「度。」(pdf 58)、p91 callout「世界。」(pdf 90)、近末「内容」(pdf 119)
+2. **Latin MT 碎屑** — s31 dual suspects 曾剩 4；**mono 手改 Wave1d 已清** `majora`→大阴唇、`allin`→全进式，并清 p22 `, you`、p73 URL 粘连 `you`。`BDSM` 保留外来语。
+3. **短末行 / tip orphans（mono 手改）** — **Wave1d 已处理**：p59「度。」并入 tip；p91「世界。」并入 callout；p120「内容」重排为「加入一些内容」（列左缘）。证据：`tmp/oa_mono_publish/FIXLOG.md` + `review/`。
 4. **p19 tip-band 可选加深** — 锥形可接受；尖端宽平台≈132；再填有碎屑风险
 5. **PR-B1i 红色** — 装饰/色策略；ZH 章题多为黑，红多在 EN part 头 / 小节题 / callout（源设计 `#d12027`）
+6. **Mono 全书逐页润色（进行中）** — 审计：`tmp/oa_mono_publish/page_audit.json`（121 页）。已知 P2 已落 WORKING + OneDrive mono；其余语言/版式美化按批推进。重写 span 暂用 PyMuPDF `china-ss`（Source Han OTF 嵌入会乱码）。
 
 ### 启发式备注（勿当 P0）
 
