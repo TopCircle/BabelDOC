@@ -40,7 +40,7 @@
 
 ### P1
 
-1. **Latin MT 碎屑（s30 已系统性处理，待抽页确认）** — 根因分类与修复：
+1. **Latin MT 碎屑（s30 已系统性处理，抽页已确认）** — 根因分类与修复：
    - **调试注释泄漏：** `sextips_v3.1_cleaned.csv` 把 `butt cheeks` 写成 `butt # cheeks,… # commented:…`；DeepLX 分词把 `#` 剥掉后仍匹配 `butt cheeks`，把注释塞进译文（pdf≈103）。已恢复 `butt cheeks,臀瓣`；`load_glossary` 拒绝键内 `#` / 值内 `commented`；`post_clean`+`mt_token_sanitize` 双端剥离。
    - **硬断行连字符未拼：** EN `Stim-`/`indi-`/`fin-` 折行 → ZH 残片；`normalize_extracted_en` 现拼回；`post_clean` 修 `missi onary`/`indi rect`/`ngers` 等。
    - **残留英文词：** `enjoyable`/`inandout`/`vag`/`her`/`enemas` 等 DeepLX 未译完；phrase+regex 进 `post_clean_zh` 与 BabelDOC sanitize。

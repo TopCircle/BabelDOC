@@ -33,7 +33,7 @@
 
 【当前快照 — 2026-09-07】
 - HEAD：以 main 尖端为准 · 版本 0.6.4.94（s30 Latin crumb scrub）。
-- s29 wrap P0 仍成立；s30 已修 Latin 碎屑根因（glossary 调试注释泄漏 / 硬断行连字符 / 残留英文 / sanitize+post_clean），抽页验证进行中。
+- s29 wrap P0 仍成立；s30 已修 Latin 碎屑根因（glossary 调试注释泄漏 / 硬断行连字符 / 残留英文 / sanitize+post_clean），抽页 23/37/38/41/46/63/77/81/85/103 已确认干净。
 - 证据：tmp/oa_w1_deeplx/s29-residual-scan.json；DeepLX live `…norm_en_cache_v6` + glossary `butt cheeks` 已恢复。
 
 【已完成要点】
@@ -42,7 +42,7 @@
 - 日志安静化：0.6.4.93。
 
 【遗留（非阻塞 backlog）】
-1. P1：抽页确认 s30 碎屑清干净；花体标题撕碎仍可能需表面补丁。
+1. P1：s30 样页碎屑已清；花体标题撕碎若再现再补表面；全书未重跑。
 2. P1 潜伏：重叠修正 retypeset 失败根因（静态不可见）。
 3. P2：短末行 — p59「度。」、p91「世界。」、pdf117「内容」。
 4. P2 可选：p19 tip-band 再加深；PR-B1i 红色；wide_on_photo bbox 勿当 P0。
