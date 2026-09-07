@@ -1,24 +1,32 @@
-# BabelDOC / OA dual — 当前状况（2026-09-04）
+# BabelDOC / OA dual — 当前状况（2026-09-07）
 
-**HEAD:** `7a4d4c2`（以 main 尖端为准）· **版本:** `0.6.4.93` · 仓库 `TopCircle/BabelDOC` `main`  
+**HEAD:** 以 main 尖端为准 · **版本:** `0.6.4.93` · 仓库 `TopCircle/BabelDOC` `main`  
 **本文件是当前操作员入口。** 若与旧 wave / layout-first 计划冲突，以本文件 + `PLAN-INDEX.md` 为准。
 
-## 仓库卫生（同日）
+## 验证 dual（Circle 整本 · 已确认）
+
+- **路径:** `/Users/yun/Library/CloudStorage/OneDrive-Personal/Documentos/Books/Gabrielle Moore/Orgasmic Addiction/Orgasmic Addiction.no_watermark.zh-CN.dual.pdf`
+- **Producer:** `BabelDOCv0.6.4.93_…` · **118 页** · 页幅 `1224×792`（对页）
+- **朝向（重要）:** 本 dual 为 **ZH 左 | EN 右**（`mid=612`）。旧 brief「EN 左 ZH 右」对本文件不适用。
+- **页码映射:** 有页脚的内容页约 `book_page ≈ pdf_idx + 3`（例：书 p19→pdf[16]，p59→[56]，p91→[88]；书 ~120「内容」→pdf[117]）
+- **证据:** `tmp/oa_w1_deeplx/s29-verify/` · 汇总 JSON：`tmp/oa_w1_deeplx/s29-residual-scan.json`（gitignore）
+
+## 仓库卫生（此前）
 
 - `f8cc557`：`docs/CURRENT-STATUS.md` 入口；旧计划 → `docs/archive/`；`tmp/` 清空并 gitignore；根目录 debug 脚本 → `tools/debug/`
 - 根目录交接 prompt：`GROK_BOT_HANDOFF.md`（换账号粘贴即可接手；**每次 push 须同步更新**）
 
-## 已完成（本轮 wrap / 引文 P0）
+## 已完成（wrap / 引文 P0 — s29 复核仍成立）
 
 | 主题 | 结果 | 代表提交 / 版本 |
 |------|------|-----------------|
-| p19 RIGHT_FIXED 锥形 | 头宽≈252（近 EN）、断崖软化、尖端深度改善 | ~`71ae7bc` … `0.6.4.86` |
-| p59 LEFT_FIXED | 左缘钉在 ≈101.9；envelope 软化；tip hoist | `f6db1ad` / `0ba4baf` / `c0a0012` |
-| p91 左栏红引文 vs wrap | 不再右扩进 wrap；body x0≈245；callout 钳进 design | `094371a` … `0f7cc25` / `0.6.4.91` |
-| MT 碎屑（p33/35） | `前戏艺术` / `就有功课` / `这里有机缘` | sanitize + DeepLX `post_clean` |
+| p19 RIGHT_FIXED 锥形 | **仍好**：band x0≈330→456，宽≈240→132（尖端平台 132） | ~`71ae7bc` … `0.6.4.86` |
+| p59 LEFT_FIXED | **仍好**：正文左缘 median **101.87**（目标≈101.9）；与图 gap>0；x1 内收 | `f6db1ad` / `0ba4baf` / `c0a0012` |
+| p91 引文 vs wrap | **仍好**：callout x0≈54 / x1≈197；body x0 **≈245.3**；无右扩碰撞 | `094371a` … `0f7cc25` / `0.6.4.91` |
+| MT 碎屑（p33/35） | 焦点页基本干净；全书仍有中后段碎屑（见遗留） | sanitize + DeepLX `post_clean` |
 | 日志噪音 | 重叠重排 WARNING 汇总；探测类 INFO→DEBUG；默认关 debug | `84981ed` / `0.6.4.93` |
 
-关键页扫视（7/12/19/33/35/59/91/120）：**系统级 wrap 碰撞 / 锥形 P0 已基本清完。**
+焦点扫视（7/12/19/33/35/59/91 + 中后抽样）：**系统级 wrap 碰撞 / 锥形 P0 仍清完；无新 P0 排版回归。**
 
 ## 运行配置（验证用）
 
@@ -28,19 +36,22 @@
 - DeepLX 生产脚本 / glossary：`~/.config/pdf2zh/`（及 Nextcloud 同步副本）；**不在** BabelDOC git 内
 - 输出目录：`tmp/oa_w1_deeplx/`（本地临时，已 gitignore）
 
-## 遗留问题（按优先级）
+## 遗留问题（按优先级 · s29 2026-09-07）
 
-### 非阻塞 / backlog
+### P1
 
-1. **PR-B1i** — 章标题红色（装饰/色策略），未做  
-2. **短末行微瑕** — 如 p91 `世界。`、p59 tip `度。`、p120 `内容`（2–3 字，多在 design 内）  
-3. **p19 tip-band 可选加深** — 锥形已可接受；再填更深 tip 有碎屑风险  
-4. **重叠修正重排失败** — 日志已收敛为每页 1 条汇总；根因（部分页 retypeset 异常）未修，dual 层/OCR 路径会 skip  
+1. **Latin MT 碎屑** — 全书约数十处可疑嵌入（`enjoyable` / `inandout` / `vag` / `her` / `Stim` / `missi`/`onary` / `ngers` / `indi`/`rect` / `# commented: was causing face` 等）。URL / YouTube / Liberator 视为有意保留。焦点 wrap 页基本无。
+2. **重叠修正 retypeset 失败根因** — 静态 dual 不可见；日志已收敛；dual/OCR 路径会 skip。仍为潜伏系统项。
 
-### 流程 / 配置
+### P2 / backlog
 
-5. DeepLX `post_clean`（cache-hit 再 scrub）仅 live + Nextcloud，不在本仓  
-6. 整本 dual 验证：用 `0.6.4.93` 重跑；旧 `tmp/` 中间产物已清理  
+3. **短末行微瑕** — **仍在**：p59 tip「度。」(pdf 56)、p91 callout「世界。」(pdf 88)、近末「内容」(pdf 117≈书 p120)
+4. **p19 tip-band 可选加深** — 锥形可接受；尖端宽平台≈132；再填有碎屑风险
+5. **PR-B1i 红色** — 装饰/色策略；ZH 章题多为黑，红多在 EN part 头 / 小节题 / callout（源设计 `#d12027`）
+
+### 启发式备注（勿当 P0）
+
+6. **wide_on_photo 矩形 bbox** — 轮廓绕排走廊会被算进图 bbox，中心点命中≠真叠字；p19/p59 目视 gutter 干净。需光栅确认才升级。
 
 ## 刻意不从旧文档排期
 

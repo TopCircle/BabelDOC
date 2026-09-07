@@ -23,6 +23,7 @@
 - DeepLX / glossary / 直播配置：~/.config/pdf2zh/（deeplx_v3.2.1-production-final.py、glossaries、oa-deeplx.toml）；生产同步 Nextcloud → /opt/workspace/config。DeepLX post_clean 不在 BabelDOC git 内。
 - 相关仓：TopCircle/deeplx（Worker https://deeplx.topcircle.workers.dev）、TopCircle/xdpl-proxy。
 - OA dual 脚本：~/.config/pdf2zh/run_oa_dual.sh（默认安静；OA_DEBUG=1 才开 --debug）。源书 OneDrive Gabrielle Moore / Orgasmic Addiction.pdf。输出 tmp/oa_w1_deeplx/（已 gitignore）。
+- 验证 dual（Circle 整本 0.6.4.93 · 118 页）：OneDrive …/Orgasmic Addiction.no_watermark.zh-CN.dual.pdf ；**ZH 左 | EN 右**（mid=612）。
 - 直播 toml：~/.config/pdf2zh/oa-deeplx.toml → debug = false。
 
 【代码约束】
@@ -30,34 +31,36 @@
 - 改前读 docs/CURRENT-STATUS.md、docs/PLAN-INDEX.md、AGENTS.md。不要从 docs/archive/ 旧 wave/layout-first 文档排期。
 - push 前按 AGENTS.md 做质量门；push 后同步更新仓库根目录 GROK_BOT_HANDOFF.md 与 docs/CURRENT-STATUS.md。
 
-【当前快照 — 2026-09-04】
-- HEAD：以 main 尖端为准（写快照时见 git log -1；本批交接提交为 7a4d4c2）· 版本 0.6.4.93。
-- 关键 wrap P0（p19 锥形 / p59 左钉 / p91 引文 vs wrap）已基本清完；日志噪音已收（84981ed）；仓库卫生与文档入口已整理（f8cc557）。
-- Circle 正在用 0.6.4.93 整本 dual 验证；tmp/ 已清空，需重新生成输出。
+【当前快照 — 2026-09-07】
+- HEAD：以 main 尖端为准 · 版本 0.6.4.93。
+- s29 复核：Circle OneDrive dual 0.6.4.93（118 页）已扫；p19 锥形 / p59 左钉≈101.87 / p91 body≈245 仍好；无新 wrap P0。
+- 证据：tmp/oa_w1_deeplx/s29-verify/ + s29-residual-scan.json（本地，gitignore）。
 
 【已完成要点】
-- p19 RIGHT_FIXED：锥深/头宽/断崖软化（约 0.6.4.81–86）。
-- p59 LEFT_FIXED：envelope 软化、左齐 flush、tip hoist；左缘 ≈101.9。
-- p91：左栏 callout 只加深不右扩、body 侧 pad、measure 钳 design_box.x2（约 0.6.4.87–91）。
-- MT 碎屑：sanitize + DeepLX post_clean（介绍e→前戏艺术；you/就功课→有功课）。
+- p19 RIGHT_FIXED：锥深/头宽/断崖软化（约 0.6.4.81–86）；s29 tip 宽平台≈132。
+- p59 LEFT_FIXED：envelope 软化、左齐 flush、tip hoist；左缘 ≈101.9（实测 101.87）。
+- p91：左栏 callout 只加深不右扩、body 侧 pad、measure 钳 design_box.x2（约 0.6.4.87–91）；body x0≈245。
+- MT 碎屑：sanitize + DeepLX post_clean（介绍e→前戏艺术；you/就功课→有功课）；全书中后段仍有残留。
 - 日志：重叠重排失败改为每页一条汇总；探测类 INFO/WARNING → DEBUG；run_oa_dual 默认无 debug。
 
-【遗留（非阻塞 backlog）】
-1. PR-B1i 章标题红色（装饰/色策略）。
-2. 短末行微瑕（如 p91「世界。」、p59 tip「度。」、p120「内容」）。
-3. 可选：p19 tip-band 再加深（有碎屑风险）。
-4. 重叠修正 retypeset 失败根因未修（日志已收敛；OCR/dual 路径会 skip）。
-5. 等 Circle 整本验证反馈后再定下一刀系统问题。
+【遗留（非阻塞 backlog · s29）】
+1. P1 MT：Latin 碎屑（enjoyable/inandout/vag/her/Stim/missi…）；焦点 wrap 页基本干净。
+2. P1 潜伏：重叠修正 retypeset 失败根因（静态不可见）。
+3. P2：短末行仍在 — p59「度。」、p91「世界。」、pdf117「内容」。
+4. P2 可选：p19 tip-band 再加深（碎屑风险）。
+5. P2 装饰：PR-B1i 红色策略（源设计，非排版缺陷）。
+6. 备注：wide_on_photo 矩形 bbox 易误报绕排走廊，勿当 P0。
 
 【接手后立刻做】
-1. git -C /Users/yun/workspace/BabelDOC fetch && git log -1 --oneline；先 git log -1 核对尖端；const 版本当前为 0.6.4.93。
+1. git -C /Users/yun/workspace/BabelDOC fetch && git log -1 --oneline；核对 const 版本 0.6.4.93。
 2. 读 docs/CURRENT-STATUS.md 与本文件，对齐遗留列表。
-3. 若 Circle 已有整本验证结论：按反馈修系统问题 → 测试 → bump 版本 → push → 更新本文件与 CURRENT-STATUS。
-4. 若暂无验证结论：待命或按 Circle 下一句指令；不要从 archive 旧计划擅自开大波次。
+3. 下一刀优先：系统性 MT 碎屑清理（glossary/post_clean）或 retypeset 根因；不要重开已确认的 wrap P0。
+4. 不要从 archive 旧计划擅自开大波次。
 
 【交接自检】
 - [ ] 用中文回复
 - [ ] 知道 main HEAD / 版本号
+- [ ] 知道 dual 朝向 ZH左|EN右 与 OneDrive 验证路径
 - [ ] 知道 run_oa_dual / OA_DEBUG / toml debug=false
 - [ ] 知道遗留 backlog，不把已清 P0 当未做
 - [ ] 每次 push 更新 GROK_BOT_HANDOFF.md
