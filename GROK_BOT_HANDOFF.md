@@ -34,11 +34,11 @@
 - 改前读 docs/CURRENT-STATUS.md、docs/PLAN-INDEX.md、AGENTS.md。不要从 docs/archive/ 旧 wave/layout-first 文档排期。
 - push 前按 AGENTS.md 做质量门；push 后同步更新仓库根目录 GROK_BOT_HANDOFF.md 与 docs/CURRENT-STATUS.md。
 
-【当前快照 — 2026-09-07 mono polish Wave4 完成 · p1–121】
+【当前快照 — 2026-09-08 mono Wave5 章题/小标题/行对齐】
 - HEAD：以 main 尖端为准 · 版本 0.6.4.95。
-- s31 dual 复核仍有效；**最终发布物是 ZH mono**（Anal Pleasure For Her 目录）。
-- Mono 手改：**Wave1d + Wave2 p1–40 + Wave3 p41–80 + Wave4a p81–100 + Wave4b p101–121 全书完成**（orphans/URL crumbs/tip beauty/glue；china-ss）。已同步 OneDrive mono；ORIGINAL 在 tmp/oa_mono_publish/ 未改。
-- 证据：tmp/oa_mono_publish/FIXLOG.md + page_audit.json + work/review/wave2|3a|3b|4a|4b/。重写 span 只用 china-ss（Source Han 文件嵌入仍 mojibake）。
+- s31 dual 复核仍有效；**最终发布物是 ZH mono**（`Orgasmic Addiction/` 目录 no_watermark.zh-CN.mono.pdf；另有 polished-wave4 同字节）。
+- Mono 手改：Wave1–4 润色 + **Wave5 章题叠字 24→0 / 破损小节题 / 行对齐**（china-ss）。已同步 OneDrive mono + polished-wave4；ORIGINAL 未改。
+- 证据：tmp/oa_mono_publish/FIXLOG.md（Wave5）+ title_align_audit.json + work/review/wave5-titles/。
 
 【已完成要点】
 - p19/p59/p91 wrap P0：见 0.6.4.81–91；s29/s31 复核仍好。
@@ -48,18 +48,18 @@
 
 【发布策略】
 - 最终发布物是中文 mono（Anal Pleasure For Her 目录下 0.6.4.95 mono），不是 dual。
-- P2：手改 mono（tmp/oa_mono_publish）；**p1–121 全书润色完成**并同步 OneDrive；残留仅章题 chrome / 短标题 / china-ss 脸差（非阻塞）。
+- P2：手改 mono（tmp/oa_mono_publish）；**p1–121 润色 + Wave5 章题**已同步 OneDrive；残留 TOC/Bibliography EN、少量 tip/body overlap、china-ss 脸差（非阻塞）。
 
 【遗留（非阻塞 backlog）】
 1. P1 潜伏：重叠修正 retypeset 失败根因（静态不可见）。
-2. Mono 全书逐页语言/版式美化（**p1–121 完成**；audit + FIXLOG + wave4a/4b PNG）。可选：china-ss→匹配 Source Han。
-3. BDSM 保留；章题红可选；p19 tip-band 可选加深。
+2. Mono 全书润色 + Wave5 章题（**完成**；title_align_audit + wave5-titles PNG）。可选：china-ss→匹配 Source Han；TOC/Bibliography 中文化。
+3. BDSM 保留；p19 tip-band 可选加深。
 4. 重写 span 字体：china-ss 权宜；寻求 Source Han 正确嵌入。
 
 【接手后立刻做】
 1. git -C /Users/yun/workspace/BabelDOC fetch && git log -1 --oneline；核对 0.6.4.95。
 2. 读 docs/CURRENT-STATUS.md；最终发布看 **ZH mono** WORKING/OneDrive；dual 仅对照。
-3. Mono polish **已完成**。下一刀可选：china-ss→匹配 Source Han 的可靠嵌入；或 Circle 目视抽检 wave4 PNG / 发布 mono。
+3. Mono polish + Wave5 章题 **已完成**。下一刀可选：china-ss→匹配 Source Han；TOC/Bibliography EN 清理；Circle 目视抽检 wave5-titles PNG。
 4. 不要从 archive 旧计划擅自开大波次；勿为残余 P2 bump 版本。
 
 【交接自检】

@@ -1,16 +1,16 @@
-# BabelDOC / OA dual — 当前状况（2026-09-07 · mono polish Wave4 · p1–121 完成）
+# BabelDOC / OA dual — 当前状况（2026-09-08 · mono Wave5 章题/小标题/行对齐）
 
 
-> **Mono polish Wave4 完成（2026-09-07 ~14:55 CST）：** book **p1–121** 全书逐页润色完成（Wave1d + Wave2 p1–40 + Wave3 p41–80 + Wave4a p81–100 + Wave4b p101–121）。china-ss；已同步 OneDrive mono。证据 `tmp/oa_mono_publish/FIXLOG.md` + `work/review/wave2|3a|3b|4a|4b/`。遗留仅章题 chrome / 短标题 / china-ss 脸差（非阻塞）。
+> **Mono Wave5 完成（2026-09-08 ~10:30 CST）：** 章题叠字 / 小标题 / 行对齐。121 页审计 `tmp/oa_mono_publish/title_align_audit.json`；章题叠字 **24→0**；破损小节题已清；WORKING+OneDrive mono+polished-wave4 已同步。证据 `FIXLOG.md` Wave5 + `work/review/wave5-titles/`。china-ss 插入。
 
 **HEAD:** 以 main 尖端为准 · **版本:** `0.6.4.95`（s30 Latin crumb scrub；s31 整本复核） · 仓库 `TopCircle/BabelDOC` `main`  
 **本文件是当前操作员入口。** 若与旧 wave / layout-first 计划冲突，以本文件 + `PLAN-INDEX.md` 为准。
 
-## 发布与手改策略（2026-09-07）
+## 发布与手改策略（2026-09-08）
 
-- **最终发布物：中文 mono**（`Anal Pleasure For Her/Orgasmic Addiction.no_watermark.zh-CN.mono.pdf`，0.6.4.95 / 121 页）。
+- **最终发布物：中文 mono**（`Orgasmic Addiction/Orgasmic Addiction.no_watermark.zh-CN.mono.pdf`，Wave5；另有 `….polished-wave4.pdf` 同字节。dual 对照仍在 Anal Pleasure For Her/）。
 - **dual 只做对照**，不作为粗腰/正式产出。
-- P2 手改 mono：`tmp/oa_mono_publish/`（WORKING + ORIGINAL backup + FIXLOG + page_audit）。**Wave1d + Wave2 p1–40 + Wave3 p41–80 + Wave4a/4b p81–121** 全书逐页润色（china-ss）**已完成**；已同步 OneDrive mono。ORIGINAL 未改。勿为残余短标题/章题 chrome 做系统性排版大改。
+- P2 手改 mono：`tmp/oa_mono_publish/`（WORKING + ORIGINAL backup + FIXLOG + page_audit）。**Wave1d + Wave2 p1–40 + Wave3 p41–80 + Wave4a/4b p81–121** 全书逐页润色（china-ss）**已完成**；已同步 OneDrive mono。ORIGINAL 未改。Wave5 已系统清理章题叠字与破损小节题；残余仅 TOC/Bibliography EN chrome 与少量 tip/body metric overlap（非阻塞）。
 
 ## 验证 dual（Circle 整本 · 0.6.4.95 · 已确认）
 
