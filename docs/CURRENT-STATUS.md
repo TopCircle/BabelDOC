@@ -1,16 +1,18 @@
-# BabelDOC / OA dual — 当前状况（2026-09-08 · mono Wave5 章题/小标题/行对齐）
+# BabelDOC / OA dual — 当前状况（2026-09-11 · mono Wave6 publish polish）
 
 
-> **Mono Wave5 完成（2026-09-08 ~10:30 CST）：** 章题叠字 / 小标题 / 行对齐。121 页审计 `tmp/oa_mono_publish/title_align_audit.json`；章题叠字 **24→0**；破损小节题已清；WORKING+OneDrive mono+polished-wave4 已同步。证据 `FIXLOG.md` Wave5 + `work/review/wave5-titles/`。china-ss 插入。
+
+> **Mono Wave6 完成（2026-09-11 ~10:30 CST）：** publish-quality polish。`publish_qa_audit.json` final：`chapter_title_overlap=0` / severe `span_overlap=0` / body latin crumbs=0。TOC→目录、Bibliography→参考文献；tip stacks（p62/p76/p103）与 EN body crumbs 已清。WORKING+OneDrive mono+polished-wave4 已同步（md5 `3cbedae4…`）。证据 `FIXLOG.md` Wave6 + `work/review/wave6-publish/`。china-ss 插入。
+
 
 **HEAD:** 以 main 尖端为准 · **版本:** `0.6.4.95`（s30 Latin crumb scrub；s31 整本复核） · 仓库 `TopCircle/BabelDOC` `main`  
 **本文件是当前操作员入口。** 若与旧 wave / layout-first 计划冲突，以本文件 + `PLAN-INDEX.md` 为准。
 
-## 发布与手改策略（2026-09-08）
+## 发布与手改策略（2026-09-11）
 
-- **最终发布物：中文 mono**（`Orgasmic Addiction/Orgasmic Addiction.no_watermark.zh-CN.mono.pdf`，Wave5；另有 `….polished-wave4.pdf` 同字节。dual 对照仍在 Anal Pleasure For Her/）。
+- **最终发布物：中文 mono**（`Orgasmic Addiction/Orgasmic Addiction.no_watermark.zh-CN.mono.pdf`，Wave6 publish；另有 `….polished-wave4.pdf` 同字节。dual 对照仍在 Anal Pleasure For Her/）。
 - **dual 只做对照**，不作为粗腰/正式产出。
-- P2 手改 mono：`tmp/oa_mono_publish/`（WORKING + ORIGINAL backup + FIXLOG + page_audit）。**Wave1d + Wave2 p1–40 + Wave3 p41–80 + Wave4a/4b p81–121** 全书逐页润色（china-ss）**已完成**；已同步 OneDrive mono。ORIGINAL 未改。Wave5 已系统清理章题叠字与破损小节题；残余仅 TOC/Bibliography EN chrome 与少量 tip/body metric overlap（非阻塞）。
+- P2 手改 mono：`tmp/oa_mono_publish/`（WORKING + ORIGINAL backup + FIXLOG + page_audit）。**Wave1d + Wave2 p1–40 + Wave3 p41–80 + Wave4a/4b p81–121** 全书逐页润色（china-ss）**已完成**；已同步 OneDrive mono。ORIGINAL 未改。Wave5 章题 + **Wave6 publish**：TOC/Bibliography 中文化；tip/body stacks 与明显 EN body crumbs 已清；`publish_qa_audit.json` 最终计数全 0（严格堆叠准则）。残余：EN part Trajan chrome、china-ss 脸差、参考文献条目保持 EN。
 
 ## 验证 dual（Circle 整本 · 0.6.4.95 · 已确认）
 
@@ -54,11 +56,11 @@
 
 ### P2 / backlog
 
-2. **Latin MT 碎屑** — s31 dual suspects 曾剩 4；**mono 手改 Wave1d 已清** `majora`→大阴唇、`allin`→全进式，并清 p22 `, you`、p73 URL 粘连 `you`。`BDSM` 保留外来语。
+2. **Latin MT 碎屑（mono 大体已清）** — s31 dual suspects 曾剩 4；**mono 手改 Wave1d 已清** `majora`→大阴唇、`allin`→全进式，并清 p22 `, you`、p73 URL 粘连 `you`。`BDSM` 保留外来语。
 3. **短末行 / tip orphans（mono 手改）** — **Wave1d 已处理**：p59「度。」并入 tip；p91「世界。」并入 callout；p120「内容」重排为「加入一些内容」（列左缘）。证据：`tmp/oa_mono_publish/FIXLOG.md` + `review/`。
 4. **p19 tip-band 可选加深** — 锥形可接受；尖端宽平台≈132；再填有碎屑风险
 5. **PR-B1i 红色** — 装饰/色策略；ZH 章题多为黑，红多在 EN part 头 / 小节题 / callout（源设计 `#d12027`）
-6. **Mono 全书逐页润色（完成）** — 审计：`tmp/oa_mono_publish/page_audit.json`（121 页）。**Wave1d + Wave2 + Wave3 + Wave4a/4b 覆盖 p1–121**（orphans/URL crumbs/tip beauty/glue）；WORKING + OneDrive 已同步。重写 span 暂用 PyMuPDF `china-ss`（Source Han 文件嵌入仍 mojibake）。Deferred：章题 chrome、故意短标题、p105 list2 长重叠带、china-ss 脸差。
+6. **Mono 全书逐页润色（完成）** — 审计：`tmp/oa_mono_publish/page_audit.json`（121 页）。**Wave1d + Wave2 + Wave3 + Wave4a/4b 覆盖 p1–121**（orphans/URL crumbs/tip beauty/glue）；WORKING + OneDrive 已同步。重写 span 暂用 PyMuPDF `china-ss`（Source Han 文件嵌入仍 mojibake）。Wave5+6 后：章题/TOC/tip stacks 已清。Deferred：EN part Trajan chrome、china-ss 脸差、参考文献 EN 条目。
 
 ### 启发式备注（勿当 P0）
 
