@@ -241,6 +241,7 @@ def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZ
 
         # 计算含边距的排除区域（自适应 padding）
         from babeldoc.format.pdf.document_il.midend.flow_skeleton import (
+            get_all_chars,
             get_paragraph_font_size,
         )
         font_size = get_paragraph_font_size(para)
@@ -256,19 +257,32 @@ def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZ
             top_margin=adaptive_top,
             bottom_margin=adaptive_bottom,
         )
-        left_margin, top_margin, right_margin, bottom_margin = margins
-        # Left-gutter callout (OA p91 x≈54): EN body wrap starts ~35pt past
-        # quote ink (211→246). Adaptive pad (~12pt) leaves CJK body at ~223,
-        # which collides when the bar also right-expands toward wrap ink.
-        if box.x is not None and float(box.x) < 80.0:
+        left_margin, _, right_margin, _ = margins
+        # One glyph at most one em wide (a giant quotation mark). Its font
+        # size is the em, not the ink; font_size * 2.2 would eat the column.
+        source_width = float(box.x2) - float(box.x)
+        decorative_glyph = (
+            len(get_all_chars(para)) == 1
+            and float(font_size) > 0
+            and source_width <= float(font_size)
+        )
+        if decorative_glyph:
+            left_margin = adaptive_margin
+            right_margin = adaptive_margin
+        elif box.x is not None and float(box.x) < 80.0:
+            # Left-gutter text bar (OA p91 x≈54): EN body wrap starts ~35pt
+            # past quote ink (211→246). Adaptive pad (~12pt) leaves CJK body
+            # at ~223, which collides when the bar also right-expands.
             en_like_gap = max(float(font_size) * 2.2, page_width * 0.055)
             right_margin = max(right_margin, en_like_gap)
 
+        # y is source ink. Adaptive y padding carved lines that miss the
+        # glyph; get_intervals_at already skips a band that does not overlap.
         exclusion_box = Box(
             x=box.x - left_margin,
-            y=box.y - bottom_margin,
+            y=box.y,
             x2=box.x2 + right_margin,
-            y2=box.y2 + top_margin,
+            y2=box.y2,
         )
 
         zones.append(ExclusionZone(
