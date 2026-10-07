@@ -1,7 +1,7 @@
 # Layout-First 编码方案（layout-first-coding-plan v1）
 
 > **2026-08-13 — Historical.** P0 ✅ P1 ✅ P2/C0–C3 landed via LineIntervalPlan (0.6.4.64–66).  
-> **Do not schedule from this file.** Active: [`oa-dual-quality-wave-0.6.4.69.md`](oa-dual-quality-wave-0.6.4.69.md)
+> **Do not schedule from this file.** Status: [`../CURRENT-STATUS.md`](../CURRENT-STATUS.md)
 
 | 字段 | 值 |
 |------|-----|

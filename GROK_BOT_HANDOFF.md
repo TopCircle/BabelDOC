@@ -44,6 +44,7 @@
 
 【已完成要点】
 - 2026-10-07 中段：`stream_order` em 框、`same_baseline` 下移、`callout_merge` / 图形状态整串、`hyphen_paragraph_merge`。版本未 bump。
+- 旧排期 `docs/archive/oa-dual-quality-wave-0.6.4.69.md` 已删除。不要按 wave 过程文档开工。
 - p19/p59/p91 wrap P0：见 0.6.4.81–91；s29/s31 复核仍好。
 - s30 MT 碎屑根因：glossary 伪注释 / hard hyphen / `{vN}her`/`enemas` 公式粘连 / sanitize+post_clean；DeepLX live `…norm_en_cache_v6`。
 - s31：Circle 确认的 0.6.4.95 整本 dual 路径（Anal Pleasure For Her/）已写入文档；旧 93 dual 标明勿用。

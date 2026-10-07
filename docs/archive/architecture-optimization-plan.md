@@ -11,9 +11,9 @@
 | **Upstream** | funstory-ai/BabelDOC |
 | **Primary consumer** | PDFMathTranslate-next (`TranslationConfig` + `async_translate`) |
 | **Operator profile** | Solo maintainer; dual-PDF quality + DeepLX (non-LLM) path |
-| **Current execution plan** | [`oa-dual-quality-wave-0.6.4.69.md`](oa-dual-quality-wave-0.6.4.69.md) (index: [`PLAN-INDEX.md`](PLAN-INDEX.md)) |
+| **Current execution plan** | [`../CURRENT-STATUS.md`](../CURRENT-STATUS.md) (index: [`../PLAN-INDEX.md`](../PLAN-INDEX.md)) |
 
-> **2026-08-13:** This document stays as the long-horizon map. **Scheduling** moved to the OA 0.6.4.69 wave. L4 (header skip ≠ reflow) is **conditional** (wave PR-B4d): only if `skip_report` proves a chapter title was skipped as header chrome. The 0.6.4.69 dual was generated with `skip_header=True`.
+> **2026-08-13:** This document stays as the long-horizon map. Do not schedule from it. Status is [`../CURRENT-STATUS.md`](../CURRENT-STATUS.md). L4 (header skip ≠ reflow) is not the next task. The 0.6.4.69 dual was generated with `skip_header=True`.
 
 ---
 
@@ -265,7 +265,7 @@ queue: multi-PDF, architecture-shaped, independent of F1–F4.
 
 **S1 / S1.1 / S2 / S3 complete.** **L3** (CJK center demotion + list/extreme indent) shipped.
 
-**Do not start L4 as the next ritual.** Active queue: [`oa-dual-quality-wave-0.6.4.69.md`](oa-dual-quality-wave-0.6.4.69.md). L4 only if wave B4d’s skip_report gate fires. Optional CJK break quality / S1.2 metrics stay backlog.
+**Do not start L4 as the next ritual.** Status: [`../CURRENT-STATUS.md`](../CURRENT-STATUS.md). Optional CJK break quality / S1.2 metrics stay backlog.
 
 Map onto MVP slice: S1≈M1/P0a fingerprint; S1.1 = dual PDF metrics (not full P0b ONNX E2E — that remains non-goal); S2 quote wire; S3 closed-loop capacity.
 

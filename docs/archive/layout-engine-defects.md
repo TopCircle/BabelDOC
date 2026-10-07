@@ -1,7 +1,7 @@
 # Layout Engine 三大核心缺陷 — 排版质量提升路线图
 
 > **2026-08-13 — Historical diagnosis.** Multi-interval / wrap / style work moved through layout-first + C0–C3.  
-> **Do not schedule from this file.** Active: [`oa-dual-quality-wave-0.6.4.69.md`](oa-dual-quality-wave-0.6.4.69.md)
+> **Do not schedule from this file.** Status: [`../CURRENT-STATUS.md`](../CURRENT-STATUS.md)
 
 > **状态**: Historical  
 > **优先级**: (originally P0)  

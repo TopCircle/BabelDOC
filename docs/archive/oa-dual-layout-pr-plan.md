@@ -1,7 +1,7 @@
 # Orgasmic Addiction Dual 版面修复 — PR 拆分计划
 
 > **2026-08-13 — Superseded as the OA queue.** PR-A–D landed around 0.6.4.37.  
-> **Current OA work:** [`oa-dual-quality-wave-0.6.4.69.md`](oa-dual-quality-wave-0.6.4.69.md)  
+> Do not schedule from this file. Status: [`../CURRENT-STATUS.md`](../CURRENT-STATUS.md)  
 > Keep this file for the A→D dependency story and page evidence. Do not open a new PR-E from this list.
 
 > **基线 dual（historical）**：`Orgasmic Addiction.no_watermark.zh-CN.dual.pdf`（2025-07-29 再生）  

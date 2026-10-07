@@ -5,8 +5,7 @@ Skip predicates run inside ILTranslator. ``--skip-translation`` would skip
 that stage and produce an empty report — this harness uses FixedMap identity
 instead, matching the 0.6.4.69 dual skip_header=True / header_height=40 setup.
 
-Default pages are the W0 1-based PDF subset from
-docs/oa-dual-quality-wave-0.6.4.69.md (book p3/p5/… not book numbers).
+Default pages are the old W0 1-based PDF subset (book p3/p5/…, not book numbers).
 
 Example::
 

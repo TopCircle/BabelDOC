@@ -64,7 +64,6 @@
 
 以下已迁到 `docs/archive/`，仅作历史证据，**不要**当工作队列：
 
-- `oa-dual-quality-wave-0.6.4.69.md`（旧 wave）
 - `layout-first-*.md` / `layout-engine-defects.md` / `line-interval-architecture.md`
 - `architecture-optimization-plan.md` / `oa-dual-layout-pr-plan.md` / `p1_acceptance_oa.md`
 

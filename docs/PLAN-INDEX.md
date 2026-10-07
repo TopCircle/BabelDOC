@@ -22,7 +22,6 @@ Moved under [`archive/`](archive/). Status banners / filenames only; not the que
 
 | Doc | What it was |
 |------|-------------|
-| `archive/oa-dual-quality-wave-0.6.4.69.md` | Wave queue @ 0.6.4.69 (superseded 2026-09-04) |
 | `archive/architecture-optimization-plan.md` | Long-horizon S1–S3 / L3 |
 | `archive/oa-dual-layout-pr-plan.md` | 0.6.4.37 PR-A–D |
 | `archive/layout-first-plan.md` (+ coding / review) | LayoutIntent design |

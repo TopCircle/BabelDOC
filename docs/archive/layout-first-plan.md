@@ -1,7 +1,7 @@
 # BabelDOC 排版优先（Layout-First）整体方案 v2.1
 
 > **2026-08-13 — Historical.** P0–P2 largely landed. **Do not schedule from this file.**  
-> Active queue: [`oa-dual-quality-wave-0.6.4.69.md`](oa-dual-quality-wave-0.6.4.69.md) · index: [`PLAN-INDEX.md`](PLAN-INDEX.md)
+> Do not schedule from this file. Status: [`../CURRENT-STATUS.md`](../CURRENT-STATUS.md) · index: [`../PLAN-INDEX.md`](../PLAN-INDEX.md)
 
 | 字段 | 值 |
 |------|-----|

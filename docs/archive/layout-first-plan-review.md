@@ -1,7 +1,7 @@
 # Layout-First 方案评审（相对当前架构与源码）
 
 > **2026-08-13 — Snapshot** of the 2026-08-03 review (baseline 0.6.4.50). Not a work queue.  
-> Active: [`oa-dual-quality-wave-0.6.4.69.md`](oa-dual-quality-wave-0.6.4.69.md)
+> Do not schedule from this file. Status: [`../CURRENT-STATUS.md`](../CURRENT-STATUS.md)
 
 | 字段 | 值 |
 |------|-----|
