@@ -11,11 +11,13 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfLine
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
+from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.utils.layout_intent_extractor import (
     LayoutIntentExtractor,
 )
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import effective_wrap_mode
 from babeldoc.format.pdf.document_il.utils.placement_paradigm import PlacementParadigm
 from babeldoc.format.pdf.document_il.utils.placement_paradigm import select_paradigm
 
@@ -153,3 +155,64 @@ def test_extract_marks_chrome_keep_current():
     assert intent.role is LayoutIntentRole.CHROME
     assert intent.paradigm_mark.paradigm is PlacementParadigm.KEEP_CURRENT
     assert intent.paradigm_mark.reason == "keep_role"
+
+
+def _marked_paragraph(mark, wrap_mode: WrapMode) -> il_version_1.PdfParagraph:
+    design = Box(x=102.0, y=100.0, x2=570.0, y2=400.0)
+    paragraph = il_version_1.PdfParagraph(
+        box=design,
+        pdf_paragraph_composition=[],
+        unicode="x",
+    )
+    paragraph.layout_intent = LayoutIntent(
+        role=LayoutIntentRole.BODY,
+        design_box=design,
+        top_inset=0.0,
+        bottom_inset=0.0,
+        wrap_mode=wrap_mode,
+        wrap_shape=[(0.0, 468.0)],
+        paradigm_mark=mark,
+    )
+    return paragraph
+
+
+def test_rect_reflow_wrap_mode_ignores_shape():
+    boxes = [(102.0, 570.0, 200.0 - 15.0 * index) for index in range(4)]
+    mark = select_paradigm(LayoutIntentRole.BODY, WrapMode.NONE, boxes)
+    assert mark.paradigm is PlacementParadigm.RECT_REFLOW
+    paragraph = _marked_paragraph(mark, WrapMode.NONE)
+    assert effective_wrap_mode(paragraph, shape_present=True) is WrapMode.NONE
+
+
+def test_shaped_pocket_wrap_mode_stays_right_fixed():
+    mark = select_paradigm(
+        LayoutIntentRole.BODY, WrapMode.RIGHT_FIXED, _taper_boxes()
+    )
+    assert mark.paradigm is PlacementParadigm.SHAPED_POCKET
+    paragraph = _marked_paragraph(mark, WrapMode.RIGHT_FIXED)
+    assert effective_wrap_mode(paragraph, shape_present=True) is WrapMode.RIGHT_FIXED
+
+
+def test_missing_mark_wrap_mode_stays_right_fixed():
+    paragraph = _marked_paragraph(None, WrapMode.NONE)
+    assert effective_wrap_mode(paragraph, shape_present=True) is WrapMode.RIGHT_FIXED
+
+
+def test_rect_reflow_wrap_mode_keeps_prior_alignment():
+    from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+        apply_wrap_flush,
+    )
+
+    boxes = [(102.0, 570.0, 200.0 - 15.0 * index) for index in range(4)]
+    mark = select_paradigm(LayoutIntentRole.BODY, WrapMode.NONE, boxes)
+    paragraph = _marked_paragraph(mark, WrapMode.NONE)
+    assert apply_wrap_flush(paragraph, "center") == "center"
+
+
+def test_missing_mark_wrap_mode_still_flushes_right():
+    from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+        apply_wrap_flush,
+    )
+
+    paragraph = _marked_paragraph(None, WrapMode.NONE)
+    assert apply_wrap_flush(paragraph, "left") == "right"

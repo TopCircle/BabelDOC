@@ -40,6 +40,7 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     clamp_callout_measure_to_design,
     is_design_column_role,
 )
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import apply_wrap_flush
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     attempt_chain_for_paragraph,
 )
@@ -53,7 +54,6 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     resolve_line_interval_plan,
 )
-from babeldoc.format.pdf.document_il.utils.line_interval_plan import wrap_flush_alignment
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import wrap_interval
 from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
 from babeldoc.format.pdf.document_il.utils.same_baseline import same_baseline_overlap
@@ -3883,10 +3883,10 @@ class Typesetting:
         # Figure-wrap pin flush: LTR placement leaves underfilled CJK mid-pocket
         # unless flushed to the pinned edge (EN nearly fills so left-align
         # looked right-pinned; CJK often does not). LEFT_FIXED → left;
-        # RIGHT_FIXED / legacy → right.
+        # RIGHT_FIXED / legacy → right. rect_reflow keeps the alignment above.
         wrap_active = self._active_wrap(paragraph, box)
         if wrap_active is not None:
-            alignment = wrap_flush_alignment(paragraph)
+            alignment = apply_wrap_flush(paragraph, alignment)
             audit = getattr(self, "_page_layout_audit", None)
             if audit is not None:
                 design, shape = wrap_active
