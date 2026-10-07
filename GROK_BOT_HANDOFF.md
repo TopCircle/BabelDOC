@@ -4,7 +4,7 @@
 > **维护规则（强制）：** 凡对 `TopCircle/BabelDOC` 有实质修改并 `push` 到 `main`，**同一批改动必须更新本文件**（至少刷新「快照」「HEAD/版本」「进行中 / 下一步」「遗留」）。细节状态可与 `docs/CURRENT-STATUS.md` 对齐；两者冲突时以 **本文件快照日期更新的一方** 为准，并立刻同步另一份。  
 > **用户：** Circle · 时区 Asia/Shanghai · **一律用中文回复** · Agent 名可用 BabelDOC。
 
-> **2026-10-07 中段修复已推 main（版本仍 0.6.4.95）：** 大标题用 em 框顶作行高；同一基线的后绘段落下移 1.5pt；目录项目符号和图形状态整串不同的行不合并；跨段连字符只接同一栏紧邻的下一段。代码审查通过。OA / Vagina Masterclass 未重译。VPS `pdfmt-next-app` 需按 main 重建镜像后才跑到这版。
+> **2026-10-07 中段修复已推 main（版本仍 0.6.4.95）：** 大标题用 em 框顶作行高；同一基线的后绘段落下移 1.5pt；目录项目符号和图形状态整串不同的行不合并；跨段连字符只接同一栏紧邻的下一段。代码审查通过。OA / Vagina Masterclass 未重译。VPS `pdfmt-next-app` 已按 `80fab28` 重建，7870 返回 200，容器内可 import `hyphen_paragraph_merge` 与 `same_baseline`。
 
 ---
 
@@ -54,10 +54,10 @@
 2. P2：Latin 碎屑 4 条（BDSM×2 / majora / allin）— 非系统。
 3. P2：短末行 — p59「度。」(pdf58)、p91「世界。」(pdf90)、pdf119「内容」。
 4. P2 可选：p19 tip-band 再加深；PR-B1i 红色；wide_on_photo bbox 勿当 P0。
-5. VPS `pdfmt-next-app` 镜像仍是旧层，要 `docker compose build` 后才吃到本提交。版本号仍是 0.6.4.95，用能否 import `hyphen_paragraph_merge` / `same_baseline` 判断。
+5. VPS `pdfmt-next-app` 已是 `80fab28`（2026-10-07 重建）。版本号仍是 0.6.4.95。
 
 【接手后立刻做】
-1. git -C /Users/yun/workspace/BabelDOC fetch && git log -1 --oneline；核对 0.6.4.95，并确认容器里能 import 上述两个模块。
+1. git -C /Users/yun/workspace/BabelDOC fetch && git log -1 --oneline；核对 0.6.4.95。VPS 已是 `80fab28`，不必再重建。
 2. 读 docs/CURRENT-STATUS.md；打开 canonical 0.6.4.95 dual（Anal Pleasure For Her 路径），勿用旧 93。
 3. 下一刀：其余 retypeset，或 P2 短末行 / 残余 majora·allin；不要重开 wrap P0；无系统碎屑则不必 bump。
 4. 不要从 archive 旧计划擅自开大波次。

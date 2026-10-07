@@ -7,7 +7,7 @@
 
 - 大标题用 em 框顶作行高，斜体不再拆成两行。同一基线的后绘段落下移 1.5pt。目录项目符号，以及图形状态整串不同的行，不再并成一段。跨段拉丁连字符在翻译前只接同一栏紧邻的下一段。
 - 代码审查通过。OA 与 Vagina Masterclass 未重译。术语表（宫颈、射精、阴阜：阴茎、您/你）未做。
-- VPS `pdfmt-next-app` 需按 main 重建镜像。版本号不变，用 import `hyphen_paragraph_merge` 与 `same_baseline` 确认。
+- VPS `pdfmt-next-app` 已按 `80fab28` 重建（2026-10-07）。7870 返回 200。容器内可 import `hyphen_paragraph_merge` 与 `same_baseline`。版本号仍是 0.6.4.95。
 
 ## 验证 dual（Circle 整本 · 0.6.4.95 · 已确认）
 
