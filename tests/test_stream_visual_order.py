@@ -144,6 +144,78 @@ def test_long_ltr_body_identity():
     assert maybe_reorder_reversed_stream(chars, layout_label="plain text") is chars
 
 
+def test_display_italic_em_quad_stays_one_line():
+    """36pt italic titles: ink tops differ by ~10pt, em quads do not.
+
+    JansonText-Italic ``Technique 1 - Vaginal Orgasms`` was scrambled to
+    ``Th i 1 Vi l O ec n queag na rgasms`` because cap-height and x-height
+    ink tops fell into two line clusters.
+    """
+    text = "Technique 1 - Vaginal Orgasms"
+    chars: list[PdfCharacter] = []
+    x = 72.0
+    em_y = 585.8
+    em_y2 = 621.8
+    for ch in text:
+        if ch == " ":
+            width = 10.0
+        elif ch == "-":
+            width = 12.0
+        else:
+            width = 18.0
+        pdf_box = Box(x=x, y=em_y, x2=x + width, y2=em_y2)
+        if ch == "-":
+            ink_y, ink_y2 = 590.0, 592.0
+        elif ch == " " or ch.isupper() or ch.isdigit():
+            ink_y, ink_y2 = 585.8, 611.8
+        else:
+            ink_y, ink_y2 = 585.8, 601.6
+        ink = Box(x=x, y=ink_y, x2=x + width, y2=ink_y2)
+        chars.append(
+            PdfCharacter(
+                pdf_character_id=1,
+                char_unicode=ch,
+                box=pdf_box,
+                visual_bbox=VisualBbox(box=ink),
+                pdf_style=PdfStyle(
+                    font_id="T1_0", font_size=36.0, graphic_state=None
+                ),
+                scale=1.0,
+                advance=width,
+                vertical=False,
+                xobj_id=0,
+            )
+        )
+        x += width
+    got = get_char_unicode_string(chars)
+    assert "queag" not in got.replace(" ", "")
+    assert "".join(c for c in got if c.isalnum()) == "Technique1VaginalOrgasms"
+
+
+def test_em_quad_does_not_merge_distinct_baselines():
+    """Em-quad tops that differ by a line still sort as two lines."""
+
+    def _glyph(ch: str, x: float, y_bottom: float) -> PdfCharacter:
+        pdf_box = Box(x=x, y=y_bottom, x2=x + 10, y2=y_bottom + 12)
+        ink = Box(x=x, y=y_bottom + 2, x2=x + 10, y2=y_bottom + 8)
+        return PdfCharacter(
+            pdf_character_id=1,
+            char_unicode=ch,
+            box=pdf_box,
+            visual_bbox=VisualBbox(box=ink),
+            pdf_style=PdfStyle(font_id="base", font_size=12.0, graphic_state=None),
+            scale=1.0,
+            advance=10.0,
+            vertical=False,
+            xobj_id=0,
+        )
+
+    stream = [_glyph(ch, 50 + i * 10, 100) for i, ch in enumerate("CD")]
+    stream += [_glyph(ch, 50 + i * 10, 120) for i, ch in enumerate("AB")]
+    ordered = sort_chars_visual_order(stream)
+    assert "".join(c.char_unicode for c in ordered) == "ABCD"
+
+
 def test_descender_glyphs_stay_on_same_line_as_peers():
     """arXiv body: p/y have lower box.y but same topline — must not split.
 

@@ -526,6 +526,14 @@ class ParagraphFinder:
 
         merge_stacked_narrow_callout_paragraphs(paragraphs, page)
 
+        # Line-wrap stems that landed in their own paragraph (``stimula-`` /
+        # ``tion``) must be one MT unit. Same-paragraph joins cannot see them.
+        from babeldoc.format.pdf.document_il.utils.hyphen_paragraph_merge import (
+            merge_hyphen_wrapped_paragraphs,
+        )
+
+        merge_hyphen_wrapped_paragraphs(paragraphs)
+
         for paragraph in paragraphs:
             self.update_paragraph_data(paragraph, update_unicode=True, page=page)
 

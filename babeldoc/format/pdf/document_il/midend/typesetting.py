@@ -56,6 +56,10 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import wrap_flush_alignment
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import wrap_interval
 from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
+from babeldoc.format.pdf.document_il.utils.same_baseline import same_baseline_overlap
+from babeldoc.format.pdf.document_il.utils.same_baseline import (
+    separate_same_baseline_overlap,
+)
 from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import layout_intent_wrap_enabled
 from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
@@ -2990,38 +2994,56 @@ class Typesetting:
                         continue
                     if not self._bbox_overlap(b1, b2):
                         continue
-                    if self._is_bbox_contain_in_vertical(b1, b2):
+                    if (p1.render_order or 0) <= (p2.render_order or 0):
+                        move, keep_box, move_box = p2, b1, b2
+                    else:
+                        move, keep_box, move_box = p1, b2, b1
+                    # Same baseline: move the later paint down. Shrink/retypeset
+                    # leaves both strings on the line (equal y is not containment,
+                    # and a slightly inset box is skipped as containment).
+                    if same_baseline_overlap(keep_box, move_box):
+                        floor_y = None
+                        crop = getattr(page, "cropbox", None)
+                        crop_box = (
+                            getattr(crop, "box", None) if crop is not None else None
+                        )
+                        if crop_box is not None and crop_box.y is not None:
+                            floor_y = float(crop_box.y)
+                        if separate_same_baseline_overlap(
+                            move, keep_box, move_box, floor_y=floor_y
+                        ):
+                            new_box = self._recompute_rendered_box(move)
+                            if new_box is not None:
+                                rendered_boxes[id(move)] = new_box
+                            overlap_found = True
+                            continue
+                    if self._is_bbox_contain_in_vertical(keep_box, move_box):
                         continue
 
                     overlap_found = True
 
-                    if (p1.render_order or 0) <= (p2.render_order or 0):
-                        keep_box, shrink, shrink_box = b1, p2, b2
-                    else:
-                        keep_box, shrink, shrink_box = b2, p1, b1
-
-                    if shrink.box is None:
+                    if move.box is None:
                         continue
 
-                    if shrink_box.y < keep_box.y2:
-                        # shrink 段落在 keep 段落之下 → 收缩 shrink 顶部
+                    if move_box.y < keep_box.y2:
+                        # move 段落在 keep 段落之下 → 收缩 move 顶部
                         new_y2 = keep_box.y - 1
-                        if new_y2 > shrink.box.y:
-                            shrink.box = Box(
-                                x=shrink.box.x,
-                                y=shrink.box.y,
-                                x2=shrink.box.x2,
+                        if new_y2 > move.box.y:
+                            move.box = Box(
+                                x=move.box.x,
+                                y=move.box.y,
+                                x2=move.box.x2,
                                 y2=new_y2,
                             )
-                    elif shrink_box.y2 > keep_box.y2:
-                        # shrink 段落在 keep 段落之上 → 收缩 shrink 底部
+                    elif move_box.y2 > keep_box.y2:
+                        # move 段落在 keep 段落之上 → 收缩 move 底部
                         new_y = keep_box.y2 + 1
-                        if new_y < (shrink.box.y2 or float("inf")):
-                            shrink.box = Box(
-                                x=shrink.box.x,
+                        if new_y < (move.box.y2 or float("inf")):
+                            move.box = Box(
+                                x=move.box.x,
                                 y=new_y,
-                                x2=shrink.box.x2,
-                                y2=shrink.box.y2,
+                                x2=move.box.x2,
+                                y2=move.box.y2,
                             )
                         else:
                             continue
@@ -3029,23 +3051,23 @@ class Typesetting:
                         continue
 
                     # 重新排版（异常安全：保存旧 composition 以便恢复）
-                    old_compositions = shrink.pdf_paragraph_composition[:]
+                    old_compositions = move.pdf_paragraph_composition[:]
                     try:
                         fonts = self._collect_fonts_for_page(page)
                         typesetting_units = self.create_typesetting_units(
-                            shrink, fonts
+                            move, fonts
                         )
-                        precomputed_scale = shrink.optimal_scale or 1.0
-                        shrink.pdf_paragraph_composition = []
+                        precomputed_scale = move.optimal_scale or 1.0
+                        move.pdf_paragraph_composition = []
                         self.retypeset_with_precomputed_scale(
-                            shrink, page, typesetting_units, precomputed_scale
+                            move, page, typesetting_units, precomputed_scale
                         )
-                        self._update_paragraph_render_order(shrink)
-                        new_box = self._recompute_rendered_box(shrink)
+                        self._update_paragraph_render_order(move)
+                        new_box = self._recompute_rendered_box(move)
                         if new_box is not None:
-                            rendered_boxes[id(shrink)] = new_box
+                            rendered_boxes[id(move)] = new_box
                     except Exception:
-                        shrink.pdf_paragraph_composition = old_compositions
+                        move.pdf_paragraph_composition = old_compositions
                         retypeset_fail_count += 1
                         logger.debug(
                             "Page %s: 段落重新排版失败，已恢复原始 composition。",

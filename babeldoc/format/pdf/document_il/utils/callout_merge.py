@@ -21,6 +21,13 @@ import logging
 from typing import TYPE_CHECKING
 from typing import Any
 
+from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+    paragraph_fills_differ,
+)
+from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+    paragraph_starts_with_list_marker,
+)
+
 if TYPE_CHECKING:
     from babeldoc.format.pdf.document_il.il_version_1 import Page
     from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
@@ -176,6 +183,14 @@ def _can_merge_vertical(
     if _width(upper) > _MAX_LINE_WIDTH or _width(lower) > _MAX_LINE_WIDTH:
         return False
     if not _same_xobj(upper, lower):
+        return False
+    # TOC bullets and unequal graphic-state strings are narrow too. Merging
+    # them flattens the list, and style intersection then drops the fill.
+    if paragraph_starts_with_list_marker(upper) or paragraph_starts_with_list_marker(
+        lower
+    ):
+        return False
+    if paragraph_fills_differ(upper, lower):
         return False
     if _is_multi_row_block(upper) or _is_multi_row_block(lower):
         return False

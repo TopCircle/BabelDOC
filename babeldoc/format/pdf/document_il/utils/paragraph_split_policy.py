@@ -16,6 +16,8 @@ from babeldoc.format.pdf.document_il import Box
 from babeldoc.format.pdf.document_il import PdfLine
 from babeldoc.format.pdf.document_il import PdfParagraph
 from babeldoc.format.pdf.document_il import PdfParagraphComposition
+from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
+from babeldoc.format.pdf.document_il.utils.layout_helper import composition_characters
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_bullet_point
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     iter_visual_known_split_pairs,
@@ -74,6 +76,106 @@ def line_dominant_font_size(line: PdfLine | None) -> float | None:
 # (title 15pt → body 11pt) or either line is short (heading / uni line).
 _SOFT_SIZE_RATIO_HARD_SPLIT = 1.18
 _SOFT_SHORT_LINE_CHARS = 48
+
+
+def _char_x(char: PdfCharacter) -> float:
+    visual = char.visual_bbox
+    box = visual.box if visual is not None else None
+    if box is None or box.x is None:
+        box = char.box
+    if box is None or box.x is None:
+        return float("inf")
+    return float(box.x)
+
+
+def line_chars_ltr(line: PdfLine | None) -> list[PdfCharacter]:
+    """Non-space glyphs on *line*, left to right."""
+    if line is None or not line.pdf_character:
+        return []
+    chars = [
+        c
+        for c in line.pdf_character
+        if c is not None and (c.char_unicode or "").strip()
+    ]
+    chars.sort(key=_char_x)
+    return chars
+
+
+def _graphic_instructions(chars: list[PdfCharacter]) -> frozenset[str | None] | None:
+    """Passthrough strings on chars that have a graphic state.
+
+    ``None`` means the char has no graphic state, so style intersection
+    keeps the other side. A present state contributes its string, including
+    an empty one. Intersection nulls the color when those strings differ.
+    """
+    values: set[str | None] = set()
+    for char in chars:
+        style = char.pdf_style
+        if style is None or style.graphic_state is None:
+            continue
+        values.add(style.graphic_state.passthrough_per_char_instruction)
+    if not values:
+        return None
+    return frozenset(values)
+
+
+def _passthroughs_differ(
+    left: frozenset[str | None] | None,
+    right: frozenset[str | None] | None,
+) -> bool:
+    return left is not None and right is not None and left != right
+
+
+def line_fills_differ(prev_line: PdfLine | None, curr_line: PdfLine | None) -> bool:
+    """True when both lines have graphic-state strings and the sets differ."""
+    return _passthroughs_differ(
+        _graphic_instructions(line_chars_ltr(prev_line)),
+        _graphic_instructions(line_chars_ltr(curr_line)),
+    )
+
+
+def line_starts_with_list_marker(line: PdfLine | None) -> bool:
+    """True when the leftmost glyph is a list marker. See ``is_bullet_point``."""
+    chars = line_chars_ltr(line)
+    return bool(chars) and is_bullet_point(chars[0])
+
+
+def _paragraph_chars(paragraph: PdfParagraph) -> list[PdfCharacter]:
+    chars: list[PdfCharacter] = []
+    for comp in paragraph.pdf_paragraph_composition or []:
+        chars.extend(composition_characters(comp))
+    return chars
+
+
+def paragraph_starts_with_list_marker(paragraph: PdfParagraph) -> bool:
+    """True when the topmost line opens with a list marker."""
+    lines = [
+        comp.pdf_line
+        for comp in paragraph.pdf_paragraph_composition or []
+        if comp.pdf_line is not None and comp.pdf_line.pdf_character
+    ]
+    if lines:
+        def _top(line: PdfLine) -> float:
+            box = line.box
+            if box is None or box.y2 is None:
+                return float("-inf")
+            return float(box.y2)
+
+        return line_starts_with_list_marker(max(lines, key=_top))
+    loose = _paragraph_chars(paragraph)
+    if not loose:
+        return False
+    return line_starts_with_list_marker(
+        PdfLine(box=None, pdf_character=loose)
+    )
+
+
+def paragraph_fills_differ(left: PdfParagraph, right: PdfParagraph) -> bool:
+    """True when both paragraphs have graphic-state strings and the sets differ."""
+    return _passthroughs_differ(
+        _graphic_instructions(_paragraph_chars(left)),
+        _graphic_instructions(_paragraph_chars(right)),
+    )
 
 
 def is_toc_leader_line(prev_line: PdfLine) -> bool:
@@ -424,7 +526,7 @@ def should_split_line_pair(
     if curr_line is None:
         return False
 
-    if curr_line.pdf_character and is_bullet_point(curr_line.pdf_character[0]):
+    if line_starts_with_list_marker(curr_line):
         return True
     # Keep hyphen-wrap tails in this paragraph (even if the ligature glyph
     # uses a different subset font_id). Split would make two translate() calls.
@@ -432,6 +534,10 @@ def should_split_line_pair(
         return False
     if is_visual_known_split_continuation(prev_line, curr_line):
         return False
+    # White section title + black item must not share one base style.
+    # Intersection drops the fill, and the title paints black on a black bar.
+    if line_fills_differ(prev_line, curr_line):
+        return True
 
     prev_width = (prev_line.box.x2 - prev_line.box.x) if prev_line.box else 0.0
     caption_stack = (layout_label or "").strip().lower() in {

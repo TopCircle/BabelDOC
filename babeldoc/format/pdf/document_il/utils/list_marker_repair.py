@@ -18,6 +18,7 @@ from babeldoc.format.pdf.document_il import PdfParagraphComposition
 from babeldoc.format.pdf.document_il import PdfSameStyleUnicodeCharacters
 from babeldoc.format.pdf.document_il import PdfStyle
 from babeldoc.format.pdf.document_il import il_version_1
+from babeldoc.format.pdf.document_il.utils.layout_helper import composition_characters
 from babeldoc.format.pdf.document_il.utils.layout_helper import get_paragraph_unicode
 from babeldoc.format.pdf.document_il.utils.layout_helper import is_bullet_point
 
@@ -326,25 +327,12 @@ def normalize_list_marker_on_paragraph(
     return changed
 
 
-def _composition_characters(composition: PdfParagraphComposition) -> list:
-    """Return positioned characters carried by one composition."""
-    if composition.pdf_line is not None:
-        return list(composition.pdf_line.pdf_character or [])
-    if composition.pdf_character is not None:
-        return [composition.pdf_character]
-    if composition.pdf_same_style_characters is not None:
-        return list(composition.pdf_same_style_characters.pdf_character or [])
-    if composition.pdf_formula is not None:
-        return list(composition.pdf_formula.pdf_character or [])
-    return []
-
-
 def _is_source_leading_bullet(
     paragraph: il_version_1.PdfParagraph,
     composition: PdfParagraphComposition,
 ) -> bool:
     """Whether ``composition`` is a source-positioned bullet-only run."""
-    chars = _composition_characters(composition)
+    chars = composition_characters(composition)
     if not chars or paragraph.box is None or paragraph.box.x is None:
         return False
     bullet_chars = [char for char in chars if is_bullet_point(char)]

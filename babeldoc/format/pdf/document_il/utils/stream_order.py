@@ -86,15 +86,56 @@ def _resolve_char_box(char: PdfCharacter) -> Box | None:
     return visual if visual is not None else pdf
 
 
+def _em_quad_top(char: PdfCharacter) -> float | None:
+    """Top of the PDF text quad when it is the font's em box.
+
+    Design italics (36pt Janson) store a uniform em quad on ``char.box``
+    and a tight ink box on ``visual_bbox``. Cap-height and x-height ink
+    tops differ by ~10pt, which is more than the 7.5pt line tolerance, so
+    one title baseline was read as two lines and then scrambled
+    (``Technique 1 - Vaginal Orgasms`` → ``Th i 1 Vi l O …``).
+
+    The em quad is the stable line key. Ink tops stay in use when the PDF
+    box is not an em box (descender regression: font 10pt, box ~5pt).
+    """
+    if getattr(char, "vertical", False):
+        return None
+    pdf = getattr(char, "box", None)
+    style = getattr(char, "pdf_style", None)
+    if pdf is None or pdf.y is None or pdf.y2 is None or style is None:
+        return None
+    font_size = getattr(style, "font_size", None)
+    if font_size is None:
+        return None
+    try:
+        font_size_f = float(font_size)
+    except (TypeError, ValueError):
+        return None
+    if font_size_f <= 0:
+        return None
+    height = float(pdf.y2) - float(pdf.y)
+    if height <= 0:
+        return None
+    tolerance = max(0.8, 0.08 * font_size_f)
+    if abs(height - font_size_f) > tolerance:
+        return None
+    return float(pdf.y2)
+
+
 def char_visual_xy(char: PdfCharacter) -> tuple[float, float] | None:
     """Return ``(x, y_line)`` for reading-order comparisons.
 
-    ``y_line`` is the **top** of the glyph box (``y2``).  Using mid-Y or
-    bottom (``y``) splits descenders (p/y/g/q) onto a false second line.
+    ``y_line`` is the em-quad top when ``char.box`` height matches the font
+    size, otherwise the **top** of the resolved glyph box (``y2``). Mid-Y
+    or bottom (``y``) splits descenders (p/y/g/q) onto a false second line.
+    ``x`` stays on the resolved box so ink sidebearings still order glyphs.
     """
     box = _resolve_char_box(char)
     if box is None or box.x is None:
         return None
+    em_top = _em_quad_top(char)
+    if em_top is not None:
+        return (float(box.x), em_top)
     if box.y2 is not None:
         y_line = float(box.y2)
     elif box.y is not None:

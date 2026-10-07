@@ -73,18 +73,42 @@ BULLET_POINT_PATTERN = re.compile(
     r"[■•⚫⬤◆◇○●◦‣⁃▪▫∗†‡¹²³⁴⁵⁶⁷⁸⁹⁰₁₂₃₄₅₆₇₈₉₀ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻ¶※⁑⁂⁕⁎⁜❧☙⁋‖‽·\uf643]"
 )
 
+# Webdings ``Q`` is a list marker. The Symbol face is math Greek, not a bullet.
+_DINGBAT_FONT_RE = re.compile(r"webdings|wingdings|zapfdingbats", re.IGNORECASE)
+
 
 def is_bullet_point(char: PdfCharacter) -> bool:
-    """Check if the character is a bullet point.
+    """True when *char* is a list marker.
 
-    Args:
-        char: The character to check
-
-    Returns:
-        bool: True if the character is a bullet point
+    Usual bullets match :data:`BULLET_POINT_PATTERN`. Dingbat faces encode
+    the marker as a letter (Webdings ``Q``); a single glyph from those
+    faces counts. A capital on a text face does not.
     """
-    is_bullet = bool(BULLET_POINT_PATTERN.match(char.char_unicode))
-    return is_bullet
+    text = char.char_unicode or ""
+    if text and BULLET_POINT_PATTERN.match(text):
+        return True
+    if len(text) != 1 or text.isspace():
+        return False
+    style = char.pdf_style
+    font_id = style.font_id if style is not None else None
+    if not font_id:
+        return False
+    return _DINGBAT_FONT_RE.search(font_id) is not None
+
+
+def composition_characters(
+    composition: PdfParagraphComposition,
+) -> list[PdfCharacter]:
+    """Positioned glyphs on one composition, whichever slot holds them."""
+    if composition.pdf_line is not None:
+        return list(composition.pdf_line.pdf_character or [])
+    if composition.pdf_character is not None:
+        return [composition.pdf_character]
+    if composition.pdf_same_style_characters is not None:
+        return list(composition.pdf_same_style_characters.pdf_character or [])
+    if composition.pdf_formula is not None:
+        return list(composition.pdf_formula.pdf_character or [])
+    return []
 
 
 def calculate_box_iou(box1: Box, box2: Box) -> float:

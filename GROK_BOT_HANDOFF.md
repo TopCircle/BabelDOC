@@ -4,6 +4,8 @@
 > **维护规则（强制）：** 凡对 `TopCircle/BabelDOC` 有实质修改并 `push` 到 `main`，**同一批改动必须更新本文件**（至少刷新「快照」「HEAD/版本」「进行中 / 下一步」「遗留」）。细节状态可与 `docs/CURRENT-STATUS.md` 对齐；两者冲突时以 **本文件快照日期更新的一方** 为准，并立刻同步另一份。  
 > **用户：** Circle · 时区 Asia/Shanghai · **一律用中文回复** · Agent 名可用 BabelDOC。
 
+> **2026-10-07 中段修复已推 main（版本仍 0.6.4.95）：** 大标题用 em 框顶作行高；同一基线的后绘段落下移 1.5pt；目录项目符号和图形状态整串不同的行不合并；跨段连字符只接同一栏紧邻的下一段。代码审查通过。OA / Vagina Masterclass 未重译。VPS `pdfmt-next-app` 需按 main 重建镜像后才跑到这版。
+
 ---
 
 ## 直接复制给新助手的 Prompt（从下一行起）
@@ -34,28 +36,30 @@
 - 改前读 docs/CURRENT-STATUS.md、docs/PLAN-INDEX.md、AGENTS.md。不要从 docs/archive/ 旧 wave/layout-first 文档排期。
 - push 前按 AGENTS.md 做质量门；push 后同步更新仓库根目录 GROK_BOT_HANDOFF.md 与 docs/CURRENT-STATUS.md。
 
-【当前快照 — 2026-09-07 s31】
-- HEAD：以 main 尖端为准 · 版本 0.6.4.95。
-- s31 整本复核：producer 0.6.4.95 / 121 页 / ZH左|EN右；wrap P0（p19/p59/p91）仍好。
-- Latin MT suspects：**48→4**（−44）；s29 示例词全清；剩 BDSM×2 / majora / allin — **非系统，未 bump**。
-- 证据：tmp/oa_w1_deeplx/s31-verify/ + s31-residual-scan.json。
+【当前快照 — 2026-10-07 中段修复】
+- HEAD：本提交 · 版本仍 0.6.4.95。
+- 大标题 em 框行高；同一基线下移；目录项目符号 / 图形状态整串不合并；跨段连字符只接同一栏紧邻下一段。审查通过。未重译 OA 或 Vagina Masterclass。
+- s31 整本复核仍有效：producer 0.6.4.95 / 121 页 / ZH左|EN右；wrap P0（p19/p59/p91）仍好。
+- Latin MT suspects：**48→4**（−44）；剩 BDSM×2 / majora / allin — **非系统，未 bump**。
 
 【已完成要点】
+- 2026-10-07 中段：`stream_order` em 框、`same_baseline` 下移、`callout_merge` / 图形状态整串、`hyphen_paragraph_merge`。版本未 bump。
 - p19/p59/p91 wrap P0：见 0.6.4.81–91；s29/s31 复核仍好。
 - s30 MT 碎屑根因：glossary 伪注释 / hard hyphen / `{vN}her`/`enemas` 公式粘连 / sanitize+post_clean；DeepLX live `…norm_en_cache_v6`。
 - s31：Circle 确认的 0.6.4.95 整本 dual 路径（Anal Pleasure For Her/）已写入文档；旧 93 dual 标明勿用。
 - 日志安静化：0.6.4.93。
 
 【遗留（非阻塞 backlog）】
-1. P1 潜伏：重叠修正 retypeset 失败根因（静态不可见）。
+1. 同一基线重叠已下移；其它 retypeset 失败仍可能在。术语（宫颈、射精、阴阜：阴茎、您/你）是词表，不是这次代码。
 2. P2：Latin 碎屑 4 条（BDSM×2 / majora / allin）— 非系统。
 3. P2：短末行 — p59「度。」(pdf58)、p91「世界。」(pdf90)、pdf119「内容」。
 4. P2 可选：p19 tip-band 再加深；PR-B1i 红色；wide_on_photo bbox 勿当 P0。
+5. VPS `pdfmt-next-app` 镜像仍是旧层，要 `docker compose build` 后才吃到本提交。版本号仍是 0.6.4.95，用能否 import `hyphen_paragraph_merge` / `same_baseline` 判断。
 
 【接手后立刻做】
-1. git -C /Users/yun/workspace/BabelDOC fetch && git log -1 --oneline；核对 0.6.4.95。
+1. git -C /Users/yun/workspace/BabelDOC fetch && git log -1 --oneline；核对 0.6.4.95，并确认容器里能 import 上述两个模块。
 2. 读 docs/CURRENT-STATUS.md；打开 canonical 0.6.4.95 dual（Anal Pleasure For Her 路径），勿用旧 93。
-3. 下一刀：retypeset 根因，或 P2 短末行 / 残余 majora·allin 表面补丁；不要重开 wrap P0；无系统碎屑则不必 bump。
+3. 下一刀：其余 retypeset，或 P2 短末行 / 残余 majora·allin；不要重开 wrap P0；无系统碎屑则不必 bump。
 4. 不要从 archive 旧计划擅自开大波次。
 
 【交接自检】

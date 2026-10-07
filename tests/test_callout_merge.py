@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
+from babeldoc.format.pdf.document_il.il_version_1 import GraphicState
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
 from babeldoc.format.pdf.document_il.il_version_1 import PdfLine
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
@@ -251,6 +252,40 @@ def test_debug_stub_does_not_block_right_pinned_wrap_merge():
     assert "relationship" in joined
     assert "directing" in joined
     assert len([p for p in paras if (p.unicode or "") != "fallback_line"]) == 1
+
+
+def _paint(paragraph: PdfParagraph, instruction: str) -> None:
+    graphic = GraphicState(passthrough_per_char_instruction=instruction)
+    for comp in paragraph.pdf_paragraph_composition or []:
+        if not comp.pdf_line:
+            continue
+        for char in comp.pdf_line.pdf_character:
+            if char.pdf_style is not None:
+                char.pdf_style.graphic_state = graphic
+
+
+def test_toc_bullets_are_not_merged_as_callout():
+    """Stacked ``•`` TOC rows are narrower than 220pt and must stay items."""
+    lines = [
+        _line_para("• Vulva", x=59, y=400, w=40),
+        _line_para("• Mons Pubis", x=59, y=382, w=70),
+        _line_para("• Clitoris", x=59, y=364, w=50),
+    ]
+    n = merge_stacked_narrow_callout_paragraphs(lines)
+    assert n == 0
+    assert len(lines) == 3
+
+
+def test_white_title_does_not_merge_into_black_neighbor():
+    """Part title ``1 g`` must not share a paragraph with black body."""
+    white = _line_para("Part 3: Using The Rest", x=41, y=500, w=200)
+    black = _line_para("The Mons", x=41, y=478, w=80)
+    _paint(white, "1 g 1 G")
+    _paint(black, "0 g 0 G")
+    paras = [white, black]
+    n = merge_stacked_narrow_callout_paragraphs(paras)
+    assert n == 0
+    assert len(paras) == 2
 
 
 def test_right_pinned_does_not_merge_unpinned_body():

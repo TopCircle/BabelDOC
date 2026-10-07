@@ -399,9 +399,9 @@ def should_join_hyphen_wrap(left: str | None, continuation: str | None) -> bool:
     """True when *left* ends with a hyphenated Latin stem and *continuation*
     is a TeX line-wrap tail (not ``g-spot`` / ``Trigasm- actually``).
 
-    Same-paragraph adjacent spans/compositions use this before MT so
-    ``stu-`` + ligature ``ff`` becomes one token. Separate ``translate()``
-    calls (true two-paragraph splits) cannot join.
+    Same-paragraph adjacent spans use this before MT so ``stu-`` + ``ff``
+    becomes one token. A stem that is already its own paragraph is joined
+    by ``merge_hyphen_wrapped_paragraphs`` before ``translate()``.
     """
     if not left:
         return False

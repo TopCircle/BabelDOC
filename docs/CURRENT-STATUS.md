@@ -1,7 +1,13 @@
-# BabelDOC / OA dual — 当前状况（2026-09-07）
+# BabelDOC / OA dual — 当前状况（2026-10-07）
 
-**HEAD:** 以 main 尖端为准 · **版本:** `0.6.4.95`（s30 Latin crumb scrub；s31 整本复核） · 仓库 `TopCircle/BabelDOC` `main`  
+**HEAD:** 本提交 · **版本:** `0.6.4.95`（未 bump） · 仓库 `TopCircle/BabelDOC` `main`  
 **本文件是当前操作员入口。** 若与旧 wave / layout-first 计划冲突，以本文件 + `PLAN-INDEX.md` 为准。
+
+## 2026-10-07 — 中段修复已推 main（版本仍 0.6.4.95）
+
+- 大标题用 em 框顶作行高，斜体不再拆成两行。同一基线的后绘段落下移 1.5pt。目录项目符号，以及图形状态整串不同的行，不再并成一段。跨段拉丁连字符在翻译前只接同一栏紧邻的下一段。
+- 代码审查通过。OA 与 Vagina Masterclass 未重译。术语表（宫颈、射精、阴阜：阴茎、您/你）未做。
+- VPS `pdfmt-next-app` 需按 main 重建镜像。版本号不变，用 import `hyphen_paragraph_merge` 与 `same_baseline` 确认。
 
 ## 验证 dual（Circle 整本 · 0.6.4.95 · 已确认）
 
