@@ -39,6 +39,9 @@ _MAX_LINE_WIDTH = 220.0
 _ULTRA_NARROW_Y_MERGE = 120.0
 _MAX_VERTICAL_GAP = 22.0
 _MAX_X_DELTA = 160.0
+# Flat same-left single lines are a column (body or callout), not a stepped
+# triangle. Right-pin already refuses abs(dx) < 8; do not copy this guard.
+_SAME_LEFT_GUARD_PT = 4.0
 # OA p19 TAKING CHARGE wrap rows (~228–255pt) sit just over the callout cap.
 # Right-edge pin is the extra gate so this path cannot re-open the 0.6.4.48
 # medium-strip y-merge. Do not raise _MAX_LINE_WIDTH.
@@ -132,6 +135,17 @@ def _is_multi_row_block(paragraph: PdfParagraph) -> bool:
     return rows >= 2 and (ymax - ymin) > 1.5 * med_h
 
 
+def _is_single_visual_line(paragraph: PdfParagraph) -> bool:
+    """One composition line that does not itself span multiple visual rows."""
+    from babeldoc.format.pdf.document_il.utils.layout_helper import (
+        count_lines_from_compositions,
+    )
+
+    return count_lines_from_compositions(paragraph) == 1 and not _is_multi_row_block(
+        paragraph
+    )
+
+
 def _para_text(p: PdfParagraph) -> str:
     try:
         from babeldoc.format.pdf.document_il.utils.layout_helper import (
@@ -204,6 +218,15 @@ def _can_merge_vertical(
     if abs(float(bu.x) - float(bl.x)) > _MAX_X_DELTA and float(bl.x) + 5 < float(bu.x):
         return False
     if float(bl.x) > float(bu.x2) or float(bl.x2) < float(bu.x):
+        return False
+    # After the width and gap gates: a flat same-left pair is one column.
+    # Stepped stacks (dx > 4pt), including triangle x 320/420/450, still merge.
+    # No layout_label / layout_intent / callout-role exemption.
+    if (
+        _is_single_visual_line(upper)
+        and _is_single_visual_line(lower)
+        and abs(float(bu.x) - float(bl.x)) <= _SAME_LEFT_GUARD_PT
+    ):
         return False
     return True
 

@@ -13,6 +13,8 @@ from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
 from babeldoc.format.pdf.document_il.utils.callout_merge import (
     merge_stacked_narrow_callout_paragraphs,
 )
+from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
+from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 
 
 def _line_para(text: str, *, x: float, y: float, w: float) -> PdfParagraph:
@@ -286,6 +288,41 @@ def test_white_title_does_not_merge_into_black_neighbor():
     n = merge_stacked_narrow_callout_paragraphs(paras)
     assert n == 0
     assert len(paras) == 2
+
+
+def _flat_same_left_column() -> list[PdfParagraph]:
+    """Three single lines, same left, width ≤220, gap ≤22, same fill, no bullets."""
+    lines = [
+        _line_para("Keep this row on its own line.", x=80.0, y=400.0, w=180.0),
+        _line_para("And this one stays separate too.", x=80.0, y=380.0, w=180.0),
+        _line_para("A third flat row must not join.", x=80.0, y=360.0, w=160.0),
+    ]
+    for line in lines:
+        _paint(line, "0 g 0 G")
+    return lines
+
+
+def test_flat_same_left_single_lines_do_not_merge():
+    lines = _flat_same_left_column()
+    n = merge_stacked_narrow_callout_paragraphs(lines)
+    assert n == 0
+    assert len(lines) == 3
+
+
+def test_same_left_single_lines_do_not_merge_with_callout_label():
+    """Callout label and role do not exempt a flat same-left stack."""
+    lines = _flat_same_left_column()
+    for line in lines:
+        line.layout_label = "callout"
+        line.layout_intent = LayoutIntent(
+            role=LayoutIntentRole.CALLOUT,
+            design_box=line.box,
+            top_inset=0.0,
+            bottom_inset=0.0,
+        )
+    n = merge_stacked_narrow_callout_paragraphs(lines)
+    assert n == 0
+    assert len(lines) == 3
 
 
 def test_right_pinned_does_not_merge_unpinned_body():
