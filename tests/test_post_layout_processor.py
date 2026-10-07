@@ -621,7 +621,7 @@ class _MockTypesetting:
     def __init__(self):
         self.retypeset_calls = []
 
-    def retypeset_paragraph(self, paragraph, page):
+    def retypeset_paragraph(self, paragraph, page, line_skip=None, **kwargs):
         self.retypeset_calls.append({
             "paragraph": paragraph,
             "page": page,
@@ -682,7 +682,7 @@ class TestOverlapFixer:
 
         # 创建一个会抛异常的 mock
         class _FailingTypesetting(_MockTypesetting):
-            def retypeset_paragraph(self, paragraph, page):
+            def retypeset_paragraph(self, paragraph, page, line_skip=None, **kwargs):
                 return False
 
         fixer = OverlapFixer(_FailingTypesetting())

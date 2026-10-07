@@ -404,6 +404,153 @@ def test_title_flag_does_not_block_body_shift():
     assert title not in shifted
 
 
+def _line_paragraph(box: Box, *, baseline: float, chars: list[PdfCharacter]) -> PdfParagraph:
+    para = PdfParagraph(
+        box=box,
+        pdf_style=_style(12.0),
+        pdf_paragraph_composition=[
+            PdfParagraphComposition(
+                pdf_line=PdfLine(
+                    box=Box(
+                        x=chars[0].box.x,
+                        y=chars[0].box.y,
+                        x2=chars[-1].box.x2,
+                        y2=chars[0].box.y2,
+                    ),
+                    pdf_character=chars,
+                )
+            )
+        ],
+        unicode="中中中",
+        alignment="left",
+        render_order=1,
+        xobj_id=0,
+        layout_label="plain text",
+        optimal_scale=1.0,
+    )
+    para.reference_metrics = _metrics(
+        per_line_baselines=[baseline],
+        baselines_applied=True,
+        font_size=12.0,
+    )
+    return para
+
+
+def _retypeset_page(para: PdfParagraph) -> Page:
+    return Page(
+        page_number=2,
+        cropbox=Cropbox(box=Box(x=0, y=0, x2=612, y2=792)),
+        pdf_paragraph=[para],
+    )
+
+
+def test_shrunk_retypeset_paragraph_places_from_box_not_baseline():
+    """Post-layout shrink has no _current_page, so snap must stay off."""
+    ts = _typesetting()
+    em = 12.0
+    source_baseline = 520.0
+    chars = [
+        _char(ch, 60 + i * em, 490, w=em, h=em, size=em)
+        for i, ch in enumerate("中中中")
+    ]
+    old_box = Box(x=50, y=400, x2=450, y2=560)
+    para = _line_paragraph(old_box, baseline=source_baseline, chars=chars)
+    para.box = Box(x=50, y=400, x2=450, y2=499)
+    assert getattr(ts, "_current_page", None) is None
+    assert ts.retypeset_paragraph(para, _retypeset_page(para), previous_box=old_box)
+    assert ts._suppress_baseline_snap is False
+    assert para.reference_metrics.baselines_applied is False
+    first = para.pdf_paragraph_composition[0].pdf_character
+    assert first is not None and first.box is not None
+    assert source_baseline > para.box.y2
+    assert first.box.y == pytest.approx(para.box.y2 - em)
+    assert first.box.y != pytest.approx(source_baseline)
+
+
+def test_retypeset_paragraph_keeps_snap_when_top_does_not_move_down():
+    ts = _typesetting()
+    em = 12.0
+    source_baseline = 520.0
+    # Ink sticks out above the box. That is not a top shrink.
+    chars = [
+        _char(ch, 60 + i * em, 510, w=em, h=em, size=em)
+        for i, ch in enumerate("中中中")
+    ]
+    old_box = Box(x=50, y=400, x2=450, y2=500)
+    para = _line_paragraph(old_box, baseline=source_baseline, chars=chars)
+    para.box = Box(x=50, y=430, x2=450, y2=500)
+    assert ts.retypeset_paragraph(para, _retypeset_page(para), previous_box=old_box)
+    assert ts._suppress_baseline_snap is False
+    assert para.reference_metrics.baselines_applied is True
+    first = para.pdf_paragraph_composition[0].pdf_character
+    assert first is not None and first.box is not None
+    assert first.box.y == pytest.approx(source_baseline)
+    assert first.box.y != pytest.approx(para.box.y2 - em)
+
+
+def test_retypeset_paragraph_failure_restores_baselines_applied():
+    ts = _typesetting()
+    chars = [
+        _char(ch, 60 + i * 12, 490, w=12, h=12, size=12)
+        for i, ch in enumerate("中中中")
+    ]
+    old_box = Box(x=50, y=400, x2=450, y2=560)
+    para = _line_paragraph(old_box, baseline=520.0, chars=chars)
+    para.box = Box(x=50, y=400, x2=450, y2=499)
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("retypeset failed")
+
+    ts.retypeset_with_precomputed_scale = _boom
+    assert ts.retypeset_paragraph(para, _retypeset_page(para), previous_box=old_box) is False
+    assert para.reference_metrics.baselines_applied is True
+    assert ts._suppress_baseline_snap is False
+    restored = para.pdf_paragraph_composition[0].pdf_line.pdf_character
+    assert restored[0] is chars[0]
+
+
+def test_tied_font_size_advance_matches_sorted_mode():
+    """A tie must not let the estimator advance on a different mode than placement."""
+    ts = _typesetting()
+    box = Box(x=0, y=50, x2=60, y2=500)
+    para = _para(box, baselines=[400.0])
+    # 20 is seen first. Both sizes occur three times, so the sorted mode is 12.
+    units = [
+        _unit(width=20.0, height=8.0, size=size)
+        for size in (20.0, 12.0, 20.0, 12.0, 20.0, 12.0)
+    ]
+    assert ts._dominant_font_size([]) == pytest.approx(10.0)
+    assert ts._dominant_font_size(units) == pytest.approx(12.0)
+    placed = _place(ts, para, units, box)
+    ys = _line_ys(placed)
+    advance = line_advance_distance(12.0, 1.0, 1.50, 8.0, 8.0)
+    other = line_advance_distance(20.0, 1.0, 1.50, 8.0, 8.0)
+    assert advance != pytest.approx(other)
+    assert len(ys) >= 2
+    assert ys[1] == pytest.approx(400.0 - advance)
+    assert ys[1] != pytest.approx(400.0 - other)
+
+    seen: list[float] = []
+    orig = ts._line_capacity_like_place
+
+    def _spy(**kwargs):
+        seen.append(kwargs["y_bottom"])
+        return orig(**kwargs)
+
+    ts._line_capacity_like_place = _spy
+    ts._estimate_line_widths(
+        units,
+        box,
+        scale=1.0,
+        avg_height=8.0,
+        line_skip=1.50,
+        paragraph=para,
+        reference_widths=[],
+    )
+    assert len(seen) >= 2
+    assert seen[1] == pytest.approx(400.0 - advance)
+
+
 def test_body_baseline_flag_skips_shift():
     title_chars = [
         _char(c, 50 + i * 40, 580, w=38.0, h=50.0, size=56.0) for i, c in enumerate("标题字")

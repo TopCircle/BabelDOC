@@ -2655,11 +2655,35 @@ class Typesetting:
                         fonts[xobj.xobj_id][font.font_id] = font
         return fonts
 
+    def _box_top_moved_down(
+        self,
+        paragraph: il_version_1.PdfParagraph,
+        previous_box: il_version_1.Box | None,
+    ) -> bool:
+        """True when this retypeset's box top is lower than the one it replaces.
+
+        Post-layout fixers assign the new box before calling. They pass the
+        previous box. Without it, a top below the ink about to be replaced
+        is a shrink. Raising only the bottom is not.
+        """
+        box = paragraph.box
+        if box is None or box.y2 is None:
+            return False
+        new_y2 = float(box.y2)
+        if previous_box is not None and previous_box.y2 is not None:
+            return new_y2 < float(previous_box.y2) - 1e-3
+        rendered = self._recompute_rendered_box(paragraph)
+        if rendered is None or rendered.y2 is None:
+            return False
+        return new_y2 < float(rendered.y2) - 1e-3
+
     def retypeset_paragraph(
         self,
         paragraph: il_version_1.PdfParagraph,
         page: il_version_1.Page,
         line_skip: float | None = None,
+        *,
+        previous_box: il_version_1.Box | None = None,
     ) -> bool:
         """重新排版单个段落（异常安全，自动回滚）。
 
@@ -2669,7 +2693,20 @@ class Typesetting:
         old_compositions = paragraph.pdf_paragraph_composition[:]
         # 保存并恢复 zone_index，确保使用目标页面的 zones
         old_zone_index = getattr(self, "_current_zone_index", None)
+        rm = getattr(paragraph, "reference_metrics", None)
+        old_applied = (
+            bool(getattr(rm, "baselines_applied", False))
+            if rm is not None
+            else False
+        )
+        # Shrunk top sits above the source baselines; don't pull glyphs back.
+        shrunk_top = self._box_top_moved_down(paragraph, previous_box)
+        old_suppress = getattr(self, "_suppress_baseline_snap", False)
         try:
+            if shrunk_top:
+                if rm is not None:
+                    rm.baselines_applied = False
+                self._suppress_baseline_snap = True
             from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
                 ExclusionZoneIndex,
             )
@@ -2690,11 +2727,14 @@ class Typesetting:
             return True
         except Exception:
             paragraph.pdf_paragraph_composition = old_compositions
+            if shrunk_top and rm is not None:
+                rm.baselines_applied = old_applied
             logger.warning(
                 "Failed to retypeset paragraph, rolled back."
             )
             return False
         finally:
+            self._suppress_baseline_snap = old_suppress
             self._current_zone_index = old_zone_index
 
     def retypeset_with_scale_range(
@@ -3736,6 +3776,27 @@ class Typesetting:
             return None
         return baselines
 
+    @staticmethod
+    def _dominant_font_size(
+        typesetting_units: list[TypesettingUnit],
+    ) -> float:
+        """Mode font size for the snap check and the line-advance fallback.
+
+        Sorted so a tied mode is the same value on both paths. Empty input
+        falls back to 10.0.
+        """
+        font_sizes: list[float] = []
+        for unit in typesetting_units:
+            if unit.font_size:
+                font_sizes.append(unit.font_size)
+            if unit.char and unit.char.pdf_style and unit.char.pdf_style.font_size:
+                font_sizes.append(unit.char.pdf_style.font_size)
+        font_sizes.sort()
+        try:
+            return float(statistics.mode(font_sizes)) if font_sizes else 10.0
+        except statistics.StatisticsError:
+            return sum(font_sizes) / len(font_sizes) if font_sizes else 10.0
+
     def _estimate_line_widths(
         self,
         typesetting_units: list[TypesettingUnit],
@@ -3775,16 +3836,7 @@ class Typesetting:
             if paragraph is not None
             else "left"
         )
-        font_sizes: list[float] = []
-        for u in typesetting_units:
-            if u.font_size:
-                font_sizes.append(u.font_size)
-            if u.char and u.char.pdf_style and u.char.pdf_style.font_size:
-                font_sizes.append(u.char.pdf_style.font_size)
-        try:
-            font_size = statistics.mode(font_sizes) if font_sizes else 0.0
-        except statistics.StatisticsError:
-            font_size = sum(font_sizes) / len(font_sizes) if font_sizes else 0.0
+        font_size = self._dominant_font_size(typesetting_units)
         snap_baselines = self._active_source_baselines(
             paragraph,
             box,
@@ -3973,18 +4025,8 @@ class Typesetting:
             reference_widths = self._extract_original_line_widths(paragraph)
         layout_line_idx = 0
 
-        # 计算字号众数
-        font_sizes = []
-        for unit in typesetting_units:
-            if unit.font_size:
-                font_sizes.append(unit.font_size)
-            if unit.char and unit.char.pdf_style and unit.char.pdf_style.font_size:
-                font_sizes.append(unit.char.pdf_style.font_size)
-        font_sizes.sort()
-        try:
-            font_size = statistics.mode(font_sizes)
-        except statistics.StatisticsError:
-            font_size = sum(font_sizes) / len(font_sizes) if font_sizes else 10.0
+        # Same sorted mode as the estimator's overlap check and advance.
+        font_size = self._dominant_font_size(typesetting_units)
 
         space_width = (
             self.font_mapper.base_font.char_lengths("你", font_size * scale)[0] * 0.5

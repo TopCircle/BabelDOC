@@ -904,7 +904,9 @@ class QuoteFixer:
         old_box = para.box
         para.box = action.new_box
 
-        success = self._typesetter.retypeset_paragraph(para, page)
+        success = self._typesetter.retypeset_paragraph(
+            para, page, previous_box=old_box
+        )
         if success:
             context.geometry_cache.invalidate(action.shrink_paragraph_id)
             logger.debug(
@@ -1088,7 +1090,9 @@ class OverlapFixer:
         old_box = para.box
         para.box = action.new_box
 
-        success = self._typesetter.retypeset_paragraph(para, page)
+        success = self._typesetter.retypeset_paragraph(
+            para, page, previous_box=old_box
+        )
         if success:
             context.geometry_cache.invalidate(action.shrink_paragraph_id)
             logger.debug(
