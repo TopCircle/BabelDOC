@@ -15,18 +15,26 @@
 - 基线提交 `398275a`，版本保持 `0.6.4.95`。
 - `_DEFAULT_LINE_SKIP_CJK` 保持 `1.50`。`MIN_READABLE_SCALE` 保持 `0.55`。
 - 页眉、页脚、分册名、网址保持英文。
-- 分类器里不出现某一页的左缘、字号或空隙。锥形判定只用通用几何：连续 ≥ 4 行，左缘每行增加 ≥ 6pt，右缘波动 ≤ 18pt。
+- 分类器里不出现某一页的左缘、字号或空隙。锥形判定只用通用几何：去掉窄于本段峰值 60% 的短行后，满行 ≥ 4，右缘波动 ≤ 18pt，左缘极差 ≥ 24pt，6pt 桶的不同左缘 ≥ 4，相邻左缘至少 70% 的下降不超过 6pt。
 - `PdfParagraph.layout_intent` 继续 `type="Ignore"`，新标记同样不进 XML。
 - 不改切段、不拆对页、不修 CMap、不重译 OA 或 Vagina Masterclass。
 - 本计划未接受前，不写入 `docs/PLAN-INDEX.md` 和 `docs/CURRENT-STATUS.md`。
 
 ## Review Focus
 
-- 有侧图但左缘不内收的正文，应是 `rect_reflow`，现在会因缺省 `RIGHT_FIXED` 贴右。
-- 单调锥形（右缘钉住、左缘内收）应仍是 `shaped_pocket`，不能被矩形规则拉直。
+- 侧图旁的短项目（段内满行不足 4，或左缘极差不足 24pt）应是 `rect_reflow`。整页左缘在走，不能把这些短段合成一个 `shaped_pocket`。
+- 同一段里的单调锥形（右缘钉住、左缘极差够大、不同左缘够多）应仍是 `shaped_pocket`。
 - `LEFT_FIXED` 与 `RIGHT_FIXED` 已明确且形状是锥形时，钉边方向保持原样。
-- 引语、列表、页眉即使几何像短行，也不能标成 `shaped_pocket`。
+- 引语、列表、页眉即使几何像短行或像锥形，也不能标成 `shaped_pocket`。
 - 低置信度必须落到 `rect_reflow` 并带原因，不能静默右钉。
+
+## 原型门
+
+正式任务开始前，用 `tools/prototype/placement_paradigm_proto.py` 在本地 PDF 上跑同一套判定。原型只读行框，不翻译，不改 `Typesetting`。段落近似：先按 x 重叠分栏，再按字号和垂直空隙分段，不因为左缘移动而拆开锥形段。
+
+通过条件写在 `docs/plans/2026-10-08-layout-paradigms-proto-eval.md`。不过门就不做 Task 1。门里的页码和路径只出现在评估文档和原型的用例表，不进分类函数。
+
+差异要覆盖：矩形正文、同一段锥形、引语与正文分栏、侧图短项目、另一套左缘的矩形书、横开本、1224 对页、无文字层、坏编码。对页、无文字层、坏编码只报告输入门，不给放置范式。
 
 ---
 
@@ -45,7 +53,7 @@
 
 - [ ] **Step 1: 写失败测试**
 
-覆盖：稳定左缘满栏 → `rect_reflow`，confidence ≥ 0.8，reason `stable_column`。四行左缘 100/112/124/136、右缘都在 570±10 → `shaped_pocket`，reason `taper`。三行内收不够 4 行 → `rect_reflow`，reason `taper_too_short`。`role` 为 `PULL_QUOTE`、`LIST`、`CHROME`、`TITLE` 时 → `KEEP_CURRENT`，即使行几何像锥形。`wrap_mode` 为 `RIGHT_FIXED` 且几何不是锥形 → `rect_reflow`，reason `shape_not_taper`。`wrap_mode` 为 `LEFT_FIXED` 且几何是锥形 → `shaped_pocket`。空行列表 → `rect_reflow`，confidence 0.4，reason `no_lines`。
+覆盖：稳定左缘满栏 → `rect_reflow`，confidence ≥ 0.8，reason `stable_column`。四行左缘 100/112/124/136、右缘都在 570±10 → `shaped_pocket`，reason `taper`。三行内收不够 4 行 → `rect_reflow`，reason `taper_too_short`。悬挂缩进左缘只在 56/74/92 三档、右缘对齐、行数 ≥ 4 → `rect_reflow`，reason `not_taper`。`role` 为 `PULL_QUOTE`、`LIST`、`CHROME`、`TITLE` 时 → `KEEP_CURRENT`，即使行几何像锥形。`wrap_mode` 为 `RIGHT_FIXED` 且几何不是锥形 → `rect_reflow`，reason `shape_not_taper`。`wrap_mode` 为 `LEFT_FIXED` 且几何是锥形 → `shaped_pocket`。空行列表 → `rect_reflow`，confidence 0.4，reason `no_lines`。
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -54,7 +62,7 @@ Expected: 收集阶段失败，`placement_paradigm` 无法导入。
 
 - [ ] **Step 3: 实现 `select_paradigm`**
 
-锥形先数连续行：按 `y0` 从上到下，相邻行左缘差 ≥ 6 且右缘差 ≤ 18 才累加，否则断段。任一段长度 ≥ 4 即为锥形。`CHROME`、`TITLE`、`PULL_QUOTE`、`CALLOUT`、`LIST`、`SECTION_HEADER`、`FIGURE_CAPTION`、`DROPCAP`、`FORMULA` 一律 `KEEP_CURRENT`。其余角色里，锥形才是 `SHAPED_POCKET`。没有行时 confidence 为 0.4，其余成功路径 ≥ 0.8。
+先按角色：`CHROME`、`TITLE`、`PULL_QUOTE`、`CALLOUT`、`LIST`、`SECTION_HEADER`、`FIGURE_CAPTION`、`DROPCAP`、`FORMULA` 一律 `KEEP_CURRENT`，reason `keep_role`。其余角色里，满行是宽度 ≥ 本段峰值 60% 的行。锥形要满行 ≥ 4、右缘极差 ≤ 18、左缘极差 ≥ 24、左缘按 6pt 取整后的不同值 ≥ 4、相邻左缘里下降超过 6pt 的比例 ≤ 30%。满行不足 4 但右缘钉住且左缘极差 ≥ 24 时 reason 为 `taper_too_short`。左缘极差 ≤ 8 时 reason 为 `stable_column`。`wrap_mode` 已是 `LEFT_FIXED` 或 `RIGHT_FIXED` 而几何不是锥形时 reason 为 `shape_not_taper`，优先级高于 `stable_column`。其它矩形 reason 为 `not_taper`。没有行时 confidence 为 0.4，其余成功路径 ≥ 0.8。不要调用 `is_figure_wrap_taper`。
 
 - [ ] **Step 4: 跑测试确认通过**
 
@@ -168,7 +176,7 @@ Expected: 脚本不存在。
 - 锥形参照：同一中文单语第 19 页「主动掌控」。右缘钉住，左缘逐行内收。
 - 引语参照：同一中文单语第 23 页。大字块与右栏是两个区域。
 - 回归参照：0.6.4.95 OA dual（中文在左，canonical 路径见 `docs/CURRENT-STATUS.md`）第 19、59、91 页。p19 尖端仍右钉，p59 正文左缘仍在原稿栏，p91 引文与旁栏不重叠。数字以 `CURRENT-STATUS.md` 已写的测量为准，不抄进分类器。
-- 反例：Vagina Masterclass 第 8 页侧图正文若被标成 `shaped_pocket`，评估记失败。第 6、9 页的重复词列为切段问题，本计划不判放置失败。
+- 反例：Vagina Masterclass 第 8 页。侧图使整页左缘下移，但每个项目自己不满 4 行锥形。任一项目被标成 `shaped_pocket`，或整页被合成一个 `shaped_pocket`，评估记失败。第 6、9 页的重复词列为切段问题，本计划不判放置失败。
 
 说明里写纠正记录的格式：一行 JSON，`features`、`chosen`、`correct`、`page`。只追加，不自动改代码。
 
@@ -196,4 +204,5 @@ git commit -m "test: score placement paradigm guesses on local page pairs"
 
 - 规格里的矩形栏、锥形、低置信度、不右钉、不写页特定常数、不改版本和行距，都有对应任务。
 - 引语等角色只要求不被标成锥形，放置留在后续计划，与规格的 `keep_current` 一致。
-- 切段、对页、整页图、坏编码写在规格的「不做」和计划末尾，没有假装本计划能减少那几类人工校正。
+- 切段、对页、整页图、坏编码写在规格的「不做」和计划末尾。原型只把它们报成输入门。
+- Task 1 在原型门通过之后才开始。原型脚本不替代 `placement_paradigm.py`。
