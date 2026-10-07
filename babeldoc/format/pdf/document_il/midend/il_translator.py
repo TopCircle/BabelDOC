@@ -45,6 +45,7 @@ from babeldoc.format.pdf.document_il.utils.layout_helper import (
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     is_same_style_except_size,
 )
+from babeldoc.format.pdf.document_il.utils.layout_helper import strip_ascii_controls
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     visual_known_split_char_ids,
 )
@@ -1078,8 +1079,9 @@ class ILTranslator:
                     if mt_chars
                     else (paragraph.unicode or "")
                 )
+                # C0/C1 in the MT string is echoed back as the translation.
                 translate_input = self.TranslateInput(
-                    mt_text,
+                    strip_ascii_controls(mt_text),
                     [],
                     paragraph.pdf_style,
                 )
@@ -1273,7 +1275,12 @@ class ILTranslator:
         text = assemble_midcap_title_unicode(
             paragraph, chars, para_width=para_w
         )
-        translate_input = self.TranslateInput(text, placeholders, paragraph.pdf_style)
+        # Same C0/C1 strip as the single-composition input above.
+        translate_input = self.TranslateInput(
+            strip_ascii_controls(text),
+            placeholders,
+            paragraph.pdf_style,
+        )
         translate_input.set_original_placeholder_tokens(original_placeholder_tokens)
 
         # Style spans now contain (span_id, PdfStyle) from marker wrapping.
