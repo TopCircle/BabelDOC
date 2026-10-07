@@ -1161,6 +1161,8 @@ class Typesetting:
         # Call-scoped wrap switch for the active _find_optimal_scale_and_layout
         # frame (None → read enable_layout_intent_wrap from config).
         self._wrap_enabled: bool | None = None
+        # Set for one overlap retypeset so glyphs stay inside the shrunk box.
+        self._suppress_baseline_snap = False
 
     def _quote_zone_config(self):
         """Build QuoteZoneConfig from TranslationConfig (main-path + retypeset).
@@ -3025,6 +3027,7 @@ class Typesetting:
                     if move.box is None:
                         continue
 
+                    shrunk_top = False
                     if move_box.y < keep_box.y2:
                         # move 段落在 keep 段落之下 → 收缩 move 顶部
                         new_y2 = keep_box.y - 1
@@ -3035,6 +3038,7 @@ class Typesetting:
                                 x2=move.box.x2,
                                 y2=new_y2,
                             )
+                            shrunk_top = True
                     elif move_box.y2 > keep_box.y2:
                         # move 段落在 keep 段落之上 → 收缩 move 底部
                         new_y = keep_box.y2 + 1
@@ -3052,6 +3056,18 @@ class Typesetting:
 
                     # 重新排版（异常安全：保存旧 composition 以便恢复）
                     old_compositions = move.pdf_paragraph_composition[:]
+                    rm = getattr(move, "reference_metrics", None)
+                    old_applied = (
+                        bool(getattr(rm, "baselines_applied", False))
+                        if rm is not None
+                        else False
+                    )
+                    # Shrunk top is above the source baselines; don't pull
+                    # glyphs back onto those y values.
+                    if shrunk_top:
+                        if rm is not None:
+                            rm.baselines_applied = False
+                        self._suppress_baseline_snap = True
                     try:
                         fonts = self._collect_fonts_for_page(page)
                         typesetting_units = self.create_typesetting_units(
@@ -3068,12 +3084,17 @@ class Typesetting:
                             rendered_boxes[id(move)] = new_box
                     except Exception:
                         move.pdf_paragraph_composition = old_compositions
+                        if shrunk_top and rm is not None:
+                            rm.baselines_applied = old_applied
                         retypeset_fail_count += 1
                         logger.debug(
                             "Page %s: 段落重新排版失败，已恢复原始 composition。",
                             page.page_number,
                             exc_info=True,
                         )
+                    finally:
+                        if shrunk_top:
+                            self._suppress_baseline_snap = False
 
             if not overlap_found:
                 break
@@ -3624,6 +3645,97 @@ class Typesetting:
 
         return capacity, intervals
 
+    @staticmethod
+    def _y_on_source_baselines(
+        baselines: list[float], line_idx: int, fallback_advance: float
+    ) -> float:
+        """Absolute PDF y for layout line ``line_idx`` (0 = first typeset line)."""
+        if line_idx < len(baselines):
+            return float(baselines[line_idx])
+        steps = [
+            float(baselines[i]) - float(baselines[i + 1])
+            for i in range(len(baselines) - 1)
+            if float(baselines[i]) - float(baselines[i + 1]) > 0.5
+        ]
+        delta = (
+            float(statistics.median(steps)) if steps else float(fallback_advance)
+        )
+        extra = line_idx - (len(baselines) - 1)
+        return float(baselines[-1]) - delta * extra
+
+    def _baseline_prediction_overlaps_rendered(
+        self,
+        paragraph: il_version_1.PdfParagraph,
+        predicted: Box,
+    ) -> bool:
+        """True when the predicted first line hits an already drawn paragraph.
+
+        Uses ``_bbox_overlap`` (any x intersection and any y intersection).
+        Paragraphs that have not been drawn yet are ignored.
+        """
+        page = getattr(self, "_current_page", None)
+        if page is None:
+            return False
+        for other in getattr(page, "pdf_paragraph", None) or []:
+            if other is paragraph:
+                continue
+            if not getattr(other, "pdf_paragraph_composition", None):
+                continue
+            rendered = self._recompute_rendered_box(other)
+            if rendered is None:
+                continue
+            if Typesetting._bbox_overlap(predicted, rendered):
+                return True
+        return False
+
+    def _active_source_baselines(
+        self,
+        paragraph: il_version_1.PdfParagraph | None,
+        box: Box,
+        *,
+        scale: float,
+        avg_height: float,
+        font_size: float,
+        reference_widths: list[float] | None,
+        alignment: str | None,
+    ) -> list[float] | None:
+        """Source baselines to snap onto, or None to keep the box formula."""
+        if getattr(self, "_suppress_baseline_snap", False):
+            return None
+        if paragraph is None:
+            return None
+        rm = getattr(paragraph, "reference_metrics", None)
+        raw = getattr(rm, "per_line_baselines", None) if rm is not None else None
+        if not raw:
+            return None
+        baselines = [float(y) for y in raw]
+        y0 = baselines[0]
+        pred_h = max(float(avg_height), float(font_size) * float(scale))
+        query_h = pred_h if pred_h > 0 else 1.0
+        intervals = self._resolve_line_intervals(
+            y0,
+            y0 + query_h,
+            box,
+            paragraph=paragraph,
+            line_idx=0,
+            reference_widths=reference_widths,
+            alignment=alignment,
+        )
+        if intervals:
+            x, x2 = intervals[0]
+        elif paragraph.box is not None and paragraph.box.x is not None:
+            x, x2 = paragraph.box.x, paragraph.box.x2
+        else:
+            x, x2 = box.x, box.x2
+        predicted = Box(x=float(x), y=y0, x2=float(x2), y2=y0 + pred_h)
+        if self._baseline_prediction_overlaps_rendered(paragraph, predicted):
+            logger.debug(
+                "baseline_snap_skip_overlap debug_id=%s",
+                getattr(paragraph, "debug_id", None),
+            )
+            return None
+        return baselines
+
     def _estimate_line_widths(
         self,
         typesetting_units: list[TypesettingUnit],
@@ -3650,7 +3762,6 @@ class Typesetting:
                 max_unit_height = h
         query_h = max(max_unit_height, avg_height)
 
-        y = box.y2 - avg_height
         line_idx = 0
         align = (
             self._resolve_effective_alignment(
@@ -3664,6 +3775,31 @@ class Typesetting:
             if paragraph is not None
             else "left"
         )
+        font_sizes: list[float] = []
+        for u in typesetting_units:
+            if u.font_size:
+                font_sizes.append(u.font_size)
+            if u.char and u.char.pdf_style and u.char.pdf_style.font_size:
+                font_sizes.append(u.char.pdf_style.font_size)
+        try:
+            font_size = statistics.mode(font_sizes) if font_sizes else 0.0
+        except statistics.StatisticsError:
+            font_size = sum(font_sizes) / len(font_sizes) if font_sizes else 0.0
+        snap_baselines = self._active_source_baselines(
+            paragraph,
+            box,
+            scale=scale,
+            avg_height=avg_height,
+            font_size=font_size,
+            reference_widths=reference_widths,
+            alignment=align,
+        )
+        y = (
+            float(snap_baselines[0])
+            if snap_baselines
+            else box.y2 - avg_height
+        )
+        box_advance = max(avg_height * line_skip, max_unit_height * 1.05)
         while y > box.y:
             capacity, _intervals = self._line_capacity_like_place(
                 box=box,
@@ -3677,7 +3813,15 @@ class Typesetting:
                 scale=scale,
             )
             widths.append(capacity)
-            y -= max(avg_height * line_skip, max_unit_height * 1.05)
+            if snap_baselines:
+                advance = line_advance_distance(
+                    font_size, scale, line_skip, avg_height, max_unit_height
+                )
+                y = Typesetting._y_on_source_baselines(
+                    snap_baselines, line_idx + 1, advance
+                )
+            else:
+                y -= box_advance
             line_idx += 1
 
         return widths
@@ -3907,6 +4051,28 @@ class Typesetting:
                             None,
                         ),
                     )
+        snap_baselines = self._active_source_baselines(
+            paragraph,
+            box,
+            scale=scale,
+            avg_height=avg_height,
+            font_size=font_size,
+            reference_widths=reference_widths,
+            alignment=alignment,
+        )
+        rm = getattr(paragraph, "reference_metrics", None)
+        if snap_baselines:
+            # Absolute source baseline, not box.y2 - avg_height.
+            current_y = float(snap_baselines[0])
+            if rm is not None:
+                rm.baselines_applied = True
+        else:
+            current_y = box.y2 - avg_height
+            if rm is not None and (
+                getattr(self, "_suppress_baseline_snap", False)
+                or getattr(rm, "per_line_baselines", None)
+            ):
+                rm.baselines_applied = False
         query_h0 = avg_height if avg_height > 0 else 1.0
         intervals = self._resolve_line_intervals(
             current_y,
@@ -4228,9 +4394,15 @@ class Typesetting:
                     )
                     line_start_idx = len(typeset_units)
 
-                    current_y -= line_advance_distance(
+                    advance = line_advance_distance(
                         font_size, scale, line_skip, mode_height, max_height
                     )
+                    if snap_baselines:
+                        current_y = Typesetting._y_on_source_baselines(
+                            snap_baselines, layout_line_idx + 1, advance
+                        )
+                    else:
+                        current_y -= advance
                     line_ys.append(current_y)
                     line_height = 0.0
                     current_line_heights = []  # 清空当前行高度列表

@@ -382,6 +382,12 @@ def enforce_title_body_gaps(
         if abs(dy) > max_dy:
             dy = -max_dy
 
+        # A snapped body stays on its source baselines. The title's flag
+        # does not protect the next paragraph.
+        body_rm = getattr(body, "reference_metrics", None)
+        if body_rm is not None and getattr(body_rm, "baselines_applied", False):
+            continue
+
         shift_paragraph_y(body, dy)
         new_ink = ink_box(body)
         if new_ink is not None:

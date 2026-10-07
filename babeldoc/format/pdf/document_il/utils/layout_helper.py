@@ -1958,6 +1958,39 @@ def compute_reference_metrics(para: PdfParagraph, page=None):
     line_count = count_lines_from_compositions(para)
     per_line_widths = compute_per_line_widths(para)
 
+    # Same line groups as compute_per_line_widths (composition order). Sort
+    # only the baseline modes — widths stay in source order, including
+    # bottom-up streams.
+    line_groups: list[list] = []
+    for comp in para.pdf_paragraph_composition or []:
+        if comp.pdf_line and comp.pdf_line.box:
+            line_groups.append(list(comp.pdf_line.pdf_character or []))
+        elif comp.pdf_formula and comp.pdf_formula.box:
+            line_groups.append(list(comp.pdf_formula.pdf_character or []))
+    if not line_groups:
+        line_groups = _cluster_chars_by_line(para)
+
+    import statistics
+
+    baseline_modes: list[float] = []
+    baselines_missing = not line_groups
+    for group in line_groups:
+        ys = [
+            float(c.box.y)
+            for c in group
+            if getattr(c, "box", None) is not None and c.box.y is not None
+        ]
+        if not ys:
+            baselines_missing = True
+            break
+        try:
+            baseline_modes.append(float(statistics.mode(ys)))
+        except statistics.StatisticsError:
+            baseline_modes.append(float(statistics.median(ys)))
+    per_line_baselines = (
+        None if baselines_missing else sorted(baseline_modes, reverse=True)
+    )
+
     avg_line_width = sum(per_line_widths) / len(per_line_widths) if per_line_widths else width
     last_line_width = per_line_widths[-1] if per_line_widths else width
     last_line_ratio = last_line_width / avg_line_width if avg_line_width > 0 else 1.0
@@ -1977,7 +2010,6 @@ def compute_reference_metrics(para: PdfParagraph, page=None):
                 font_sizes.append(c.pdf_style.font_size)
 
     if font_sizes:
-        import statistics
         try:
             font_size = statistics.mode(font_sizes)
         except statistics.StatisticsError:
@@ -1992,6 +2024,8 @@ def compute_reference_metrics(para: PdfParagraph, page=None):
         last_line_ratio=last_line_ratio,
         font_size=font_size,
         per_line_widths=per_line_widths,
+        per_line_baselines=per_line_baselines,
+        baselines_applied=False,
     )
 
     # Capture alignment from original geometry (before translation)

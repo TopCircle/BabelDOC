@@ -1136,6 +1136,9 @@ class ReferenceMetrics:
     last_line_ratio: float  # last_line_width / avg_line_width
     font_size: float  # mode of char font sizes
     per_line_widths: list = None  # width of each original line
+    # Mode of source char.box.y per line, largest PDF y first. Not serialized.
+    per_line_baselines: list | None = field(default=None, metadata={"type": "Ignore"})
+    baselines_applied: bool = field(default=False, metadata={"type": "Ignore"})
 
 
 @dataclass(slots=True)
