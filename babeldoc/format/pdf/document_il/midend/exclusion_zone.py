@@ -258,8 +258,8 @@ def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZ
             bottom_margin=adaptive_bottom,
         )
         left_margin, _, right_margin, _ = margins
-        # One glyph at most one em wide (a giant quotation mark). Its font
-        # size is the em, not the ink; font_size * 2.2 would eat the column.
+        # One glyph at most one em wide skips the en-like gap.
+        # Zone y/y2 are source ink.
         source_width = float(box.x2) - float(box.x)
         decorative_glyph = (
             len(get_all_chars(para)) == 1
@@ -270,14 +270,9 @@ def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZ
             left_margin = adaptive_margin
             right_margin = adaptive_margin
         elif box.x is not None and float(box.x) < 80.0:
-            # Left-gutter text bar (OA p91 x≈54): EN body wrap starts ~35pt
-            # past quote ink (211→246). Adaptive pad (~12pt) leaves CJK body
-            # at ~223, which collides when the bar also right-expands.
             en_like_gap = max(float(font_size) * 2.2, page_width * 0.055)
             right_margin = max(right_margin, en_like_gap)
 
-        # y is source ink. Adaptive y padding carved lines that miss the
-        # glyph; get_intervals_at already skips a band that does not overlap.
         exclusion_box = Box(
             x=box.x - left_margin,
             y=box.y,
