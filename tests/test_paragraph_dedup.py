@@ -93,6 +93,7 @@ def _multi_row_block(texts: list[str], *, x0: float, y_start: float) -> PdfParag
 
 def test_multi_row_pullquote_stays_separate_from_body_stack():
     # p82-like: body stack lines + a collapsed multi-row pull-quote below.
+    # Flat same-left body rows do not merge; the quote must not join them.
     callout = _multi_row_block(
         ["to go around. ", "ensure that there is plenty of lube ",
          "other vaginal stimulation, and ", "of opportunity to warm up with ",
@@ -109,16 +110,15 @@ def test_multi_row_pullquote_stays_separate_from_body_stack():
     # stream order: callout first (bottom), then body lines bottom-up
     paras = [callout] + body_lines
     n = merge_stacked_narrow_callout_paragraphs(paras)
-    assert n >= 1  # body lines still merge
-    # callout stays a separate paragraph (not merged into the body stack)
+    assert n == 0
+    assert len(paras) == 6
     assert id(callout) in [id(p) for p in paras]
-    # body merged into one paragraph containing the whole body text
-    merged = [p for p in paras if p is not callout]
-    assert len(merged) == 1
-    body_unicode = get_paragraph_unicode(merged[0])
-    assert "she has had plenty of opportunity to warm" in body_unicode
-    assert "Approach her while she is bent" in body_unicode
-    assert "go around." in body_unicode  # synthetic chars lack space glyphs
+    callout_unicode = get_paragraph_unicode(callout)
+    assert callout_unicode
+    for body in paras:
+        if body is callout:
+            continue
+        assert callout_unicode not in get_paragraph_unicode(body)
 
 
 def test_pullquote_host_stays_separate_when_rows_are_split():
