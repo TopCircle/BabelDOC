@@ -12,6 +12,8 @@ from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
+from babeldoc.format.pdf.document_il.utils.placement_paradigm import ParadigmMark
+from babeldoc.format.pdf.document_il.utils.placement_paradigm import PlacementParadigm
 from babeldoc.format.pdf.document_il.xml_converter import XMLConverter
 
 
@@ -63,6 +65,19 @@ def _from_dict(d: dict) -> LayoutIntent:
         gap_contract=d["gap_contract"],
         is_chrome=d["is_chrome"],
         text_on_photo=d["text_on_photo"],
+        paradigm_mark=_paradigm_mark(d),
+    )
+
+
+def _paradigm_mark(d: dict) -> ParadigmMark | None:
+    """Restore a mark from the two dict keys. Missing keys stay unset."""
+    paradigm = d.get("paradigm")
+    if paradigm is None:
+        return None
+    return ParadigmMark(
+        PlacementParadigm(paradigm),
+        0.0,
+        d.get("paradigm_reason") or "",
     )
 
 
@@ -103,6 +118,8 @@ def test_to_dict_roundtrip():
         "gap_contract": 12.3,
         "is_chrome": False,
         "text_on_photo": True,
+        "paradigm": None,
+        "paradigm_reason": None,
     }
     # Roundtrip: a LayoutIntent rebuilt from the dict equals the original.
     assert _from_dict(d) == intent
@@ -125,6 +142,7 @@ def test_layout_intent_defaults():
     assert intent.gap_contract is None
     assert intent.is_chrome is False
     assert intent.text_on_photo is False
+    assert intent.paradigm_mark is None
 
 
 def test_pdf_paragraph_layout_intent_default_none():
@@ -162,6 +180,9 @@ def test_xml_serialization_omits_layout_intent():
         bottom_inset=0.5,
         wrap_shape=[(4.0, 194.0)],
     )
+    paragraph.layout_intent.paradigm_mark = ParadigmMark(
+        PlacementParadigm.RECT_REFLOW, 0.9, "stable_column"
+    )
     page = il_version_1.Page(
         mediabox=il_version_1.Mediabox(box=Box(x=0.0, y=0.0, x2=612.0, y2=792.0)),
         cropbox=il_version_1.Cropbox(box=Box(x=0.0, y=0.0, x2=612.0, y2=792.0)),
@@ -174,3 +195,17 @@ def test_xml_serialization_omits_layout_intent():
     assert "p-with-intent" in xml
     # ...but the runtime-only field is omitted.
     assert "layout_intent" not in xml
+    assert "paradigm_mark" not in xml
+
+
+def test_from_dict_missing_paradigm_stays_none():
+    intent = LayoutIntent(
+        role=LayoutIntentRole.BODY,
+        design_box=Box(x=0.0, y=0.0, x2=100.0, y2=50.0),
+        top_inset=0.0,
+        bottom_inset=0.0,
+    )
+    payload = intent.to_dict()
+    payload.pop("paradigm", None)
+    payload.pop("paradigm_reason", None)
+    assert _from_dict(payload).paradigm_mark is None

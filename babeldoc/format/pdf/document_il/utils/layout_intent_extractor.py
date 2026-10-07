@@ -159,6 +159,7 @@ class LayoutIntentExtractor:
                 )
                 continue
             para.layout_intent = intent
+            self._attach_paradigm_mark(intent, meta)
             intents[pid] = intent
 
         # Pass 3 — page-level stack / gap_contract projection.  Only
@@ -362,6 +363,23 @@ class LayoutIntentExtractor:
             is_chrome=is_chrome,
             text_on_photo=text_on_photo,
         )
+
+    def _attach_paradigm_mark(self, intent: LayoutIntent, meta: dict) -> None:
+        """Label the paragraph. Does not change ``wrap_mode``."""
+        # Local import: placement_paradigm imports LayoutIntent's module.
+        from babeldoc.format.pdf.document_il.utils.placement_paradigm import (
+            select_paradigm,
+        )
+
+        boxes = [
+            (float(line.x), float(line.x2), float(line.y))
+            for line in meta.get("lines") or []
+            if line is not None
+            and line.x is not None
+            and line.x2 is not None
+            and line.y is not None
+        ]
+        intent.paradigm_mark = select_paradigm(intent.role, intent.wrap_mode, boxes)
 
     def _classify_secondary(
         self,

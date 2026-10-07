@@ -2,8 +2,20 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+from babeldoc.format.pdf.document_il import il_version_1
+from babeldoc.format.pdf.document_il.il_version_1 import Box
+from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
+from babeldoc.format.pdf.document_il.il_version_1 import PdfLine
+from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
+from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
+from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
+from babeldoc.format.pdf.document_il.utils.layout_intent_extractor import (
+    LayoutIntentExtractor,
+)
 from babeldoc.format.pdf.document_il.utils.placement_paradigm import PlacementParadigm
 from babeldoc.format.pdf.document_il.utils.placement_paradigm import select_paradigm
 
@@ -82,3 +94,62 @@ def test_no_lines_is_low_confidence_rect():
     assert mark.paradigm is PlacementParadigm.RECT_REFLOW
     assert mark.confidence == 0.4
     assert mark.reason == "no_lines"
+
+
+def _extract(paragraph: il_version_1.PdfParagraph) -> None:
+    page = il_version_1.Page(
+        cropbox=il_version_1.Cropbox(box=Box(x=0, y=0, x2=612, y2=792)),
+        mediabox=il_version_1.Mediabox(box=Box(x=0, y=0, x2=612, y2=792)),
+        pdf_paragraph=[paragraph],
+        page_number=1,
+    )
+    document = il_version_1.Document(page=[page], total_pages=1)
+    LayoutIntentExtractor(SimpleNamespace(debug=False)).extract(document)
+
+
+def test_extract_marks_rect_body():
+    # One visual glyph, like test_insets_from_visual_bbox. The box is a body
+    # column: a 200pt box is a callout and would keep the current placement.
+    char = PdfCharacter(
+        char_unicode="a",
+        box=Box(x=72, y=5, x2=82, y2=95),
+        visual_bbox=VisualBbox(box=Box(x=72, y=10, x2=82, y2=90)),
+        pdf_style=PdfStyle(font_id="base", font_size=12.0, graphic_state=None),
+    )
+    paragraph = il_version_1.PdfParagraph(
+        box=Box(x=72, y=0, x2=540, y2=100),
+        unicode="a",
+        pdf_style=PdfStyle(font_id="base", font_size=12.0, graphic_state=None),
+        pdf_paragraph_composition=[PdfParagraphComposition(pdf_character=char)],
+    )
+    _extract(paragraph)
+    intent = paragraph.layout_intent
+    assert intent.role is LayoutIntentRole.BODY
+    assert intent.paradigm_mark.paradigm is PlacementParadigm.RECT_REFLOW
+    assert intent.wrap_mode is WrapMode.NONE
+
+
+def test_extract_marks_chrome_keep_current():
+    # Same construction as test_role_chrome: a footer line stays chrome.
+    line = PdfLine(
+        box=Box(x=10, y=10, x2=100, y2=30),
+        pdf_character=[
+            PdfCharacter(
+                char_unicode="a",
+                box=Box(x=10, y=10, x2=100, y2=30),
+                pdf_style=PdfStyle(font_id="base", font_size=12.0, graphic_state=None),
+            )
+        ],
+    )
+    paragraph = il_version_1.PdfParagraph(
+        box=Box(x=10, y=10, x2=600, y2=30),
+        unicode="text",
+        layout_label="footer",
+        pdf_style=PdfStyle(font_id="base", font_size=12.0, graphic_state=None),
+        pdf_paragraph_composition=[PdfParagraphComposition(pdf_line=line)],
+    )
+    _extract(paragraph)
+    intent = paragraph.layout_intent
+    assert intent.role is LayoutIntentRole.CHROME
+    assert intent.paradigm_mark.paradigm is PlacementParadigm.KEEP_CURRENT
+    assert intent.paradigm_mark.reason == "keep_role"

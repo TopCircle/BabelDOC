@@ -33,7 +33,9 @@ if TYPE_CHECKING:
     # Type-checker-only: keeps the model's one-way dependency on
     # il_version_1.Box without a runtime import, so il_version_1 can import
     # LayoutIntent at runtime (required by xsdata, see il_version_1.py).
+    # ParadigmMark stays here too: placement_paradigm imports this module.
     from babeldoc.format.pdf.document_il.il_version_1 import Box
+    from babeldoc.format.pdf.document_il.utils.placement_paradigm import ParadigmMark
 
 
 class LayoutIntentRole(str, Enum):
@@ -98,6 +100,7 @@ class LayoutIntent:
     )
     is_chrome: bool = False
     text_on_photo: bool = False
+    paradigm_mark: ParadigmMark | None = None
 
     def to_dict(self) -> dict:
         """Project to a plain JSON-serializable dict.
@@ -130,4 +133,12 @@ class LayoutIntent:
             "gap_contract": self.gap_contract,
             "is_chrome": self.is_chrome,
             "text_on_photo": self.text_on_photo,
+            "paradigm": (
+                None
+                if self.paradigm_mark is None
+                else self.paradigm_mark.paradigm.value
+            ),
+            "paradigm_reason": (
+                None if self.paradigm_mark is None else self.paradigm_mark.reason
+            ),
         }
