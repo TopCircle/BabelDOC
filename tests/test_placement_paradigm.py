@@ -18,6 +18,9 @@ from babeldoc.format.pdf.document_il.utils.layout_intent_extractor import (
     LayoutIntentExtractor,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import effective_wrap_mode
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    resolve_line_interval_plan,
+)
 from babeldoc.format.pdf.document_il.utils.placement_paradigm import PlacementParadigm
 from babeldoc.format.pdf.document_il.utils.placement_paradigm import select_paradigm
 
@@ -89,6 +92,41 @@ def test_right_fixed_without_taper_stays_rect():
 def test_left_fixed_taper_stays_shaped():
     mark = select_paradigm(LayoutIntentRole.BODY, WrapMode.LEFT_FIXED, _taper_boxes())
     assert mark.paradigm is PlacementParadigm.SHAPED_POCKET
+
+
+def _left_pin_stepping_right_boxes() -> list[tuple[float, float, float]]:
+    """Left edge pinned, right edge steps. Higher y is higher on the page.
+
+    Spans are the OA p59 wrap body. They are evidence for the mirror of a
+    right-edge pin, not thresholds.
+    """
+    spans = (
+        (101.87, 333.64),
+        (102.53, 340.67),
+        (102.00, 342.65),
+        (102.91, 333.62),
+        (102.28, 325.63),
+        (102.22, 322.61),
+        (102.13, 320.65),
+    )
+    return [(x0, x1, 400.0 - 16.0 * index) for index, (x0, x1) in enumerate(spans)]
+
+
+def test_left_edge_pin_with_stepping_right_is_shaped_pocket():
+    mark = select_paradigm(
+        LayoutIntentRole.BODY,
+        WrapMode.LEFT_FIXED,
+        _left_pin_stepping_right_boxes(),
+    )
+    assert mark.paradigm is PlacementParadigm.SHAPED_POCKET
+    assert mark.reason == "taper"
+
+
+def test_three_line_left_pin_is_too_short():
+    boxes = [(102.0, 340.0 - 30.0 * index, 200.0 - 16.0 * index) for index in range(3)]
+    mark = select_paradigm(LayoutIntentRole.BODY, None, boxes)
+    assert mark.paradigm is PlacementParadigm.RECT_REFLOW
+    assert mark.reason == "taper_too_short"
 
 
 def test_no_lines_is_low_confidence_rect():
@@ -216,3 +254,57 @@ def test_missing_mark_wrap_mode_still_flushes_right():
 
     paragraph = _marked_paragraph(None, WrapMode.NONE)
     assert apply_wrap_flush(paragraph, "left") == "right"
+
+
+def test_left_edge_cone_keeps_left_fixed_pocket():
+    boxes = _left_pin_stepping_right_boxes()
+    mark = select_paradigm(LayoutIntentRole.BODY, WrapMode.LEFT_FIXED, boxes)
+    design = Box(x=101.87, y=80.0, x2=342.65, y2=420.0)
+    paragraph = il_version_1.PdfParagraph(
+        box=design,
+        pdf_paragraph_composition=[],
+        unicode="x",
+    )
+    paragraph.layout_intent = LayoutIntent(
+        role=LayoutIntentRole.BODY,
+        design_box=design,
+        top_inset=0.0,
+        bottom_inset=0.0,
+        wrap_mode=WrapMode.LEFT_FIXED,
+        wrap_shape=[(0.0, x1 - x0) for x0, x1, _y in boxes],
+        paradigm_mark=mark,
+    )
+    assert effective_wrap_mode(paragraph, shape_present=True) is WrapMode.LEFT_FIXED
+    plan = resolve_line_interval_plan(paragraph, design)
+    assert plan.wrap_active is True
+    assert plan.wrap_mode is WrapMode.LEFT_FIXED
+    x1, _x2 = plan.intervals_at(300.0, 312.0, line_idx=0)[0]
+    assert abs(x1 - 101.87) < 1e-6
+
+
+def test_rect_explicit_left_fixed_keeps_wrap_pocket():
+    boxes = [(102.0, 340.0, 200.0 - 15.0 * index) for index in range(5)]
+    mark = select_paradigm(LayoutIntentRole.BODY, WrapMode.LEFT_FIXED, boxes)
+    assert mark.paradigm is PlacementParadigm.RECT_REFLOW
+    assert mark.reason == "shape_not_taper"
+    paragraph = _marked_paragraph(mark, WrapMode.LEFT_FIXED)
+    assert effective_wrap_mode(paragraph, shape_present=True) is WrapMode.LEFT_FIXED
+    plan = resolve_line_interval_plan(paragraph, paragraph.box)
+    assert plan.wrap_active is True
+    assert plan.wrap_mode is WrapMode.LEFT_FIXED
+    x1, _x2 = plan.intervals_at(200.0, 212.0, line_idx=0)[0]
+    assert abs(x1 - 102.0) < 1e-6
+
+
+def test_rect_explicit_right_fixed_keeps_intervals_without_right_flush():
+    from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+        apply_wrap_flush,
+    )
+
+    mark = select_paradigm(LayoutIntentRole.BODY, WrapMode.RIGHT_FIXED, _stable_boxes())
+    assert mark.paradigm is PlacementParadigm.RECT_REFLOW
+    paragraph = _marked_paragraph(mark, WrapMode.RIGHT_FIXED)
+    assert effective_wrap_mode(paragraph, shape_present=True) is WrapMode.RIGHT_FIXED
+    plan = resolve_line_interval_plan(paragraph, paragraph.box)
+    assert plan.wrap_active is True
+    assert apply_wrap_flush(paragraph, "left") == "left"

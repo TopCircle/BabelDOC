@@ -433,13 +433,16 @@ def effective_wrap_mode(
 ) -> WrapMode:
     """Mode from intent, with legacy default RIGHT_FIXED when shape but no mode.
 
-    A ``rect_reflow`` mark cancels that default. The shape can still supply
-    intervals; short lines are not pinned to the right edge. A missing mark
+    A ``rect_reflow`` mark cancels that default only when no pin is stored.
+    An explicit ``LEFT_FIXED`` or ``RIGHT_FIXED`` stays, so the interval plan
+    still consumes ``wrap_shape``. Short lines on ``rect_reflow`` are not
+    pin-flushed; ``apply_wrap_flush`` skips that. When the mark cancels the
+    default, the mode is ``NONE`` and wrap intervals turn off. A missing mark
     keeps the historical right pin. Confirmed tapers keep their stored mode.
     """
     intent = getattr(paragraph, "layout_intent", None) if paragraph else None
     mode = getattr(intent, "wrap_mode", None) if intent is not None else None
-    if _rect_reflow_cancels_pin(intent, shape_present=shape_present):
+    if _rect_reflow_cancels_default(intent, shape_present=shape_present):
         return WrapMode.NONE
     if mode is None or mode is WrapMode.NONE:
         # Pre-C1 intents / synth shapes: historical consumer was right-pin only.
@@ -449,11 +452,15 @@ def effective_wrap_mode(
     return mode
 
 
-def _rect_reflow_cancels_pin(intent: Any, *, shape_present: bool) -> bool:
+def _rect_reflow_cancels_default(intent: Any, *, shape_present: bool) -> bool:
+    """Cancel the legacy right pin, not an explicit stored pin."""
     if not shape_present or intent is None:
         return False
     mark = getattr(intent, "paradigm_mark", None)
     if mark is None:
+        return False
+    mode = getattr(intent, "wrap_mode", None)
+    if mode is not None and mode is not WrapMode.NONE:
         return False
     # Local import: keep this module from loading the classifier at import time.
     from babeldoc.format.pdf.document_il.utils.placement_paradigm import (
@@ -464,10 +471,30 @@ def _rect_reflow_cancels_pin(intent: Any, *, shape_present: bool) -> bool:
 
 
 def apply_wrap_flush(paragraph: PdfParagraph | None, alignment: str) -> str:
-    """Use the pin flush only when ``effective_wrap_mode`` is a real pin."""
+    """Pin-flush shaped pockets and unmarked shapes.
+
+    ``rect_reflow`` keeps the caller's alignment. An explicit pin on that
+    mark still supplies intervals through ``effective_wrap_mode``; only the
+    flush is skipped. A missing mode on ``rect_reflow`` is ``NONE``, so there
+    is neither a pin flush nor wrap intervals.
+    """
     if effective_wrap_mode(paragraph, shape_present=True) is WrapMode.NONE:
         return alignment
+    if _is_rect_reflow(paragraph):
+        return alignment
     return wrap_flush_alignment(paragraph)
+
+
+def _is_rect_reflow(paragraph: PdfParagraph | None) -> bool:
+    intent = getattr(paragraph, "layout_intent", None) if paragraph else None
+    mark = getattr(intent, "paradigm_mark", None) if intent is not None else None
+    if mark is None:
+        return False
+    from babeldoc.format.pdf.document_il.utils.placement_paradigm import (
+        PlacementParadigm,
+    )
+
+    return mark.paradigm is PlacementParadigm.RECT_REFLOW
 
 
 def wrap_flush_alignment(

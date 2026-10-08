@@ -15,10 +15,12 @@ from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 
 _FULL_WIDTH_RATIO = 0.60
 _MIN_TAPER_LINES = 4
-_MAX_RIGHT_RANGE = 18.0
+_MAX_PINNED_RANGE = 18.0
 _MIN_LEFT_RANGE = 24.0
+# Left-pin free edge. Not the 24pt bar used when the right edge is pinned.
+_MIN_RIGHT_FREE_RANGE = 18.0
 _STABLE_LEFT_RANGE = 8.0
-_LEFT_BUCKET_PT = 6.0
+_EDGE_BUCKET_PT = 6.0
 _MAX_STEP_BACK = 6.0
 _MIN_MONOTONE = 0.70
 
@@ -67,7 +69,9 @@ class _LineFeatures:
     left_range: float
     right_range: float
     distinct_lefts: int
-    monotone: float
+    distinct_rights: int
+    left_monotone: float
+    right_monotone: float
 
 
 def select_paradigm(
@@ -124,26 +128,45 @@ def _rect_reason(wrap_mode: WrapMode | None, features: _LineFeatures) -> str:
 
 
 def _is_taper(features: _LineFeatures) -> bool:
+    return _is_right_pin_taper(features) or _is_left_pin_taper(features)
+
+
+def _is_right_pin_taper(features: _LineFeatures) -> bool:
+    """Photo on the left: right edge pinned, left edge steps in."""
     return (
         features.full_count >= _MIN_TAPER_LINES
-        and _right_edge_pinned(features)
+        and features.right_range <= _MAX_PINNED_RANGE
+        and features.left_monotone >= _MIN_MONOTONE
         and features.left_range >= _MIN_LEFT_RANGE
         and features.distinct_lefts >= _MIN_TAPER_LINES
     )
 
 
-def _is_too_short(features: _LineFeatures) -> bool:
+def _is_left_pin_taper(features: _LineFeatures) -> bool:
+    """Photo on the right: left edge pinned, right edge steps."""
     return (
-        0 < features.full_count < _MIN_TAPER_LINES
-        and _right_edge_pinned(features)
+        features.full_count >= _MIN_TAPER_LINES
+        and features.left_range <= _MAX_PINNED_RANGE
+        and features.right_monotone >= _MIN_MONOTONE
+        and features.right_range >= _MIN_RIGHT_FREE_RANGE
+        and features.distinct_rights >= _MIN_TAPER_LINES
+    )
+
+
+def _is_too_short(features: _LineFeatures) -> bool:
+    if not 0 < features.full_count < _MIN_TAPER_LINES:
+        return False
+    right_pin = (
+        features.right_range <= _MAX_PINNED_RANGE
+        and features.left_monotone >= _MIN_MONOTONE
         and features.left_range >= _MIN_LEFT_RANGE
     )
-
-
-def _right_edge_pinned(features: _LineFeatures) -> bool:
-    return (
-        features.right_range <= _MAX_RIGHT_RANGE and features.monotone >= _MIN_MONOTONE
+    left_pin = (
+        features.left_range <= _MAX_PINNED_RANGE
+        and features.right_monotone >= _MIN_MONOTONE
+        and features.right_range >= _MIN_RIGHT_FREE_RANGE
     )
+    return right_pin or left_pin
 
 
 def _line_features(
@@ -156,8 +179,10 @@ def _line_features(
         full_count=len(full),
         left_range=_span(lefts),
         right_range=_span(rights),
-        distinct_lefts=len({round(x / _LEFT_BUCKET_PT) for x in lefts}),
-        monotone=_monotone_share(lefts),
+        distinct_lefts=_distinct_edges(lefts),
+        distinct_rights=_distinct_edges(rights),
+        left_monotone=_monotone_share(lefts, outward="left"),
+        right_monotone=_monotone_share(rights, outward="right"),
     )
 
 
@@ -186,10 +211,21 @@ def _span(values: list[float]) -> float:
     return max(values) - min(values)
 
 
-def _monotone_share(lefts: list[float]) -> float:
-    """Share of successive left edges that do not jump back by more than 6pt."""
-    if len(lefts) < 2:
+def _distinct_edges(values: list[float]) -> int:
+    return len({round(value / _EDGE_BUCKET_PT) for value in values})
+
+
+def _monotone_share(values: list[float], *, outward: str) -> float:
+    """Share of successive edges that do not jump outward by more than 6pt.
+
+    A free left edge steps back when it jumps left. A free right edge steps
+    back when it jumps right. Reading order is top of the page first.
+    """
+    if len(values) < 2:
         return 1.0
-    deltas = [lefts[index + 1] - lefts[index] for index in range(len(lefts) - 1)]
-    held = sum(1 for delta in deltas if delta >= -_MAX_STEP_BACK)
+    deltas = [values[index + 1] - values[index] for index in range(len(values) - 1)]
+    if outward == "right":
+        held = sum(1 for delta in deltas if delta <= _MAX_STEP_BACK)
+    else:
+        held = sum(1 for delta in deltas if delta >= -_MAX_STEP_BACK)
     return held / len(deltas)

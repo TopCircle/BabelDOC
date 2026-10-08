@@ -15,7 +15,7 @@
 - 基线提交 `398275a`，版本保持 `0.6.4.95`。
 - `_DEFAULT_LINE_SKIP_CJK` 保持 `1.50`。`MIN_READABLE_SCALE` 保持 `0.55`。
 - 页眉、页脚、分册名、网址保持英文。
-- 分类器里不出现某一页的左缘、字号或空隙。锥形判定只用通用几何：去掉窄于本段峰值 60% 的短行后，满行 ≥ 4，右缘波动 ≤ 18pt，左缘极差 ≥ 24pt，6pt 桶的不同左缘 ≥ 4，相邻左缘至少 70% 的下降不超过 6pt。
+- 分类器里不出现某一页的左缘、字号或空隙。锥形判定只用通用几何：去掉窄于本段峰值 60% 的短行后，满行 ≥ 4。右钉：右缘波动 ≤ 18pt，左缘极差 ≥ 24pt，6pt 桶的不同左缘 ≥ 4，相邻左缘向外跳超过 6pt 的比例 ≤ 30%。左钉：左缘波动 ≤ 18pt，右缘极差 ≥ 18pt，6pt 桶的不同右缘 ≥ 4，相邻右缘向外跳超过 6pt 的比例 ≤ 30%。右钉的左缘极差仍是 24pt。
 - `PdfParagraph.layout_intent` 继续 `type="Ignore"`，新标记同样不进 XML。
 - 不改切段、不拆对页、不修 CMap、不重译 OA 或 Vagina Masterclass。
 - 本计划未接受前，不写入 `docs/PLAN-INDEX.md` 和 `docs/CURRENT-STATUS.md`。
@@ -23,8 +23,9 @@
 ## Review Focus
 
 - 侧图旁的短项目（段内满行不足 4，或左缘极差不足 24pt）应是 `rect_reflow`。整页左缘在走，不能把这些短段合成一个 `shaped_pocket`。
-- 同一段里的单调锥形（右缘钉住、左缘极差够大、不同左缘够多）应仍是 `shaped_pocket`。
-- `LEFT_FIXED` 与 `RIGHT_FIXED` 已明确且形状是锥形时，钉边方向保持原样。
+- 同一段里的单调锥形应仍是 `shaped_pocket`。右缘钉住、左缘在走，或左缘钉住、右缘在走，都算。
+- `LEFT_FIXED` 与 `RIGHT_FIXED` 已明确且形状是锥形时，钉边方向和口袋都保持原样。
+- 几何不是锥形、但已经写了 `LEFT_FIXED` 或 `RIGHT_FIXED` 时，标记可以是 `rect_reflow`，口袋仍在，短行不贴钉边。没有存钉边、只有形状时，`rect_reflow` 仍取消缺省右钉，间隔计划不再吃这条形状。
 - 引语、列表、页眉即使几何像短行或像锥形，也不能标成 `shaped_pocket`。
 - 低置信度必须落到 `rect_reflow` 并带原因，不能静默右钉。
 
@@ -62,7 +63,7 @@ Expected: 收集阶段失败，`placement_paradigm` 无法导入。
 
 - [ ] **Step 3: 实现 `select_paradigm`**
 
-先按角色：`CHROME`、`TITLE`、`PULL_QUOTE`、`CALLOUT`、`LIST`、`SECTION_HEADER`、`FIGURE_CAPTION`、`DROPCAP`、`FORMULA` 一律 `KEEP_CURRENT`，reason `keep_role`。其余角色里，满行是宽度 ≥ 本段峰值 60% 的行。锥形要满行 ≥ 4、右缘极差 ≤ 18、左缘极差 ≥ 24、左缘按 6pt 取整后的不同值 ≥ 4、相邻左缘里下降超过 6pt 的比例 ≤ 30%。满行不足 4 但右缘钉住且左缘极差 ≥ 24 时 reason 为 `taper_too_short`。左缘极差 ≤ 8 时 reason 为 `stable_column`。`wrap_mode` 已是 `LEFT_FIXED` 或 `RIGHT_FIXED` 而几何不是锥形时 reason 为 `shape_not_taper`，优先级高于 `stable_column`。其它矩形 reason 为 `not_taper`。没有行时 confidence 为 0.4，其余成功路径 ≥ 0.8。不要调用 `is_figure_wrap_taper`。
+先按角色：`CHROME`、`TITLE`、`PULL_QUOTE`、`CALLOUT`、`LIST`、`SECTION_HEADER`、`FIGURE_CAPTION`、`DROPCAP`、`FORMULA` 一律 `KEEP_CURRENT`，reason `keep_role`。其余角色里，满行是宽度 ≥ 本段峰值 60% 的行。锥形要满行 ≥ 4，并且是右钉或左钉之一。右钉：右缘极差 ≤ 18、左缘极差 ≥ 24、左缘按 6pt 取整后的不同值 ≥ 4、相邻左缘向外跳超过 6pt 的比例 ≤ 30%。左钉：左缘极差 ≤ 18、右缘极差 ≥ 18、右缘按 6pt 取整后的不同值 ≥ 4、相邻右缘向外跳超过 6pt 的比例 ≤ 30%。满行不足 4 但已满足对应钉边的极差时 reason 为 `taper_too_short`。左缘极差 ≤ 8 且不是上述短锥时 reason 为 `stable_column`。`wrap_mode` 已是 `LEFT_FIXED` 或 `RIGHT_FIXED` 而几何不是锥形时 reason 为 `shape_not_taper`，优先级高于 `stable_column`。其它矩形 reason 为 `not_taper`。没有行时 confidence 为 0.4，其余成功路径 ≥ 0.8。不要调用 `is_figure_wrap_taper`。
 
 - [ ] **Step 4: 跑测试确认通过**
 
@@ -121,7 +122,7 @@ git commit -m "feat: store placement paradigm mark without changing layout"
 
 **Interfaces:**
 - Consumes: `ParadigmMark`，现有 `effective_wrap_mode(paragraph, shape_present) -> WrapMode`
-- Produces: 标记为 `RECT_REFLOW` 时，即使 `shape_present` 为真，`effective_wrap_mode` 也返回 `WrapMode.NONE`。标记为 `SHAPED_POCKET` 时保持该段原有的 `LEFT_FIXED` 或 `RIGHT_FIXED`。标记缺失时行为与改前一致。
+- Produces: 标记为 `RECT_REFLOW` 且没有存 `LEFT_FIXED` / `RIGHT_FIXED` 时，即使 `shape_present` 为真，`effective_wrap_mode` 也返回 `WrapMode.NONE`，间隔计划不再吃这条形状。已经写明的钉边保持原模式，口袋还在，但 `rect_reflow` 不把短行贴到钉边。标记为 `SHAPED_POCKET` 时保持该段原有的 `LEFT_FIXED` 或 `RIGHT_FIXED`，短行仍贴钉边。标记缺失时行为与改前一致。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -134,7 +135,7 @@ Expected: 矩形加形状仍得到 `RIGHT_FIXED`。
 
 - [ ] **Step 3: 改 `effective_wrap_mode`**
 
-函数内部再导入 `PlacementParadigm`，避免 `line_interval_plan` 在模块加载时拉回 `placement_paradigm`。只在 `paradigm_mark.paradigm is RECT_REFLOW` 时把缺省右钉改成 `NONE`。不要删除标记缺失时的 `RIGHT_FIXED` 分支。`typesetting.py` 里 `wrap_flush_alignment` 仅在 `effective_wrap_mode` 不是 `NONE` 时把对齐改成贴边。
+函数内部再导入 `PlacementParadigm`，避免 `line_interval_plan` 在模块加载时拉回 `placement_paradigm`。只在 `paradigm_mark.paradigm is RECT_REFLOW` 且没有存钉边时把缺省右钉改成 `NONE`。已经写明的 `LEFT_FIXED` / `RIGHT_FIXED` 留给间隔计划。不要删除标记缺失时的 `RIGHT_FIXED` 分支。`rect_reflow` 不贴钉边；`shaped_pocket` 和缺标记仍在 `effective_wrap_mode` 不是 `NONE` 时贴边。
 
 - [ ] **Step 4: 跑测试确认通过**
 
