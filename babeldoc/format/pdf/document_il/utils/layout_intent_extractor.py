@@ -371,14 +371,7 @@ class LayoutIntentExtractor:
             select_paradigm,
         )
 
-        boxes = [
-            (float(line.x), float(line.x2), float(line.y))
-            for line in meta.get("lines") or []
-            if line is not None
-            and line.x is not None
-            and line.x2 is not None
-            and line.y is not None
-        ]
+        boxes = _boxes_for_paradigm(intent, meta)
         intent.paradigm_mark = select_paradigm(intent.role, intent.wrap_mode, boxes)
 
     def _classify_secondary(
@@ -805,3 +798,56 @@ class LayoutIntentExtractor:
         except Exception:
             # Best-effort diagnostics — never break the pipeline.
             logger.warning("layout_intent: debug dump failed", exc_info=True)
+
+
+def _boxes_for_paradigm(
+    intent: LayoutIntent, meta: dict
+) -> list[tuple[float, float, float]]:
+    """Score the stored pin cone when one exists.
+
+    Raw composition lines can be a zigzag. The cone on ``wrap_shape`` is
+    what typesetting pins, and that is the geometry the label must see.
+    """
+    pinned = _boxes_from_stored_pin(intent)
+    if pinned:
+        return pinned
+    return _boxes_from_meta_lines(meta)
+
+
+def _boxes_from_stored_pin(
+    intent: LayoutIntent,
+) -> list[tuple[float, float, float]] | None:
+    shape = getattr(intent, "wrap_shape", None) or []
+    mode = getattr(intent, "wrap_mode", None)
+    design = getattr(intent, "design_box", None)
+    if len(shape) < 2 or design is None:
+        return None
+    if mode not in (WrapMode.LEFT_FIXED, WrapMode.RIGHT_FIXED):
+        return None
+    if design.x is None or design.x2 is None:
+        return None
+    # wrap_shape line 0 is the top of the page. IL y grows upward.
+    top = float(len(shape))
+    boxes: list[tuple[float, float, float]] = []
+    for index, entry in enumerate(shape):
+        try:
+            width = float(entry[1])
+        except (TypeError, ValueError, IndexError):
+            return None
+        if mode is WrapMode.RIGHT_FIXED:
+            x1 = float(design.x2)
+            x0 = x1 - width
+        else:
+            x0 = float(design.x)
+            x1 = x0 + width
+        boxes.append((x0, x1, top - index))
+    return boxes
+
+
+def _boxes_from_meta_lines(meta: dict) -> list[tuple[float, float, float]]:
+    boxes: list[tuple[float, float, float]] = []
+    for line in meta.get("lines") or []:
+        if line is None or line.x is None or line.x2 is None or line.y is None:
+            continue
+        boxes.append((float(line.x), float(line.x2), float(line.y)))
+    return boxes

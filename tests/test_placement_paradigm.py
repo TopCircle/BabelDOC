@@ -11,6 +11,7 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfLine
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
+from babeldoc.format.pdf.document_il.utils.figure_wrap import taper_prefix_widths
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
@@ -294,6 +295,74 @@ def test_rect_explicit_left_fixed_keeps_wrap_pocket():
     assert plan.wrap_mode is WrapMode.LEFT_FIXED
     x1, _x2 = plan.intervals_at(200.0, 212.0, line_idx=0)[0]
     assert abs(x1 - 102.0) < 1e-6
+
+
+def _line(x: float, x2: float, y: float) -> SimpleNamespace:
+    return SimpleNamespace(x=x, x2=x2, y=y)
+
+
+def test_clustered_right_pin_scores_cleaned_cone():
+    """Raw zigzag is not a taper. The stored cone is. The mark must follow it."""
+    raw = [
+        252.7, 244.1, 227.8, 239.3, 202.3, 228.3, 133.7, 193.6,
+        155.6, 174.1, 114.5, 142.6, 51.6, 86.6, 99.6,
+    ]
+    cleaned = taper_prefix_widths(raw)
+    right = 570.0
+    lines = [
+        _line(right - width, right, 400.0 - 16.0 * index)
+        for index, width in enumerate(raw)
+    ]
+    design = Box(x=right - max(raw), y=0.0, x2=right, y2=500.0)
+    intent = LayoutIntent(
+        role=LayoutIntentRole.WRAP_COLUMN,
+        design_box=design,
+        top_inset=0.0,
+        bottom_inset=0.0,
+        wrap_mode=WrapMode.RIGHT_FIXED,
+        wrap_shape=[(0.0, width) for width in cleaned],
+    )
+    LayoutIntentExtractor(SimpleNamespace(debug=False))._attach_paradigm_mark(
+        intent, {"lines": lines}
+    )
+    assert intent.paradigm_mark.paradigm is PlacementParadigm.SHAPED_POCKET
+    paragraph = il_version_1.PdfParagraph(
+        box=design, pdf_paragraph_composition=[], unicode="x"
+    )
+    paragraph.layout_intent = intent
+    from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+        apply_wrap_flush,
+    )
+
+    assert apply_wrap_flush(paragraph, "left") == "right"
+
+
+def test_clustered_left_pin_scores_cleaned_cone():
+    raw = [
+        213.6, 227.6, 157.8, 204.6, 235.0, 218.8, 237.5, 212.1,
+        227.9, 206.9, 219.8, 204.3, 217.6, 179.2, 214.6, 198.3,
+        213.9, 191.6, 213.0, 89.1, 181.6, 210.0, 167.7, 193.1,
+    ]
+    cleaned = taper_prefix_widths(raw)
+    left = 102.0
+    lines = [
+        _line(left, left + width, 500.0 - 16.0 * index)
+        for index, width in enumerate(raw)
+    ]
+    design = Box(x=left, y=0.0, x2=left + max(raw), y2=600.0)
+    intent = LayoutIntent(
+        role=LayoutIntentRole.WRAP_COLUMN,
+        design_box=design,
+        top_inset=0.0,
+        bottom_inset=0.0,
+        wrap_mode=WrapMode.LEFT_FIXED,
+        wrap_shape=[(0.0, width) for width in cleaned],
+    )
+    LayoutIntentExtractor(SimpleNamespace(debug=False))._attach_paradigm_mark(
+        intent, {"lines": lines}
+    )
+    assert intent.paradigm_mark.paradigm is PlacementParadigm.SHAPED_POCKET
+    assert intent.paradigm_mark.reason == "taper"
 
 
 def test_rect_explicit_right_fixed_keeps_intervals_without_right_flush():
