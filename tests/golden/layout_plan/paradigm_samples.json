@@ -1,0 +1,446 @@
+{
+  "kind": "paradigm_samples",
+  "note": "A sample is found by block_id, the geometry digest of its lines. seen_in records where a person looked. It is not a match rule.",
+  "samples": [
+    {
+      "paradigm": "rect/full_column",
+      "block_id": "bfada19375a1da0f",
+      "lines": [
+        [
+          35.999996185302734,
+          578.8125,
+          443.4960021972656
+        ],
+        [
+          35.999996185302734,
+          578.7430419921875,
+          425.4960021972656
+        ],
+        [
+          35.999996185302734,
+          578.7589111328125,
+          407.4960021972656
+        ],
+        [
+          35.999996185302734,
+          578.8079833984375,
+          389.4960021972656
+        ],
+        [
+          35.999996185302734,
+          578.6519775390625,
+          371.4960021972656
+        ],
+        [
+          35.999996185302734,
+          579.056396484375,
+          353.4960021972656
+        ],
+        [
+          35.999996185302734,
+          578.6519775390625,
+          335.4960021972656
+        ],
+        [
+          35.999996185302734,
+          222.50399780273438,
+          317.4960021972656
+        ]
+      ],
+      "measure": {
+        "full_count": 7,
+        "left_range": 0.0,
+        "right_range": 0.4,
+        "left_monotone": 1.0,
+        "right_monotone": 1.0,
+        "line_count": 8
+      },
+      "seen_in": {
+        "relpath": "Bigger & Deeper/Bigger & Deeper.pdf",
+        "page_index": 1
+      }
+    },
+    {
+      "paradigm": "rect/full_column",
+      "block_id": "3d3a1a86e2a93d9c",
+      "lines": [
+        [
+          35.0,
+          579.572021484375,
+          590.846923828125
+        ],
+        [
+          35.0,
+          579.67041015625,
+          575.846923828125
+        ],
+        [
+          35.0,
+          579.5599975585938,
+          560.846923828125
+        ],
+        [
+          35.0,
+          579.6090698242188,
+          545.846923828125
+        ],
+        [
+          35.0,
+          579.692138671875,
+          530.846923828125
+        ],
+        [
+          35.0,
+          579.6451416015625,
+          515.8468933105469
+        ]
+      ],
+      "measure": {
+        "full_count": 6,
+        "left_range": 0.0,
+        "right_range": 0.13,
+        "left_monotone": 1.0,
+        "right_monotone": 1.0,
+        "line_count": 6
+      },
+      "seen_in": {
+        "relpath": "Deep Anal Penetration/Deep Anal Penetration.pdf",
+        "page_index": 5
+      }
+    },
+    {
+      "paradigm": "taper/left_pin",
+      "block_id": "ad9a5d79c6255148",
+      "lines": [
+        [
+          113.0,
+          249.98001098632812,
+          296.8520202636719
+        ],
+        [
+          113.0,
+          247.83204650878906,
+          281.85198974609375
+        ],
+        [
+          113.0,
+          231.08004760742188,
+          266.85198974609375
+        ],
+        [
+          113.0,
+          228.66798400878906,
+          251.85198974609375
+        ],
+        [
+          113.0,
+          205.9519805908203,
+          236.85198974609375
+        ],
+        [
+          113.0,
+          187.98802185058594,
+          221.85198974609375
+        ],
+        [
+          113.0,
+          183.65602111816406,
+          206.85198974609375
+        ],
+        [
+          113.0,
+          155.6000213623047,
+          191.85198974609375
+        ],
+        [
+          113.0,
+          148.38800048828125,
+          176.85198974609375
+        ],
+        [
+          113.0,
+          137.2880096435547,
+          161.85198974609375
+        ]
+      ],
+      "measure": {
+        "full_count": 5,
+        "left_range": 0.0,
+        "right_range": 44.03,
+        "left_monotone": 1.0,
+        "right_monotone": 1.0,
+        "line_count": 10
+      },
+      "seen_in": {
+        "relpath": "Double Her Desire/dhdmodule3.pdf",
+        "page_index": 36
+      }
+    },
+    {
+      "paradigm": "taper/left_pin",
+      "block_id": "d074caa0495697de",
+      "lines": [
+        [
+          102.0,
+          322.6078796386719,
+          316.83599853515625
+        ],
+        [
+          102.0,
+          306.6120300292969,
+          301.83599853515625
+        ],
+        [
+          102.0,
+          292.60797119140625,
+          286.83599853515625
+        ],
+        [
+          102.0,
+          281.63995361328125,
+          271.83599853515625
+        ],
+        [
+          102.0,
+          271.64404296875,
+          256.83599853515625
+        ],
+        [
+          102.0,
+          263.6159973144531,
+          241.83599853515625
+        ],
+        [
+          102.0,
+          255.59996032714844,
+          226.83599853515625
+        ],
+        [
+          102.0,
+          249.635986328125,
+          211.83599853515625
+        ],
+        [
+          102.0,
+          130.0800018310547,
+          196.83599853515625
+        ]
+      ],
+      "measure": {
+        "full_count": 8,
+        "left_range": 0.0,
+        "right_range": 72.97,
+        "left_monotone": 1.0,
+        "right_monotone": 1.0,
+        "line_count": 9
+      },
+      "seen_in": {
+        "relpath": "Orgasmic Addiction/Orgasmic Addiction.pdf",
+        "page_index": 28
+      }
+    },
+    {
+      "paradigm": "taper/right_pin",
+      "block_id": "e66ad1dbf852edd0",
+      "lines": [
+        [
+          319.0,
+          578.7639770507812,
+          461.4960021972656
+        ],
+        [
+          318.0039978027344,
+          578.62841796875,
+          443.4960021972656
+        ],
+        [
+          317.00799560546875,
+          578.8013305664062,
+          425.4960021972656
+        ],
+        [
+          315.0039978027344,
+          578.8922729492188,
+          407.4960021972656
+        ],
+        [
+          314.00799560546875,
+          578.7184448242188,
+          389.4960021972656
+        ],
+        [
+          313.0119934082031,
+          578.7760009765625,
+          371.4960021972656
+        ],
+        [
+          311.00799560546875,
+          578.82275390625,
+          353.4960021972656
+        ],
+        [
+          306.0039978027344,
+          578.716064453125,
+          335.4960021972656
+        ],
+        [
+          301.0,
+          578.7507934570312,
+          317.4960021972656
+        ],
+        [
+          295.9960021972656,
+          578.656005859375,
+          299.4960021972656
+        ],
+        [
+          290.99200439453125,
+          578.7340698242188,
+          281.4960021972656
+        ],
+        [
+          288.9880065917969,
+          578.72802734375,
+          263.4959716796875
+        ],
+        [
+          288.9880065917969,
+          578.691650390625,
+          245.4959716796875
+        ],
+        [
+          287.99200439453125,
+          578.7279052734375,
+          227.4959716796875
+        ],
+        [
+          286.9960021972656,
+          578.703857421875,
+          209.4959716796875
+        ],
+        [
+          286.9960021972656,
+          578.6741943359375,
+          191.4959716796875
+        ],
+        [
+          286.0,
+          578.7363891601562,
+          173.4959716796875
+        ],
+        [
+          285.0039978027344,
+          578.7279052734375,
+          155.4959716796875
+        ],
+        [
+          284.00799560546875,
+          578.7159423828125,
+          137.4959716796875
+        ],
+        [
+          283.0119934082031,
+          578.7279663085938,
+          119.4959716796875
+        ],
+        [
+          280.0119934082031,
+          389.1748046875,
+          101.4959716796875
+        ]
+      ],
+      "measure": {
+        "full_count": 20,
+        "left_range": 35.99,
+        "right_range": 0.26,
+        "left_monotone": 1.0,
+        "right_monotone": 1.0,
+        "line_count": 21
+      },
+      "seen_in": {
+        "relpath": "Flesh on Flesh/Flesh on Flesh.pdf",
+        "page_index": 17
+      }
+    },
+    {
+      "paradigm": "taper/right_pin",
+      "block_id": "81858d74f14146aa",
+      "lines": [
+        [
+          210.0,
+          512.6159057617188,
+          226.84796142578125
+        ],
+        [
+          206.00399780273438,
+          512.6758422851562,
+          211.84796142578125
+        ],
+        [
+          202.00799560546875,
+          512.6759033203125,
+          196.84796142578125
+        ],
+        [
+          198.01199340820312,
+          512.591796875,
+          181.84796142578125
+        ],
+        [
+          193.00799560546875,
+          512.5802001953125,
+          166.84796142578125
+        ],
+        [
+          187.00799560546875,
+          512.6519775390625,
+          151.84796142578125
+        ],
+        [
+          181.00799560546875,
+          512.663818359375,
+          136.84796142578125
+        ],
+        [
+          174.01199340820312,
+          328.0440368652344,
+          121.84796142578125
+        ]
+      ],
+      "measure": {
+        "full_count": 7,
+        "left_range": 28.99,
+        "right_range": 0.1,
+        "left_monotone": 1.0,
+        "right_monotone": 1.0,
+        "line_count": 8
+      },
+      "seen_in": {
+        "relpath": "Erotic Massage For Better Sex/Erotic Massage For Better Sex.pdf",
+        "page_index": 71
+      }
+    }
+  ],
+  "withheld": [
+    {
+      "where": "tmp/sfw-river-bend.pdf page 1, the two body blocks",
+      "reason": "Left edge stays put. Right edge steps in, then back out around the tree. One page. No paradigm."
+    },
+    {
+      "where": "Orgasmic Addiction/Orgasmic Addiction.pdf page_index 18",
+      "reason": "The cone's left edge also steps, so the seal opened several blocks. Not one left-pin sample."
+    },
+    {
+      "where": "Double Her Desire/dhdmodule3.pdf page_index 36, the block that starts Explore her breasts",
+      "reason": "The top lines keep a wide right edge and the lower lines step in. The seal left them one block. Not a left-pin sample."
+    },
+    {
+      "where": "Bigger & Deeper/Bigger & Deeper.pdf page_index 6, the 18-line block; Toys for Tits/Toys for Tits.pdf page_index 7, the 13-line block; The Art of Coming Together/The Art of Coming Together.pdf page_index 17, the 23-line block",
+      "reason": "The right edge stays put. The left edge steps in and then back out. That outline repeats, and it is not the one-direction stair. Not named in this table."
+    },
+    {
+      "where": "Erotic Massage For Better Sex/Erotic Massage For Better Sex.pdf page_index 42",
+      "reason": "The right edge jumps from about 372 to 513 on the third line. Not a pinned edge."
+    }
+  ]
+}
