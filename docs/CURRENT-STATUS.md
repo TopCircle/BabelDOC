@@ -1,7 +1,26 @@
-# BabelDOC / OA dual — 当前状况（2026-10-07）
+# BabelDOC — 当前状况（2026-10-20）
 
-**HEAD:** 本提交 · **版本:** `0.6.4.95`（未 bump） · 仓库 `TopCircle/BabelDOC` `main`  
-**本文件是当前操作员入口。** 若与旧 wave / layout-first 计划冲突，以本文件 + `PLAN-INDEX.md` 为准。
+**布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008` · HEAD `d7c5f92`（领先 origin 1，工作区另有未提交改动）  
+**版本:** `0.6.4.95`（`babeldoc/const.py` 与 `pyproject.toml`，未 bump）  
+**main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
+**本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-10-20 — step/right_spur 小腿框已过（版本仍 0.6.4.95）
+
+范式试页是 **EN 左 | ZH 右**。下面的 OA 整本 canonical 是另一份产品，**ZH 左 | EN 右**，不要混用，也不要覆盖。
+
+- Erotic Massage《For Better Sex》印刷页 57 的小腿框填充，Circle 于 2026-10-20 说「过」。dual：`tmp/fill-right-spur/erotic-massage-p57-frame3/Erotic Massage For Better Sex.no_watermark.zh-CN.dual.pdf`（546009 字节）。不要覆盖，不要重渲。
+- 中文四行、12pt。前两行左缘 102，右端 511.6 与 510.0。照片缩进从「起来时」起，左缘 231，右端 511.2。末行右端 387，不拉满。「接下来」停在 y-down 371.8。距的搁板收到 596.8，「弯曲位置）」停在 614.6。页脚和 URL 仍是英文。
+- 未填充的源框也已过，不要重画：`tmp/paradigm-map/right-spur-erotic-massage-p57.png`、`tmp/paradigm-map/right-spur-naughtyfingers-p109.png`。小腿在距框上方，不要为填小腿去改距的填充。
+- 同页更早的 dual 留在磁盘上，不是这一次的结果：`tmp/fill-right-spur/erotic-massage-p57/` 以及 `p57-fix`、`p57-clear`、`p57-join`、`p57-fill`、`p57-frame`。
+- 两半源行拼起来对上一个轮廓时，字进那个轮廓。用的是 `taper/right_pin` 已有的恒等填充。没有新范式，排版也不按范式名字分支。`seal.py` 未改。`right_pin`、`light_column`、距的填充未重调。
+- 审查 f24df175（2 个缺陷、2 条建议）已在 2026-10-20 修完：缺 id 时各自用 `shared-frame-{id(paragraph)}`；没有存下的源行边就不再用框左缘去发明左缘；页门不是 `single_page` 时不装框。`tests/test_indented_sentence_continue.py` 18 项通过。接受的 dual 没有为这次修复重渲。
+- 渲染须先 `cd` 到布局树，并在同一条 shell 里 `export PYTHONPATH` 指向该树。`.pth` 指向的是 Nextcloud 主仓。不要传 `--ignore-cache`，不要 cat 翻译日志，不要打印 settings。
+- 下一模块是 `bow/right_inset`。还没开始。等 Circle 说「继续」。
+
+同一批已经过、不要覆盖的试页：Erotic Massage 页 22 下半 `tmp/fill-p22-struct/`（引言先停）；`taper/left_pin` 的 `tmp/fill-left-pin/dhdm3-p37/` 与 `oa-p29/`；段距 `tmp/fill-para-seat/dhdm3-p37/`；`rect/light_column` 的 `tmp/fill-left-pin/reverse-cowgirl-p22-dip/`；页 72 `tmp/fill-right-pin/erotic-massage-p72-stitch7/`（503587 字节）；Tantric Touch 页 101 `tmp/fill-right-edge/tantric-touch-p101-face/`；Forbidden Anal Sex 页 6 `tmp/fill-left-edge/forbidden-anal-p6/`；Forbidden Sex Toys 页 28 `tmp/fill-upper-wide/forbidden-toys-p28/`（454288 字节）；Erotic Massage 页 42 `tmp/fill-upper-wide/erotic-massage-p42/`（496406 字节）。
+
+停着、没有过：`center/axis` 引言（`tmp/fill-center-axis/erotic-massage-p22-p72-share/`，先这样，后续再优化）；Erotic Massage 印刷页 34 的 `rag/right_edge`。不要重渲页 34。
 
 ## 2026-10-07 — 中段修复已推 main（版本仍 0.6.4.95）
 
