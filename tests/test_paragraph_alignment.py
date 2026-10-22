@@ -1083,6 +1083,98 @@ class TestLayoutStyleConsistency:
         assert wrap_units[0].box.x == pytest.approx(50.0 + hang, abs=1.5)
         assert wrap_units[0].box.x > 50.0 + 8.0
 
+    def test_layout_percent_keeps_digits_across_a_zero_width_mark(self):
+        """A percent that does not fit takes ``57`` with it, even across ZWSP."""
+        ts = self._typesetting()
+        text = "分析一下。57\u200b% 的女性很多"
+        box = Box(x=50, y=100, x2=130, y2=400)
+        para = PdfParagraph(
+            box=box,
+            pdf_style=PdfStyle(font_id="base", font_size=12.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode=text,
+            first_line_indent=0.0,
+            alignment="left",
+        )
+        units = []
+        for ch in text:
+            if ch == "\u200b":
+                width = 0.0
+            elif ch == "%":
+                width = 11.0
+            elif ch.isdigit():
+                width = 6.7
+            elif ch == " ":
+                width = 3.0
+            else:
+                width = 12.0
+            units.append(self._unit(ch=ch, width=width))
+        placed, _ = ts._layout_typesetting_units(
+            units,
+            box,
+            scale=1.0,
+            line_skip=1.5,
+            paragraph=para,
+            use_english_line_break=False,
+        )
+        lines: dict[float, list] = {}
+        for unit in placed:
+            lines.setdefault(round(unit.box.y, 1), []).append(unit)
+        assert len(lines) >= 2
+        for line_units in lines.values():
+            assert line_units[0].try_get_unicode() != "%"
+
+    def test_layout_dingbat_bullet_hangs_under_the_text(self):
+        """Continuation lines start at the words, not under the slash."""
+        ts = self._typesetting()
+        text = "\x12 女性一般比男性需要更长的高潮时间来完成"
+        box = Box(x=51, y=100, x2=160, y2=400)
+        para = PdfParagraph(
+            box=box,
+            pdf_style=PdfStyle(font_id="base", font_size=12.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode=text,
+            first_line_indent=0.0,
+            alignment="left",
+        )
+        units = []
+        for ch in text:
+            if ch == "\x12":
+                width = 12.0
+            elif ch == " ":
+                width = 3.0
+            else:
+                width = 12.0
+            units.append(self._unit(ch=ch, width=width))
+        hang = Typesetting._bullet_hang_width(units, 1.0)
+        assert hang == pytest.approx(15.0)
+        placed, _ = ts._layout_typesetting_units(
+            units,
+            box,
+            scale=1.0,
+            line_skip=1.5,
+            paragraph=para,
+            use_english_line_break=False,
+        )
+        assert placed[0].box.x == pytest.approx(51.0, abs=0.5)
+        y0 = placed[0].box.y
+        wrap_units = [u for u in placed if u.box and u.box.y < y0 - 1.0]
+        assert wrap_units
+        assert wrap_units[0].box.x == pytest.approx(51.0 + hang, abs=1.0)
+
+    def test_empty_webdings_glyph_counts_as_a_bullet_hang(self):
+        bullet = PdfCharacter(
+            char_unicode="",
+            box=Box(x=0, y=0, x2=12, y2=12),
+            pdf_style=PdfStyle(font_id="Webdings", font_size=12.0, graphic_state=None),
+        )
+        units = [
+            TypesettingUnit(char=bullet),
+            self._unit(" ", width=3.0),
+            self._unit("女", width=12.0),
+        ]
+        assert Typesetting._bullet_hang_width(units, 1.0) == pytest.approx(15.0)
+
     def test_layout_center_short_title(self):
         ts = self._typesetting()
         box = Box(x=50, y=100, x2=350, y2=150)

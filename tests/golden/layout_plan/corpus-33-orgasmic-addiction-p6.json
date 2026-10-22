@@ -1,0 +1,60 @@
+{
+  "kind": "corpus",
+  "sample_index": 33,
+  "source_pdf_hash": "df6a5a8ba4abf34c78f7a437c890b0d07b2af81d4330a215bd38fb714e62764c",
+  "book": "Orgasmic Addiction",
+  "relpath": "Orgasmic Addiction/Orgasmic Addiction.pdf",
+  "page": 6,
+  "region_id": "622db3566527425280189da57485fb79",
+  "source_order": 14,
+  "lines": [
+    [
+      102.0,
+      303.64,
+      301.55
+    ],
+    [
+      102.0,
+      301.0,
+      286.55
+    ],
+    [
+      102.0,
+      303.64,
+      271.55
+    ],
+    [
+      102.0,
+      304.64,
+      256.55
+    ],
+    [
+      102.0,
+      306.59,
+      241.55
+    ],
+    [
+      102.0,
+      289.0,
+      226.55
+    ],
+    [
+      102.0,
+      268.64,
+      211.55
+    ],
+    [
+      102.0,
+      229.09,
+      196.55
+    ]
+  ],
+  "predicted_base": "shaped_pocket",
+  "predicted_gate": "single_page",
+  "expected_base": "rect_flow",
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": true,
+  "agreement": false,
+  "reason": "Rectangular body under the heading. Not a staircase."
+}

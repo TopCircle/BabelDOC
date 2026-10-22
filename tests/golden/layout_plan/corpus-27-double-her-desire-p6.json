@@ -1,0 +1,60 @@
+{
+  "kind": "corpus",
+  "sample_index": 27,
+  "source_pdf_hash": "c6a3a25f1d86ec847ad5866a5724bfa4bc20379027e31f29c5c66301558246e4",
+  "book": "Double Her Desire",
+  "relpath": "Double Her Desire/dhdmodule1.pdf",
+  "page": 6,
+  "region_id": "e71b7b83486a6c01fc46aabea35914da",
+  "source_order": 10,
+  "lines": [
+    [
+      288.0,
+      498.87,
+      161.85
+    ],
+    [
+      288.0,
+      487.24,
+      146.85
+    ],
+    [
+      288.0,
+      502.18,
+      131.85
+    ],
+    [
+      288.0,
+      497.55,
+      116.85
+    ],
+    [
+      288.0,
+      501.92,
+      101.85
+    ],
+    [
+      288.0,
+      507.62,
+      86.85
+    ],
+    [
+      288.0,
+      495.67,
+      71.85
+    ],
+    [
+      288.0,
+      502.05,
+      56.85
+    ]
+  ],
+  "predicted_base": "shaped_pocket",
+  "predicted_gate": "single_page",
+  "expected_base": "rect_flow",
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": true,
+  "agreement": false,
+  "reason": "Rectangular body at the bottom of a two-column page with a figure. Not a staircase."
+}

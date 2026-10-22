@@ -198,14 +198,9 @@ def is_font_face_switch(prev_line: PdfLine, curr_line: PdfLine) -> bool:
 _TRAILING_CLOSERS = "\"'”’)]）』」"
 
 
-def line_ends_sentence(line: PdfLine | None) -> bool:
-    """True if the line's text ends a clause/sentence (not mid-phrase wrap).
-
-    Used to avoid bisecting a clause on a mid-sentence Times→Courier switch
-    (font.unknown: ``… occasional | sensationalism …``), which yields broken
-    machine translation on both sides of the cut.
-    """
-    text = line_text(line).rstrip()
+def text_ends_sentence(text: str) -> bool:
+    """True when *text* ends a clause, after trailing quotes and brackets."""
+    text = text.rstrip()
     if not text:
         return False
     while text and text[-1] in _TRAILING_CLOSERS:
@@ -213,6 +208,16 @@ def line_ends_sentence(line: PdfLine | None) -> bool:
     if not text:
         return False
     return text[-1] in ".!?。！？…:"
+
+
+def line_ends_sentence(line: PdfLine | None) -> bool:
+    """True if the line's text ends a clause/sentence (not mid-phrase wrap).
+
+    Used to avoid bisecting a clause on a mid-sentence Times→Courier switch
+    (font.unknown: ``… occasional | sensationalism …``), which yields broken
+    machine translation on both sides of the cut.
+    """
+    return text_ends_sentence(line_text(line))
 
 
 def should_split_on_font_size_jump(

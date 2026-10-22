@@ -1,0 +1,50 @@
+{
+  "kind": "corpus",
+  "sample_index": 36,
+  "source_pdf_hash": "df6a5a8ba4abf34c78f7a437c890b0d07b2af81d4330a215bd38fb714e62764c",
+  "book": "Orgasmic Addiction",
+  "relpath": "Orgasmic Addiction/Orgasmic Addiction.pdf",
+  "page": 90,
+  "region_id": "4a4efc7995bd6876bfb1eb7917338e7b",
+  "source_order": 10,
+  "lines": [
+    [
+      246.0,
+      572.57,
+      451.84
+    ],
+    [
+      246.0,
+      572.57,
+      436.84
+    ],
+    [
+      246.0,
+      572.63,
+      421.84
+    ],
+    [
+      246.0,
+      572.63,
+      406.84
+    ],
+    [
+      246.0,
+      570.0,
+      391.84
+    ],
+    [
+      246.0,
+      484.96,
+      376.84
+    ]
+  ],
+  "predicted_base": "rect_flow",
+  "predicted_gate": "single_page",
+  "expected_base": "rect_flow",
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": true,
+  "agreement": true,
+  "reason": "The highlighted instructional paragraph is a rectangle, so rect_flow is correct. The red callout is a separate region and was not labeled."
+}

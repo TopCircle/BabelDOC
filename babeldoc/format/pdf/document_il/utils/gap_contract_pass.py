@@ -107,12 +107,14 @@ def apply_gap_contract_first_pass(page: Page) -> LayoutAuditReport:
         if upper_ink_bottom is None:
             continue
 
-        # Pair with ink-bottom as the "upper" edge so next-below matches target.
+        # The contract was measured to the first paragraph strictly below
+        # this ink bottom. The search ceiling is that bottom, so a paragraph
+        # that only touches it is not pushed by a gap meant for a later one.
         pair_box = Box(
             x=upper_box.x,
             y=upper_ink_bottom,
             x2=upper_box.x2,
-            y2=upper_box.y2 if upper_box.y2 is not None else upper_ink_bottom,
+            y2=upper_ink_bottom,
         )
         nxt = find_content_below(page, para, upper_box=pair_box)
         if nxt is None or nxt.box is None:

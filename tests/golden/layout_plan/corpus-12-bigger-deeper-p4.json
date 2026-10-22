@@ -1,0 +1,85 @@
+{
+  "kind": "corpus",
+  "sample_index": 12,
+  "source_pdf_hash": "689411d6d0a9af4d2cd90c7bf86cbcbd6cf5c13dd9bf3c8ef4f7294c48494144",
+  "book": "Bigger & Deeper",
+  "relpath": "Bigger & Deeper/Bigger & Deeper.pdf",
+  "page": 4,
+  "region_id": "461f8ea38b2ef1c6babb58920cd1abd1",
+  "source_order": 6,
+  "lines": [
+    [
+      54.0,
+      162.89,
+      587.5
+    ],
+    [
+      54.0,
+      110.6,
+      569.5
+    ],
+    [
+      54.0,
+      178.97,
+      551.5
+    ],
+    [
+      54.0,
+      151.24,
+      533.5
+    ],
+    [
+      54.0,
+      152.1,
+      515.5
+    ],
+    [
+      54.0,
+      138.47,
+      497.5
+    ],
+    [
+      54.0,
+      122.2,
+      479.5
+    ],
+    [
+      54.0,
+      185.11,
+      461.5
+    ],
+    [
+      65.0,
+      155.72,
+      443.5
+    ],
+    [
+      65.0,
+      165.53,
+      425.5
+    ],
+    [
+      65.0,
+      160.11,
+      407.5
+    ],
+    [
+      65.0,
+      169.0,
+      389.5
+    ],
+    [
+      54.0,
+      209.83,
+      371.5
+    ]
+  ],
+  "predicted_base": "preserve",
+  "predicted_gate": "single_page",
+  "expected_base": "preserve",
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": true,
+  "agreement": true,
+  "reason": "Thirteen-line table of contents. Preserve is correct."
+}

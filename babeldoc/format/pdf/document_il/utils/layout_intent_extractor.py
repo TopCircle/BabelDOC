@@ -31,12 +31,16 @@ import logging
 from typing import TYPE_CHECKING
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
+from babeldoc.format.pdf.document_il.utils.box_expand import CALLOUT_COLUMN_MAX_WIDTH
 from babeldoc.format.pdf.document_il.utils.box_expand import is_callout_column
 from babeldoc.format.pdf.document_il.utils.figure_wrap import body_line_spans
 from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_paragraph
 from babeldoc.format.pdf.document_il.utils.figure_wrap import taper_prefix_widths
-from babeldoc.format.pdf.document_il.utils.layout_helper import calculate_box_iou
-from babeldoc.format.pdf.document_il.utils.layout_helper import is_quote_block
+from babeldoc.format.pdf.document_il.utils.layout_helper import (
+    _line_spans,
+    calculate_iou_for_boxes,
+    is_quote_block,
+)
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
@@ -70,8 +74,9 @@ logger = logging.getLogger(__name__)
 _LAYOUT_INTENT_DUMP_VERSION = 1
 _LAYOUT_INTENT_DUMP_BASELINE = "5cf4962"
 
-# text_on_photo IoU threshold (decision point 4 in the coding plan).
-_PHOTO_IOU_THRESHOLD = 0.30
+# Share of the ink that must sit inside a figure. IoU misses a short
+# caption on a large photo: the ink is inside, but the union is the photo.
+_PHOTO_CONTAIN_THRESHOLD = 0.60
 
 # x-overlap slack, mirroring vertical_gap._x_overlap (slack=8).
 _X_OVERLAP_SLACK = 8.0
@@ -80,6 +85,41 @@ _FIGURE_CAPTION_LABELS = frozenset({"figure_caption", "figure_title", "figure_te
 _SECTION_HEADER_LABELS = frozenset({"section_header", "paragraph_title"})
 _TITLE_CLASS_LABELS = frozenset({"title", "section_header", "paragraph_title"})
 _CALLOUT_LABEL = "callout"
+# A right edge shared by four lines, within the pin's wall.
+_BODY_WALL = 4.0
+_BODY_WALL_LINES = 4
+
+
+def _right_walls(metas: dict) -> dict[int, float]:
+    """Right edge shared by four lines of one paragraph."""
+    walls: dict[int, float] = {}
+    for pid, meta in metas.items():
+        rights = sorted(
+            float(line.x2)
+            for line in meta["lines"]
+            if getattr(line, "x2", None) is not None
+        )
+        if len(rights) < _BODY_WALL_LINES:
+            continue
+        median = rights[len(rights) // 2]
+        close = sum(abs(value - median) <= _BODY_WALL for value in rights)
+        if close >= _BODY_WALL_LINES:
+            walls[pid] = median
+    return walls
+
+
+def _on_shared_body_wall(para, walls: dict[int, float], pid: int) -> bool:
+    """True when this wide block sits on another paragraph's right wall."""
+    box = getattr(para, "box", None)
+    if box is None or box.x is None or box.x2 is None:
+        return False
+    if float(box.x2) - float(box.x) <= CALLOUT_COLUMN_MAX_WIDTH:
+        return False
+    right = float(box.x2)
+    return any(
+        other != pid and abs(wall - right) <= _BODY_WALL
+        for other, wall in walls.items()
+    )
 
 
 class LayoutIntentExtractor:
@@ -144,12 +184,30 @@ class LayoutIntentExtractor:
                 titles.append((para, meta["ink"], max_font_size(para)))
             metas[id(para)] = meta
 
+        column_lefts = [
+            float(meta["design_box"].x)
+            for meta in metas.values()
+            if meta["primary"] is LayoutIntentRole.WRAP_COLUMN
+            and meta["design_box"] is not None
+            and meta["design_box"].x is not None
+        ]
+
         # Pass 2 — complete the role (rules 6-9) and build the intent objects.
+        walls = _right_walls(metas)
         intents: dict[int, LayoutIntent] = {}
         for pid, meta in metas.items():
             para = meta["para"]
             try:
-                intent = self._build_intent(para, meta, page_width, photo_boxes, titles)
+                intent = self._build_intent(
+                    para,
+                    meta,
+                    page_width,
+                    photo_boxes,
+                    titles,
+                    column_lefts,
+                    walls,
+                    pid,
+                )
             except Exception:
                 self.audit["extract_errors"] += 1
                 logger.warning(
@@ -227,6 +285,9 @@ class LayoutIntentExtractor:
         page_width: float,
         photo_boxes: list[Box],
         titles: list[tuple[PdfParagraph, Box, float]],
+        column_lefts: list[float],
+        walls: dict[int, float],
+        pid: int,
     ) -> LayoutIntent:
         design_box: Box = meta["design_box"]
         ink: Box | None = meta["ink"]
@@ -234,7 +295,14 @@ class LayoutIntentExtractor:
         overlays_band = None
         if role is None:
             role, overlays_band = self._classify_secondary(
-                para, ink, page_width, titles
+                para,
+                ink,
+                page_width,
+                titles,
+                photo_boxes,
+                column_lefts,
+                walls,
+                pid,
             )
 
         top_inset = 0.0
@@ -348,6 +416,12 @@ class LayoutIntentExtractor:
         text_on_photo = False
         if not is_chrome and not is_layout_debug_stub(para):
             text_on_photo = self._is_on_photo(ink, photo_boxes)
+        if text_on_photo:
+            # Painted on the figure. Stay in that box: no pin, no widen.
+            wrap_mode = WrapMode.NONE
+            wrap_shape = None
+            expansion_policy = ()
+            overflow_policy = "scale_down"
 
         return LayoutIntent(
             role=role,
@@ -380,6 +454,10 @@ class LayoutIntentExtractor:
         ink: Box | None,
         page_width: float,
         titles: list[tuple[PdfParagraph, Box, float]],
+        photo_boxes: list[Box],
+        column_lefts: list[float],
+        walls: dict[int, float],
+        pid: int,
     ) -> tuple[LayoutIntentRole, str | None]:
         """Rules 6-9; returns ``(role, overlays_band)``."""
         label = (getattr(para, "layout_label", None) or "").strip().lower()
@@ -389,13 +467,59 @@ class LayoutIntentExtractor:
             if band is not None:
                 return LayoutIntentRole.SUBTITLE_OVERLAY, band
         # Rule 7 — pull quote (P0 single source: is_quote_block).
-        if is_quote_block(para, page_width):
+        # A flat column on the same left as a wrap, with the photo in its
+        # margin, is that column. The quote test sees the margin and would
+        # call it a pull quote. The narrow-width callout test would too.
+        continues = self._continues_photo_column(
+            para, photo_boxes, column_lefts, page_width
+        )
+        # A wide block on another paragraph's right wall is that column.
+        # The quote test sees the indent and would call it a pull quote.
+        if (
+            is_quote_block(para, page_width)
+            and not continues
+            and not _on_shared_body_wall(para, walls, pid)
+        ):
             return LayoutIntentRole.PULL_QUOTE, None
-        # Rule 8 — callout column.
-        if label == _CALLOUT_LABEL or is_callout_column(para.box):
+        # Rule 8 — callout column. A labeled callout stays a callout.
+        # An unlabeled narrow box is only inferred as callout if it is short
+        # (<= 6 lines). Long narrow blocks are body / wrap columns.
+        if label == _CALLOUT_LABEL or (
+            is_callout_column(para.box)
+            and not continues
+            and len(_line_spans(para)) <= 6
+        ):
             return LayoutIntentRole.CALLOUT, None
         # Rule 9 — everything else.
         return LayoutIntentRole.BODY, None
+
+    def _continues_photo_column(
+        self, para, photo_boxes, column_lefts, page_width: float
+    ) -> bool:
+        """True when this block is the same column as a wrap.
+
+        The English lines stop at the photo, so the box looks narrow and
+        indented. A quote or callout that does not share that left stays one.
+        A wide block on that left is still the column when the photo starts
+        further down. A narrow quote on that left stays a quote.
+        """
+        box = getattr(para, "box", None)
+        if box is None or box.x is None or box.x2 is None:
+            return False
+        from babeldoc.format.pdf.document_il.utils.placement_paradigm import (
+            shares_column_left,
+        )
+
+        if not any(shares_column_left(float(box.x), left) for left in column_lefts):
+            return False
+        if infer_wrap_mode_beside_photo(box, photo_boxes) is not None:
+            return True
+        # A pull quote is usually under half the page. Half or wider, on
+        # the wrap's left, is that column.
+        if page_width <= 0:
+            return False
+        width = float(box.x2) - float(box.x)
+        return width / float(page_width) >= 0.5
 
     def _match_subtitle_overlay(
         self,
@@ -614,12 +738,23 @@ class LayoutIntentExtractor:
         return ("right", "down"), ("page_margin",), "scale_down"
 
     def _is_on_photo(self, ink: Box | None, photo_boxes: list[Box]) -> bool:
-        if ink is None:
+        """True when most of the ink sits inside a figure or image form.
+
+        Intersection over the ink, not over the union. A two-line caption on
+        a full-width photo is almost entirely inside the photo and must stay
+        there. A body line that only clips the photo edge stays in the column.
+        """
+        if ink is None or ink.x is None or ink.y is None:
+            return False
+        if ink.x2 is None or ink.y2 is None:
+            return False
+        if (ink.x2 - ink.x) * (ink.y2 - ink.y) <= 0:
             return False
         for photo_box in photo_boxes:
             if photo_box is None:
                 continue
-            if calculate_box_iou(ink, photo_box) >= _PHOTO_IOU_THRESHOLD:
+            contained = calculate_iou_for_boxes(ink, photo_box)
+            if contained >= _PHOTO_CONTAIN_THRESHOLD:
                 return True
         return False
 
@@ -628,20 +763,43 @@ class LayoutIntentExtractor:
         """Figure / image-form boxes that can host overlaid text.
 
         Matches exclusion_zone: only ``PdfForm`` with ``form_type == "image"``
-        (not vector/other forms).
+        (not vector/other forms). A box that fills the page is the sheet,
+        same 2pt gate as the wrap figure list.
         """
+        width, height = LayoutIntentExtractor._page_size(page)
         boxes: list[Box] = []
         for figure in page.pdf_figure or []:
-            if figure.box is not None:
-                boxes.append(figure.box)
+            box = figure.box
+            if box is not None and not LayoutIntentExtractor._fills_page(
+                box, width, height
+            ):
+                boxes.append(box)
         for form in page.pdf_form or []:
-            if getattr(form, "form_type", None) == "image" and form.box is not None:
-                boxes.append(form.box)
+            box = form.box
+            if getattr(form, "form_type", None) != "image" or box is None:
+                continue
+            if LayoutIntentExtractor._fills_page(box, width, height):
+                continue
+            boxes.append(box)
         return boxes
 
     @staticmethod
-    def _page_width(page: Page) -> float:
-        """cropbox (fallback mediabox) width, mirroring exclusion_zone."""
+    def _fills_page(box: Box, width: float, height: float) -> bool:
+        """True when the box covers the page. Missing page size does not drop it."""
+        if width <= 0.0 or height <= 0.0:
+            return False
+        if None in (box.x, box.y, box.x2, box.y2):
+            return False
+        x0, y0, x1, y1 = (float(box.x), float(box.y), float(box.x2), float(box.y2))
+        if y1 < y0:
+            y0, y1 = y1, y0
+        if x1 < x0:
+            x0, x1 = x1, x0
+        return x0 <= 2.0 and y0 <= 2.0 and x1 >= width - 2.0 and y1 >= height - 2.0
+
+    @staticmethod
+    def _page_size(page: Page) -> tuple[float, float]:
+        """cropbox (fallback mediabox) width and height."""
         for attr in ("cropbox", "mediabox"):
             crop = getattr(page, attr, None)
             if crop is None:
@@ -649,9 +807,20 @@ class LayoutIntentExtractor:
             box = getattr(crop, "box", None)
             if box is None:
                 box = crop
-            if box is not None and box.x is not None and box.x2 is not None:
-                return float(box.x2 - box.x)
-        return 0.0
+            if (
+                box is not None
+                and box.x is not None
+                and box.y is not None
+                and box.x2 is not None
+                and box.y2 is not None
+            ):
+                return float(box.x2 - box.x), float(box.y2 - box.y)
+        return 0.0, 0.0
+
+    @staticmethod
+    def _page_width(page: Page) -> float:
+        """cropbox (fallback mediabox) width, mirroring exclusion_zone."""
+        return LayoutIntentExtractor._page_size(page)[0]
 
     @staticmethod
     def _ink_rect(para: PdfParagraph) -> Box | None:

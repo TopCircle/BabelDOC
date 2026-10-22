@@ -1,0 +1,19 @@
+{
+  "kind": "corpus",
+  "sample_index": 21,
+  "source_pdf_hash": "f543015b88fb74a35136721fc0ef885248ad222c3914bef98fa3fc40b225e5c9",
+  "book": "All Tied Up",
+  "relpath": "All Tied Up/All Tied Up.pdf",
+  "page": 2,
+  "region_id": "45ac78a83d78ba047a7f0a73619f752e",
+  "source_order": 0,
+  "lines": [],
+  "predicted_base": "preserve",
+  "predicted_gate": "bad_encoding",
+  "expected_base": null,
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": false,
+  "agreement": false,
+  "reason": "Readable contents page. Leader dots inflated the non-linguistic ratio, so bad_encoding is a false gate. No strategy is assigned."
+}

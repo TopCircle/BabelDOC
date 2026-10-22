@@ -1,0 +1,16 @@
+{
+  "source_pdf_hash": "synthetic-rect-flow",
+  "book": "synthetic",
+  "page": 0,
+  "role": "body",
+  "lines": [
+    [102.0, 570.0, 200.0],
+    [102.0, 570.0, 185.0],
+    [102.0, 570.0, 170.0],
+    [102.0, 570.0, 155.0],
+    [102.0, 570.0, 140.0]
+  ],
+  "expected_base": "rect_flow",
+  "expected_modifiers": [],
+  "reason": "Five full lines share one left edge."
+}

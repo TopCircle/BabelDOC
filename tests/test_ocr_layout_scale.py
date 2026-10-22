@@ -14,6 +14,9 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.midend.paragraph_finder import ParagraphFinder
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
+from babeldoc.format.pdf.document_il.midend.typesetting import _keeps_own_scale
+from babeldoc.format.pdf.document_il.midend.typesetting import demote_above_mode
+from babeldoc.format.pdf.document_il.utils.layout_plan.model import LineEdgeLink
 from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.translator.fixed_map_translator import FixedMapTranslator
 
@@ -132,6 +135,26 @@ class TestOcrLayoutScale:
     def test_mode_demotion_still_runs_without_ocr(self):
         ts = Typesetting(_config(ocr=False))
         assert ts.translation_config.ocr_workaround is False
+
+    def test_sentence_flow_keeps_its_scale_and_does_not_set_the_mode(self):
+        verse = SimpleNamespace(layout_region_id="verse", optimal_scale=0.65)
+        center = SimpleNamespace(layout_region_id="center", optimal_scale=1.0)
+        body = SimpleNamespace(layout_region_id="body", optimal_scale=1.0)
+        page = SimpleNamespace(
+            layout_plan=SimpleNamespace(
+                line_edge_links=(
+                    LineEdgeLink("verse", ((96.0, 415.0),), "left", "sentence"),
+                    LineEdgeLink("center", ((96.0, 400.0),), "center"),
+                )
+            )
+        )
+        assert _keeps_own_scale(page, verse) is True
+        assert _keeps_own_scale(page, center) is False
+        assert _keeps_own_scale(page, body) is False
+        demote_above_mode([body], [0.9] * 8)
+        assert verse.optimal_scale == 0.65
+        assert center.optimal_scale == 1.0
+        assert body.optimal_scale == 0.9
 
     def test_ocr_forces_left_and_zero_indent(self):
         ts = Typesetting(_config(ocr=True))

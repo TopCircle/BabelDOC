@@ -999,6 +999,23 @@ def _do_translate_single(
     ParagraphFinder(translation_config).process(docs)
     logger.debug(f"finish paragraph finder from {temp_pdf_path}")
 
+    # A glyph run cut onto the same baseline goes back before styles fold
+    # the line boxes away. The seal then measures the whole line.
+    try:
+        from babeldoc.format.pdf.document_il.utils.line_tail_stitch import (
+            stitch_abutting_line_tails,
+        )
+
+        for page in getattr(docs, "page", None) or []:
+            try:
+                stitch_abutting_line_tails(page)
+            except Exception:
+                logger.warning(
+                    "line tail stitch failed; continuing", exc_info=True
+                )
+    except Exception:
+        logger.warning("line tail stitch failed; continuing", exc_info=True)
+
     # Capture reference metrics before translation destroys compositions
     try:
         from babeldoc.format.pdf.document_il.utils.layout_helper import (
@@ -1034,6 +1051,60 @@ def _do_translate_single(
     except Exception:
         logger.warning(
             "layout_intent extraction failed; continuing without intent", exc_info=True
+        )
+
+    try:
+        from babeldoc.format.pdf.document_il.utils.mixed_column_split import (
+            split_mixed_column_wraps,
+        )
+        from babeldoc.format.pdf.document_il.utils.sealed_paragraph_join import (
+            join_sealed_paragraphs,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            absorb_short_continuations,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            flow_rect_columns,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            keep_gutter_displays,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            mark_display_bands,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            prepare_rect_columns,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            yield_to_display_bands,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
+            attach_layout_plans,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
+            run_legacy_column_flow,
+        )
+
+        # Seal-joined lines are one paragraph. A straight run glued to a
+        # wrap is cut apart after that, so the plan can label each part.
+        for page in getattr(docs, "page", None) or []:
+            join_sealed_paragraphs(page)
+            split_mixed_column_wraps(page)
+        # Mark and yield see the whole page. The joiner does not see
+        # paragraphs the frozen plan already stacked as rect_flow or list.
+        log_path = translation_config.get_output_file_path("layout-log.jsonl")
+        if attach_layout_plans(docs, temp_pdf_path, log_path=log_path):
+            for page in getattr(docs, "page", None) or []:
+                keep_gutter_displays(page)
+                absorb_short_continuations(page)
+                mark_display_bands(page)
+                yield_to_display_bands(page)
+                run_legacy_column_flow(page, flow_rect_columns)
+        else:
+            prepare_rect_columns(docs)
+    except Exception:
+        logger.warning(
+            "rect column prepare failed; continuing", exc_info=True
         )
 
     # Generate Flow Debug SVG files for layout analysis visualization

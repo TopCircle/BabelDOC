@@ -1,0 +1,15 @@
+{
+  "source_pdf_hash": "synthetic-shaped-pocket",
+  "book": "synthetic",
+  "page": 0,
+  "role": "body",
+  "lines": [
+    [100.0, 570.0, 160.0],
+    [112.0, 570.0, 145.0],
+    [124.0, 570.0, 130.0],
+    [136.0, 570.0, 115.0]
+  ],
+  "expected_base": "shaped_pocket",
+  "expected_modifiers": [],
+  "reason": "Four full lines, right edge pinned, left edge steps in downward."
+}

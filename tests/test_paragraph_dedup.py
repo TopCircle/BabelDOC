@@ -226,6 +226,10 @@ def test_fix_untranslated_chapter_markers():
     assert ILTranslator._cn_numeral(120) == "一百二十"
     # Non-marker text untouched.
     assert ILTranslator.fix_untranslated_chapter_markers("这是正文。") == "这是正文。"
+    # A bold lead-in is not a chapter. Keep 〖Bn〗 so the label can be translated.
+    assert ILTranslator.fix_untranslated_chapter_markers(
+        "{v1}〖B0〗Vulva:〖/B0〗 The area."
+    ) == "{v1}〖B0〗Vulva:〖/B0〗 The area."
 
 
 def test_no_false_positive_on_short_echo():

@@ -27,6 +27,7 @@ from babeldoc.format.pdf.document_il.utils.il_layout_fingerprint import (
     il_layout_fingerprint,
 )
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 
 PAGE_WIDTH = 612.0
 PAGE_HEIGHT = 792.0
@@ -199,6 +200,32 @@ def test_role_subtitle_overlay():
     assert subtitle.layout_intent.overlays_band == "t1"
 
 
+def test_a_wide_block_on_another_columns_wall_is_body():
+    """Indented union, but the right edge is the body wall. Not a quote."""
+    wall = _para(
+        Box(x=144, y=500, x2=512, y2=620),
+        lines=[_line(144 + 8 * i, 512, 600 - 15 * i, 612 - 15 * i) for i in range(6)],
+    )
+    beside = _para(
+        Box(x=215, y=250, x2=512, y2=380),
+        lines=[
+            _line(221, 512, 360, 372),
+            _line(221, 512, 340, 352),
+            _line(220, 512, 320, 332),
+            _line(217, 512, 300, 312),
+            _line(215, 472, 280, 292),
+        ],
+    )
+    quote = _para(
+        Box(x=100, y=100, x2=400, y2=180),
+        lines=[_line(100, 400, 160, 180), _line(100, 400, 140, 160), _line(100, 400, 120, 140), _line(100, 400, 100, 120)],
+    )
+    _extract(_page([wall, beside, quote]))
+    assert wall.layout_intent.role is not LayoutIntentRole.PULL_QUOTE
+    assert beside.layout_intent.role is LayoutIntentRole.BODY
+    assert quote.layout_intent.role is LayoutIntentRole.PULL_QUOTE
+
+
 def test_role_pull_quote_single_source(monkeypatch):
     """PULL_QUOTE comes only from is_quote_block (P0 single source)."""
     para = _para(
@@ -216,6 +243,69 @@ def test_role_pull_quote_single_source(monkeypatch):
     monkeypatch.setattr(layout_intent_extractor, "is_quote_block", lambda _p, _w: False)
     _extract(_page([not_quote]))
     assert not_quote.layout_intent.role is not LayoutIntentRole.PULL_QUOTE
+
+
+def test_flat_column_beside_a_photo_is_body_not_a_quote():
+    """A wrap's flat continuation is the column. A real quote stays a quote."""
+    wrap = _para(
+        Box(x=113, y=400, x2=400, y2=480),
+        lines=[
+            _line(113, 400, 460, 480),
+            _line(113, 360, 440, 460),
+            _line(113, 320, 420, 440),
+            _line(113, 280, 400, 420),
+        ],
+    )
+    flat = _para(
+        Box(x=113, y=100, x2=229, y2=180),
+        unicode_="though this varies from woman to woman",
+        lines=[
+            _line(113, 229, 160, 180),
+            _line(113, 229, 140, 160),
+            _line(113, 229, 120, 140),
+            _line(113, 229, 100, 120),
+        ],
+    )
+    labeled = _para(
+        Box(x=113, y=200, x2=229, y2=240),
+        label="callout",
+        lines=[_line(113, 229, 200, 240), _line(113, 229, 220, 240)],
+    )
+    centered = _para(
+        Box(x=200, y=250, x2=400, y2=340),
+        lines=[_line(200, 400, 300, 340), _line(200, 400, 250, 300)],
+    )
+    gutter = _para(
+        Box(x=36, y=250, x2=150, y2=340),
+        lines=[_line(36, 150, 300, 340), _line(36, 150, 250, 300)],
+    )
+    away = _para(
+        Box(x=113, y=520, x2=229, y2=600),
+        lines=[_line(113, 229, 560, 600), _line(113, 229, 520, 560)],
+    )
+    wide = _para(
+        Box(x=113, y=620, x2=480, y2=700),
+        lines=[
+            _line(113, 480, 680, 700),
+            _line(113, 480, 660, 680),
+            _line(113, 480, 640, 660),
+            _line(113, 480, 620, 640),
+        ],
+    )
+    photo = il_version_1.PdfFigure(box=Box(x=430, y=80, x2=590, y2=500))
+    _extract(
+        _page(
+            [wrap, flat, labeled, centered, gutter, away, wide],
+            figures=[photo],
+        )
+    )
+    assert wrap.layout_intent.role is LayoutIntentRole.WRAP_COLUMN
+    assert flat.layout_intent.role is LayoutIntentRole.BODY
+    assert labeled.layout_intent.role is LayoutIntentRole.CALLOUT
+    assert centered.layout_intent.role is LayoutIntentRole.PULL_QUOTE
+    assert gutter.layout_intent.role is LayoutIntentRole.CALLOUT
+    assert away.layout_intent.role is LayoutIntentRole.PULL_QUOTE
+    assert wide.layout_intent.role is LayoutIntentRole.BODY
 
 
 def test_role_debug_stub_is_body_not_callout(monkeypatch):
@@ -373,6 +463,26 @@ def test_text_on_photo_iou():
     assert stub_on_photo.layout_intent.text_on_photo is False
 
 
+def test_small_overlay_on_a_large_photo_stays_on_the_photo():
+    """A caption inside a figure stays there. An edge clip does not."""
+    photo = il_version_1.PdfFigure(box=Box(x=300, y=80, x2=560, y2=700))
+    overlay = _para(
+        Box(x=360, y=340, x2=500, y2=370),
+        label="text",
+        lines=[_line(360, 500, 340, 370)],
+    )
+    clipped = _para(
+        Box(x=36, y=200, x2=400, y2=230),
+        label="text",
+        lines=[_line(36, 400, 200, 230)],
+    )
+    _extract(_page([overlay, clipped], figures=[photo]))
+    assert overlay.layout_intent.text_on_photo is True
+    assert overlay.layout_intent.wrap_mode is WrapMode.NONE
+    assert overlay.layout_intent.wrap_shape is None
+    assert clipped.layout_intent.text_on_photo is False
+
+
 def test_non_image_form_not_photo_zone():
     """Only form_type=='image' forms count as photo boxes (exclusion_zone parity)."""
     image_form = il_version_1.PdfForm(
@@ -406,6 +516,33 @@ def test_non_image_form_not_photo_zone():
     )
     assert on_image.layout_intent.text_on_photo is True
     assert on_other.layout_intent.text_on_photo is False
+
+
+def test_a_page_filling_image_is_the_sheet():
+    """A full-page image is the background. A smaller photo still holds its caption."""
+    sheet = il_version_1.PdfFigure(box=Box(x=0, y=0, x2=PAGE_WIDTH, y2=PAGE_HEIGHT))
+    sheet_form = il_version_1.PdfForm(
+        box=Box(x=0, y=0, x2=PAGE_WIDTH, y2=PAGE_HEIGHT),
+        form_type="image",
+        graphic_state=None,
+        pdf_matrix=None,
+        pdf_affine_transform=None,
+        pdf_form_subtype=None,
+    )
+    photo = il_version_1.PdfFigure(box=Box(x=300, y=80, x2=560, y2=700))
+    body = _para(
+        Box(x=102, y=300, x2=560, y2=420),
+        label="text",
+        lines=[_line(102, 560, 400, 414), _line(294, 560, 370, 384)],
+    )
+    caption = _para(
+        Box(x=360, y=340, x2=500, y2=370),
+        label="text",
+        lines=[_line(360, 500, 340, 370)],
+    )
+    _extract(_page([body, caption], figures=[sheet, photo], forms=[sheet_form]))
+    assert body.layout_intent.text_on_photo is False
+    assert caption.layout_intent.text_on_photo is True
 
 
 # ------------------------------------------------------- robustness / dump

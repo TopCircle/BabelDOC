@@ -1,0 +1,40 @@
+{
+  "kind": "corpus",
+  "sample_index": 13,
+  "source_pdf_hash": "036c7aeddccc31b0f4dbbb02d072c475c4414e088497f07a4353c8d15c3dd5fb",
+  "book": "7 day orgasm",
+  "relpath": "7 day orgasm/Day 1/Day 1.pdf",
+  "page": 1,
+  "region_id": "e4882302788aa930423e28fb92e607fc",
+  "source_order": 24,
+  "lines": [
+    [
+      102.0,
+      289.6,
+      106.76
+    ],
+    [
+      102.0,
+      292.01,
+      91.76
+    ],
+    [
+      102.0,
+      297.0,
+      76.76
+    ],
+    [
+      102.0,
+      299.76,
+      61.77
+    ]
+  ],
+  "predicted_base": "rect_flow",
+  "predicted_gate": "single_page",
+  "expected_base": "rect_flow",
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": true,
+  "agreement": true,
+  "reason": "Four-line body question under the drop cap. Rectangular column; rect_flow is correct."
+}

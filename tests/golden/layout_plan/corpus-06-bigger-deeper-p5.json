@@ -1,0 +1,70 @@
+{
+  "kind": "corpus",
+  "sample_index": 6,
+  "source_pdf_hash": "689411d6d0a9af4d2cd90c7bf86cbcbd6cf5c13dd9bf3c8ef4f7294c48494144",
+  "book": "Bigger & Deeper",
+  "relpath": "Bigger & Deeper/Bigger & Deeper.pdf",
+  "page": 5,
+  "region_id": "8cafa10a476434ba75ccd92d73d9271a",
+  "source_order": 5,
+  "lines": [
+    [
+      46.0,
+      403.79,
+      595.86
+    ],
+    [
+      36.0,
+      398.69,
+      560.5
+    ],
+    [
+      36.0,
+      397.69,
+      542.5
+    ],
+    [
+      36.0,
+      397.71,
+      524.5
+    ],
+    [
+      36.0,
+      400.8,
+      506.5
+    ],
+    [
+      36.0,
+      405.7,
+      488.5
+    ],
+    [
+      36.0,
+      407.88,
+      470.5
+    ],
+    [
+      36.0,
+      400.96,
+      452.5
+    ],
+    [
+      36.0,
+      387.69,
+      434.5
+    ],
+    [
+      36.0,
+      189.53,
+      416.5
+    ]
+  ],
+  "predicted_base": "shaped_pocket",
+  "predicted_gate": "single_page",
+  "expected_base": "preserve",
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": true,
+  "agreement": false,
+  "reason": "Drop-cap paragraph in a rectangular column beside a photo. Preserve the drop cap; do not treat it as a cone."
+}

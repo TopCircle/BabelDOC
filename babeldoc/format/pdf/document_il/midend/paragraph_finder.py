@@ -45,6 +45,8 @@ logger = logging.getLogger(__name__)
 _DEFAULT_INDENT = 12.0
 # Cap first-line indent so a bad detection cannot shove text far right
 _MAX_FIRST_LINE_INDENT = 48.0
+# A joined en-dash is the bullet. Its glyph sits left of the item.
+_DASH_BULLET_CHAR = frozenset("\u2013\u2014\u2012\u2212")
 
 # PR-B: page top band for decorative title reverse-reorder.
 # Fraction of page height, floored at 72pt (1 inch).
@@ -81,6 +83,22 @@ def _normalize_first_line_indent(paragraph):
         paragraph.first_line_indent = fi
     except (TypeError, ValueError):
         paragraph.first_line_indent = 0.0
+
+
+def _chars_for_left_edge(chars: list) -> list:
+    """The item text, when a bullet dash is also in the paragraph.
+
+    The dash glyph is about 20pt left of the words. Counting it makes
+    an unfilled item start in that gap. A paragraph that is only a dash
+    keeps the dash.
+    """
+    body = [
+        char
+        for char in chars
+        if (getattr(char, "char_unicode", None) or "").strip()
+        not in _DASH_BULLET_CHAR
+    ]
+    return body or list(chars)
 
 
 def _compute_visual_first_line_indent(paragraph: PdfParagraph) -> float:
@@ -135,6 +153,79 @@ BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 def generate_base58_id(length: int = 5) -> str:
     """Generate a random base58 ID of specified length."""
     return "".join(random.choice(BASE58_ALPHABET) for _ in range(length))
+
+
+def _composition_chars(paragraph) -> list:
+    found = []
+    for composition in paragraph.pdf_paragraph_composition or []:
+        if composition.pdf_character is not None:
+            found.append(composition.pdf_character)
+        elif composition.pdf_line is not None:
+            found.extend(composition.pdf_line.pdf_character or [])
+    return found
+
+
+def _glyph_box(char):
+    visual = getattr(char, "visual_bbox", None)
+    box = getattr(visual, "box", None) if visual is not None else None
+    return box if box is not None else getattr(char, "box", None)
+
+
+def _glyphs_overlap(left, right) -> bool:
+    """True when two glyphs occupy the same spot, not merely touch."""
+    a = _glyph_box(left)
+    b = _glyph_box(right)
+    if a is None or b is None:
+        return False
+    if None in (a.x, a.y, a.x2, a.y2, b.x, b.y, b.x2, b.y2):
+        return False
+    overlap_x = min(float(a.x2), float(b.x2)) - max(float(a.x), float(b.x))
+    overlap_y = min(float(a.y2), float(b.y2)) - max(float(a.y), float(b.y))
+    if overlap_x <= 0.4 or overlap_y <= 0:
+        return False
+    shorter = min(float(a.y2) - float(a.y), float(b.y2) - float(b.y))
+    if shorter <= 0:
+        return False
+    return overlap_y >= shorter * 0.5
+
+
+def drop_painted_twice(paragraphs, skip_chars):
+    """Drop a second drawing of glyphs that already belong to a paragraph.
+
+    A wrap sometimes paints the end of a line again, as its own run or as
+    leftover characters. That echo is not another sentence. A glyph that
+    does not land on a glyph stays, including a shorter paragraph beside
+    the line. Of two equal paints, the earlier one stays.
+    """
+    groups = [(paragraph, _composition_chars(paragraph)) for paragraph in paragraphs]
+    kept_paragraphs = []
+    for index, (paragraph, chars) in enumerate(groups):
+        if not chars:
+            kept_paragraphs.append(paragraph)
+            continue
+        echo = False
+        for other_index, (_, other_chars) in enumerate(groups):
+            if other_index == index or len(other_chars) < len(chars):
+                continue
+            if len(other_chars) == len(chars) and other_index > index:
+                continue
+            if all(
+                any(_glyphs_overlap(char, host) for host in other_chars)
+                for char in chars
+            ):
+                echo = True
+                break
+        if not echo:
+            kept_paragraphs.append(paragraph)
+    hosts = []
+    for paragraph in kept_paragraphs:
+        hosts.extend(_composition_chars(paragraph))
+    kept_skip = [
+        char
+        for char in skip_chars
+        if not any(_glyphs_overlap(char, host) for host in hosts)
+    ]
+    return kept_paragraphs, kept_skip
 
 
 class ParagraphFinder:
@@ -366,8 +457,10 @@ class ParagraphFinder:
             )
         if not chars:
             return
-        # 更新边界框
-        min_x = min(char.visual_bbox.box.x for char in chars)
+        # 更新边界框。破折号子弹不把左缘拉到字的左边。
+        min_x = min(
+            char.visual_bbox.box.x for char in _chars_for_left_edge(chars)
+        )
         min_y = min(char.visual_bbox.box.y for char in chars)
         max_x = max(char.visual_bbox.box.x2 for char in chars)
         max_y = max(char.visual_bbox.box.y2 for char in chars)
@@ -533,6 +626,23 @@ class ParagraphFinder:
         )
 
         merge_hyphen_wrapped_paragraphs(paragraphs)
+
+        # ``and, | zing | your fingers`` is one sentence the layout model
+        # cut apart. A period plus a paragraph gap stays the next paragraph.
+        from babeldoc.format.pdf.document_il.utils.sentence_paragraph_repair import (
+            repair_broken_sentences,
+        )
+
+        repair_broken_sentences(paragraphs)
+
+        # A 30pt en-dash is the bullet of the line to its right. Its box
+        # starts above that line, so the heading swallows it or it paints
+        # alone in the gap. Hyphen-minus word breaks are not these.
+        from babeldoc.format.pdf.document_il.utils.dash_bullet_join import (
+            join_dash_bullets,
+        )
+
+        join_dash_bullets(paragraphs)
 
         for paragraph in paragraphs:
             self.update_paragraph_data(paragraph, update_unicode=True, page=page)
@@ -773,9 +883,10 @@ class ParagraphFinder:
                 PdfParagraphComposition(pdf_character=char)
             )
 
-        page.pdf_character = skip_chars
         for para in paragraphs:
             self.update_paragraph_data(para)
+        paragraphs, skip_chars = drop_painted_twice(paragraphs, skip_chars)
+        page.pdf_character = skip_chars
         return paragraphs
 
     @staticmethod

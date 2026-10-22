@@ -1,0 +1,60 @@
+{
+  "kind": "corpus",
+  "sample_index": 18,
+  "source_pdf_hash": "689411d6d0a9af4d2cd90c7bf86cbcbd6cf5c13dd9bf3c8ef4f7294c48494144",
+  "book": "Bigger & Deeper",
+  "relpath": "Bigger & Deeper/Bigger & Deeper.pdf",
+  "page": 1,
+  "region_id": "e41e799f63bdfe4470f6a07bff59e91e",
+  "source_order": 1,
+  "lines": [
+    [
+      36.0,
+      578.81,
+      443.5
+    ],
+    [
+      36.0,
+      578.74,
+      425.5
+    ],
+    [
+      36.0,
+      578.76,
+      407.5
+    ],
+    [
+      36.0,
+      578.81,
+      389.5
+    ],
+    [
+      36.0,
+      578.65,
+      371.5
+    ],
+    [
+      36.0,
+      579.06,
+      353.5
+    ],
+    [
+      36.0,
+      578.65,
+      335.5
+    ],
+    [
+      36.0,
+      222.5,
+      317.5
+    ]
+  ],
+  "predicted_base": "rect_flow",
+  "predicted_gate": "single_page",
+  "expected_base": "rect_flow",
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": true,
+  "agreement": true,
+  "reason": "Full-width warning paragraph. rect_flow is correct."
+}

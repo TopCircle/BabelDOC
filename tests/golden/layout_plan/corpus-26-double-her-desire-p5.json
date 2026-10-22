@@ -1,0 +1,50 @@
+{
+  "kind": "corpus",
+  "sample_index": 26,
+  "source_pdf_hash": "c6a3a25f1d86ec847ad5866a5724bfa4bc20379027e31f29c5c66301558246e4",
+  "book": "Double Her Desire",
+  "relpath": "Double Her Desire/dhdmodule1.pdf",
+  "page": 5,
+  "region_id": "1703a98997f2b08fa12e886ec6fc1adb",
+  "source_order": 10,
+  "lines": [
+    [
+      269.0,
+      505.32,
+      141.85
+    ],
+    [
+      269.0,
+      490.5,
+      126.85
+    ],
+    [
+      269.0,
+      489.68,
+      111.85
+    ],
+    [
+      269.0,
+      487.12,
+      96.85
+    ],
+    [
+      269.0,
+      484.39,
+      81.85
+    ],
+    [
+      269.0,
+      511.22,
+      66.85
+    ]
+  ],
+  "predicted_base": "shaped_pocket",
+  "predicted_gate": "single_page",
+  "expected_base": "rect_flow",
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": true,
+  "agreement": false,
+  "reason": "Narrow rectangular body under the pull quote, beside the hearts. Not a staircase."
+}

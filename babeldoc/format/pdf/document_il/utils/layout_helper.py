@@ -81,19 +81,17 @@ def is_bullet_point(char: PdfCharacter) -> bool:
     """True when *char* is a list marker.
 
     Usual bullets match :data:`BULLET_POINT_PATTERN`. Dingbat faces encode
-    the marker as a letter (Webdings ``Q``); a single glyph from those
-    faces counts. A capital on a text face does not.
+    the marker as a letter (Webdings ``Q``). One glyph from those faces
+    counts even when ToUnicode is empty. A capital on a text face does not.
     """
     text = char.char_unicode or ""
     if text and BULLET_POINT_PATTERN.match(text):
         return True
-    if len(text) != 1 or text.isspace():
-        return False
-    style = char.pdf_style
+    style = getattr(char, "pdf_style", None)
     font_id = style.font_id if style is not None else None
-    if not font_id:
+    if not font_id or not _DINGBAT_FONT_RE.search(font_id):
         return False
-    return _DINGBAT_FONT_RE.search(font_id) is not None
+    return text == "" or (len(text) == 1 and not text.isspace())
 
 
 def composition_characters(
@@ -1938,6 +1936,20 @@ from babeldoc.format.pdf.document_il.utils.paragraph_alignment import (  # noqa:
 )
 
 
+def _source_line_texts(para: PdfParagraph) -> list[str]:
+    """Original line strings. Translation has not replaced them yet."""
+    texts = []
+    for comp in para.pdf_paragraph_composition or []:
+        line = getattr(comp, "pdf_line", None)
+        chars = getattr(line, "pdf_character", None) if line is not None else None
+        if not chars:
+            continue
+        texts.append(
+            "".join(getattr(char, "char_unicode", None) or "" for char in chars)
+        )
+    return texts
+
+
 def compute_reference_metrics(para: PdfParagraph, page=None):
     """Compute and attach ReferenceMetrics to a paragraph.
 
@@ -1992,6 +2004,7 @@ def compute_reference_metrics(para: PdfParagraph, page=None):
         last_line_ratio=last_line_ratio,
         font_size=font_size,
         per_line_widths=per_line_widths,
+        line_texts=_source_line_texts(para),
     )
 
     # Capture alignment from original geometry (before translation)
@@ -2009,6 +2022,105 @@ from babeldoc.format.pdf.document_il.utils.figure_wrap import (  # noqa: E402, F
 )
 
 
+def _chars_of_comp(comp) -> list:
+    line = getattr(comp, "pdf_line", None)
+    if line is not None and getattr(line, "pdf_character", None):
+        return list(line.pdf_character)
+    char = getattr(comp, "pdf_character", None)
+    if char is not None:
+        return [char]
+    same = getattr(comp, "pdf_same_style_characters", None)
+    if same is not None and getattr(same, "pdf_character", None):
+        return list(same.pdf_character)
+    formula = getattr(comp, "pdf_formula", None)
+    if formula is not None and getattr(formula, "pdf_character", None):
+        return list(formula.pdf_character)
+    return []
+
+
+def _spans_from_chars(para: PdfParagraph) -> list[tuple[float, float]]:
+    boxes = []
+    for comp in getattr(para, "pdf_paragraph_composition", None) or []:
+        for char in _chars_of_comp(comp):
+            box = getattr(char, "box", None)
+            if box is None or box.x is None or box.x2 is None or box.y2 is None:
+                continue
+            boxes.append(box)
+    if not boxes:
+        return []
+    boxes.sort(key=lambda b: float(b.y2), reverse=True)
+    groups: list[list] = [[boxes[0]]]
+    for box in boxes[1:]:
+        if abs(float(groups[-1][0].y2) - float(box.y2)) <= 4.0:
+            groups[-1].append(box)
+            continue
+        groups.append([box])
+    spans: list[tuple[float, float]] = []
+    for g in groups:
+        x0 = min(float(b.x) for b in g)
+        x1 = max(float(b.x2) for b in g)
+        if x1 > x0:
+            spans.append((x0, x1))
+    return spans
+
+
+def _line_spans(para: PdfParagraph) -> list[tuple[float, float]]:
+    spans: list[tuple[float, float]] = []
+    for comp in getattr(para, "pdf_paragraph_composition", None) or []:
+        line = getattr(comp, "pdf_line", None)
+        box = getattr(line, "box", None) if line is not None else None
+        if box is None or box.x is None or box.x2 is None:
+            continue
+        spans.append((float(box.x), float(box.x2)))
+    if spans:
+        return spans
+    return _spans_from_chars(para)
+
+
+def _without_short_tail(
+    spans: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    """Drop a short last line. The pin uses the same 24pt inset and 8pt wall."""
+    kept = list(spans)
+    dropped = 0
+    while len(kept) >= 3 and dropped < 2:
+        last = kept[-1]
+        previous = kept[-2]
+        right_inset = previous[1] - last[1]
+        left_out = previous[0] - last[0]
+        if right_inset >= 24.0 and left_out <= 8.0:
+            kept.pop()
+            dropped += 1
+            continue
+        break
+    return kept
+
+
+def _pinned_body_column(para: PdfParagraph) -> bool:
+    """One edge is a wall and the other walks. That column is not a quote."""
+    body = _without_short_tail(_line_spans(para))
+    if len(body) < 4:
+        return False
+    lefts = [item[0] for item in body]
+    rights = [item[1] for item in body]
+    left_spread = max(lefts) - min(lefts)
+    right_spread = max(rights) - min(rights)
+    right_fixed = left_spread >= 12.0 and right_spread <= 4.0
+    left_fixed = right_spread >= 12.0 and left_spread <= 4.0
+    if right_fixed or left_fixed:
+        return True
+    if len(body) >= 5:
+        sub_lefts = [item[0] for item in body[1:]]
+        sub_rights = [item[1] for item in body[1:]]
+        sub_left_spread = max(sub_lefts) - min(sub_lefts)
+        sub_right_spread = max(sub_rights) - min(sub_rights)
+        if (sub_left_spread <= 4.0 and right_spread >= 12.0) or (
+            sub_right_spread <= 4.0 and left_spread >= 12.0
+        ):
+            return True
+    return False
+
+
 def is_quote_block(
     para: PdfParagraph,
     page_width: float,
@@ -2016,6 +2128,7 @@ def is_quote_block(
     narrow_threshold: float = 0.70,
     indent_threshold: float = 0.15,
     right_margin_threshold: float = 0.05,
+    max_quote_lines: int = 6,
 ) -> bool:
     """启发式判断段落是否为 Quote（引文框 / pull-quote）块。
 
@@ -2039,6 +2152,7 @@ def is_quote_block(
             默认 0.15：过滤 ~5–12% 的正文页边距，保留真正的 pull-quote
             （通常 indent ≳ 0.25–0.5）。
         right_margin_threshold: 右侧留白 / 页面宽度 > 此值视为有留白
+        max_quote_lines: Quote 块的最大行数（默认 6 行）。长段落属于正文栏，非引文块。
 
     Returns:
         True 如果段落被判断为 Quote 块
@@ -2048,6 +2162,11 @@ def is_quote_block(
 
     box = para.box
     if any(v is None for v in [box.x, box.y, box.x2, box.y2]):
+        return False
+
+    # 规则 0: Quote 块是短小引文，行数超过阈值的长段落属于正文
+    spans = _line_spans(para)
+    if len(spans) > max_quote_lines:
         return False
 
     para_width = box.x2 - box.x
@@ -2073,6 +2192,12 @@ def is_quote_block(
     )
 
     if is_figure_wrap_tip_crumb(para, page_width=page_width):
+        return False
+
+    # A pinned column's union is narrow and indented. That is body beside
+    # the thing it wraps, not a quote. A short last line is not the wall
+    # opening. Spreads match figure-wrap: 12pt of walk, 4pt of wall.
+    if _pinned_body_column(para):
         return False
 
     # 规则 2: 左侧有明显缩进（须显著大于正文页边距）

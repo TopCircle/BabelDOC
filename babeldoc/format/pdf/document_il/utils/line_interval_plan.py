@@ -514,6 +514,17 @@ def wrap_flush_alignment(
     return "right"
 
 
+def pocket_alignment(paragraph: PdfParagraph | None, free_side: str | None) -> str:
+    """Flush for one figure pocket.
+
+    A rect column fills the gap from the left, so its short last line
+    starts there. A shaped pocket and a keep-current quote stay on the pin.
+    """
+    if free_side == "right" or _is_rect_reflow(paragraph):
+        return "left"
+    return "right"
+
+
 def resolve_line_interval_plan(
     paragraph: PdfParagraph | None,
     layout_box: Box,
@@ -580,12 +591,23 @@ def attempt_chain_for_paragraph(
         return [LayoutAttempt.PRIMARY]
     shape = resolve_wrap_shape(paragraph) if paragraph is not None else None
     intent = getattr(paragraph, "layout_intent", None) if paragraph else None
+    # Words painted on a figure stay in that box. Widening walks them off it.
+    if getattr(intent, "text_on_photo", False):
+        return [LayoutAttempt.PRIMARY]
     role = getattr(intent, "role", None) if intent is not None else None
     from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 
     # Side callout / pull-quote must stay in their design column. FULL_MEASURE
     # widens a 157pt left gutter to ~440pt (OA p91 red bar → overlaps body).
     if role in (LayoutIntentRole.CALLOUT, LayoutIntentRole.PULL_QUOTE):
+        return [LayoutAttempt.PRIMARY]
+    from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+        is_gutter_display,
+    )
+
+    # A 22pt gutter quote is WRAP_COLUMN. FULL_MEASURE would paint it across
+    # the body. It stays on the primary measure of its own box.
+    if paragraph is not None and is_gutter_display(paragraph):
         return [LayoutAttempt.PRIMARY]
     wrap_mode = getattr(intent, "wrap_mode", None) if intent is not None else None
     from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode

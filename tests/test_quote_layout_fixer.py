@@ -34,17 +34,25 @@ def _make_char(x: float, y: float, x2: float, y2: float) -> PdfCharacter:
     )
 
 
+def _make_line_comp(x: float, y: float, x2: float, y2: float) -> PdfParagraphComposition:
+    from babeldoc.format.pdf.document_il.il_version_1 import PdfLine
+
+    return PdfParagraphComposition(pdf_line=PdfLine(box=Box(x=x, y=y, x2=x2, y2=y2)))
+
+
 def _make_paragraph(
-    chars: list[PdfCharacter],
+    chars: list[PdfCharacter] | None = None,
     *,
+    compositions: list[PdfParagraphComposition] | None = None,
     layout_box: Box | None = None,
     render_order: int = 0,
     xobj_id: int | None = None,
 ) -> PdfParagraph:
-    """创建一个包含 pdf_character composition 的 PdfParagraph。"""
-    compositions = [
-        PdfParagraphComposition(pdf_character=c) for c in chars
-    ]
+    """创建一个包含 pdf_character 或 pdf_line composition 的 PdfParagraph。"""
+    if compositions is None:
+        compositions = [
+            PdfParagraphComposition(pdf_character=c) for c in (chars or [])
+        ]
     para = PdfParagraph(
         box=layout_box,
         pdf_paragraph_composition=compositions,
@@ -127,6 +135,33 @@ class TestIsQuoteBlock:
         para = _make_paragraph(
             chars=[_make_char(102, 357, 572, 459)],
             layout_box=Box(x=102.18, y=357.24, x2=572.57, y2=459.24),
+        )
+        assert is_quote_block(para, 612.0) is False
+
+    def test_multiline_body_column_not_detected_as_quote(self):
+        """超过 6 行的长段落属于正文栏，不能被当成 pull-quote。"""
+        # 即使满足窄宽度和缩进几何条件，长段落依然属于正文
+        comps = [
+            _make_line_comp(128.0, 100.0 + i * 15.0, 350.0, 112.0 + i * 15.0)
+            for i in range(10)
+        ]
+        para = _make_paragraph(
+            compositions=comps,
+            layout_box=Box(x=128.0, y=100.0, x2=350.0, y2=250.0),
+        )
+        assert is_quote_block(para, 612.0) is False
+
+    def test_shallow_hang_body_column_not_detected_as_quote(self):
+        """浅悬挂正文栏（首行顶出，续行缩进墙）不应被当成 pull-quote。"""
+        # Line 0: 128..350, Lines 1..7: 146..350
+        comps = [_make_line_comp(128.0, 100.0, 350.0, 112.0)]
+        comps.extend(
+            _make_line_comp(146.0, 100.0 + i * 15.0, 350.0, 112.0 + i * 15.0)
+            for i in range(1, 8)
+        )
+        para = _make_paragraph(
+            compositions=comps,
+            layout_box=Box(x=128.0, y=100.0, x2=350.0, y2=220.0),
         )
         assert is_quote_block(para, 612.0) is False
 

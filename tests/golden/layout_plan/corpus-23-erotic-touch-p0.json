@@ -1,0 +1,19 @@
+{
+  "kind": "corpus",
+  "sample_index": 23,
+  "source_pdf_hash": "a51a229205e3c3957a1ca3673e214419c003129e43e174873e8735d4471eced1",
+  "book": "Erotic Touch",
+  "relpath": "Erotic Touch/Erotic Touch.pdf",
+  "page": 0,
+  "region_id": "f0e9830dd83903427c3c8e19ef97ca9d",
+  "source_order": 0,
+  "lines": [],
+  "predicted_base": "preserve",
+  "predicted_gate": "image_only",
+  "expected_base": "preserve",
+  "expected_gate": "image_only",
+  "expected_modifiers": [],
+  "shape_judged": false,
+  "agreement": true,
+  "reason": "Cover image with title type and no extractable body. image_only and preserve are correct."
+}

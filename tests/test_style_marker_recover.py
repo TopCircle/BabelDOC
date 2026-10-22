@@ -63,6 +63,84 @@ def test_style_by_id():
     assert "0.45" in (m[0].graphic_state.passthrough_per_char_instruction or "")
 
 
+def test_rewrap_fullwidth_colon_keeps_the_english_name():
+    """DeepLX turns "Vulva:" into "Vulva：" and drops the markers."""
+    recovered = rewrap_styles_from_source(
+        "{v1}Vulva：从阴毛线到会阴的区域。",
+        _spans((0, "Vulva:")),
+    )
+    assert recovered is not None
+    assert "〖B0〗Vulva：〖/B0〗" in recovered
+    assert recovered.count("〖B0〗") == 1
+
+
+def test_rewrap_translated_label_stops_at_the_colon():
+    """The English name is gone. The opening label before ： stays one span."""
+    recovered = rewrap_styles_from_source(
+        "肛门：肛门周围有许多神经末梢。",
+        _spans((0, "Anus:")),
+    )
+    assert recovered is not None
+    assert recovered.startswith("〖B0〗肛门：〖/B0〗")
+    assert "神经" not in recovered.split("〖/B0〗", 1)[0]
+
+
+def test_rewrap_does_not_invent_a_label_when_the_colon_is_gone():
+    """No colon, no name boundary. Do not bold the whole sentence."""
+    assert (
+        rewrap_styles_from_source(
+            "阴唇阴道的肉质外阴唇。用手指按摩。",
+            _spans((0, "Outer labia:")),
+        )
+        is None
+    )
+
+
+def test_rewrap_does_not_bold_a_colon_later_in_the_sentence():
+    assert (
+        rewrap_styles_from_source(
+            "请先阅读说明。注意：后面还有",
+            _spans((0, "Warning:")),
+        )
+        is None
+    )
+
+
+def test_formula_bullet_keeps_the_bold_lead_in():
+    """Placeholder split must not paint the name in the body face."""
+    import re
+
+    from babeldoc.format.pdf.document_il.il_version_1 import Box
+    from babeldoc.format.pdf.document_il.il_version_1 import PdfFormula
+    from babeldoc.format.pdf.document_il.midend.il_translator import FormulaPlaceholder
+    from babeldoc.format.pdf.document_il.midend.il_translator import ILTranslator
+
+    ilt = object.__new__(ILTranslator)
+    ilt._formula_placeholder_pattern = re.compile(r"\{v\d+\}")
+    ilt._style_left_placeholder_pattern = re.compile(r"(?!)")
+    ilt._style_right_placeholder_pattern = re.compile(r"(?!)")
+    bold = _style("Ubuntu-Bold")
+    body = _style("Ubuntu-Light")
+    formula = PdfFormula(box=Box(x=0, y=0, x2=8, y2=10))
+    tin = ILTranslator.TranslateInput(
+        "{v1}〖B0〗Anus:〖/B0〗 The area.",
+        [FormulaPlaceholder(1, formula, "{v1}", r"\{\s*v\s*1\s*\}")],
+        body,
+    )
+    tin.style_spans = [StyleSpan(0, bold, "Anus:")]
+    comps = ilt.parse_translate_output(tin, "{v1}肛门：肛门周围。")
+    assert comps[0].pdf_formula is formula
+    styled = [
+        comp.pdf_same_style_unicode_characters
+        for comp in comps
+        if comp.pdf_same_style_unicode_characters
+    ]
+    assert styled[0].pdf_style.font_id == "Ubuntu-Bold"
+    assert styled[0].unicode == "肛门："
+    assert styled[1].pdf_style.font_id == "Ubuntu-Light"
+    assert "〖" not in styled[1].unicode
+
+
 def test_serial_not_eaten_by_sequential():
     output = "sequential and serial orgasms"
     recovered = rewrap_styles_from_source(

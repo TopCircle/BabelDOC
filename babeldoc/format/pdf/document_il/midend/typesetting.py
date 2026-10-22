@@ -22,6 +22,9 @@ from babeldoc.format.pdf.document_il import PdfParagraphComposition
 from babeldoc.format.pdf.document_il import PdfStyle
 from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
+    centered_line_breaks,
+)
+from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
     optimal_line_break,
 )
 from babeldoc.format.pdf.document_il.utils import list_marker_repair as _list_markers
@@ -51,6 +54,7 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     layout_box_is_thin_vs_full_measure,
 )
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import pocket_alignment
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     resolve_line_interval_plan,
 )
@@ -79,6 +83,67 @@ from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.format.pdf.translation_config import WatermarkOutputMode
 
 logger = logging.getLogger(__name__)
+
+
+_SENTENCE_SKIP_MIN = 1.05
+_SENTENCE_SKIP_MAX = 1.50
+
+
+def sentence_line_skip(edges, font_size: float) -> float | None:
+    """Leading ratio from the source line pitch.
+
+    A pitch of 15pt on a 12pt face is 1.25, so those lines fit the
+    scanned block at body size. The ratio never goes past the default
+    1.5, and never tight enough for the next line to overlap.
+    """
+    if font_size <= 0 or not edges:
+        return None
+    tops = sorted(
+        (float(edge[2]) for edge in edges if len(edge) >= 3),
+        reverse=True,
+    )
+    gaps = [
+        tops[index] - tops[index + 1]
+        for index in range(len(tops) - 1)
+        if tops[index] > tops[index + 1]
+    ]
+    if not gaps:
+        return None
+    gaps.sort()
+    pitch = gaps[len(gaps) // 2]
+    skip = pitch / font_size
+    return min(_SENTENCE_SKIP_MAX, max(_SENTENCE_SKIP_MIN, skip))
+
+
+def contour_line_skip(link, font_size: float) -> float | None:
+    """Source pitch for a contour.
+
+    Fills that store the line top on the edge use that. A fill that
+    stores only x still has the top on each sample.
+    """
+    edges = getattr(link, "edges", None) or ()
+    pitched = sentence_line_skip(edges, font_size)
+    if pitched is not None:
+        return pitched
+    levels = getattr(link, "levels", None) or ()
+    return sentence_line_skip(
+        tuple((0.0, 0.0, float(level.top)) for level in levels),
+        font_size,
+    )
+
+
+def contour_scale_floor(
+    min_scale: float, *, pinned: bool, on_contour: bool
+) -> float:
+    """On-figure text may shrink to 0.35. A contour keeps this floor.
+
+    A full-page image contains the ink, so the paragraph is pinned.
+    The scanned lines are already the frame. Shrinking to 0.35 stacks
+    the paragraph into the first sample.
+    """
+    if pinned and not on_contour:
+        return min(float(min_scale), 0.35)
+    return float(min_scale)
 
 
 def line_advance_distance(
@@ -172,6 +237,8 @@ class RetypesetResult:
 # 序数/量词：与数字粘连成「第11卷」「1989年」等不可拆片段
 _CJK_MEASURE_AFTER_DIGIT = frozenset("卷章节页条款项年月日时分秒")
 _CJK_ORDINAL_BEFORE_DIGIT = frozenset("第")
+# 百分数整段换行。「40%」不能断成「4|0%」，「57%」不能让「%」单独起行。
+_PERCENT_AFTER_DIGIT = frozenset("%％")
 
 
 def _unit_char(unit: TypesettingUnit) -> str:
@@ -183,6 +250,88 @@ def _is_digit_unit(unit: TypesettingUnit) -> bool:
     return len(ch) == 1 and ch.isdigit()
 
 
+# En dash, em dash, figure dash, minus. A 30pt dash is a list bullet.
+# Hyphen-minus stays a word break.
+_DASH_BULLET_CHARS = frozenset("\u2013\u2014\u2012\u2212")
+_BULLET_HANG_CHARS = frozenset("•·●▪◦►▸\x12") | _DASH_BULLET_CHARS
+
+
+def _marker_line_height(unit_height: float, unit, font_size: float) -> float:
+    """A tall dash bullet hangs off the line. It does not open the leading."""
+    if (
+        _unit_char(unit) in _DASH_BULLET_CHARS
+        and font_size > 0.0
+        and unit_height > font_size * 1.6
+    ):
+        return float(font_size)
+    return unit_height
+
+
+def _is_leading_bullet(unit: TypesettingUnit) -> bool:
+    """True for a list dingbat, including the Webdings slash used as a bullet."""
+    ch = _unit_char(unit)
+    if ch in _BULLET_HANG_CHARS:
+        return True
+    from babeldoc.format.pdf.document_il.utils.layout_helper import BULLET_POINT_PATTERN
+    from babeldoc.format.pdf.document_il.utils.layout_helper import is_bullet_point
+
+    if ch and BULLET_POINT_PATTERN.match(ch):
+        return True
+    char = getattr(unit, "char", None)
+    if char is not None and is_bullet_point(char):
+        return True
+    # Styles keeps a dingbat bullet as one formula unit. That unit has no
+    # unicode of its own; the glyphs inside it are the marker.
+    formula = getattr(unit, "formular", None)
+    glyphs = [
+        glyph
+        for glyph in (getattr(formula, "pdf_character", None) or [])
+        if (getattr(glyph, "char_unicode", None) or "").strip()
+    ]
+    return bool(glyphs) and all(is_bullet_point(glyph) for glyph in glyphs)
+
+
+def _is_percent_bridge(unit: TypesettingUnit) -> bool:
+    """Space or invisible mark that may sit between a number and ``%``.
+
+    A regular space, NBSP, or zero-width joiner is not part of the number,
+    but breaking after it leaves the percent alone at the start of the line.
+    """
+    if getattr(unit, "is_space", False):
+        return True
+    ch = _unit_char(unit)
+    if len(ch) != 1:
+        return False
+    if ch == "\u00ad":
+        return True
+    category = unicodedata.category(ch)
+    return category == "Zs" or category == "Cf"
+
+
+def _stick_number_to_percent(
+    typeset_units: list[TypesettingUnit],
+    line_start_idx: int,
+) -> None:
+    """Keep ``57`` with a following ``%`` when that percent does not fit.
+
+    Walk back over digits and the spaces between them and the percent.
+    A space before the number stays on the finished line.
+    """
+    k = len(typeset_units) - 1
+    marked: list[TypesettingUnit] = []
+    while k >= line_start_idx and (
+        _is_digit_unit(typeset_units[k]) or _is_percent_bridge(typeset_units[k])
+    ):
+        marked.append(typeset_units[k])
+        k -= 1
+    if not any(_is_digit_unit(unit) for unit in marked):
+        return
+    while marked and _is_percent_bridge(marked[-1]):
+        marked.pop()
+    for unit in marked:
+        unit.can_break_line_cache = False
+
+
 def merge_cjk_units(units: list[TypesettingUnit]) -> list[TypesettingUnit]:
     """Secondary CJK glue: dict words + kinsoku + digit quantifiers.
 
@@ -191,7 +340,7 @@ def merge_cjk_units(units: list[TypesettingUnit]) -> list[TypesettingUnit]:
     1. Two-/three-char dictionary: internal edges of known compounds
     2. Line-start kinsoku: no break before 。，）」/的地得…
     3. Line-end kinsoku: no break after （【「/和与及…
-    4. Digit runs and 「第」+ digits +「卷/年…」 stay together
+    4. Digit runs, 「第」+ digits +「卷/年…」, and 「40%」 stay together
 
     Primary dual-ZH mid-line raggedness fix is layout-first rectangular
     columns via ``_uniform_cjk_reference_widths`` (fill weight), not this
@@ -283,16 +432,17 @@ def merge_cjk_units(units: list[TypesettingUnit]) -> list[TypesettingUnit]:
                     j += 1
                 i = j
                 continue
-        # 连续数字（含中间空格）+ 可选量词
+        # 连续数字（含中间空格、NBSP、零宽符）+ 可选量词 / 百分号
         if _is_digit_unit(units[i]):
             j = i
             while j < n and (
-                _is_digit_unit(units[j]) or getattr(units[j], "is_space", False)
+                _is_digit_unit(units[j]) or _is_percent_bridge(units[j])
             ):
                 if j + 1 < n and (
                     _is_digit_unit(units[j + 1])
-                    or getattr(units[j + 1], "is_space", False)
+                    or _is_percent_bridge(units[j + 1])
                     or _unit_char(units[j + 1]) in _CJK_MEASURE_AFTER_DIGIT
+                    or _unit_char(units[j + 1]) in _PERCENT_AFTER_DIGIT
                 ):
                     units[j].can_break_line_cache = False
                 j += 1
@@ -1125,10 +1275,114 @@ class TypesettingUnit:
             return [], [], []
 
 
+_BASELINE_SLACK = 0.2
+
+
+def source_descent(units: list[TypesettingUnit]) -> float | None:
+    """PDF FontDescriptor descent, in thousandths, from the source font."""
+    for unit in units:
+        font = getattr(unit, "original_font", None)
+        raw = getattr(font, "descent", None) if font is not None else None
+        if raw is None:
+            continue
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def source_baseline(
+    box_y: float,
+    font_size: float,
+    descent: float,
+    anchor: float,
+) -> float:
+    """First-line y. Rise only when the box bottom is the font descender.
+
+    ``descent`` is the PDF descriptor in thousandths (negative). ``anchor``
+    is the current first line (``box top - line height``). A bottom already
+    on that anchor is the baseline, and adding the descender would lift it.
+    A recovered baseline that does not clear the anchor stays there, which
+    leaves a tall body box where it is.
+    """
+    if font_size <= 0 or abs(box_y - anchor) <= _BASELINE_SLACK:
+        return anchor
+    baseline = box_y - descent * font_size / 1000.0
+    if baseline <= anchor + _BASELINE_SLACK:
+        return anchor
+    return baseline
+
+
+def _x_overlaps(x: float, x2: float, left: float, right: float) -> bool:
+    """True when ``[x, x2]`` crosses ``[left, right]``."""
+    return not (x >= right or x2 <= left)
+
+
+def demote_above_mode(paragraphs, scales) -> None:
+    """Pull paragraphs above the page mode down to that mode.
+
+    ``scales`` is the vote, one entry per typesetting unit. A paragraph
+    left out of both lists keeps the scale its own search accepted.
+    """
+    if not scales:
+        return
+    try:
+        modes = statistics.multimode(scales)
+        mode_scale = min(modes)
+    except statistics.StatisticsError:
+        logger.warning(
+            "Could not find a mode for paragraph scales. Falling back to median."
+        )
+        mode_scale = statistics.median(scales)
+    for paragraph in paragraphs:
+        if (
+            paragraph.optimal_scale is not None
+            and paragraph.optimal_scale > mode_scale
+        ):
+            paragraph.optimal_scale = mode_scale
+
+
+def _keeps_own_scale(page, paragraph) -> bool:
+    """Sentence flow already picked the scale that fits its frame."""
+    from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+        line_edges_for,
+    )
+
+    link = line_edges_for(page, paragraph)
+    return link is not None and getattr(link, "flow", None) == "sentence"
+
+
+def _downward_x_span(typesetter, box: Box) -> tuple[float, float]:
+    """Horizontal span that downward growth has to clear.
+
+    Line edges keep each lower line's own left. The union box still
+    starts at the first line, so a side quote can overlap that box and
+    miss the lines that would actually move down.
+    """
+    from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+        lower_edge_span,
+    )
+
+    link = getattr(typesetter, "_line_edges", None)
+    edges = getattr(link, "edges", None) if link is not None else None
+    if not edges:
+        return (box.x, box.x2)
+    span = lower_edge_span(edges)
+    if span is None:
+        return (box.x, box.x2)
+    return span
+
+
 class Typesetting:
     stage_name = "Typesetting"
     _DEFAULT_LINE_SKIP_CJK = 1.50
     _DEFAULT_LINE_SKIP_NON_CJK = 1.3
+    # A contour that ends before the last glyphs keeps this size and
+    # closes the leading, instead of dropping the tail.
+    _CONTOUR_SKIP_FACTOR = 0.94
+    _CONTOUR_SKIP_FLOOR = 1.20
+    _CONTOUR_SKIP_TRIES = 3
     # Floor for scale search. 0.1 produced unreadable 1–4pt text when
     # exclusion zones left only a needle strip (Orgasms p.10/19/20).
     MIN_READABLE_SCALE = 0.55
@@ -1161,6 +1415,20 @@ class Typesetting:
         # Call-scoped wrap switch for the active _find_optimal_scale_and_layout
         # frame (None → read enable_layout_intent_wrap from config).
         self._wrap_enabled: bool | None = None
+
+    @staticmethod
+    def consume_layout_plan(plan, region_id: str):
+        """Return the frozen decision for one region.
+
+        Strategy reads go through here. rect_flow and list placement
+        both start from this result. This does not read role or
+        geometry, and it does not move boxes.
+        """
+        from babeldoc.format.pdf.document_il.utils.layout_plan.consume import (
+            consume_layout_plan,
+        )
+
+        return consume_layout_plan(plan, region_id)
 
     def _quote_zone_config(self):
         """Build QuoteZoneConfig from TranslationConfig (main-path + retypeset).
@@ -1207,11 +1475,18 @@ class Typesetting:
         from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
             ExclusionZoneIndex,
         )
+        from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+            assign_line_edge_boxes,
+        )
 
         all_scales: list[float] = []
         all_paragraphs: list[il_version_1.PdfParagraph] = []
+        own_scale: set[int] = set()
 
         for page in document.page:
+            # The search only moves downward. A box still off its
+            # contour would lock the readable floor before render seats it.
+            assign_line_edge_boxes(page)
             if pbar is not None:
                 pbar.advance()
 
@@ -1284,33 +1559,33 @@ class Typesetting:
                     paragraph.optimal_scale = 1.0
 
                 if paragraph.optimal_scale is not None:
-                    all_scales.extend([paragraph.optimal_scale] * unit_count)
+                    if _keeps_own_scale(page, paragraph):
+                        own_scale.add(id(paragraph))
+                    else:
+                        all_scales.extend(
+                            [paragraph.optimal_scale] * unit_count
+                        )
 
         # Cap all paragraphs to the mode scale so a page stays visually uniform.
         # OCR / searchable-image dual-layer is an exception: long body runs often
         # need a lower scale than titles, and demoting titles/body to that mode
         # leaves body text tiny inside a tall white fill (empty band under ZH).
+        # Sentence flow is the other exception: its scale is the one that fits
+        # the frame, and a long poem must not drag the verse down to that floor.
         if getattr(self.translation_config, "ocr_workaround", False):
             logger.debug(
                 "ocr_workaround: keep per-paragraph optimal_scale (no mode demotion)"
             )
         elif all_scales:
-            try:
-                modes = statistics.multimode(all_scales)
-                mode_scale = min(modes)
-            except statistics.StatisticsError:
-                logger.warning(
-                    "Could not find a mode for paragraph scales. Falling back to median."
-                )
-                mode_scale = statistics.median(all_scales)
-            # 将所有大于众数的值修改为众数
-            for paragraph in all_paragraphs:
-                if (
-                    paragraph.optimal_scale is not None
-                    and paragraph.optimal_scale > mode_scale
-                ):
-                    paragraph.optimal_scale = mode_scale
-        else:
+            demote_above_mode(
+                [
+                    paragraph
+                    for paragraph in all_paragraphs
+                    if id(paragraph) not in own_scale
+                ],
+                all_scales,
+            )
+        elif not own_scale:
             logger.error(
                 "document_scales is empty, there seems no paragraph in this PDF"
             )
@@ -1341,6 +1616,52 @@ class Typesetting:
         if not paragraph.box:
             return initial_scale, None
 
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            uses_rect_column_fill,
+        )
+
+        if uses_rect_column_fill(paragraph):
+            self._rect_fill_active = True
+            if layout_attempt is None:
+                wrap_enabled = False
+        else:
+            self._rect_fill_active = False
+
+        from babeldoc.format.pdf.document_il.utils.shaped_pocket_stack import (
+            pocket_for,
+        )
+
+        # A frozen figure gap is the line width. Do not fill it as a rectangle
+        # and do not widen it to the full column.
+        pocket = pocket_for(page, paragraph)
+        if pocket is None:
+            from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
+                column_gap_for,
+            )
+
+            # A flat column beside a figure still uses the gap at that line.
+            pocket = column_gap_for(page, paragraph)
+        from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+            line_edges_for,
+        )
+
+        # Per-line edges already scanned. Do not fill them as a rectangle
+        # and do not widen them to the full column.
+        line_edges = line_edges_for(page, paragraph)
+        if line_edges is not None:
+            pocket = None
+            self._rect_fill_active = False
+            wrap_enabled = True
+            drop_figure_zones = False
+            if layout_attempt is LayoutAttempt.FULL_MEASURE:
+                layout_attempt = LayoutAttempt.PRIMARY
+        elif pocket is not None:
+            self._rect_fill_active = False
+            wrap_enabled = True
+            drop_figure_zones = False
+            if layout_attempt is LayoutAttempt.FULL_MEASURE:
+                layout_attempt = LayoutAttempt.PRIMARY
+
         cfg_wrap = layout_intent_wrap_enabled(
             getattr(self, "translation_config", None)
         )
@@ -1348,7 +1669,13 @@ class Typesetting:
             wrap_enabled = cfg_wrap
 
         # Entry without explicit attempt: walk attempt chain (CJK float-wrap).
-        if layout_attempt is None and not drop_figure_zones and wrap_enabled:
+        if (
+            layout_attempt is None
+            and not drop_figure_zones
+            and wrap_enabled
+            and pocket is None
+            and line_edges is None
+        ):
             chain = attempt_chain_for_paragraph(
                 paragraph, is_cjk=bool(self.is_cjk)
             )
@@ -1428,6 +1755,10 @@ class Typesetting:
         self._wrap_enabled = wrap_enabled
         self._layout_drop_figure_zones = drop_figure_zones
         self._layout_attempt = layout_attempt
+        prev_pocket = getattr(self, "_pocket_link", None)
+        prev_edges = getattr(self, "_line_edges", None)
+        self._pocket_link = pocket
+        self._line_edges = line_edges
         try:
             return self._find_optimal_scale_and_layout_inner(
                 paragraph,
@@ -1445,6 +1776,8 @@ class Typesetting:
             self._wrap_enabled = prev_wrap
             self._layout_drop_figure_zones = prev_drop
             self._layout_attempt = prev_attempt
+            self._pocket_link = prev_pocket
+            self._line_edges = prev_edges
 
     def _find_optimal_scale_and_layout_inner(
         self,
@@ -1463,6 +1796,18 @@ class Typesetting:
         self._ocr_normalize_paragraph_geometry(paragraph)
         box = paragraph.box
         scale = initial_scale
+        on_photo = bool(
+            getattr(
+                getattr(paragraph, "layout_intent", None),
+                "text_on_photo",
+                False,
+            )
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            stays_in_source_box,
+        )
+
+        pinned = on_photo or stays_in_source_box(paragraph)
         ocr_mode = bool(
             getattr(self.translation_config, "ocr_workaround", False)
         )
@@ -1480,7 +1825,11 @@ class Typesetting:
         # OCR dual-layer: ignore EN line-width taper. OCR "lines" are noisy and
         # often include short Courier runs; capping to those widths forces many
         # wraps and crushes scale into a tiny top strip over empty white fill.
-        if ocr_mode:
+        if (
+            ocr_mode
+            or getattr(self, "_rect_fill_active", False)
+            or getattr(self, "_line_edges", None) is not None
+        ):
             reference_widths = None
         else:
             reference_widths = self._extract_original_line_widths(paragraph)
@@ -1510,9 +1859,18 @@ class Typesetting:
         # Figure-wrap (OA p19): crushing to ~0.55 leaves 9pt mid-photo fragments.
         # Keep a higher floor so pin geometry stays legible; vertical overflow
         # is preferred over needle-scale type.
-        if self._active_wrap(paragraph, box):
+        if self._active_wrap(paragraph, box) and not pinned:
             min_scale = max(min_scale, 0.88)
+        # On-figure text and display bands shrink instead of leaving the box.
+        # MIN_READABLE_SCALE itself stays 0.55. A contour keeps that floor.
+        on_contour = getattr(self, "_line_edges", None) is not None
+        min_scale = contour_scale_floor(
+            min_scale,
+            pinned=pinned,
+            on_contour=on_contour,
+        )
         expand_space_flag = 0
+        contour_tightens = 0
         final_typeset_units = None
         last_typeset_units = None  # last layout attempt (may overflow box)
 
@@ -1562,7 +1920,9 @@ class Typesetting:
                     # CJK LA-1: "fits" under pin/residual can still be a dense
                     # wall (OA p82). Reject and reflow full-width once.
                     if (
-                        self.is_cjk
+                        getattr(self, "_pocket_link", None) is None
+                        and getattr(self, "_line_edges", None) is None
+                        and self.is_cjk
                         and paragraph is not None
                         and (wrap_enabled or not drop_figure_zones)
                         and self._cjk_should_abandon_narrow_column(
@@ -1628,12 +1988,15 @@ class Typesetting:
                             else:
                                 opt_avg_height = 0
 
-                            if opt_avg_height > 0:
+                            if opt_avg_height > 0 and not getattr(
+                                self, "_rect_fill_active", False
+                            ):
                                 opt_breaks = self._compute_optimal_breaks(
                                     typesetting_units, box, scale, opt_avg_height,
                                     line_skip, opt_space_width, opt_tracking,
                                     reference_widths=reference_widths,
                                     paragraph=paragraph,
+                                    font_size=font_size,
                                 )
                                 if opt_breaks:
                                     opt_units, opt_fit = self._layout_typesetting_units(
@@ -1715,6 +2078,23 @@ class Typesetting:
                 # 如果布局检查出错，继续尝试下一个缩放因子
                 pass
 
+            # The contour refused the next line and scale cannot drop
+            # further. Close the leading so the tail still lands on it.
+            next_scale = scale - (0.05 if scale > 0.6 else 0.1)
+            if (
+                next_scale < min_scale
+                and getattr(self, "_line_edges", None) is not None
+                and getattr(self, "_unplaceable_lines", None)
+                and contour_tightens < self._CONTOUR_SKIP_TRIES
+                and line_skip > self._CONTOUR_SKIP_FLOOR
+            ):
+                contour_tightens += 1
+                line_skip = max(
+                    self._CONTOUR_SKIP_FLOOR,
+                    line_skip * self._CONTOUR_SKIP_FACTOR,
+                )
+                continue
+
             # 添加与原 retypeset 一致的逻辑检查
             if not hasattr(paragraph, "debug_id") or not paragraph.debug_id:
                 # 如果 apply_layout 且尚未成功布局，不要提前返回
@@ -1725,7 +2105,14 @@ class Typesetting:
             # Prefer expanding the box before crushing font size.
             # Axis order from box_expand.prefer_expand_down (OCR / narrow column).
             # Trigger as soon as scale drops below ~full size (not only < 0.7).
-            if expand_space_flag < 2 and scale >= 0.85:
+            # A contour's samples are the line edges. Widening the box
+            # does not add a sample, and the page margin is not the frame.
+            if (
+                expand_space_flag < 2
+                and scale >= 0.85
+                and not pinned
+                and getattr(self, "_line_edges", None) is None
+            ):
                 from babeldoc.format.pdf.document_il.utils.box_expand import (
                     expand_axes_for_box,
                 )
@@ -1739,7 +2126,9 @@ class Typesetting:
                 # OA p91: design-column roles AND left-gutter geometry deepen
                 # only — mid-loop must not right-expand into the wrap gutter
                 # even when layout_intent role is missing/BODY.
-                design_col = is_design_column_role(paragraph)
+                design_col = is_design_column_role(paragraph) or getattr(
+                    self, "_rect_fill_active", False
+                )
                 if design_col or is_left_gutter_bar(box):
                     axes = ("down",)
                 else:
@@ -1775,14 +2164,21 @@ class Typesetting:
                 scale -= 0.1
 
             # Late expansion fallback (legacy path) if early expand was skipped
-            if scale < 0.7 and expand_space_flag < 2:
+            if (
+                scale < 0.7
+                and expand_space_flag < 2
+                and not pinned
+                and getattr(self, "_line_edges", None) is None
+            ):
                 space_expanded = False
                 # Design-column / left-gutter: deepen only (same as mid-loop).
                 from babeldoc.format.pdf.document_il.utils.box_expand import (
                     is_left_gutter_bar,
                 )
-                design_col = is_design_column_role(paragraph) or is_left_gutter_bar(
-                    box
+                design_col = (
+                    is_design_column_role(paragraph)
+                    or is_left_gutter_bar(box)
+                    or getattr(self, "_rect_fill_active", False)
                 )
                 expand_down_first = ocr_mode or design_col
                 retry_scale = 1.0 if ocr_mode else initial_scale
@@ -1875,7 +2271,9 @@ class Typesetting:
         # Needle-thin residual strips (or false figures) can still leave text
         # unfittable at MIN_READABLE_SCALE; full width is better than empty.
         if (
-            not drop_figure_zones
+            getattr(self, "_pocket_link", None) is None
+            and getattr(self, "_line_edges", None) is None
+            and not drop_figure_zones
             and allows_full_measure_escalation(paragraph, is_cjk=self.is_cjk)
             and getattr(self, "_current_zone_index", None) is not None
             and any(
@@ -1931,6 +2329,7 @@ class Typesetting:
         if (
             self.is_cjk
             and paragraph is not None
+            and getattr(self, "_line_edges", None) is None
             and (wrap_enabled or not drop_figure_zones)
             and self._cjk_should_abandon_narrow_column(
                 paragraph,
@@ -1979,6 +2378,16 @@ class Typesetting:
                 min_scale,
                 getattr(paragraph, "debug_id", None),
             )
+
+        # A box that never met its contour placed nothing. That miss is
+        # not a font size. Render seats the box and searches again.
+        if (
+            not apply_layout
+            and getattr(self, "_line_edges", None) is not None
+            and not last_typeset_units
+            and getattr(self, "_unplaceable_lines", None)
+        ):
+            return initial_scale, None
 
         return min_scale, final_typeset_units
 
@@ -2067,6 +2476,27 @@ class Typesetting:
         return hang if hang > 0.5 else 0.0
 
     @staticmethod
+    def _bullet_hang_width(
+        typesetting_units: list[TypesettingUnit] | None,
+        scale: float,
+    ) -> float:
+        """Width of a leading dingbat plus the gap before the item text.
+
+        Continuation lines then start under the words, not under the marker.
+        """
+        units = list(typesetting_units or [])
+        index = 0
+        while index < len(units) and _is_percent_bridge(units[index]):
+            index += 1
+        if index >= len(units) or not _is_leading_bullet(units[index]):
+            return 0.0
+        hang = float(getattr(units[index], "width", 0.0) or 0.0) * scale
+        index += 1
+        if index < len(units) and _is_percent_bridge(units[index]):
+            hang += float(getattr(units[index], "width", 0.0) or 0.0) * scale
+        return hang if hang > 0.5 else 0.0
+
+    @staticmethod
     def _numbered_list_hang_inset(
         paragraph: il_version_1.PdfParagraph | None,
         typesetting_units: list[TypesettingUnit] | None,
@@ -2092,6 +2522,8 @@ class Typesetting:
         hang = Typesetting._list_marker_hang_width(
             paragraph, typesetting_units, scale
         )
+        if hang <= 0.5:
+            hang = Typesetting._bullet_hang_width(typesetting_units, scale)
         if hang <= 0.5:
             return 0.0
         if pocket_span > 1.0:
@@ -2413,6 +2845,18 @@ class Typesetting:
         if not box or not typesetting_units:
             return box
 
+        # Rectangular column measure is already the line width. Growing it
+        # sideways paints through the photo.
+        if getattr(self, "_rect_fill_active", False):
+            return box
+        # Text painted on a figure, or a title / quote / bar, stays put.
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            stays_in_source_box,
+        )
+
+        if stays_in_source_box(paragraph):
+            return box
+
         # Figure-wrap: never left-expand over the side photo (OA p19).
         # Single policy in wrap_shape.should_skip_pre_expand_for_wrap.
         if should_skip_pre_expand_for_wrap(
@@ -2589,6 +3033,48 @@ class Typesetting:
             line_skip=line_skip,
         )
 
+    def _fonts_for_typesetting(self, page):
+        """Page and xobject fonts, same map the scale search uses."""
+        fonts = {f.font_id: f for f in page.pdf_font or [] if f.font_id}
+        page_fonts = dict(fonts)
+        for key, font in self.font_mapper.fontid2font.items():
+            fonts[key] = font
+        for xobj in page.pdf_xobject or []:
+            if xobj.xobj_id is None:
+                continue
+            fonts[xobj.xobj_id] = page_fonts.copy()
+            for font in xobj.pdf_font or []:
+                copied = fonts[xobj.xobj_id]
+                if isinstance(copied, dict) and font.font_id:
+                    copied[font.font_id] = font
+        return fonts
+
+    def _continue_indented_sentences(self, page) -> None:
+        """Fill a short last line from the indented sentence below it."""
+        from babeldoc.format.pdf.document_il.utils.indented_sentence_continue import (
+            continue_indented_sentences,
+        )
+
+        try:
+            fonts = self._fonts_for_typesetting(page)
+
+            def widths(paragraph, fonts=fonts):
+                units = self.create_typesetting_units(paragraph, fonts)
+                pairs = []
+                for unit in units:
+                    text = unit.try_get_unicode()
+                    if not text:
+                        continue
+                    pairs.append((text, float(unit.width)))
+                return pairs
+
+            continue_indented_sentences(page, widths)
+        except Exception:
+            logger.warning(
+                "indented sentence continue failed; continuing",
+                exc_info=True,
+            )
+
     def typesetting_document(self, document: il_version_1.Document):
         from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
             ExclusionZoneIndex,
@@ -2609,6 +3095,39 @@ class Typesetting:
             self._page_zone_cache[id(page)] = (
                 ExclusionZoneIndex(zones) if zones else None
             )
+
+        # Rectangular columns reflow before scale search, so joined runs
+        # share one measure instead of each English line.
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            flow_rect_columns,
+        )
+        from babeldoc.format.pdf.document_il.utils.list_flow_stack import (
+            assign_list_boxes,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
+            assign_rect_flow_boxes,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
+            run_legacy_column_flow,
+        )
+        from babeldoc.format.pdf.document_il.utils.shaped_pocket_stack import (
+            assign_shaped_boxes,
+        )
+
+        for page in document.page:
+            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+                mark_display_bands,
+            )
+            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+                yield_to_display_bands,
+            )
+
+            mark_display_bands(page)
+            yield_to_display_bands(page)
+            assign_rect_flow_boxes(page)
+            assign_list_boxes(page)
+            assign_shaped_boxes(page)
+            run_legacy_column_flow(page, flow_rect_columns)
 
         # 原有的排版逻辑
         if self.translation_config.progress_monitor:
@@ -2871,9 +3390,104 @@ class Typesetting:
         self._current_page = page
         self._wrap_audit_seen = set()
         try:
+            # Column runs were joined before scale search. Measure again
+            # after the gap pass moves boxes.
+            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+                close_rect_column_gaps,
+            )
+            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+                flow_rect_columns,
+            )
+
+            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+                mark_display_bands,
+            )
+            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+                yield_to_display_bands,
+            )
+            from babeldoc.format.pdf.document_il.utils.list_flow_stack import (
+                assign_list_boxes,
+            )
+            from babeldoc.format.pdf.document_il.utils.list_flow_stack import (
+                pack_list_items,
+            )
+            from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
+                BODY_PARAGRAPH_GAP,
+            )
+            from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
+                assign_rect_flow_boxes,
+            )
+            from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
+                figure_gap_tops,
+            )
+            from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
+                moved_figure_gap_paragraphs,
+            )
+            from babeldoc.format.pdf.document_il.utils.paragraph_gap_stack import (
+                pack_body_paragraphs,
+            )
+            from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
+                pack_rect_flow,
+            )
+            from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
+                run_legacy_column_flow,
+            )
+            from babeldoc.format.pdf.document_il.utils.shaped_pocket_stack import (
+                _push_overlaps_down,
+            )
+            from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+                assign_line_edge_boxes,
+            )
+            from babeldoc.format.pdf.document_il.utils.shaped_pocket_stack import (
+                assign_shaped_boxes,
+            )
+            from babeldoc.format.pdf.document_il.utils.shaped_pocket_stack import (
+                pack_shaped_pockets,
+            )
+
+            mark_display_bands(page)
+            yield_to_display_bands(page)
+            assign_rect_flow_boxes(page)
+            assign_list_boxes(page)
+            assign_shaped_boxes(page)
+            assign_line_edge_boxes(page)
+            run_legacy_column_flow(page, flow_rect_columns)
+            # The trim above is the box the scale search sees. A split
+            # step is one contour before that search fills it.
+            self._continue_indented_sentences(page)
             # 开始实际的渲染过程
             for paragraph in page.pdf_paragraph:
                 self.render_paragraph(paragraph, page, fonts)
+            # rect_flow and list stack on their own frozen chains. The
+            # legacy closer does not see those paragraphs, so it cannot
+            # pull them through a quote.
+            # Wrap chooses the line width. The paragraph break is separate:
+            # after a moved column is set again, pack seats the next
+            # paragraph on the scanned white. Leading inside a paragraph
+            # stays as rendered.
+            tops = figure_gap_tops(page)
+            pack_rect_flow(page)
+            pack_list_items(page)
+            pack_body_paragraphs(page)
+            pack_shaped_pockets(page)
+            retyped = False
+            for _ in range(2):
+                moved = moved_figure_gap_paragraphs(page, tops)
+                if not moved:
+                    break
+                retyped = True
+                self._retypeset_paragraphs_at_box(page, fonts, moved)
+                pack_rect_flow(page)
+                pack_body_paragraphs(page)
+                tops = figure_gap_tops(page)
+            if retyped:
+                _push_overlaps_down(page, BODY_PARAGRAPH_GAP)
+            run_legacy_column_flow(
+                page,
+                lambda paragraphs, page=page: close_rect_column_gaps(
+                    paragraphs, page
+                ),
+            )
 
             # 译文排版完成后，基于「实际渲染结果」再做一次完整的二维重叠检测与修正。
             # 上面的 rtree 检测只能发现「紧贴边缘」的重叠（正文与正文首尾相接的场景），
@@ -2892,10 +3506,52 @@ class Typesetting:
             post_typeset_gap_pass(
                 page, page_audit, translation_config=self.translation_config
             )
+            # Chinese is shorter than the English column. Open it down that
+            # band, and keep each line inside the source width at that height.
+            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+                settle_rect_columns,
+            )
+
+            run_legacy_column_flow(
+                page,
+                lambda paragraphs, page=page: settle_rect_columns(paragraphs, page),
+            )
+            # A side quote is not on the legacy column chain. Packing the
+            # paragraph under the hang can still land it on the quote.
+            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+                _push_glyphs_below_bands,
+            )
+
+            _push_glyphs_below_bands(page.pdf_paragraph, page)
         finally:
             self._page_layout_audit = None
             self._current_page = None
             self._wrap_audit_seen = None
+
+    def _retypeset_paragraphs_at_box(self, page, fonts, paragraphs) -> None:
+        """Set these paragraphs again from the box they sit in now.
+
+        Units are read before the composition is cleared. Passthrough is
+        not used: it would keep the widths from the previous height.
+        """
+        for paragraph in paragraphs:
+            saved = list(paragraph.pdf_paragraph_composition or [])
+            try:
+                units = self.create_typesetting_units(paragraph, fonts)
+                if not units:
+                    continue
+                # Glyphs are already at the rendered size. Another pass of
+                # optimal_scale would shrink them again.
+                paragraph.pdf_paragraph_composition = []
+                self.retypeset_with_precomputed_scale(
+                    paragraph, page, units, 1.0
+                )
+                self._update_paragraph_render_order(paragraph)
+            except Exception:
+                paragraph.pdf_paragraph_composition = saved
+                logger.exception(
+                    "Failed to retypeset a moved figure-gap column, rolled back."
+                )
 
     def _recompute_rendered_box(
         self, paragraph: il_version_1.PdfParagraph
@@ -2967,6 +3623,32 @@ class Typesetting:
         if len(paragraphs) < 2:
             return
 
+        from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+            line_edge_ids,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_flow_stack import _planned_ids
+        from babeldoc.format.pdf.document_il.utils.rect_flow_stack import _rect_links
+        from babeldoc.format.pdf.document_il.utils.rect_flow_stack import list_links_on
+        from babeldoc.format.pdf.document_il.utils.same_baseline import (
+            seat_below_kept_ink,
+        )
+        from babeldoc.format.pdf.document_il.utils.shaped_pocket_stack import (
+            pocket_links_on,
+        )
+
+        planned_ids = _planned_ids(page)
+        kept_ink = line_edge_ids(page)
+        anchored_ids = (
+            kept_ink
+            | set(_rect_links(page))
+            | set(list_links_on(page))
+            | set(pocket_links_on(page))
+        )
+        floor_y = None
+        crop = getattr(page, "cropbox", None)
+        crop_box = getattr(crop, "box", None) if crop is not None else None
+        if crop_box is not None and crop_box.y is not None:
+            floor_y = float(crop_box.y)
         rendered_boxes: dict[int, Box] = {}
         for p in paragraphs:
             box = self._recompute_rendered_box(p)
@@ -2990,6 +3672,30 @@ class Typesetting:
                         continue
                     b1 = rendered_boxes.get(id(p1))
                     b2 = rendered_boxes.get(id(p2))
+                    # Chinese leading hangs past a scanned contour. The
+                    # contour stays. The paragraph under that ink moves down.
+                    if seat_below_kept_ink(
+                        p1,
+                        p2,
+                        b1,
+                        b2,
+                        keep_ids=kept_ink,
+                        anchored_ids=anchored_ids,
+                        floor_y=floor_y,
+                    ):
+                        for moved in (p1, p2):
+                            seated = self._recompute_rendered_box(moved)
+                            if seated is not None:
+                                rendered_boxes[id(moved)] = seated
+                        overlap_found = True
+                        continue
+                    # A failed retypeset puts the packed line back on top of
+                    # its neighbor. The plan already placed these.
+                    if (
+                        getattr(p1, "layout_region_id", None) in planned_ids
+                        or getattr(p2, "layout_region_id", None) in planned_ids
+                    ):
+                        continue
                     if b1 is None or b2 is None:
                         continue
                     if not self._bbox_overlap(b1, b2):
@@ -3021,7 +3727,6 @@ class Typesetting:
                         continue
 
                     overlap_found = True
-
                     if move.box is None:
                         continue
 
@@ -3291,6 +3996,8 @@ class Typesetting:
         frame (``self._wrap_enabled``), else the translation config default.
         Fallback retries pass ``wrap_enabled=False`` — no instance disable flag.
         """
+        if getattr(self, "_rect_fill_active", False):
+            return None
         enabled = getattr(self, "_wrap_enabled", None)
         if enabled is None:
             enabled = layout_intent_wrap_enabled(
@@ -3415,8 +4122,32 @@ class Typesetting:
         """Line residual pockets via LineIntervalPlan (Intent → intervals).
 
         Architecture: docs/line-interval-architecture.md. Typesetting only wires.
+        A frozen figure pocket is the interval. It is not the English line.
         """
-        wrap_enabled = getattr(self, "_wrap_enabled", None)
+        line_edges = getattr(self, "_line_edges", None)
+        if line_edges is not None:
+            from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+                interval_for_line_edges,
+            )
+
+            found = interval_for_line_edges(
+                line_edges, line_idx, y_bottom, y_top
+            )
+            if found is None:
+                # No common interval. An empty list becomes the full box
+                # in the capacity path and would cover the obstacle.
+                anchor = box.x if box is not None and box.x is not None else 0.0
+                return [(float(anchor), float(anchor))]
+            return [found]
+        pocket = getattr(self, "_pocket_link", None)
+        if pocket is not None:
+            from babeldoc.format.pdf.document_il.utils.shaped_pocket_stack import (
+                interval_for_pocket,
+            )
+
+            return [interval_for_pocket(pocket, line_idx, y_bottom, y_top)]
+        rect_fill = getattr(self, "_rect_fill_active", False)
+        wrap_enabled = False if rect_fill else getattr(self, "_wrap_enabled", None)
         if wrap_enabled is None:
             wrap_enabled = layout_intent_wrap_enabled(
                 getattr(self, "translation_config", None)
@@ -3441,7 +4172,11 @@ class Typesetting:
             box,
             attempt=attempt,
             wrap_enabled=bool(wrap_enabled),
-            zone_index=getattr(self, "_current_zone_index", None),
+            zone_index=(
+                None
+                if rect_fill
+                else getattr(self, "_current_zone_index", None)
+            ),
             reference_widths=reference_widths,
             alignment=alignment,
             cap_available=_cap,
@@ -3582,6 +4317,9 @@ class Typesetting:
             alignment=alignment,
         )
         if not intervals:
+            if getattr(self, "_line_edges", None) is not None:
+                anchor = box.x if box is not None and box.x is not None else 0.0
+                return 0.0, [(float(anchor), float(anchor))]
             return 0.0, [(box.x, box.x2)]
 
         # Match placement: hang = leftmost inset on wrap lines (not a parallel x)
@@ -3633,6 +4371,7 @@ class Typesetting:
         line_skip: float,
         reference_widths: list[float] | None = None,
         paragraph: il_version_1.PdfParagraph | None = None,
+        font_size: float | None = None,
     ) -> list[float]:
         """估算每行的可用宽度（用于 DP 断行优化）。
 
@@ -3651,6 +4390,9 @@ class Typesetting:
         query_h = max(max_unit_height, avg_height)
 
         y = box.y2 - avg_height
+        descent = source_descent(typesetting_units)
+        if box.y is not None and font_size is not None and descent is not None:
+            y = source_baseline(float(box.y), font_size, descent, y)
         line_idx = 0
         align = (
             self._resolve_effective_alignment(
@@ -3693,16 +4435,31 @@ class Typesetting:
         decorative_tracking: float,
         reference_widths: list[float] | None = None,
         paragraph: il_version_1.PdfParagraph | None = None,
+        font_size: float | None = None,
     ) -> list[int] | None:
         """计算 DP 优化的断行位置。失败时返回 None。"""
         line_widths = self._estimate_line_widths(
             typesetting_units, box, scale, avg_height, line_skip,
             reference_widths=reference_widths,
             paragraph=paragraph,
+            font_size=font_size,
         )
         if not line_widths:
             return None
 
+        if self._centered_contour():
+            # Share the column. Packing each slab full puts the long line
+            # on the one wider step.
+            return centered_line_breaks(
+                typesetting_units,
+                line_widths,
+                scale,
+                decorative_tracking,
+            )
+        if self._sentence_flow():
+            return self._sentence_break_points(
+                typesetting_units, scale, paragraph
+            )
         return optimal_line_break(
             units=typesetting_units,
             line_widths=line_widths,
@@ -3712,6 +4469,73 @@ class Typesetting:
             # Explicit when typesetting to zh/ja/ko — do not rely only on auto-detect
             # of unit ratios (mixed Latin titles can mis-detect as non-CJK).
             cjk_mode=True if self.is_cjk else None,
+        )
+
+    def _centered_contour(self) -> bool:
+        """True when the paragraph sits on a centered line contour."""
+        link = getattr(self, "_line_edges", None)
+        return link is not None and getattr(link, "alignment", None) == "center"
+
+    def _sentence_flow(self) -> bool:
+        """True when the frame is a bound and the breaks follow the sentence."""
+        link = getattr(self, "_line_edges", None)
+        return link is not None and getattr(link, "flow", None) == "sentence"
+
+    def _seat_opening_pen(self, current_y, line_h, box, paragraph) -> float:
+        """Put an opening pen that sits above the scan onto the first sample.
+
+        The place loop queries the band above the pen. Headroom over the
+        first sample misses every slab, the contour refuses, and the
+        paragraph is left blank. A pen on or below the scan stays, so a
+        line that has already walked off the contour is still refused.
+        """
+        link = getattr(self, "_line_edges", None)
+        levels = tuple(getattr(link, "levels", ()) or ())
+        if not levels:
+            return current_y
+        high = max(float(level.top) for level in levels)
+        if float(current_y) <= high:
+            return current_y
+        query_h = float(line_h) if line_h and float(line_h) > 0 else 1.0
+        for host in (box, getattr(paragraph, "box", None)):
+            if host is None or getattr(host, "y2", None) is None:
+                continue
+            bottom = getattr(host, "y", None)
+            if bottom is not None and float(bottom) > high:
+                continue
+            host.y2 = high
+        return high - query_h
+
+    def _sentence_break_points(self, typesetting_units, scale, paragraph):
+        from babeldoc.format.pdf.document_il.midend.sentence_breaks import (
+            next_line_starts,
+        )
+        from babeldoc.format.pdf.document_il.midend.sentence_breaks import (
+            sentence_line_breaks,
+        )
+        from babeldoc.format.pdf.document_il.midend.sentence_breaks import (
+            source_lines_of,
+        )
+
+        link = getattr(self, "_line_edges", None)
+        edges = getattr(link, "edges", None) or ()
+        if not edges:
+            return None
+        frame = max(float(edge[1]) for edge in edges) - min(
+            float(edge[0]) for edge in edges
+        )
+        tracking = 0.0
+        if paragraph is not None and getattr(paragraph, "decorative_tracking", None):
+            tracking = paragraph.decorative_tracking * scale
+        return next_line_starts(
+            sentence_line_breaks(
+                typesetting_units,
+                frame,
+                scale,
+                source_lines_of(paragraph),
+                tracking,
+            ),
+            len(typesetting_units),
         )
 
     @staticmethod
@@ -3798,6 +4622,42 @@ class Typesetting:
             return available_x, cap2
         return available_x, available_x2
 
+    def _refuse_unplaceable_contour(
+        self,
+        left: float,
+        right: float,
+        y: float,
+        paragraph: il_version_1.PdfParagraph,
+    ) -> bool:
+        """Stop a contour line whose interval cannot hold a glyph.
+
+        A missed contour is stored as a zero-width anchor so the capacity
+        path cannot expand it to the column. Painting at that anchor stacks
+        glyphs downward. Record the line and leave it, and everything after
+        it, unplaced.
+        """
+        if getattr(self, "_line_edges", None) is None:
+            return False
+        if float(right) - float(left) >= 1.0:
+            return False
+        box = getattr(paragraph, "box", None)
+        anchor = float(left)
+        if box is not None and getattr(box, "x", None) is not None:
+            anchor = float(box.x)
+        lines = getattr(self, "_unplaceable_lines", None)
+        if lines is None:
+            lines = []
+            self._unplaceable_lines = lines
+        lines.append(
+            {
+                "reason": "unplaceable_contour",
+                "y": float(y),
+                "anchor": anchor,
+                "debug_id": getattr(paragraph, "debug_id", None),
+            }
+        )
+        return True
+
     def _layout_typesetting_units(
         self,
         typesetting_units: list[TypesettingUnit],
@@ -3822,10 +4682,41 @@ class Typesetting:
         Returns:
             tuple[list[TypesettingUnit], bool]: (已布局的排版单元列表，是否所有单元都放得下)
         """
+        # One call, one report. Scale search calls this again per attempt.
+        self._unplaceable_lines = []
+        if break_points is None and self._sentence_flow():
+            break_points = self._sentence_break_points(
+                typesetting_units, scale, paragraph
+            )
         # 预处理 break_points：转为 set 以加速 O(1) 查找
         if break_points is not None and not isinstance(break_points, set):
             break_points = set(break_points)
-        if reference_widths is None:
+        self._sentence_extend_to = None
+        sentence_chars = None
+        if self._sentence_flow():
+            from babeldoc.format.pdf.document_il.midend.sentence_breaks import (
+                close_ahead,
+            )
+
+            sentence_chars = [
+                " "
+                if getattr(unit, "is_space", False)
+                else (unit.try_get_unicode() or "")
+                for unit in typesetting_units
+            ]
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            uses_rect_column_fill,
+        )
+
+        self._rect_fill_active = uses_rect_column_fill(paragraph)
+        if (
+            getattr(self, "_pocket_link", None) is not None
+            or getattr(self, "_line_edges", None) is not None
+        ):
+            self._rect_fill_active = False
+        if self._rect_fill_active or getattr(self, "_line_edges", None) is not None:
+            reference_widths = None
+        elif reference_widths is None:
             reference_widths = self._extract_original_line_widths(paragraph)
         layout_line_idx = 0
 
@@ -3841,6 +4732,10 @@ class Typesetting:
             font_size = statistics.mode(font_sizes)
         except statistics.StatisticsError:
             font_size = sum(font_sizes) / len(font_sizes) if font_sizes else 10.0
+        if getattr(self, "_line_edges", None) is not None:
+            pitched = contour_line_skip(self._line_edges, font_size)
+            if pitched is not None:
+                line_skip = pitched
 
         space_width = (
             self.font_mapper.base_font.char_lengths("你", font_size * scale)[0] * 0.5
@@ -3863,6 +4758,37 @@ class Typesetting:
 
         # 初始化位置为右上角，并减去一个平均行高
         current_y = box.y2 - avg_height
+        descent = source_descent(typesetting_units)
+        if box.y is not None and descent is not None:
+            current_y = source_baseline(
+                float(box.y), float(font_size), descent, current_y
+            )
+        from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+            contour_span,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            drop_below_display_band,
+        )
+
+        # Sentence flow already sits on the scanned tops. A title bar that
+        # the page art covers must not push those lines down and shrink
+        # the face to fit the leftover box. A stepped line uses its own
+        # width, so a side quote does not catch a line that stops short.
+        if not self._sentence_flow():
+            current_y = drop_below_display_band(
+                paragraph,
+                current_y,
+                avg_height,
+                getattr(self, "_current_page", None),
+                contour_span(
+                    getattr(self, "_line_edges", None),
+                    current_y,
+                    avg_height,
+                ),
+            )
+            current_y = self._seat_opening_pen(
+                current_y, avg_height, box, paragraph
+            )
         box = copy.deepcopy(box)
 
         # Multi-interval pockets for this y-band (PR-06)
@@ -3880,12 +4806,28 @@ class Typesetting:
             ocr_workaround=ocr_mode,
             is_cjk=bool(self.is_cjk),
         )
-        # Figure-wrap pin flush: LTR placement leaves underfilled CJK mid-pocket
-        # unless flushed to the pinned edge (EN nearly fills so left-align
-        # looked right-pinned; CJK often does not). LEFT_FIXED → left;
-        # RIGHT_FIXED / legacy → right. rect_reflow keeps the alignment above.
+        if self._rect_fill_active:
+            # One column measure, flush left. Do not replay English line widths
+            # or a detected center.
+            alignment = "left"
+            reference_widths = None
+        # A figure pocket flushes to its pin. A rect column in that gap
+        # stays left, so the short last line starts at the gap's left.
+        pocket = getattr(self, "_pocket_link", None)
+        if pocket is not None:
+            alignment = pocket_alignment(
+                paragraph, getattr(pocket, "free_side", None)
+            )
+        if getattr(self, "_line_edges", None) is not None:
+            # The link carries the alignment. A body fill stays left.
+            alignment = getattr(self._line_edges, "alignment", None) or "left"
+            reference_widths = None
         wrap_active = self._active_wrap(paragraph, box)
-        if wrap_active is not None:
+        if (
+            wrap_active is not None
+            and pocket is None
+            and getattr(self, "_line_edges", None) is None
+        ):
             alignment = apply_wrap_flush(paragraph, alignment)
             audit = getattr(self, "_page_layout_audit", None)
             if audit is not None:
@@ -4041,6 +4983,20 @@ class Typesetting:
             if advanced is not None:
                 interval_idx, available_x, available_x2, current_x = advanced
             fits_current = current_x + effective_width <= available_x2 + 1e-6
+            # One or two characters short of 。 or ， stay on this line.
+            close_break = False
+            if sentence_chars is not None:
+                extend_to = self._sentence_extend_to
+                if extend_to is not None and i > extend_to:
+                    close_break = True
+                    self._sentence_extend_to = None
+                elif extend_to is not None and i <= extend_to:
+                    fits_current = True
+                elif not fits_current:
+                    close_at = close_ahead(sentence_chars, i)
+                    if close_at is not None:
+                        fits_current = True
+                        self._sentence_extend_to = close_at
             remaining = self._remaining_capacity_on_line(
                 current_x, intervals, interval_idx
             )
@@ -4051,8 +5007,16 @@ class Typesetting:
             from babeldoc.format.pdf.document_il.utils.box_expand import (
                 is_left_gutter_bar,
             )
+            rect_fill = getattr(self, "_rect_fill_active", False)
+            # A figure frame keeps punctuation inside the edge. Kinsoku
+            # still decides the break. The line is aligned to the frame
+            # afterwards, so a comma does not hang out past the contour.
             allow_hung = unit.is_hung_punctuation and not (
-                is_design_column_role(paragraph) or is_left_gutter_bar(box)
+                is_design_column_role(paragraph)
+                or is_left_gutter_bar(box)
+                or rect_fill
+                or getattr(self, "_pocket_link", None) is not None
+                or getattr(self, "_line_edges", None) is not None
             )
             dp_break = (
                 break_points is not None
@@ -4062,7 +5026,14 @@ class Typesetting:
             # Greedy wrap only when the unit cannot sit in the current pocket.
             # Skip English "2× open-paren" early wrap on CJK/OCR — that left
             # 「第11卷（」 alone on a line before 1989.
-            need_break = dp_break or (
+            if (
+                self._sentence_extend_to is not None
+                and i <= self._sentence_extend_to
+                and break_points is not None
+                and i in break_points
+            ):
+                self._sentence_extend_to = None
+            need_break = close_break or dp_break or (
                 not allow_hung and (
                     (not fits_current)
                     or (
@@ -4098,9 +5069,13 @@ class Typesetting:
                     from babeldoc.format.pdf.document_il.utils.box_expand import (
                         is_left_gutter_bar,
                     )
-                    skip_orphan_suppress = is_design_column_role(
-                        paragraph
-                    ) or is_left_gutter_bar(box)
+                    skip_orphan_suppress = (
+                        is_design_column_role(paragraph)
+                        or is_left_gutter_bar(box)
+                        or getattr(self, "_rect_fill_active", False)
+                        or self._centered_contour()
+                        or getattr(self, "_line_edges", None) is not None
+                    )
                     if not skip_orphan_suppress:
                         need_break = False
             # Units re-emitted on the next line when we pull illegal EOL tails
@@ -4108,6 +5083,9 @@ class Typesetting:
             pull_to_next: list[TypesettingUnit] = []
             orphan_pull_back = False
             if need_break and current_line_heights:
+                # 57|% and 57<zwsp>|% both have to move the digits with the percent.
+                if _unit_char(unit) in _PERCENT_AFTER_DIGIT:
+                    _stick_number_to_percent(typeset_units, line_start_idx)
                 # If breaking here would end the line after a non-breakable unit
                 # (感|情, 第11卷（|1989), pull that tail onto the new line.
                 while len(typeset_units) > line_start_idx:
@@ -4128,6 +5106,8 @@ class Typesetting:
                     getattr(self, "is_cjk", False)
                     and i < len(typesetting_units) - 1
                     and len(typeset_units) > line_start_idx
+                    and not self._centered_contour()
+                    and not self._sentence_flow()
                 ):
                     line_units = typeset_units[line_start_idx:]
                     n_non_space = sum(1 for u in line_units if not u.is_space)
@@ -4199,8 +5179,15 @@ class Typesetting:
                             current_x = available_x
                             all_units_fit = False
                 else:
-                    # 检测 DP 模式下贪心是否插入了额外断行
-                    if not dp_break and break_points is not None:
+                    # 检测 DP 模式下贪心是否插入了额外断行。
+                    # Sentence flow already broke on the sentence. A placer
+                    # wrap inside the frame is that line's own width, not a
+                    # failed plan, so it must not shrink the whole paragraph.
+                    if (
+                        not dp_break
+                        and break_points is not None
+                        and not self._sentence_flow()
+                    ):
                         dp_break_mismatch = True
                     # Orphan pull-back may leave the current line empty (its
                     # 1–2 units moved to the next line); heights default to 0
@@ -4224,13 +5211,26 @@ class Typesetting:
                         len(typeset_units),
                         line_available_x,
                         line_available_x2,
-                        alignment,
+                        self._alignment_in_frame(alignment),
                     )
                     line_start_idx = len(typeset_units)
 
                     current_y -= line_advance_distance(
                         font_size, scale, line_skip, mode_height, max_height
                     )
+                    if not self._sentence_flow():
+                        line_h = max(avg_height, max_height)
+                        current_y = drop_below_display_band(
+                            paragraph,
+                            current_y,
+                            line_h,
+                            getattr(self, "_current_page", None),
+                            contour_span(
+                                getattr(self, "_line_edges", None),
+                                current_y,
+                                line_h,
+                            ),
+                        )
                     line_ys.append(current_y)
                     line_height = 0.0
                     current_line_heights = []  # 清空当前行高度列表
@@ -4275,10 +5275,21 @@ class Typesetting:
                     current_x = available_x
                     line_available_x = intervals[0][0]
                     line_available_x2 = intervals[0][1]
+                    if self._refuse_unplaceable_contour(
+                        available_x, available_x2, current_y, paragraph
+                    ):
+                        all_units_fit = False
+                        break
 
                     # 检查是否超出底部边界
                     # if current_y - unit_height < box.y:
-                    if current_y < box.y:
+                    # A contour keeps going on the samples below a box that
+                    # only covers the first lines. Leaving the scan is the
+                    # unplaceable check above.
+                    if (
+                        current_y < box.y
+                        and getattr(self, "_line_edges", None) is None
+                    ):
                         all_units_fit = False
                         # 这里不要 break，继续排版剩余内容
 
@@ -4301,9 +5312,10 @@ class Typesetting:
                         pu.shift_x(current_x - old_x)
                         pu.shift_y(current_y - old_y)
                         typeset_units.append(pu)
+                        tracked_h = _marker_line_height(pu_h, pu, font_size)
                         if not pu.is_space:
-                            current_line_heights.append(pu_h)
-                        line_height = max(line_height, pu_h)
+                            current_line_heights.append(tracked_h)
+                        line_height = max(line_height, tracked_h)
                         current_x = pu.box.x2 if pu.box else current_x + pu_w
                         last_unit = pu
                     pull_to_next = []
@@ -4339,16 +5351,23 @@ class Typesetting:
                             current_x = available_x
                             all_units_fit = False
 
+            if self._refuse_unplaceable_contour(
+                available_x, available_x2, current_y, paragraph
+            ):
+                all_units_fit = False
+                break
+
             # 放置当前单元
             relocated_unit = unit.relocate(current_x, current_y, scale)
             typeset_units.append(relocated_unit)
 
             # 更新行高（所有单元，不仅限空格），用于 CJK 混排间距判断
-            line_height = max(line_height, unit_height)
+            tracked_height = _marker_line_height(unit_height, unit, font_size)
+            line_height = max(line_height, tracked_height)
 
             # 添加当前单元的高度到当前行高度列表
             if not unit.is_space:
-                current_line_heights.append(unit_height)
+                current_line_heights.append(tracked_height)
 
             prev_x = current_x
             # 更新 x 坐标
@@ -4369,7 +5388,7 @@ class Typesetting:
                 len(typeset_units),
                 line_available_x,
                 line_available_x2,
-                alignment,
+                self._alignment_in_frame(alignment, last=True),
             )
 
         # DP 模式下如果贪心插入了额外断行，说明 DP 的行宽估算与实际不匹配，
@@ -4385,6 +5404,25 @@ class Typesetting:
 
         return typeset_units, all_units_fit
 
+    def _alignment_in_frame(self, alignment: str, *, last: bool = False) -> str:
+        """A left frame meets both edges. Center and right stay as set.
+
+        The contour already set the line width. A centered line sits in
+        the middle. A right line sits on the frame's right. The last
+        line of a left frame keeps its own length.
+        """
+        framed = getattr(self, "_pocket_link", None) is not None or getattr(
+            self, "_line_edges", None
+        ) is not None
+        if (
+            last
+            or not framed
+            or alignment in ("center", "right")
+            or self._sentence_flow()
+        ):
+            return alignment
+        return "justify"
+
     @staticmethod
     def _apply_line_horizontal_alignment(
         typeset_units: list[TypesettingUnit],
@@ -4394,12 +5432,19 @@ class Typesetting:
         available_x2: float,
         alignment: str,
     ) -> None:
-        """Shift a completed line for center/right alignment.
+        """Shift a completed line for center/right/frame alignment.
 
         Units are first placed left-to-right starting at available_x.
         For center/right, compute the offset so the line sits correctly
-        within [available_x, available_x2].
+        within [available_x, available_x2]. Justify meets the frame edge.
         """
+        if alignment == "justify":
+            from babeldoc.format.pdf.document_il.utils.shaped_pocket_stack import (
+                align_frame_line,
+            )
+
+            align_frame_line(typeset_units[start:end], available_x2)
+            return
         if alignment not in ("center", "right") or start >= end:
             return
 
@@ -4468,7 +5513,9 @@ class Typesetting:
                 result.append(
                     TypesettingUnit(
                         char=composition.pdf_character,
-                        debug_info=paragraph.debug_info,
+                        debug_info=bool(
+                            getattr(composition.pdf_character, "debug_info", False)
+                        ),
                     ),
                 )
             elif composition.pdf_same_style_characters:
@@ -4684,36 +5731,56 @@ class Typesetting:
         """
         # 获取页面的裁剪框作为初始最小限制
         min_y = page.cropbox.box.y * 1.1
+        left, right = _downward_x_span(self, current_box)
+        link = getattr(self, "_line_edges", None)
+        edged = bool(getattr(link, "edges", None)) if link is not None else False
 
         # 检查所有可能的阻挡元素
         for para in page.pdf_paragraph:
             if para.box == current_box or para.box is None:  # 跳过当前段落
                 continue
             # 只考虑在当前段落下方且有水平重叠的元素
-            if para.box.y2 < current_box.y and not (
-                para.box.x >= current_box.x2 or para.box.x2 <= current_box.x
+            if para.box.y2 < current_box.y and _x_overlaps(
+                para.box.x, para.box.x2, left, right
             ):
                 min_y = max(min_y, para.box.y2)
         for char in page.pdf_character:
-            if char.box.y2 < current_box.y and not (
-                char.box.x >= current_box.x2 or char.box.x2 <= current_box.x
+            if char.box.y2 < current_box.y and _x_overlaps(
+                char.box.x, char.box.x2, left, right
             ):
                 min_y = max(min_y, char.box.y2)
         # 检查图形
         for figure in page.pdf_figure:
-            if figure.box.y2 < current_box.y and not (
-                figure.box.x >= current_box.x2 or figure.box.x2 <= current_box.x
+            if figure.box.y2 < current_box.y and _x_overlaps(
+                figure.box.x, figure.box.x2, left, right
             ):
                 min_y = max(min_y, figure.box.y2)
 
         # 检查排除区域（Quote 等）
         zone_index = getattr(self, "_current_zone_index", None)
         if zone_index:
+            from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+                covers_lower_span,
+            )
+
             for zone in zone_index.zones:
-                if zone.box.y2 < current_box.y and not (
-                    zone.box.x >= current_box.x2 or zone.box.x2 <= current_box.x
+                if not (
+                    zone.box.y2 < current_box.y
+                    and _x_overlaps(zone.box.x, zone.box.x2, left, right)
                 ):
-                    min_y = max(min_y, zone.box.y2)
+                    continue
+                # The next body block can be tagged quote because the
+                # column is indented. Its padded zone then stops the
+                # lines above one step short of that block.
+                if (
+                    edged
+                    and getattr(zone, "kind", None) == "quote"
+                    and covers_lower_span(
+                        zone.box.x, zone.box.x2, left, right
+                    )
+                ):
+                    continue
+                min_y = max(min_y, zone.box.y2)
 
         return min_y
 

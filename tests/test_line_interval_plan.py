@@ -7,6 +7,9 @@ from types import SimpleNamespace
 import pytest
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
+from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
+from babeldoc.format.pdf.document_il.midend.typesetting import source_baseline
+from babeldoc.format.pdf.document_il.midend.typesetting import source_descent
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
@@ -19,13 +22,10 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     allows_full_measure_escalation,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
-    clamp_callout_measure_to_design,
-)
-from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
-    is_design_column_role,
-)
-from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     attempt_chain_for_paragraph,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    clamp_callout_measure_to_design,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     full_measure_layout_box,
@@ -40,13 +40,21 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     infer_wrap_mode_from_line_boxes,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    is_design_column_role,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     layout_box_is_thin_vs_full_measure,
 )
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import pocket_alignment
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     resolve_line_interval_plan,
 )
-from babeldoc.format.pdf.document_il.utils.line_interval_plan import wrap_flush_alignment
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    wrap_flush_alignment,
+)
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import wrap_interval
+from babeldoc.format.pdf.document_il.utils.placement_paradigm import ParadigmMark
+from babeldoc.format.pdf.document_il.utils.placement_paradigm import PlacementParadigm
 
 
 class TestInferWrapMode:
@@ -280,6 +288,24 @@ class TestAttemptChainCallout:
             LayoutAttempt.PRIMARY
         ]
 
+    def test_cjk_gutter_quote_stays_primary(self):
+        quote = self._para(
+            LayoutIntentRole.WRAP_COLUMN,
+            Box(x=57.0, y=211.0, x2=205.0, y2=438.0),
+        )
+        quote.reference_metrics = ReferenceMetrics(
+            line_count=12,
+            avg_line_width=140.0,
+            last_line_width=80.0,
+            last_line_ratio=0.5,
+            font_size=22.0,
+        )
+        quote.layout_intent.wrap_shape = [(0.0, 148.0)]
+        assert attempt_chain_for_paragraph(quote, is_cjk=True) == [
+            LayoutAttempt.PRIMARY
+        ]
+        assert allows_full_measure_escalation(quote, is_cjk=True) is False
+
     def test_cjk_wrap_column_still_escalates(self):
         wrap = self._para(
             LayoutIntentRole.WRAP_COLUMN,
@@ -309,6 +335,19 @@ class TestAttemptChainCallout:
         assert attempt_chain_for_paragraph(wrap, is_cjk=True) == [
             LayoutAttempt.PRIMARY
         ]
+
+    def test_text_on_photo_stays_primary(self):
+        """On-figure words must not widen off the photo."""
+        para = self._para(
+            LayoutIntentRole.BODY,
+            Box(x=55, y=330, x2=250, y2=360),
+        )
+        para.layout_intent.text_on_photo = True
+        para.layout_intent.wrap_shape = [(0.0, 195.0), (0.0, 120.0)]
+        assert attempt_chain_for_paragraph(para, is_cjk=True) == [
+            LayoutAttempt.PRIMARY
+        ]
+        assert allows_full_measure_escalation(para, is_cjk=True) is False
 
     def test_cjk_pinned_body_stays_primary(self):
         """OA p59: wrap-beside-photo may land as BODY + LEFT_FIXED."""
@@ -555,3 +594,85 @@ class TestWrapFlushAlignment:
         # line width 30 → target left = 400-30 = 370
         assert units[0].box.x == pytest.approx(370.0, abs=0.1)
         assert units[2].box.x2 == pytest.approx(400.0, abs=0.1)
+
+
+def test_banner_baseline_is_the_english_baseline():
+    """Trajan 15pt. Anchor is the box top minus the em. y-down 141.295."""
+    y = source_baseline(646.865, 15.0, -256.0, 647.205)
+    assert y == pytest.approx(650.705, abs=0.01)
+    assert 792.0 - y == pytest.approx(141.295, abs=0.01)
+
+
+def test_heading_baseline_is_the_english_baseline():
+    """Palatino-Bold 16pt. y-down 187.539."""
+    y = source_baseline(597.037, 16.0, -464.0, 600.007)
+    assert y == pytest.approx(604.461, abs=0.01)
+    assert 792.0 - y == pytest.approx(187.539, abs=0.01)
+
+
+def test_a_tall_body_box_stays_on_its_anchor():
+    assert source_baseline(501.46, 12.0, -250.0, 579.46) == pytest.approx(579.46)
+
+
+def test_an_em_box_already_on_the_baseline_stays():
+    # Bottom and anchor are both the baseline. Adding the descender would lift it.
+    assert source_baseline(100.0, 12.0, -250.0, 100.0) == pytest.approx(100.0)
+
+
+def test_a_descender_bottom_under_an_em_top_stays_on_the_anchor():
+    # Recovered baseline equals the anchor, so the line is not raised.
+    assert source_baseline(97.0, 12.0, -250.0, 100.0) == pytest.approx(100.0)
+
+
+def test_a_non_positive_font_size_keeps_the_anchor():
+    assert source_baseline(646.865, 0.0, -256.0, 647.205) == pytest.approx(647.205)
+
+
+def test_source_descent_reads_the_first_usable_font():
+    bad = SimpleNamespace(original_font=SimpleNamespace(descent="nope"))
+    missing = SimpleNamespace(original_font=None)
+    good = SimpleNamespace(original_font=SimpleNamespace(descent=-256))
+    later = SimpleNamespace(original_font=SimpleNamespace(descent=-100))
+    assert source_descent([bad, missing, good, later]) == pytest.approx(-256.0)
+    assert source_descent([]) is None
+    assert source_descent([SimpleNamespace()]) is None
+
+
+def _rect_para(mode: WrapMode, paradigm: PlacementParadigm) -> PdfParagraph:
+    design = Box(x=102.0, y=100.0, x2=401.0, y2=421.0)
+    para = PdfParagraph(box=design, pdf_paragraph_composition=[], unicode="x")
+    para.layout_intent = LayoutIntent(
+        role=LayoutIntentRole.BODY,
+        design_box=design,
+        top_inset=0.0,
+        bottom_inset=0.0,
+        wrap_mode=mode,
+        wrap_shape=[(0.0, 299.0), (128.0, 171.0)],
+        paradigm_mark=ParadigmMark(paradigm, 0.9, "test"),
+    )
+    return para
+
+
+def test_a_rect_column_in_a_left_gap_stays_left():
+    para = _rect_para(WrapMode.RIGHT_FIXED, PlacementParadigm.RECT_REFLOW)
+    assert pocket_alignment(para, "left") == "left"
+
+
+def test_a_shaped_pocket_on_the_left_stays_right():
+    para = _rect_para(WrapMode.RIGHT_FIXED, PlacementParadigm.SHAPED_POCKET)
+    assert pocket_alignment(para, "left") == "right"
+
+
+def test_a_keep_current_quote_on_the_left_stays_right():
+    para = _rect_para(WrapMode.RIGHT_FIXED, PlacementParadigm.KEEP_CURRENT)
+    assert pocket_alignment(para, "left") == "right"
+
+
+def test_a_rect_column_keeps_left_when_the_figure_is_on_the_right():
+    para = _rect_para(WrapMode.LEFT_FIXED, PlacementParadigm.RECT_REFLOW)
+    assert pocket_alignment(para, "right") == "left"
+
+
+def test_a_figure_on_the_right_flushes_left():
+    para = _rect_para(WrapMode.LEFT_FIXED, PlacementParadigm.SHAPED_POCKET)
+    assert pocket_alignment(para, "right") == "left"

@@ -466,11 +466,13 @@ def test_gap_contract_first_pass_body_shifted_only_once():
         label="plain text",
     )
     # Wide body: left ink + right ink so x-overlap hits both carriers.
+    # Strictly under both ink bottoms. A top that only touches the
+    # carrier is a different paragraph and must not take this gap.
     body_chars = [
-        _ch(c, 40 + i * 14, 680, size=12.0, w=13.0)
+        _ch(c, 40 + i * 14, 660, size=12.0, w=13.0)
         for i, c in enumerate("左半正文共用")
     ] + [
-        _ch(c, 300 + i * 14, 680, size=12.0, w=13.0)
+        _ch(c, 300 + i * 14, 660, size=12.0, w=13.0)
         for i, c in enumerate("右半正文共用")
     ]
     body = _para(body_chars, label="plain text")
@@ -499,6 +501,49 @@ def test_gap_contract_first_pass_body_shifted_only_once():
     ]
     assert len(reservations) == 1
     assert len(skips) == 1
+
+
+def test_gap_contract_leaves_a_touching_paragraph_in_place():
+    """A block whose top meets the ink bottom is not the measured next.
+
+    The contract is the distance to the paragraph strictly below that
+    bottom. The block that only touches the bottom keeps its top.
+    """
+    upper = _para(
+        [
+            _ch(c, 100 + i * 20, 503.2, size=15.0, w=18.0)
+            for i, c in enumerate("上一段落")
+        ],
+        label="plain text",
+    )
+    touching = _para(
+        [
+            _ch(c, 120 + i * 16, 492.4, size=12.0, w=14.0)
+            for i, c in enumerate("紧挨着的段")
+        ],
+        label="plain text",
+    )
+    later = _para(
+        [
+            _ch(c, 120 + i * 16, 422.4, size=12.0, w=14.0)
+            for i, c in enumerate("更下面那段")
+        ],
+        label="plain text",
+    )
+    _attach_intent(upper, role=LayoutIntentRole.BODY, gap_contract=70.0)
+    _attach_intent(touching, role=LayoutIntentRole.BODY)
+    _attach_intent(later, role=LayoutIntentRole.BODY)
+    page = Page(
+        page_number=56,
+        mediabox=Box(x=0, y=0, x2=612, y2=792),
+        pdf_paragraph=[upper, touching, later],
+    )
+    touching_top = touching.box.y2
+    later_top = later.box.y2
+    report = apply_gap_contract_first_pass(page)
+    assert touching.box.y2 == touching_top
+    assert later.box.y2 == later_top
+    assert report.shifts == 0
 
 
 def test_gap_contract_first_pass_clamps_dy_to_24():

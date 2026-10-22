@@ -1,0 +1,45 @@
+{
+  "kind": "corpus",
+  "sample_index": 34,
+  "source_pdf_hash": "df6a5a8ba4abf34c78f7a437c890b0d07b2af81d4330a215bd38fb714e62764c",
+  "book": "Orgasmic Addiction",
+  "relpath": "Orgasmic Addiction/Orgasmic Addiction.pdf",
+  "page": 18,
+  "region_id": "f485823a951f06d225b8bbdee6588dd7",
+  "source_order": 9,
+  "lines": [
+    [
+      121.1,
+      572.57,
+      572.85
+    ],
+    [
+      121.1,
+      572.6,
+      557.85
+    ],
+    [
+      102.0,
+      572.6,
+      542.85
+    ],
+    [
+      102.0,
+      572.61,
+      527.85
+    ],
+    [
+      102.0,
+      206.94,
+      512.85
+    ]
+  ],
+  "predicted_base": "preserve",
+  "predicted_gate": "single_page",
+  "expected_base": "preserve",
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": true,
+  "agreement": true,
+  "reason": "The highlighted five-line drop-cap lead is a rectangle, so preserve is correct for this region. A right-edge cone on the same page is split into one-line blocks and is not this region."
+}

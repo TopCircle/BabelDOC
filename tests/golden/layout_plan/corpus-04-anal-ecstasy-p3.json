@@ -1,0 +1,70 @@
+{
+  "kind": "corpus",
+  "sample_index": 4,
+  "source_pdf_hash": "a0824285180f126dcd5345d56a07902ed3f50e6c182cf719c31a88ac59524f3a",
+  "book": "Anal Ecstasy",
+  "relpath": "Anal Ecstasy/Anal Ecstasy.pdf",
+  "page": 3,
+  "region_id": "af0fa5d8c262c4b1bb0b3404fac35f6b",
+  "source_order": 1,
+  "lines": [
+    [
+      56.0,
+      377.65,
+      659.44
+    ],
+    [
+      56.0,
+      369.09,
+      643.44
+    ],
+    [
+      56.0,
+      375.91,
+      627.44
+    ],
+    [
+      56.0,
+      350.21,
+      611.44
+    ],
+    [
+      56.0,
+      341.4,
+      595.44
+    ],
+    [
+      56.0,
+      345.56,
+      579.44
+    ],
+    [
+      56.0,
+      359.32,
+      563.44
+    ],
+    [
+      56.0,
+      348.81,
+      547.44
+    ],
+    [
+      56.0,
+      339.51,
+      531.44
+    ],
+    [
+      56.0,
+      192.61,
+      515.44
+    ]
+  ],
+  "predicted_base": "shaped_pocket",
+  "predicted_gate": "single_page",
+  "expected_base": "rect_flow",
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": true,
+  "agreement": false,
+  "reason": "Rectangular Introduction paragraph."
+}

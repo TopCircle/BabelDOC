@@ -6,6 +6,7 @@ Two matches conflict. A category name is never returned.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -22,17 +23,63 @@ class BlockEdges:
     marker: str
 
 
-def one_direction(values: Sequence[float]) -> bool:
-    """True when the min and the max both sit on an end index.
+@dataclass(frozen=True, slots=True)
+class Paradigm:
+    """One layout mode, system-defined or passed in later.
 
-    Equal values keep the earlier index.
+    A paradigm is maintained on its own. The pipeline only receives this
+    object. It does not grow a branch when a new mode is added.
+    ``name`` is a path such as ``rect/full_column``. A category is not a name.
+    ``fill`` is optional. A module without one still claims. Only the
+    matched object's own fill writes line edges.
+    ``alignment`` is ``left``, ``center``, or ``right``. ``flow`` is ``edge`` or
+    ``sentence``. Typesetting reads both from the link and does not name
+    the paradigm.
     """
-    count = len(values)
-    if count == 0:
+
+    name: str
+    threshold: float
+    claim: Callable[[BlockEdges, Sequence[Sequence[float]]], float | None]
+    fill: (
+        Callable[
+            [Sequence[Sequence[float]]],
+            tuple[tuple[float, float], ...],
+        ]
+        | None
+    ) = None
+    alignment: str = "left"
+    flow: str = "edge"
+
+    def __post_init__(self) -> None:
+        parts = self.name.split("/")
+        if len(parts) < 2 or any(part == "" for part in parts):
+            raise ValueError(f"{self.name} is not a paradigm path")
+        if isinstance(self.threshold, bool) or not isinstance(
+            self.threshold, (int, float)
+        ):
+            raise TypeError(f"{self.name} threshold must be a float")
+        if not callable(self.claim):
+            raise TypeError(f"{self.name} claim must be callable")
+        if self.fill is not None and not callable(self.fill):
+            raise TypeError(f"{self.name} fill must be callable")
+        if self.alignment not in ("left", "center", "right"):
+            raise ValueError(f"{self.name} alignment must be left, center, or right")
+        if self.flow not in ("edge", "sentence"):
+            raise ValueError(f"{self.name} flow must be edge or sentence")
+
+
+def one_direction(values: Sequence[float]) -> bool:
+    """True when the edge never reverses.
+
+    A step may stay, or keep moving the same way. One step the other
+    way is a fold. An empty edge is not one direction.
+    """
+    if len(values) == 0:
         return False
-    lowest = min(range(count), key=lambda index: values[index])
-    highest = max(range(count), key=lambda index: values[index])
-    return {lowest, highest} <= {0, count - 1}
+    deltas = [values[index + 1] - values[index] for index in range(len(values) - 1)]
+    forward = any(delta > 0.0 for delta in deltas)
+    back = any(delta < 0.0 for delta in deltas)
+    return not (forward and back)
 
 
 def pick(
@@ -64,3 +111,31 @@ def pick(
         return "unmatched", "", None
     residual = min(item[1] for item in scored)
     return "unmatched", "", residual
+
+
+FOUNDING_PARADIGMS = frozenset(
+    {
+        "rect/full_column",
+        "taper/left_pin",
+        "taper/right_pin",
+    }
+)
+
+
+def stand_down(
+    results: Sequence[tuple[str, float | None, float]],
+) -> tuple[tuple[str, float | None, float], ...]:
+    """Clear later shapes when a founding paradigm is under its threshold.
+
+    This is the only place a shape yields. A claim does not call another claim.
+    """
+    owned = any(
+        name in FOUNDING_PARADIGMS and residual is not None and residual < threshold
+        for name, residual, threshold in results
+    )
+    if not owned:
+        return tuple(results)
+    return tuple(
+        (name, residual if name in FOUNDING_PARADIGMS else None, threshold)
+        for name, residual, threshold in results
+    )

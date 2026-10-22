@@ -1136,6 +1136,7 @@ class ReferenceMetrics:
     last_line_ratio: float  # last_line_width / avg_line_width
     font_size: float  # mode of char font sizes
     per_line_widths: list = None  # width of each original line
+    line_texts: list | None = None  # original line strings, before translation
 
 
 @dataclass(slots=True)
@@ -1289,6 +1290,15 @@ class PdfParagraph:
     layout_intent: "LayoutIntent | None" = field(
         default=None, metadata={"type": "Ignore"}
     )
+    # Runtime id of the frozen LayoutPlan region. Not serialized.
+    layout_region_id: str | None = field(
+        default=None, metadata={"type": "Ignore"}
+    )
+    # Source line (left, right), top first, taken while the lines still
+    # exist. Not serialized. Translation removes the glyphs these came from.
+    source_line_edges: tuple | None = field(
+        default=None, metadata={"type": "Ignore"}
+    )
 
 
 @dataclass(slots=True)
@@ -1396,6 +1406,12 @@ class Page:
             "type": "Attribute",
             "required": True,
         },
+    )
+    # Frozen page plan. Not serialized.
+    layout_plan: object | None = field(default=None, metadata={"type": "Ignore"})
+    # Boxes hidden from one legacy pass. Not serialized. (y, y2, x, x2), y-up.
+    layout_held_spans: tuple | None = field(
+        default=None, metadata={"type": "Ignore"}
     )
 
 

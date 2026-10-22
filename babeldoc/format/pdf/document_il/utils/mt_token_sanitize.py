@@ -100,8 +100,9 @@ _ISOLATED_YOU_RE = re.compile(
     re.IGNORECASE,
 )
 # Single Latin letter between CJK (foreplay → 介绍e艺术).
+# G点 keeps its G. That letter is the glossary term, not a hyphen crumb.
 _ISOLATED_LATIN_LETTER_RE = re.compile(
-    r"(?<=[\u4e00-\u9fff])\s*[A-Za-z]\s*(?=[\u4e00-\u9fff])"
+    r"(?<=[\u4e00-\u9fff])\s*(?![Gg](?=\s*点))[A-Za-z]\s*(?=[\u4e00-\u9fff])"
 )
 
 
@@ -209,8 +210,10 @@ def _scrub_cjk_embedded_english(text: str) -> str:
         out,
         flags=re.I,
     )
+    # A single leftover article ("{v1}A 最近") is the same crumb as a word.
+    # {v1}G点 keeps the G.
     out = re.sub(
-        r"(\{v\d+\})\s*([A-Za-z]{2,12})(?=[\s\xa0\u3000]*[\u4e00-\u9fff])",
+        r"(\{v\d+\})\s*(?![Gg](?=[\s\xa0\u3000]*点))([A-Za-z]{1,12})(?=[\s\xa0\u3000]*[\u4e00-\u9fff])",
         r"\1",
         out,
     )

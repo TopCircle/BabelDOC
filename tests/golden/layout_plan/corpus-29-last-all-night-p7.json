@@ -1,0 +1,125 @@
+{
+  "kind": "corpus",
+  "sample_index": 29,
+  "source_pdf_hash": "62e0e4da5a65ab44bbeefea32b64db295febc62694e596780a3ef926b591fc2d",
+  "book": "Last All Night",
+  "relpath": "Last All Night/LAN Last All Night Volume 1.pdf",
+  "page": 7,
+  "region_id": "38b574e3453b7b82439077b1ff349bc9",
+  "source_order": 8,
+  "lines": [
+    [
+      54.0,
+      319.86,
+      500.51
+    ],
+    [
+      54.0,
+      561.88,
+      488.39
+    ],
+    [
+      54.0,
+      561.72,
+      476.26
+    ],
+    [
+      54.0,
+      346.65,
+      464.14
+    ],
+    [
+      54.0,
+      277.87,
+      439.95
+    ],
+    [
+      54.0,
+      561.53,
+      427.83
+    ],
+    [
+      54.0,
+      544.55,
+      415.7
+    ],
+    [
+      54.01,
+      333.0,
+      391.51
+    ],
+    [
+      54.01,
+      561.66,
+      379.39
+    ],
+    [
+      54.01,
+      561.81,
+      367.26
+    ],
+    [
+      54.01,
+      462.11,
+      355.14
+    ],
+    [
+      54.01,
+      308.93,
+      330.95
+    ],
+    [
+      54.01,
+      359.72,
+      318.83
+    ],
+    [
+      54.01,
+      285.23,
+      306.7
+    ],
+    [
+      54.01,
+      227.38,
+      294.65
+    ],
+    [
+      54.0,
+      347.61,
+      282.53
+    ],
+    [
+      54.0,
+      156.53,
+      270.4
+    ],
+    [
+      54.0,
+      562.04,
+      246.21
+    ],
+    [
+      54.0,
+      561.52,
+      234.09
+    ],
+    [
+      54.0,
+      352.1,
+      221.97
+    ],
+    [
+      54.0,
+      236.68,
+      197.78
+    ]
+  ],
+  "predicted_base": "shaped_pocket",
+  "predicted_gate": "single_page",
+  "expected_base": "rect_flow",
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": true,
+  "agreement": false,
+  "reason": "Twenty-one-line full-width prose block with no figure. shaped_pocket is a false positive; this block is rect_flow."
+}

@@ -1,0 +1,19 @@
+{
+  "kind": "corpus",
+  "sample_index": 24,
+  "source_pdf_hash": "66f9338e376d3af46463a01deee49bfcfef80e70a686f6b15a93c1484b7ed65d",
+  "book": "Forbidden Fruit",
+  "relpath": "Forbidden Fruit/Forbidden Fruit.pdf",
+  "page": 0,
+  "region_id": "11a967acd42aab84bdb32838cca85a4d",
+  "source_order": 0,
+  "lines": [],
+  "predicted_base": "preserve",
+  "predicted_gate": "image_only",
+  "expected_base": "preserve",
+  "expected_gate": "image_only",
+  "expected_modifiers": [],
+  "shape_judged": false,
+  "agreement": true,
+  "reason": "Cover image. image_only and preserve are correct."
+}

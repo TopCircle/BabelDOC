@@ -200,3 +200,20 @@ def test_scrub_formula_glued_latin():
     assert "enemas" not in out2.lower()
     assert "灌肠" in out2
     assert (normalize_translated_text("her 阴蒂夹在") or "").startswith("阴蒂")
+    leftover = normalize_translated_text(
+        "{v1}A 最近的一项研究表明，只有 57% 的女性",
+        keep_formula_placeholders=True,
+    ) or ""
+    assert leftover.startswith("{v1}")
+    assert "A" not in leftover
+    assert "最近" in leftover
+    assert "57%" in leftover
+    gspot = normalize_translated_text(
+        "{v1}G点：你一定要注意她的 G点，不觉得G点刺激。掌控她的G点",
+        keep_formula_placeholders=True,
+    ) or ""
+    assert "G点：" in gspot
+    assert "她的 G点" in gspot or "她的G点" in gspot
+    assert "G点刺激" in gspot
+    assert "掌控她的G点" in gspot
+    assert normalize_translated_text("介绍e艺术") == "介绍前戏艺术"

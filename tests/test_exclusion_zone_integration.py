@@ -78,6 +78,40 @@ class TestIsQuoteBlock:
         ]
         assert is_quote_block(para, page_width=612) is False
 
+    def _lines(self, spans):
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfLine
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
+
+        return [
+            PdfParagraphComposition(
+                pdf_line=PdfLine(
+                    box=il_version_1.Box(x=x, y=400.0 - 12 * i, x2=x2, y2=410.0 - 12 * i)
+                )
+            )
+            for i, (x, x2) in enumerate(spans)
+        ]
+
+    def test_a_pinned_column_with_a_short_tail_is_not_a_quote(self):
+        """The union is indented. The right edge is the body wall."""
+        para = self._make_para(199.0, 100.0, 512.0, 220.0)
+        para.pdf_paragraph_composition = self._lines(
+            [
+                (199.0, 512.0),
+                (205.0, 512.0),
+                (211.0, 512.0),
+                (217.0, 512.0),
+                (220.0, 428.0),
+            ]
+        )
+        assert is_quote_block(para, page_width=612) is False
+
+    def test_a_rectangular_quote_with_line_boxes_stays_a_quote(self):
+        para = self._make_para(100.0, 100.0, 400.0, 220.0)
+        para.pdf_paragraph_composition = self._lines(
+            [(100.0, 400.0), (100.0, 400.0), (100.0, 400.0), (100.0, 400.0)]
+        )
+        assert is_quote_block(para, page_width=612) is True
+
     def test_oa_p19_tip_crumb_not_quote(self):
         """OA p19 cone-tip fallback_line crumb must not become a pull-quote."""
         para = self._make_para(502.4, 228.0, 569.5, 240.0)

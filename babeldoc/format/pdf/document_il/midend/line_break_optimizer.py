@@ -293,9 +293,12 @@ def _line_cost(
             # lines so the tail could grow).
             raggedness = 0.0
         else:
-            slack = max(
+            # 80pt is the wide-column floor. On a wrap gap it is a hole:
+            # a comma 60pt early counts as full, and the next line sticks out.
+            # 18% of a 470pt column is still past 80, so that column stays put.
+            slack = min(
                 CJK_PUNCT_FILL_SLACK_PT,
-                available_width * CJK_PUNCT_FILL_SLACK_RATIO,
+                max(12.0, available_width * CJK_PUNCT_FILL_SLACK_RATIO),
             )
             if ends_with_punct and remaining <= slack:
                 raggedness = 0.0
@@ -321,3 +324,239 @@ def _line_cost(
         raggedness += widow_penalty
 
     return raggedness
+
+
+def centered_line_breaks(
+    units: list[TypesettingUnit],
+    line_widths: list[float],
+    scale: float,
+    decorative_tracking: float = 0.0,
+) -> list[int] | None:
+    """Breaks that keep a centered column within about one character.
+
+    Each line stays inside its slab. A line that cannot hold the shared
+    count stays shorter. The extra characters go to the wider slabs.
+    """
+    specs = _ink_specs(units, scale, decorative_tracking)
+    ink = sum(1 for _width, is_ink, _can in specs if is_ink)
+    if ink <= 3 or not line_widths:
+        return None
+    caps = _slab_caps(specs, line_widths)
+    if caps is None:
+        return None
+    glyphs = []
+    for index, ((width, is_ink, can), unit) in enumerate(
+        zip(specs, units, strict=True)
+    ):
+        if is_ink:
+            glyphs.append((index, width, can, unit.try_get_unicode() or ""))
+    counts = _place_legal(glyphs, caps, line_widths, specs)
+    if counts is None:
+        return None
+    return _breaks_for_counts(specs, counts, line_widths)
+
+
+def _ink_specs(
+    units: list[TypesettingUnit],
+    scale: float,
+    decorative_tracking: float,
+) -> list[tuple[float, bool, bool]]:
+    specs = []
+    for unit in units:
+        width = unit.width * scale
+        if decorative_tracking and not unit.is_space:
+            width += decorative_tracking
+        specs.append((width, not unit.is_space, bool(unit.can_break_line)))
+    return specs
+
+
+def _slab_caps(
+    specs: list[tuple[float, bool, bool]],
+    line_widths: list[float],
+) -> list[int] | None:
+    """How many characters each slab holds. One em is the median advance."""
+    advances = [width for width, is_ink, _can in specs if is_ink and width > 0]
+    if not advances:
+        return None
+    advances.sort()
+    em = advances[len(advances) // 2]
+    return [max(int((slab + 1e-6) // em), 1) for slab in line_widths]
+
+
+def _prefix_len(caps: list[int], ink: int) -> int | None:
+    """Shortest run of slabs that can hold `ink` characters."""
+    room = 0
+    for index, cap in enumerate(caps):
+        room += cap
+        if room >= ink:
+            return index + 1
+    return None
+
+
+def _glyph_span_fits(
+    specs: list[tuple[float, bool, bool]],
+    glyphs: list[tuple[int, float, bool, str]],
+    count: int,
+    slab: float,
+) -> bool:
+    spec_start = glyphs[0][0]
+    spec_end = glyphs[count - 1][0]
+    total = sum(width for width, _ink, _can in specs[spec_start : spec_end + 1])
+    return total <= slab + 0.05
+
+
+# A short last line is normal. Ending on these is a better tie-break than
+# cutting the next word, when the column stays about as even either way.
+_SOFT_LINE_END = frozenset("和与或而并及")
+
+
+def _place_legal(
+    glyphs: list[tuple[int, float, bool, str]],
+    caps: list[int],
+    slabs: list[float],
+    specs: list[tuple[float, bool, bool]],
+) -> list[int] | None:
+    """Share characters, then slide a break off a word.
+
+    A planned line may end on the first character of a dictionary word.
+    That break is illegal, so the line moves by one or two characters and
+    the rest of the column is shared again. A line of one or two characters
+    is kept only when no nearby break avoids it.
+    """
+    ink = len(glyphs)
+    if ink == 0:
+        return []
+    n_lines = _prefix_len(caps, ink)
+    if n_lines is None:
+        return None
+    counts = _share_counts(caps[:n_lines], ink)
+    if not counts:
+        return None
+    if n_lines == 1:
+        if _glyph_span_fits(specs, glyphs, ink, slabs[0]):
+            return [ink]
+        return None
+    return _slide_first(glyphs, caps, slabs, specs, counts[0])
+
+
+def _share_rank(
+    counts: list[int],
+    target: int,
+    glyphs: list[tuple[int, float, bool, str]],
+) -> tuple[int, int, int, int, int, int]:
+    """Lower is closer to an even column. A short widow ranks worst.
+
+    The last line may be a character or two shorter without counting as a
+    spike. When two shares are equally even, prefer a break after 和/而/并.
+    """
+    widow = 0 if min(counts) >= 3 else 1
+    tail = 0
+    body = counts
+    if len(counts) >= 2 and counts[-1] <= counts[-2]:
+        body = counts[:-1]
+        short = counts[-2] - counts[-1]
+    else:
+        short = 0
+        if len(counts) >= 2:
+            tail = counts[-1] - counts[-2]
+    gaps = [abs(left - right) for left, right in zip(body, body[1:], strict=False)]
+    worst = max(gaps) if gaps else 0
+    if short > 2:
+        worst = max(worst, short - 2)
+    plain = 0
+    cursor = 0
+    for count in counts[:-1]:
+        cursor += count
+        if glyphs[cursor - 1][3] not in _SOFT_LINE_END:
+            plain += 1
+    return (widow, worst, tail, sum(gaps), plain, abs(counts[0] - target))
+
+
+def _slide_first(
+    glyphs: list[tuple[int, float, bool, str]],
+    caps: list[int],
+    slabs: list[float],
+    specs: list[tuple[float, bool, bool]],
+    target: int,
+) -> list[int] | None:
+    """Move the first break onto a character that may end a line.
+
+    Among the legal slides, keep the one whose lines stay nearest each
+    other. A last line longer than the line above it is the spike a
+    centered column shows, so that costs more than being one character
+    off the share.
+    """
+    ink = len(glyphs)
+    best: list[int] | None = None
+    best_rank: tuple[int, int, int, int, int, int] | None = None
+    for delta in (0, -1, 1, -2, 2):
+        count = target + delta
+        if count < 1 or count >= ink or not glyphs[count - 1][2]:
+            continue
+        if not _glyph_span_fits(specs, glyphs, count, slabs[0]):
+            continue
+        rest = _place_legal(glyphs[count:], caps[1:], slabs[1:], specs)
+        if rest is None:
+            continue
+        placed = [count, *rest]
+        rank = _share_rank(placed, target, glyphs)
+        if best_rank is None or rank < best_rank:
+            best = placed
+            best_rank = rank
+    return best
+
+
+def _share_counts(caps: list[int], total: int) -> list[int] | None:
+    """Spread `total` across the slabs. Neighbors differ by about one."""
+    if sum(caps) < total:
+        return None
+    counts = [min(cap, total // len(caps)) for cap in caps]
+    left = total - sum(counts)
+    for _step in range(left):
+        roomiest = max(
+            range(len(caps)),
+            key=lambda index: caps[index] - counts[index],
+        )
+        if caps[roomiest] <= counts[roomiest]:
+            return None
+        counts[roomiest] += 1
+    return counts
+
+
+def _breaks_for_counts(
+    specs: list[tuple[float, bool, bool]],
+    counts: list[int],
+    line_widths: list[float],
+) -> list[int] | None:
+    """Start index of each line after the first. None when a line leaves its slab."""
+    breaks: list[int] = []
+    line = 0
+    left = counts[0]
+    start = 0
+    for index, (_width, is_ink, can_break) in enumerate(specs):
+        if not is_ink:
+            continue
+        left -= 1
+        if left > 0:
+            continue
+        if not _span_fits(specs, start, index, line_widths[line]):
+            return None
+        if line >= len(counts) - 1:
+            return breaks
+        if not can_break:
+            return None
+        breaks.append(index + 1)
+        line += 1
+        left = counts[line]
+        start = index + 1
+    return None
+
+
+def _span_fits(
+    specs: list[tuple[float, bool, bool]],
+    start: int,
+    end: int,
+    slab: float,
+) -> bool:
+    total = sum(width for width, _ink, _can in specs[start : end + 1])
+    return total <= slab + 0.05

@@ -1,0 +1,19 @@
+{
+  "kind": "corpus",
+  "sample_index": 19,
+  "source_pdf_hash": "23ee42d4989fb3c8e06a210933d6dabec23219dc0253387fe85067e9e7910b01",
+  "book": "The Perfect Trigasm",
+  "relpath": "The Perfect Trigasm/The Perfect Trigasm.pdf",
+  "page": 3,
+  "region_id": "0c64e7d39c9eb76a2398fbeb56a5aa37",
+  "source_order": 0,
+  "lines": [],
+  "predicted_base": "preserve",
+  "predicted_gate": "spread",
+  "expected_base": "preserve",
+  "expected_gate": "spread",
+  "expected_modifiers": [],
+  "shape_judged": false,
+  "agreement": true,
+  "reason": "Facing-page contents spread. The spread gate is correct, so the page stays preserve and is not classified."
+}

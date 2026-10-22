@@ -1,0 +1,60 @@
+{
+  "kind": "corpus",
+  "sample_index": 1,
+  "source_pdf_hash": "036c7aeddccc31b0f4dbbb02d072c475c4414e088497f07a4353c8d15c3dd5fb",
+  "book": "7 day orgasm",
+  "relpath": "7 day orgasm/Day 1/Day 1.pdf",
+  "page": 1,
+  "region_id": "df22c30c1abf5c60e66dbb5ec6f41a01",
+  "source_order": 29,
+  "lines": [
+    [
+      129.0,
+      248.61,
+      400.76
+    ],
+    [
+      141.0,
+      234.01,
+      388.26
+    ],
+    [
+      129.0,
+      282.81,
+      373.26
+    ],
+    [
+      141.0,
+      179.1,
+      360.76
+    ],
+    [
+      129.0,
+      273.55,
+      345.76
+    ],
+    [
+      141.0,
+      187.44,
+      333.26
+    ],
+    [
+      129.0,
+      264.12,
+      318.26
+    ],
+    [
+      141.0,
+      175.0,
+      305.76
+    ]
+  ],
+  "predicted_base": "shaped_pocket",
+  "predicted_gate": "single_page",
+  "expected_base": "list",
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": true,
+  "agreement": false,
+  "reason": "Eight-line lesson list inside the contents panel. The block is a list, not a figure-wrap cone."
+}

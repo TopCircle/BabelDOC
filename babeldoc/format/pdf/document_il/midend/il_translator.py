@@ -469,12 +469,43 @@ class ILTranslator:
         # Lost at least one full sentence (EN 3 → ZH 2, etc.)
         return dst_n <= src_n - 1
 
+    def _translate_each_sentence(self, text: str) -> str | None:
+        """Translate one sentence at a time when a paragraph comes back short.
+
+        A fresh call of the whole paragraph often repeats the same omission.
+        Each sentence is a new request, then the pieces are put back together.
+        """
+        parts = self.split_sentences(text)
+        if len(parts) < 2:
+            return None
+        rendered: list[str] = []
+        for part in parts:
+            try:
+                piece = self.translate_engine.translate(part)
+            except Exception:
+                logger.warning(
+                    "Sentence retry failed for %r", part[:80], exc_info=True
+                )
+                return None
+            if not isinstance(piece, str) or not piece.strip():
+                return None
+            piece = piece.strip()
+            # A sentence that comes back without a stop still counts as one.
+            if part[-1:] in ".!?" and piece[-1:] not in "。！？.!?":
+                piece += "。"
+            rendered.append(piece)
+        return "".join(rendered)
+
     #: Sentence terminator split for the same-sentence duplication gate.
     #: Splits after sentence-ending punctuation, consuming following spaces,
     #: when the next sentence starts with a letter/digit/CJK (no whitespace
     #: required — CJK sentences run together after 。/！/？).
+    # Keep the stop (and a closing quote) on the sentence that owns it.
+    # ``"vulva." The`` and ``End. 3 days`` are two sentences. ``3.14`` is not.
+    # ``(?!\d)`` is only on the ASCII stop, so ``。3`` still splits.
     _DUP_SENT_SPLIT_RE = re.compile(
-        r"(?<=[.!?。！？])\s*(?=[A-Za-z0-9\u4e00-\u9fff])"
+        r"((?<!\d)(?:[.!?](?!\d)|[。！？])"
+        r"[\"'”’)\]]*)\s*(?=[A-Za-z0-9\u4e00-\u9fff])"
     )
     #: Token extraction for normalized sentence comparison (EN + CJK).
     _DUP_TOKEN_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]+")
@@ -484,7 +515,15 @@ class ILTranslator:
         """Split *text* into sentences on sentence-ending punctuation."""
         if not text:
             return []
-        return [s.strip() for s in cls._DUP_SENT_SPLIT_RE.split(text) if s.strip()]
+        parts: list[str] = []
+        for piece in cls._DUP_SENT_SPLIT_RE.split(text):
+            if not piece or not piece.strip():
+                continue
+            if parts and re.fullmatch(r"[.!?。！？\"'”’)\]]+", piece):
+                parts[-1] += piece
+                continue
+            parts.append(piece.strip())
+        return parts
 
     @classmethod
     def _sentence_tokens(cls, sentence: str) -> tuple[str, list[str]]:
@@ -648,8 +687,10 @@ class ILTranslator:
             return "第" + cls._cn_numeral(n) + "章"
 
         fixed = cls._MANGLED_BN_CHAPTER_RE.sub(_mangled, fixed)
-        if fixed == text:
-            return text  # nothing changed: keep markers untouched
+        # Deleting 〖Bn〗 is not a chapter edit. A bold name still needs
+        # the markers so the glossary can see the label.
+        if not protected and fixed == cls._RICH_TEXT_MARKER_RE.sub("", text):
+            return text
         return fixed
 
     def _maybe_write_skip_report(self) -> None:
@@ -1633,24 +1674,31 @@ class ILTranslator:
             text = self._style_right_placeholder_pattern.sub(_replace_token, text)
             return text
 
+        def append_plain(text: str) -> None:
+            # A formula bullet and a bold lead-in share one paragraph.
+            # The placeholder split used to drop 〖Bn〗 and paint the name
+            # in the body face. Parse those markers in the text around
+            # the placeholder. The bullet itself stays a formula.
+            if not text:
+                return
+            cleaned = remove_placeholder(text)
+            if not cleaned:
+                return
+            if input_text.style_spans:
+                result.extend(self._parse_style_markers(cleaned, input_text))
+                return
+            comp = PdfParagraphComposition()
+            comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
+            comp.pdf_same_style_unicode_characters.unicode = cleaned
+            comp.pdf_same_style_unicode_characters.pdf_style = input_text.base_style
+            result.append(comp)
+
         # 找到所有匹配
         last_end = 0
         for match in re.finditer(combined_pattern, output, flags=re.IGNORECASE):
             # 处理匹配之前的普通文本
             if match.start() > last_end:
-                text = output[last_end : match.start()]
-                if text:
-                    comp = PdfParagraphComposition()
-                    comp.pdf_same_style_unicode_characters = (
-                        PdfSameStyleUnicodeCharacters()
-                    )
-                    comp.pdf_same_style_unicode_characters.unicode = remove_placeholder(
-                        text,
-                    )
-                    comp.pdf_same_style_unicode_characters.pdf_style = (
-                        input_text.base_style
-                    )
-                    result.append(comp)
+                append_plain(output[last_end : match.start()])
 
             matched_text = match.group(0)
 
@@ -1715,15 +1763,7 @@ class ILTranslator:
 
         # 处理最后的普通文本
         if last_end < len(output):
-            text = output[last_end:]
-            if text:
-                comp = PdfParagraphComposition()
-                comp.pdf_same_style_unicode_characters = PdfSameStyleUnicodeCharacters()
-                comp.pdf_same_style_unicode_characters.unicode = remove_placeholder(
-                    text,
-                )
-                comp.pdf_same_style_unicode_characters.pdf_style = input_text.base_style
-                result.append(comp)
+            append_plain(output[last_end:])
 
         # Final safety net: strip any residual markers from ALL compositions.
         # This catches edge cases where placeholders or cache-reuse paths
@@ -2208,11 +2248,23 @@ class ILTranslator:
                         r"[. 。…，]{20,}", ".", translated_text
                     )
                     if self.translation_drops_sentences(text, translated_text):
-                        logger.warning(
-                            "Translation still drops sentences after retry; "
-                            f"keeping result. paragraph id: {paragraph.debug_id} "
-                            f"output={translated_text[:80]!r}"
-                        )
+                        rebuilt = self._translate_each_sentence(text)
+                        if rebuilt and (
+                            not self.translation_drops_sentences(text, rebuilt)
+                            or self.count_sentence_ends(rebuilt)
+                            > self.count_sentence_ends(translated_text)
+                        ):
+                            logger.warning(
+                                "Rebuilt a short translation sentence by sentence. "
+                                f"paragraph id: {paragraph.debug_id}"
+                            )
+                            translated_text = rebuilt
+                        else:
+                            logger.warning(
+                                "Translation still drops sentences after retry; "
+                                f"keeping result. paragraph id: {paragraph.debug_id} "
+                                f"output={translated_text[:80]!r}"
+                            )
 
                 # Chapter running titles: "Chapter N" and DeepLX-mangled
                 # 章b08 residue on every MT output (not only the retry path).

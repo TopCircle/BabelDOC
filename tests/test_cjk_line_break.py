@@ -342,6 +342,20 @@ class TestCJKCost:
             assert width / available >= 0.95 or punct_ok, (chunk, width, available)
         assert joined == text
 
+    def test_a_comma_far_from_a_narrow_gap_is_not_a_full_line(self):
+        """A 470pt column still treats 38pt of leftover comma as full.
+
+        A 193pt gap does not. 61pt early is a hole.
+        """
+        wide = _line_cost(
+            432, 470, 36, False, 500, cjk_mode=True, ends_with_punct=True
+        )
+        hole = _line_cost(
+            132, 193, 11, False, 500, cjk_mode=True, ends_with_punct=True
+        )
+        assert wide == 0.0
+        assert hole > 0.0
+
     def test_english_mode_unchanged(self):
         """英文模式不应受影响。"""
         cost = _line_cost(80, 100, 5, False, 500, cjk_mode=False)
@@ -565,3 +579,63 @@ class TestKinsoku:
                 assert units2[bp - 1].can_break_line, f"illegal after {prev_ch!r}"
                 assert prev_ch not in "（(", f"open paren at EOL before index {bp}"
                 assert not (prev_ch == "德" and units2[bp].try_get_unicode() == "里")
+
+    def test_percent_stays_on_the_same_line_as_its_digits(self):
+        """40% must not break as 4|0% or 40|%. A bare number may still end a line."""
+
+        class _U(MockUnit):
+            def __init__(self, **kw):
+                super().__init__(**kw)
+                self.can_break_line_cache = None
+
+            @property
+            def can_break_line(self):
+                if self.can_break_line_cache is not None:
+                    return self.can_break_line_cache
+                return self._can_break_line
+
+        def units_for(text: str):
+            built = []
+            for ch in text:
+                cjk = not (ch.isdigit() or ch in "%％ ")
+                built.append(
+                    _U(unicode=ch, width=10.0, is_cjk_char=cjk, is_space=ch == " ")
+                )
+            return built
+
+        text = "几乎是40%的差距"
+        units = units_for(text)
+        merge_cjk_units(units)
+        i4 = text.index("4")
+        i0 = text.index("0")
+        assert units[i4].can_break_line_cache is False
+        assert units[i0].can_break_line_cache is False
+        assert units[i4 - 1].can_break_line_cache is not False
+        breaks = optimal_line_break(
+            units, [50.0, 50.0, 50.0, 50.0], scale=1.0, space_width=5.0, cjk_mode=True
+        )
+        assert breaks is not None
+        for bp in breaks:
+            assert units[bp].try_get_unicode() not in {"%", "0"}
+            assert units[bp - 1].can_break_line
+
+        spaced = units_for("是40 %的")
+        merge_cjk_units(spaced)
+        assert spaced[1].can_break_line_cache is False  # 4|
+        assert spaced[2].can_break_line_cache is False  # 0|
+        assert spaced[3].can_break_line_cache is False  # space before %
+
+        bare_text = "一共40人"
+        bare = units_for(bare_text)
+        merge_cjk_units(bare)
+        assert bare[bare_text.index("4")].can_break_line_cache is False
+        assert bare[bare_text.index("0")].can_break_line_cache is not False
+
+        # NBSP or a zero-width mark between the digits and % still stays glued.
+        for glue in ("\u00a0", "\u200b"):
+            raw = f"一下。57{glue}% 的"
+            glued = units_for(raw)
+            merge_cjk_units(glued)
+            assert glued[raw.index("7")].can_break_line_cache is False
+            assert glued[raw.index(glue)].can_break_line_cache is False
+            assert glued[raw.index("。")].can_break_line_cache is not False

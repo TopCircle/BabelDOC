@@ -229,3 +229,45 @@ def _monotone_share(values: list[float], *, outward: str) -> float:
     else:
         held = sum(1 for delta in deltas if delta >= -_MAX_STEP_BACK)
     return held / len(deltas)
+
+
+def read_column_features(
+    line_boxes: list[tuple[float, float, float]],
+) -> _LineFeatures:
+    """Observable column geometry. This does not choose a strategy."""
+    return _line_features(line_boxes)
+
+
+def features_are_taper(features: _LineFeatures) -> bool:
+    """True when the shared taper test matches."""
+    return _is_taper(features)
+
+
+def features_are_stable_column(features: _LineFeatures) -> bool:
+    """True for a multi-line column whose left edge does not walk.
+
+    One line is not a column. A taper is not a rectangle.
+    """
+    return (
+        features.full_count >= 2
+        and features.left_range <= _STABLE_LEFT_RANGE
+        and not _is_taper(features)
+    )
+
+
+def shares_column_left(left_a: float, left_b: float) -> bool:
+    """True when two blocks use one column's left edge.
+
+    The tolerance is the stable-column range already used inside one
+    block. This does not choose a strategy.
+    """
+    return abs(left_a - left_b) <= _STABLE_LEFT_RANGE
+
+
+def taper_free_side(features: _LineFeatures) -> str | None:
+    """Which edge steps in, when the shared taper test matches."""
+    if _is_right_pin_taper(features):
+        return "left"
+    if _is_left_pin_taper(features):
+        return "right"
+    return None

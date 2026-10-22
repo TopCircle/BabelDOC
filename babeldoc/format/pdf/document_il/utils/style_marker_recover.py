@@ -26,6 +26,12 @@ logger = logging.getLogger(__name__)
 MARKER_PAIR_RE = re.compile(r"〖[Bb](\d+)〗([\s\S]*?)〖/[Bb]\1〗")
 # Single Latin token (no spaces)
 _LATIN_TOKEN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9'’\-]*$")
+# A short lead-in such as "Vulva:" — the whole span, not a sentence.
+_LABEL_RE = re.compile(r"^[^:：\n]{1,40}[:：]\s*$")
+# Opening name after an optional formula token. Stops at the first colon.
+_LEADING_LABEL_RE = re.compile(
+    r"^(?:\{v\d+\})?\s*([^：:\n。.]{1,20})([：:])"
+)
 
 
 class StyleSpan(NamedTuple):
@@ -127,6 +133,10 @@ def rewrap_styles_from_source(
             wraps.append((m.start(), m.end(), span.span_id, m.group(0)))
             break
 
+    label = _leading_label_wrap(output, ordered, present_ids, occupied)
+    if label is not None:
+        wraps.append(label)
+
     if not wraps:
         return None
 
@@ -168,24 +178,54 @@ def _is_latin_term(src: str) -> bool:
 
 
 def _term_pattern(src: str) -> re.Pattern[str]:
-    """Match source term; multi-word allows flexible whitespace."""
+    """Match source term; multi-word allows flexible whitespace.
+
+    A trailing colon also matches the fullwidth colon DeepLX writes.
+    """
     src = src.strip()
+    colon = ""
+    if src.endswith((":", "：")):
+        src = src[:-1].rstrip()
+        colon = "[：:]"
     words = src.split()
     if len(words) > 1:
         # ``Passion   Prescription`` / line-break spaces after MT
         body = r"\s+".join(re.escape(w) for w in words)
         if _is_latin_term(src):
-            return re.compile(
-                rf"(?<![A-Za-z0-9]){body}(?![A-Za-z0-9])",
-                re.IGNORECASE,
-            )
-        return re.compile(body, re.IGNORECASE)
+            body = rf"(?<![A-Za-z0-9]){body}(?![A-Za-z0-9])"
+        return re.compile(body + colon, re.IGNORECASE)
     if _is_latin_term(src):
-        return re.compile(
-            rf"(?<![A-Za-z0-9]){re.escape(src)}(?![A-Za-z0-9])",
-            re.IGNORECASE,
-        )
-    return re.compile(re.escape(src), re.IGNORECASE)
+        body = rf"(?<![A-Za-z0-9]){re.escape(src)}(?![A-Za-z0-9])"
+        return re.compile(body + colon, re.IGNORECASE)
+    return re.compile(re.escape(src) + colon, re.IGNORECASE)
+
+
+def _leading_label_wrap(
+    output: str,
+    spans: list[StyleSpan],
+    present_ids: set[int],
+    occupied: list[tuple[int, int]],
+) -> tuple[int, int, int, str] | None:
+    """Bold the opening name when MT translated the label but kept the colon.
+
+    Only one unmatched label span qualifies, and only the text before the
+    first colon. A sentence that dropped the colon is left alone.
+    """
+    pending = [
+        span
+        for span in spans
+        if span.span_id not in present_ids and _LABEL_RE.match((span.source_text or "").strip())
+    ]
+    if len(pending) != 1:
+        return None
+    found = _LEADING_LABEL_RE.match(output)
+    if found is None:
+        return None
+    start = found.start(1)
+    end = found.end(2)
+    if _overlaps(start, end, occupied):
+        return None
+    return start, end, pending[0].span_id, output[start:end]
 
 
 def _overlaps(a: int, b: int, occupied: list[tuple[int, int]]) -> bool:

@@ -1,0 +1,75 @@
+{
+  "kind": "corpus",
+  "sample_index": 35,
+  "source_pdf_hash": "df6a5a8ba4abf34c78f7a437c890b0d07b2af81d4330a215bd38fb714e62764c",
+  "book": "Orgasmic Addiction",
+  "relpath": "Orgasmic Addiction/Orgasmic Addiction.pdf",
+  "page": 58,
+  "region_id": "35bd6a9989bf501da1b9562ae6e21743",
+  "source_order": 10,
+  "lines": [
+    [
+      102.0,
+      334.0,
+      391.84
+    ],
+    [
+      102.0,
+      340.67,
+      376.84
+    ],
+    [
+      102.0,
+      342.65,
+      361.84
+    ],
+    [
+      102.0,
+      333.62,
+      346.84
+    ],
+    [
+      102.0,
+      325.63,
+      331.84
+    ],
+    [
+      102.0,
+      322.61,
+      316.84
+    ],
+    [
+      102.0,
+      320.65,
+      301.84
+    ],
+    [
+      102.0,
+      319.6,
+      286.84
+    ],
+    [
+      102.0,
+      318.62,
+      271.84
+    ],
+    [
+      102.0,
+      315.64,
+      256.84
+    ],
+    [
+      102.0,
+      296.32,
+      241.84
+    ]
+  ],
+  "predicted_base": "shaped_pocket",
+  "predicted_gate": "single_page",
+  "expected_base": "rect_flow",
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": true,
+  "agreement": false,
+  "reason": "The highlighted eleven-line block is a rectangle beside the upper part of the photo. The stepping lines that start with 'This move is a good one' sit below it and were not labeled."
+}

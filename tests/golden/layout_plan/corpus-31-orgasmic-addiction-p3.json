@@ -1,0 +1,50 @@
+{
+  "kind": "corpus",
+  "sample_index": 31,
+  "source_pdf_hash": "df6a5a8ba4abf34c78f7a437c890b0d07b2af81d4330a215bd38fb714e62764c",
+  "book": "Orgasmic Addiction",
+  "relpath": "Orgasmic Addiction/Orgasmic Addiction.pdf",
+  "page": 3,
+  "region_id": "6f4e2cd9ab899fb8303c8003ce3a0e71",
+  "source_order": 3,
+  "lines": [
+    [
+      102.0,
+      268.62,
+      646.84
+    ],
+    [
+      102.0,
+      270.64,
+      631.84
+    ],
+    [
+      102.0,
+      275.6,
+      616.84
+    ],
+    [
+      102.0,
+      278.03,
+      601.84
+    ],
+    [
+      102.0,
+      285.62,
+      586.84
+    ],
+    [
+      102.0,
+      212.78,
+      571.84
+    ]
+  ],
+  "predicted_base": "shaped_pocket",
+  "predicted_gate": "single_page",
+  "expected_base": "rect_flow",
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": true,
+  "agreement": false,
+  "reason": "Small rectangular intro paragraph beside the photo. Not a staircase."
+}

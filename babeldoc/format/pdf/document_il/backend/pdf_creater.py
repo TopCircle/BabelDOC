@@ -380,6 +380,49 @@ class CurveRenderUnit(RenderUnit):
         return True
 
 
+def _boxes_intersect(a, b) -> bool:
+    return a.x < b.x2 and b.x < a.x2 and a.y < b.y2 and b.y < a.y2
+
+
+def lift_text_above_covering_images(render_units: list[RenderUnit]) -> None:
+    """Draw a glyph after an image that would otherwise cover its strokes.
+
+    A photo is often painted later than the source text and clipped to the
+    original line gaps. Translated glyphs keep that early order and then move,
+    so the clip slits cut through the new strokes. Same-xobject images only.
+    """
+    images_by_xobj: dict[object, list[FormRenderUnit]] = {}
+    for unit in render_units:
+        if not isinstance(unit, FormRenderUnit):
+            continue
+        form = unit.form
+        if getattr(form, "form_type", None) != "image" or form.box is None:
+            continue
+        images_by_xobj.setdefault(unit.xobj_id, []).append(unit)
+    if not images_by_xobj:
+        return
+    for unit in render_units:
+        if not isinstance(unit, CharacterRenderUnit):
+            continue
+        images = images_by_xobj.get(unit.xobj_id)
+        if not images:
+            continue
+        char = unit.char
+        visual = getattr(char, "visual_bbox", None)
+        box = visual.box if visual is not None and visual.box is not None else char.box
+        if box is None:
+            continue
+        covering = [
+            image for image in images if _boxes_intersect(box, image.form.box)
+        ]
+        if not covering:
+            continue
+        top = max(image.render_order for image in covering)
+        if unit.render_order > top:
+            continue
+        unit.render_order = top + 1
+
+
 class RenderContext:
     """Context object containing shared state for rendering."""
 
@@ -947,7 +990,16 @@ class PDFCreater:
 
         # Convert forms to render units (page-level forms + forms from formulas)
         if not translation_config.skip_form_render:
-            all_forms = list(page.pdf_form) + formula_forms
+            from babeldoc.format.pdf.document_il.utils.line_raster import (
+                hides_translated_line,
+            )
+
+            page_forms = [
+                form
+                for form in page.pdf_form
+                if not hides_translated_line(form, page)
+            ]
+            all_forms = page_forms + formula_forms
             for i, form in enumerate(all_forms):
                 render_order = getattr(
                     form, "render_order", 50
@@ -999,6 +1051,7 @@ class PDFCreater:
                         CurveRenderUnit(curve, render_order, sub_render_order)
                     )
 
+        lift_text_above_covering_images(render_units)
         return render_units
 
     def render_units_to_stream(

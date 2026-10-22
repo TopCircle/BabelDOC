@@ -1,0 +1,55 @@
+{
+  "kind": "corpus",
+  "sample_index": 5,
+  "source_pdf_hash": "b5337000238da97a565966ca5dbc746165c925abb1cf5e86a59f7afdf36c56ea",
+  "book": "Anal Pleasure For Her",
+  "relpath": "Anal Pleasure For Her/Anal Pleasure For Her.pdf",
+  "page": 14,
+  "region_id": "f7fe9b9f11c36fa83db3edc480fc8e4d",
+  "source_order": 11,
+  "lines": [
+    [
+      102.0,
+      405.69,
+      226.85
+    ],
+    [
+      102.0,
+      401.97,
+      211.85
+    ],
+    [
+      102.0,
+      405.59,
+      196.86
+    ],
+    [
+      102.0,
+      405.51,
+      181.86
+    ],
+    [
+      102.0,
+      405.7,
+      166.87
+    ],
+    [
+      102.0,
+      573.98,
+      151.87
+    ],
+    [
+      102.0,
+      547.8,
+      136.88
+    ]
+  ],
+  "predicted_base": "shaped_pocket",
+  "predicted_gate": "single_page",
+  "expected_base": "rect_flow",
+  "expected_gate": "single_page",
+  "expected_modifiers": [],
+  "shape_judged": true,
+  "agreement": false,
+  "reason": "Rectangular Myth #4 paragraph. A figure sits at the lower right, but this block is not a staircase."
+}

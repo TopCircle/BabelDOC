@@ -10,11 +10,17 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms import load_modules
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms import load_catalog
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.contract import (
     BlockEdges,
 )
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.contract import (
+    Paradigm,
+)
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.contract import pick
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.contract import (
+    stand_down,
+)
 
 
 def index_row(
@@ -25,15 +31,24 @@ def index_row(
     lines: Sequence[Sequence[float]],
     edges: BlockEdges,
     input_gate: str,
+    *,
+    catalog: Sequence[Paradigm] | None = None,
 ) -> dict[str, object]:
-    """Build one JSON-ready row. Do not call the modules on a closed gate."""
+    """Build one JSON-ready row. Do not call the modules on a closed gate.
+
+    The default catalog is the system list. A caller passes ``catalog``
+    to add a paradigm. This function does not branch on a paradigm name.
+    """
     recorded = [[float(line[0]), float(line[1]), float(line[2])] for line in lines]
     if input_gate != "single_page":
         status, paradigm, residual = "gate", "", None
     else:
-        results = tuple(
-            (path, module.claim(edges, recorded), module.THRESHOLD)
-            for path, module in load_modules()
+        items = load_catalog() if catalog is None else catalog
+        results = stand_down(
+            tuple(
+                (item.name, item.claim(edges, recorded), item.threshold)
+                for item in items
+            )
         )
         status, paradigm, residual = pick(results)
     return {

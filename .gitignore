@@ -56,5 +56,9 @@ temp.jpg
 # Machine-specific digests (synth_layout.json) stay ignored.
 !tests/repro/golden/en_p*.json
 
+# Layout-plan gold labels and the corpus manifest lock (relative paths only).
+!tests/golden/layout_plan/*.json
+!tools/layout_corpus/manifest.lock.json
+
 # Local OA dual / agent scratch (never commit)
 tmp/

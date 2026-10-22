@@ -1,0 +1,2032 @@
+{
+  "kind": "shaped_review",
+  "items": [
+    {
+      "sample_id": "0004",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "Ragged column beside a straight leg; endings do not step inward in one direction.",
+      "source_pdf_hash": "088bdd029e5e83c355bc34b47e0c5548f20aaa1f23fed946ef798d0b136d1107",
+      "book": "7 day orgasm",
+      "relpath": "7 day orgasm/Day 3/Day 3.pdf",
+      "page": 12,
+      "region_id": "18e35382d0f7597b7e23e478c545df2b",
+      "source_order": 22,
+      "lines": [
+        [
+          102.0,
+          280.4,
+          291.01
+        ],
+        [
+          102.0,
+          235.4,
+          276.01
+        ],
+        [
+          102.0,
+          236.6,
+          261.01
+        ],
+        [
+          102.0,
+          223.58,
+          246.01
+        ],
+        [
+          102.0,
+          190.82,
+          231.02
+        ],
+        [
+          102.0,
+          211.17,
+          216.02
+        ],
+        [
+          102.0,
+          172.1,
+          201.02
+        ],
+        [
+          102.0,
+          163.29,
+          186.02
+        ]
+      ]
+    },
+    {
+      "sample_id": "0008",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "Straight ragged column beside the shoulder, not a contour stair.",
+      "source_pdf_hash": "bd96d05a466b356c0e646a5bf885d677e386a29d693f46432eb883106ea32760",
+      "book": "7 day orgasm",
+      "relpath": "7 day orgasm/Day 5/Day 5.pdf",
+      "page": 5,
+      "region_id": "9913c27ce06fb05c5bb766b2b522e55a",
+      "source_order": 30,
+      "lines": [
+        [
+          102.0,
+          275.55,
+          206.77
+        ],
+        [
+          102.0,
+          251.56,
+          191.77
+        ],
+        [
+          102.0,
+          231.99,
+          176.77
+        ],
+        [
+          102.0,
+          222.59,
+          161.78
+        ],
+        [
+          102.0,
+          213.0,
+          146.78
+        ],
+        [
+          102.0,
+          209.12,
+          131.78
+        ],
+        [
+          102.0,
+          206.12,
+          116.55
+        ],
+        [
+          102.0,
+          205.58,
+          101.78
+        ],
+        [
+          102.0,
+          206.59,
+          86.79
+        ]
+      ]
+    },
+    {
+      "sample_id": "0114",
+      "box": 2,
+      "expected_shaped_pocket": false,
+      "reason": "Straight column beside the photo, then full-width lines; no inward stair.",
+      "source_pdf_hash": "4702c45b17dfeb5dc55a662360645f82ac8cb44baafd7101a9ea06b70a7659a3",
+      "book": "Double Her Desire",
+      "relpath": "Double Her Desire/dhdmodule2.pdf",
+      "page": 8,
+      "region_id": "0c7c55c5ca1aa75b1054f39630d1253d",
+      "source_order": 5,
+      "lines": [
+        [
+          113.0,
+          300.36,
+          306.85
+        ],
+        [
+          113.0,
+          286.44,
+          291.85
+        ],
+        [
+          113.0,
+          282.3,
+          276.85
+        ],
+        [
+          113.0,
+          283.27,
+          261.85
+        ],
+        [
+          113.0,
+          280.51,
+          246.85
+        ],
+        [
+          113.0,
+          288.08,
+          231.85
+        ],
+        [
+          113.0,
+          512.34,
+          216.85
+        ],
+        [
+          113.0,
+          502.39,
+          201.85
+        ],
+        [
+          113.0,
+          512.59,
+          186.85
+        ],
+        [
+          113.0,
+          500.04,
+          171.85
+        ],
+        [
+          113.0,
+          413.55,
+          156.85
+        ]
+      ]
+    },
+    {
+      "sample_id": "0130",
+      "box": 2,
+      "expected_shaped_pocket": true,
+      "reason": "Line ends step inward for many lines along the curve of the leg.",
+      "source_pdf_hash": "4702c45b17dfeb5dc55a662360645f82ac8cb44baafd7101a9ea06b70a7659a3",
+      "book": "Double Her Desire",
+      "relpath": "Double Her Desire/dhdmodule2.pdf",
+      "page": 28,
+      "region_id": "f1c68dfb97fa9b89db027800f75a0025",
+      "source_order": 7,
+      "lines": [
+        [
+          113.0,
+          408.82,
+          211.8
+        ],
+        [
+          113.0,
+          395.46,
+          196.8
+        ],
+        [
+          113.0,
+          319.12,
+          181.8
+        ],
+        [
+          113.0,
+          291.2,
+          166.8
+        ],
+        [
+          113.0,
+          243.84,
+          151.8
+        ],
+        [
+          113.0,
+          229.2,
+          136.8
+        ],
+        [
+          113.0,
+          227.33,
+          121.8
+        ],
+        [
+          113.0,
+          229.16,
+          106.8
+        ],
+        [
+          113.0,
+          228.92,
+          91.8
+        ],
+        [
+          113.0,
+          220.45,
+          76.8
+        ]
+      ]
+    },
+    {
+      "sample_id": "0137",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "A bullet whose narrow side is a straight column beside the photo, then full width.",
+      "source_pdf_hash": "515e391951f63b0bddd5bd93cae8fdf9eee67a35f5308cf6e5368c5a96937133",
+      "book": "Double Her Desire",
+      "relpath": "Double Her Desire/dhdmodule3.pdf",
+      "page": 9,
+      "region_id": "0a8f4d7ca72efa5d41add8be95a99641",
+      "source_order": 8,
+      "lines": [
+        [
+          152.0,
+          330.39,
+          221.84
+        ],
+        [
+          161.0,
+          338.76,
+          206.84
+        ],
+        [
+          161.0,
+          324.58,
+          191.84
+        ],
+        [
+          161.0,
+          322.88,
+          176.84
+        ],
+        [
+          161.0,
+          507.84,
+          161.84
+        ],
+        [
+          161.0,
+          484.54,
+          146.84
+        ],
+        [
+          161.0,
+          487.51,
+          131.84
+        ],
+        [
+          161.0,
+          504.22,
+          116.84
+        ],
+        [
+          161.0,
+          458.79,
+          101.84
+        ]
+      ]
+    },
+    {
+      "sample_id": "0141",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "Full lines then a straight column beside a pull quote, not a picture stair.",
+      "source_pdf_hash": "515e391951f63b0bddd5bd93cae8fdf9eee67a35f5308cf6e5368c5a96937133",
+      "book": "Double Her Desire",
+      "relpath": "Double Her Desire/dhdmodule3.pdf",
+      "page": 18,
+      "region_id": "e07a577f79250492632e7a7648d6825b",
+      "source_order": 4,
+      "lines": [
+        [
+          113.0,
+          505.47,
+          626.84
+        ],
+        [
+          113.0,
+          503.98,
+          611.84
+        ],
+        [
+          113.0,
+          493.82,
+          596.84
+        ],
+        [
+          113.0,
+          512.13,
+          581.84
+        ],
+        [
+          113.0,
+          509.41,
+          566.84
+        ],
+        [
+          113.0,
+          495.26,
+          551.84
+        ],
+        [
+          113.0,
+          325.8,
+          536.84
+        ],
+        [
+          113.0,
+          308.74,
+          521.84
+        ],
+        [
+          113.0,
+          310.05,
+          506.84
+        ],
+        [
+          113.0,
+          314.35,
+          491.84
+        ],
+        [
+          113.0,
+          320.08,
+          476.84
+        ],
+        [
+          113.0,
+          328.64,
+          461.84
+        ],
+        [
+          113.0,
+          321.43,
+          446.84
+        ],
+        [
+          113.0,
+          197.4,
+          431.84
+        ]
+      ]
+    },
+    {
+      "sample_id": "0154",
+      "box": 2,
+      "expected_shaped_pocket": true,
+      "reason": "Successive line ends step inward along the raised leg.",
+      "source_pdf_hash": "515e391951f63b0bddd5bd93cae8fdf9eee67a35f5308cf6e5368c5a96937133",
+      "book": "Double Her Desire",
+      "relpath": "Double Her Desire/dhdmodule3.pdf",
+      "page": 36,
+      "region_id": "b4221d853591029b0edbd2fe8793ee76",
+      "source_order": 7,
+      "lines": [
+        [
+          113.0,
+          249.98,
+          296.85
+        ],
+        [
+          113.0,
+          247.83,
+          281.85
+        ],
+        [
+          113.0,
+          231.08,
+          266.85
+        ],
+        [
+          113.0,
+          228.67,
+          251.85
+        ],
+        [
+          113.0,
+          205.95,
+          236.85
+        ],
+        [
+          113.0,
+          187.99,
+          221.85
+        ],
+        [
+          113.0,
+          183.66,
+          206.85
+        ],
+        [
+          113.0,
+          155.6,
+          191.85
+        ],
+        [
+          113.0,
+          148.39,
+          176.85
+        ],
+        [
+          113.0,
+          137.29,
+          161.85
+        ]
+      ]
+    },
+    {
+      "sample_id": "0193",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "A straight text column beside her face, not a stepping wrap.",
+      "source_pdf_hash": "4e1172f5dd39e1d097e3a548d04edc74231b4b9501ab770d30f3094934ca1514",
+      "book": "Endless Orgasms",
+      "relpath": "Endless Orgasms/Endless Orgasms.pdf",
+      "page": 5,
+      "region_id": "ded3fa149e119be5176d6155fdfe8367",
+      "source_order": 3,
+      "lines": [
+        [
+          36.0,
+          566.09,
+          449.28
+        ],
+        [
+          36.0,
+          411.1,
+          427.27
+        ],
+        [
+          36.0,
+          381.46,
+          405.27
+        ],
+        [
+          36.0,
+          370.1,
+          383.26
+        ],
+        [
+          36.0,
+          292.96,
+          361.26
+        ],
+        [
+          36.0,
+          338.09,
+          339.25
+        ],
+        [
+          36.0,
+          316.88,
+          317.25
+        ],
+        [
+          36.0,
+          308.96,
+          295.24
+        ],
+        [
+          36.0,
+          117.1,
+          273.24
+        ]
+      ]
+    },
+    {
+      "sample_id": "0232",
+      "box": 1,
+      "expected_shaped_pocket": true,
+      "reason": "Each line ends further left, following the arm and thigh.",
+      "source_pdf_hash": "1d21719cc0d7f9004c016b119aed05e01dd7887f69d989047fb116ca23be5dda",
+      "book": "Erotic Massage For Better Sex",
+      "relpath": "Erotic Massage For Better Sex/Erotic Massage For Better Sex.pdf",
+      "page": 43,
+      "region_id": "11aa715a2f8cf5b70f2135fc19cd7767",
+      "source_order": 3,
+      "lines": [
+        [
+          102.0,
+          403.67,
+          331.85
+        ],
+        [
+          102.0,
+          369.6,
+          316.85
+        ],
+        [
+          102.0,
+          355.63,
+          301.85
+        ],
+        [
+          102.0,
+          346.63,
+          286.85
+        ],
+        [
+          102.0,
+          337.63,
+          271.85
+        ],
+        [
+          102.0,
+          327.64,
+          256.85
+        ],
+        [
+          102.0,
+          318.59,
+          241.85
+        ],
+        [
+          102.0,
+          309.62,
+          226.85
+        ],
+        [
+          102.0,
+          300.6,
+          211.85
+        ],
+        [
+          102.0,
+          289.0,
+          196.85
+        ],
+        [
+          102.0,
+          274.61,
+          181.85
+        ],
+        [
+          102.0,
+          247.99,
+          166.85
+        ],
+        [
+          102.0,
+          201.13,
+          151.85
+        ]
+      ]
+    },
+    {
+      "sample_id": "0364",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "The box is a ragged straight column beside the couple, not a stepped wrap.",
+      "source_pdf_hash": "97d438eee2a71d83d401f5b778c9a37e6d75693b79dee4c0f5a5fd1be32f42ca",
+      "book": "Forbidden Anal Sex",
+      "relpath": "Forbidden Anal Sex/Forbidden Anal Sex.pdf",
+      "page": 10,
+      "region_id": "16755ba79a9e84a95c568afbca45573a",
+      "source_order": 2,
+      "lines": [
+        [
+          36.0,
+          159.47,
+          485.11
+        ],
+        [
+          36.0,
+          248.59,
+          469.65
+        ],
+        [
+          36.0,
+          244.6,
+          454.65
+        ],
+        [
+          36.0,
+          240.61,
+          439.65
+        ],
+        [
+          36.0,
+          238.58,
+          424.65
+        ],
+        [
+          36.0,
+          237.59,
+          409.65
+        ],
+        [
+          36.0,
+          236.6,
+          394.65
+        ],
+        [
+          36.0,
+          233.59,
+          379.65
+        ],
+        [
+          36.0,
+          91.93,
+          364.65
+        ],
+        [
+          101.97,
+          157.89,
+          364.65
+        ],
+        [
+          167.93,
+          192.2,
+          364.65
+        ],
+        [
+          202.24,
+          226.6,
+          364.65
+        ],
+        [
+          36.0,
+          219.6,
+          349.65
+        ],
+        [
+          36.0,
+          216.62,
+          334.65
+        ],
+        [
+          36.0,
+          215.6,
+          319.65
+        ],
+        [
+          36.0,
+          213.61,
+          304.65
+        ],
+        [
+          36.0,
+          205.58,
+          289.65
+        ],
+        [
+          36.0,
+          193.6,
+          274.65
+        ],
+        [
+          36.0,
+          187.6,
+          259.65
+        ],
+        [
+          36.0,
+          184.02,
+          244.65
+        ],
+        [
+          36.0,
+          189.61,
+          229.65
+        ],
+        [
+          36.0,
+          205.59,
+          214.65
+        ],
+        [
+          36.0,
+          224.6,
+          199.65
+        ],
+        [
+          36.0,
+          216.6,
+          184.65
+        ],
+        [
+          36.0,
+          197.6,
+          169.65
+        ],
+        [
+          36.0,
+          168.6,
+          154.65
+        ],
+        [
+          36.0,
+          68.64,
+          139.65
+        ]
+      ]
+    },
+    {
+      "sample_id": "0365",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "The boxed paragraph is a rectangle; the pull quote is not a picture staircase.",
+      "source_pdf_hash": "6626e3ec82657f42216e5055f0a2ddb3002e8e03dd62ff8b3c36eec0dc1447c4",
+      "book": "Forbidden Sex Toys",
+      "relpath": "Forbidden Sex Toys/Forbidden Sex Toys.pdf",
+      "page": 8,
+      "region_id": "68bdfc85076159d5eb2b3702a704810f",
+      "source_order": 8,
+      "lines": [
+        [
+          78.0,
+          372.01,
+          347.04
+        ],
+        [
+          78.0,
+          374.98,
+          332.04
+        ],
+        [
+          78.0,
+          375.05,
+          317.04
+        ],
+        [
+          78.0,
+          536.99,
+          302.04
+        ],
+        [
+          78.0,
+          457.26,
+          287.04
+        ]
+      ]
+    },
+    {
+      "sample_id": "0366",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "Rectangular body text beside a pull quote, with no stepped picture wrap.",
+      "source_pdf_hash": "6626e3ec82657f42216e5055f0a2ddb3002e8e03dd62ff8b3c36eec0dc1447c4",
+      "book": "Forbidden Sex Toys",
+      "relpath": "Forbidden Sex Toys/Forbidden Sex Toys.pdf",
+      "page": 13,
+      "region_id": "7a6308605970c25ebca85e00cdff3958",
+      "source_order": 8,
+      "lines": [
+        [
+          78.0,
+          375.01,
+          422.04
+        ],
+        [
+          78.0,
+          374.98,
+          407.04
+        ],
+        [
+          78.0,
+          375.01,
+          392.04
+        ],
+        [
+          78.0,
+          536.99,
+          377.04
+        ],
+        [
+          78.0,
+          537.0,
+          362.04
+        ],
+        [
+          78.0,
+          302.38,
+          347.04
+        ]
+      ]
+    },
+    {
+      "sample_id": "0367",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "The metal-toys paragraph is a rectangle beside a pull quote, not a staircase.",
+      "source_pdf_hash": "6626e3ec82657f42216e5055f0a2ddb3002e8e03dd62ff8b3c36eec0dc1447c4",
+      "book": "Forbidden Sex Toys",
+      "relpath": "Forbidden Sex Toys/Forbidden Sex Toys.pdf",
+      "page": 27,
+      "region_id": "1ef847bff33fd559bbefd40c4df922c6",
+      "source_order": 7,
+      "lines": [
+        [
+          78.0,
+          537.01,
+          466.97
+        ],
+        [
+          78.0,
+          533.89,
+          451.97
+        ],
+        [
+          78.0,
+          537.03,
+          436.97
+        ],
+        [
+          78.0,
+          533.95,
+          421.97
+        ],
+        [
+          78.0,
+          375.02,
+          406.97
+        ],
+        [
+          78.0,
+          374.95,
+          391.97
+        ],
+        [
+          78.0,
+          375.01,
+          376.97
+        ],
+        [
+          78.0,
+          375.05,
+          361.97
+        ],
+        [
+          78.0,
+          375.05,
+          346.97
+        ],
+        [
+          78.0,
+          336.98,
+          331.97
+        ]
+      ]
+    },
+    {
+      "sample_id": "0368",
+      "box": 1,
+      "expected_shaped_pocket": true,
+      "reason": "Several line ends step inward in one direction along the circular photo.",
+      "source_pdf_hash": "b25f1be78f05a3a710abdef952531c9bf7fa24eb6e0f46dd4c3f9df3d9bdcab4",
+      "book": "G-Spot Ecstasy",
+      "relpath": "G-Spot Ecstasy/eBook.pdf",
+      "page": 15,
+      "region_id": "35cb90f7bde36df0dd09de3572e6cff0",
+      "source_order": 4,
+      "lines": [
+        [
+          126.37,
+          387.34,
+          485.28
+        ],
+        [
+          126.72,
+          343.92,
+          465.78
+        ],
+        [
+          126.35,
+          311.99,
+          446.28
+        ],
+        [
+          126.72,
+          292.97,
+          426.78
+        ],
+        [
+          126.37,
+          282.08,
+          407.28
+        ]
+      ]
+    },
+    {
+      "sample_id": "0432",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "Text beside the photo is a straight column, with full-width lines below and no staircase.",
+      "source_pdf_hash": "ccb1e8f27b66442ec823a404a001b091e32b051b39f44e06644e79498cb8c919",
+      "book": "Last All Night",
+      "relpath": "Last All Night/LAN Last All Night Volume 2.pdf",
+      "page": 3,
+      "region_id": "58e2cc22ac827e1da121207112db4df0",
+      "source_order": 4,
+      "lines": [
+        [
+          54.0,
+          402.57,
+          645.77
+        ],
+        [
+          54.0,
+          402.58,
+          633.64
+        ],
+        [
+          54.0,
+          402.6,
+          621.52
+        ],
+        [
+          54.0,
+          82.85,
+          609.39
+        ],
+        [
+          54.0,
+          402.43,
+          585.14
+        ],
+        [
+          54.0,
+          402.58,
+          573.05
+        ],
+        [
+          54.0,
+          402.51,
+          560.93
+        ],
+        [
+          54.0,
+          136.89,
+          548.8
+        ],
+        [
+          54.0,
+          402.53,
+          512.43
+        ],
+        [
+          54.01,
+          402.61,
+          500.3
+        ],
+        [
+          54.01,
+          402.54,
+          488.18
+        ],
+        [
+          54.01,
+          402.59,
+          476.06
+        ],
+        [
+          54.01,
+          402.54,
+          463.93
+        ],
+        [
+          54.01,
+          312.29,
+          451.81
+        ],
+        [
+          54.01,
+          561.53,
+          427.56
+        ],
+        [
+          54.01,
+          561.55,
+          415.44
+        ],
+        [
+          54.01,
+          147.59,
+          403.31
+        ],
+        [
+          54.01,
+          561.57,
+          366.94
+        ],
+        [
+          54.01,
+          561.59,
+          354.81
+        ],
+        [
+          54.0,
+          561.58,
+          342.69
+        ],
+        [
+          54.01,
+          561.62,
+          330.57
+        ],
+        [
+          54.01,
+          450.12,
+          318.53
+        ],
+        [
+          54.0,
+          561.51,
+          294.28
+        ],
+        [
+          54.0,
+          561.59,
+          282.16
+        ],
+        [
+          54.0,
+          143.09,
+          270.03
+        ],
+        [
+          54.0,
+          561.63,
+          245.78
+        ],
+        [
+          54.0,
+          561.57,
+          233.66
+        ],
+        [
+          53.99,
+          561.55,
+          221.54
+        ],
+        [
+          53.99,
+          194.2,
+          209.41
+        ],
+        [
+          53.99,
+          561.62,
+          185.16
+        ],
+        [
+          53.98,
+          561.62,
+          173.04
+        ],
+        [
+          53.98,
+          412.89,
+          160.92
+        ]
+      ]
+    },
+    {
+      "sample_id": "0479",
+      "box": 2,
+      "expected_shaped_pocket": false,
+      "reason": "Box 2 is a rectangular paragraph cut straight by a callout, not a stepped picture wrap.",
+      "source_pdf_hash": "4cb279fbe999c72b7817765837298c1fec785180382faaad946b43d6e2e116c7",
+      "book": "Lasting Longer",
+      "relpath": "Lasting Longer/Lasting Longer.pdf",
+      "page": 5,
+      "region_id": "e2572d7a56ca39402d496b9469e96888",
+      "source_order": 4,
+      "lines": [
+        [
+          102.0,
+          450.66,
+          438.11
+        ],
+        [
+          102.0,
+          440.14,
+          423.11
+        ],
+        [
+          102.0,
+          440.29,
+          408.11
+        ],
+        [
+          102.0,
+          337.81,
+          393.11
+        ],
+        [
+          102.0,
+          326.9,
+          378.11
+        ],
+        [
+          102.0,
+          323.35,
+          363.11
+        ],
+        [
+          102.0,
+          331.27,
+          348.11
+        ],
+        [
+          102.0,
+          327.29,
+          333.11
+        ],
+        [
+          102.0,
+          327.92,
+          318.11
+        ],
+        [
+          102.0,
+          310.26,
+          303.11
+        ],
+        [
+          102.0,
+          334.76,
+          288.11
+        ],
+        [
+          102.0,
+          323.32,
+          273.11
+        ],
+        [
+          102.0,
+          372.11,
+          258.11
+        ],
+        [
+          102.0,
+          383.6,
+          243.11
+        ],
+        [
+          102.0,
+          383.05,
+          228.11
+        ],
+        [
+          102.0,
+          397.46,
+          213.11
+        ],
+        [
+          102.0,
+          398.39,
+          198.11
+        ],
+        [
+          102.0,
+          400.61,
+          183.11
+        ],
+        [
+          102.0,
+          397.84,
+          168.11
+        ],
+        [
+          102.0,
+          198.47,
+          153.11
+        ]
+      ]
+    },
+    {
+      "sample_id": "0542",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "Rectangular paragraph with a ragged right edge; the photo only touches a corner.",
+      "source_pdf_hash": "05abc89cfa620e09e840025e32ff6c7e9759cf88f81b6c8650c217939071d371",
+      "book": "Multiply Her Drive",
+      "relpath": "Multiply Her Drive/Multiply Her Drive.pdf",
+      "page": 10,
+      "region_id": "957623e824a5b1e55162e38fdca3cced",
+      "source_order": 6,
+      "lines": [
+        [
+          102.0,
+          472.5,
+          408.11
+        ],
+        [
+          102.0,
+          447.91,
+          393.11
+        ],
+        [
+          102.0,
+          453.46,
+          378.11
+        ],
+        [
+          102.0,
+          455.29,
+          363.11
+        ],
+        [
+          102.0,
+          448.56,
+          348.11
+        ],
+        [
+          102.0,
+          442.63,
+          333.11
+        ],
+        [
+          102.0,
+          441.28,
+          318.11
+        ],
+        [
+          102.0,
+          432.54,
+          303.11
+        ],
+        [
+          102.0,
+          424.67,
+          288.11
+        ],
+        [
+          102.0,
+          425.11,
+          273.11
+        ],
+        [
+          102.0,
+          309.08,
+          258.11
+        ]
+      ]
+    },
+    {
+      "sample_id": "0572",
+      "box": 1,
+      "expected_shaped_pocket": true,
+      "reason": "Every line end steps inward along the diagonal leg.",
+      "source_pdf_hash": "f7565b476dba0664a034a50437db231752644195e82b90dcce67a56ee4365b94",
+      "book": "NaughtyFingers",
+      "relpath": "NaughtyFingers/NaughtyFingers.pdf",
+      "page": 110,
+      "region_id": "dec2cf32918b91f5efca931c62899dff",
+      "source_order": 7,
+      "lines": [
+        [
+          102.0,
+          448.17,
+          391.61
+        ],
+        [
+          102.0,
+          438.25,
+          376.62
+        ],
+        [
+          102.0,
+          428.17,
+          361.62
+        ],
+        [
+          102.0,
+          410.21,
+          346.62
+        ],
+        [
+          102.0,
+          389.17,
+          331.63
+        ],
+        [
+          102.0,
+          368.2,
+          316.63
+        ],
+        [
+          102.0,
+          346.17,
+          301.64
+        ],
+        [
+          102.0,
+          322.17,
+          286.64
+        ],
+        [
+          102.0,
+          298.18,
+          271.64
+        ],
+        [
+          102.0,
+          273.19,
+          256.65
+        ],
+        [
+          102.0,
+          238.85,
+          241.65
+        ]
+      ]
+    },
+    {
+      "sample_id": "0613",
+      "box": 1,
+      "expected_shaped_pocket": true,
+      "reason": "Line ends step inward for many lines along the circular photo edge.",
+      "source_pdf_hash": "df6a5a8ba4abf34c78f7a437c890b0d07b2af81d4330a215bd38fb714e62764c",
+      "book": "Orgasmic Addiction",
+      "relpath": "Orgasmic Addiction/Orgasmic Addiction.pdf",
+      "page": 14,
+      "region_id": "7da39e57850f244c2f5c5dfc9e0ac4ab",
+      "source_order": 13,
+      "lines": [
+        [
+          132.0,
+          377.63,
+          352.69
+        ],
+        [
+          150.0,
+          349.67,
+          336.31
+        ],
+        [
+          150.0,
+          328.61,
+          321.31
+        ],
+        [
+          150.0,
+          311.63,
+          306.31
+        ],
+        [
+          150.0,
+          294.0,
+          291.31
+        ],
+        [
+          150.0,
+          284.64,
+          276.31
+        ],
+        [
+          150.0,
+          272.0,
+          261.31
+        ],
+        [
+          150.0,
+          265.64,
+          246.31
+        ],
+        [
+          150.0,
+          257.63,
+          231.31
+        ],
+        [
+          150.0,
+          251.63,
+          216.31
+        ],
+        [
+          150.0,
+          246.64,
+          201.31
+        ],
+        [
+          150.0,
+          170.94,
+          186.31
+        ],
+        [
+          182.06,
+          211.8,
+          186.31
+        ],
+        [
+          222.92,
+          238.99,
+          186.31
+        ],
+        [
+          150.0,
+          238.63,
+          171.31
+        ],
+        [
+          150.0,
+          235.62,
+          156.31
+        ],
+        [
+          150.0,
+          233.63,
+          141.31
+        ],
+        [
+          150.0,
+          233.63,
+          126.31
+        ],
+        [
+          150.0,
+          233.63,
+          111.31
+        ],
+        [
+          150.0,
+          203.72,
+          96.31
+        ]
+      ]
+    },
+    {
+      "sample_id": "0616",
+      "box": 1,
+      "expected_shaped_pocket": true,
+      "reason": "Successive line ends step inward along the grey arc.",
+      "source_pdf_hash": "df6a5a8ba4abf34c78f7a437c890b0d07b2af81d4330a215bd38fb714e62764c",
+      "book": "Orgasmic Addiction",
+      "relpath": "Orgasmic Addiction/Orgasmic Addiction.pdf",
+      "page": 28,
+      "region_id": "83cf8d016c0a329b259a08c981296cf1",
+      "source_order": 11,
+      "lines": [
+        [
+          102.0,
+          322.61,
+          316.84
+        ],
+        [
+          102.0,
+          306.61,
+          301.84
+        ],
+        [
+          102.0,
+          292.61,
+          286.84
+        ],
+        [
+          102.0,
+          281.64,
+          271.84
+        ],
+        [
+          102.0,
+          271.64,
+          256.84
+        ],
+        [
+          102.0,
+          263.62,
+          241.84
+        ],
+        [
+          102.0,
+          255.6,
+          226.84
+        ],
+        [
+          102.0,
+          249.64,
+          211.84
+        ],
+        [
+          102.0,
+          130.08,
+          196.84
+        ]
+      ]
+    },
+    {
+      "sample_id": "0620",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "Ragged paragraph; the arc sits outside the box and does not shape the lines.",
+      "source_pdf_hash": "df6a5a8ba4abf34c78f7a437c890b0d07b2af81d4330a215bd38fb714e62764c",
+      "book": "Orgasmic Addiction",
+      "relpath": "Orgasmic Addiction/Orgasmic Addiction.pdf",
+      "page": 40,
+      "region_id": "a9d952f906dcd755213c470c22b60e87",
+      "source_order": 5,
+      "lines": [
+        [
+          102.0,
+          434.95,
+          646.84
+        ],
+        [
+          102.0,
+          409.67,
+          631.84
+        ],
+        [
+          102.0,
+          388.62,
+          616.84
+        ],
+        [
+          102.0,
+          365.71,
+          601.84
+        ]
+      ]
+    },
+    {
+      "sample_id": "0620",
+      "box": 2,
+      "expected_shaped_pocket": false,
+      "reason": "Straight hyphenated column; the circle is outside the box.",
+      "source_pdf_hash": "df6a5a8ba4abf34c78f7a437c890b0d07b2af81d4330a215bd38fb714e62764c",
+      "book": "Orgasmic Addiction",
+      "relpath": "Orgasmic Addiction/Orgasmic Addiction.pdf",
+      "page": 40,
+      "region_id": "07962b04d8b2724f44361c33ea54f151",
+      "source_order": 7,
+      "lines": [
+        [
+          102.0,
+          325.01,
+          541.84
+        ],
+        [
+          102.0,
+          320.64,
+          526.84
+        ],
+        [
+          102.0,
+          314.65,
+          511.84
+        ],
+        [
+          102.0,
+          309.6,
+          496.84
+        ],
+        [
+          102.0,
+          302.03,
+          481.84
+        ],
+        [
+          102.0,
+          299.0,
+          466.84
+        ],
+        [
+          102.0,
+          299.65,
+          451.84
+        ],
+        [
+          102.0,
+          295.0,
+          436.84
+        ],
+        [
+          102.0,
+          248.59,
+          421.84
+        ]
+      ]
+    },
+    {
+      "sample_id": "0648",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "Straight ragged column beside the man, not a stepped wrap.",
+      "source_pdf_hash": "ba1d1dbbd7e2a4227e3c3b02151a85191fe8c10b1001dfac785abcbd6d68778f",
+      "book": "Orgasmic Anal",
+      "relpath": "Orgasmic Anal/Orgasmic Anal.pdf",
+      "page": 10,
+      "region_id": "866634016737d0f8ba72526daef30d1a",
+      "source_order": 5,
+      "lines": [
+        [
+          102.0,
+          298.81,
+          468.19
+        ],
+        [
+          102.0,
+          294.34,
+          453.19
+        ],
+        [
+          102.0,
+          268.28,
+          438.19
+        ],
+        [
+          102.0,
+          285.61,
+          423.19
+        ],
+        [
+          102.0,
+          281.34,
+          408.19
+        ],
+        [
+          102.0,
+          285.71,
+          393.19
+        ],
+        [
+          102.0,
+          258.77,
+          378.19
+        ],
+        [
+          102.0,
+          222.59,
+          363.19
+        ],
+        [
+          102.0,
+          219.23,
+          348.19
+        ],
+        [
+          102.0,
+          231.34,
+          333.19
+        ],
+        [
+          102.0,
+          213.08,
+          318.19
+        ]
+      ]
+    },
+    {
+      "sample_id": "0663",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "Bullet with a ragged right edge beside the photo, not a staircase.",
+      "source_pdf_hash": "203be164e7b738520556256d4b917e8297cdd01ddb174a32997f778b9cbd8803",
+      "book": "Orgasmic Rocket Fuel",
+      "relpath": "Orgasmic Rocket Fuel/Orgasmic Rocket Fuel.pdf",
+      "page": 6,
+      "region_id": "73ee997662295b187966fb7beaeea3a4",
+      "source_order": 1,
+      "lines": [
+        [
+          128.0,
+          305.22,
+          694.55
+        ],
+        [
+          146.0,
+          306.58,
+          677.75
+        ],
+        [
+          146.0,
+          288.7,
+          660.95
+        ],
+        [
+          146.0,
+          313.02,
+          644.15
+        ],
+        [
+          146.0,
+          291.49,
+          627.35
+        ],
+        [
+          146.0,
+          280.31,
+          610.55
+        ],
+        [
+          146.0,
+          281.14,
+          593.75
+        ],
+        [
+          146.0,
+          256.15,
+          576.95
+        ],
+        [
+          146.0,
+          264.66,
+          560.15
+        ],
+        [
+          146.0,
+          271.79,
+          543.35
+        ],
+        [
+          146.0,
+          266.34,
+          526.55
+        ],
+        [
+          146.0,
+          226.98,
+          509.75
+        ],
+        [
+          146.0,
+          233.44,
+          492.95
+        ],
+        [
+          146.0,
+          239.0,
+          476.15
+        ],
+        [
+          146.0,
+          198.64,
+          459.35
+        ]
+      ]
+    },
+    {
+      "sample_id": "0682",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "Rectangular paragraph with a ragged right edge; the circle sits outside and the line ends do not step along it.",
+      "source_pdf_hash": "ade25b466455e59a1f75c6621b00148fe1a39b4dc8ad896cc9dcc06fb9b1ae40",
+      "book": "Orgasmic Sex Positions",
+      "relpath": "Orgasmic Sex Positions/Orgasmic Sex Positions.pdf",
+      "page": 99,
+      "region_id": "b790b6c055179b17e1574df77486c1db",
+      "source_order": 3,
+      "lines": [
+        [
+          84.0,
+          362.98,
+          638.36
+        ],
+        [
+          66.0,
+          352.89,
+          623.36
+        ],
+        [
+          66.0,
+          340.92,
+          608.36
+        ],
+        [
+          66.0,
+          332.88,
+          593.36
+        ],
+        [
+          66.0,
+          326.97,
+          578.36
+        ],
+        [
+          66.0,
+          321.91,
+          563.36
+        ],
+        [
+          66.0,
+          161.64,
+          548.36
+        ]
+      ]
+    },
+    {
+      "sample_id": "0704",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "Ragged column beside the model; line ends bounce instead of stepping inward along her body.",
+      "source_pdf_hash": "19ff31de792026a52e3b23eec9949753c654bc9c90d9b4d4e3ef3e20f68630a4",
+      "book": "Reverse Cowgirl Domination",
+      "relpath": "Reverse Cowgirl Domination/Reverse Cowgirl Domination.pdf",
+      "page": 15,
+      "region_id": "2ab4d1589892d480555e5ce7c776026d",
+      "source_order": 7,
+      "lines": [
+        [
+          66.0,
+          372.73,
+          560.5
+        ],
+        [
+          66.0,
+          337.03,
+          542.5
+        ],
+        [
+          66.0,
+          301.74,
+          524.5
+        ],
+        [
+          66.0,
+          287.72,
+          506.5
+        ],
+        [
+          66.0,
+          272.0,
+          488.5
+        ],
+        [
+          66.0,
+          268.76,
+          470.5
+        ],
+        [
+          66.0,
+          262.75,
+          452.5
+        ],
+        [
+          66.0,
+          256.75,
+          434.5
+        ],
+        [
+          66.0,
+          250.76,
+          416.5
+        ],
+        [
+          66.0,
+          244.74,
+          398.5
+        ],
+        [
+          66.0,
+          111.7,
+          380.5
+        ]
+      ]
+    },
+    {
+      "sample_id": "0753",
+      "box": 1,
+      "expected_shaped_pocket": false,
+      "reason": "Straight rectangular column beside the photo, with only ordinary ragged line ends.",
+      "source_pdf_hash": "8a4a07be0b617590c4e29db9b0862fc04eb24d6259561102267cbda9c052a9f7",
+      "book": "Squirting Orgasm Secrets",
+      "relpath": "Squirting Orgasm Secrets/Squirting Orgasm Secrets.pdf",
+      "page": 7,
+      "region_id": "1836074f5df9c7f3868cea46681a1b0a",
+      "source_order": 5,
+      "lines": [
+        [
+          102.0,
+          422.42,
+          543.11
+        ],
+        [
+          102.0,
+          397.73,
+          528.11
+        ],
+        [
+          102.0,
+          394.64,
+          513.11
+        ],
+        [
+          102.0,
+          396.64,
+          498.11
+        ],
+        [
+          102.0,
+          373.62,
+          483.11
+        ],
+        [
+          102.0,
+          334.46,
+          468.11
+        ],
+        [
+          102.0,
+          333.24,
+          453.11
+        ],
+        [
+          102.0,
+          175.73,
+          438.11
+        ]
+      ]
+    },
+    {
+      "sample_id": "0861",
+      "box": 2,
+      "expected_shaped_pocket": true,
+      "reason": "Line ends step inward for many lines along the curve of her leg.",
+      "source_pdf_hash": "cb8717da8965663dbde6648107e5ff20266c9861e4859953d50fa3d380b36760",
+      "book": "The Tantric Touch",
+      "relpath": "The Tantric Touch/The Tantric Touch.pdf",
+      "page": 89,
+      "region_id": "47e59987f2349d9dcbeb4ca045a080ae",
+      "source_order": 6,
+      "lines": [
+        [
+          72.0,
+          262.34,
+          264.85
+        ],
+        [
+          72.0,
+          255.32,
+          249.85
+        ],
+        [
+          72.0,
+          250.0,
+          234.85
+        ],
+        [
+          72.0,
+          252.32,
+          219.85
+        ],
+        [
+          72.0,
+          250.32,
+          204.85
+        ],
+        [
+          72.0,
+          246.34,
+          189.85
+        ],
+        [
+          72.0,
+          229.34,
+          174.85
+        ],
+        [
+          72.0,
+          208.0,
+          159.85
+        ],
+        [
+          72.0,
+          191.0,
+          144.85
+        ],
+        [
+          72.0,
+          177.32,
+          129.85
+        ],
+        [
+          72.0,
+          159.32,
+          114.85
+        ],
+        [
+          72.0,
+          142.33,
+          99.85
+        ],
+        [
+          72.0,
+          124.36,
+          84.85
+        ]
+      ]
+    }
+  ]
+}
