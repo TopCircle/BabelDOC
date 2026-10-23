@@ -25,6 +25,19 @@ CJK_INTERIOR_FILL_WEIGHT = 6.0
 # measure counts as full (prefer 一种。 over 将新|技巧).
 CJK_PUNCT_FILL_SLACK_PT = 80.0
 CJK_PUNCT_FILL_SLACK_RATIO = 0.18
+
+
+def break_leaves_a_hole(room: float, measure: float) -> bool:
+    """True when a planned break is farther from the edge than punctuation slack.
+
+    The width estimate can be a narrower band than the line that is placed.
+    A break that far from the placed edge leaves a hole, so the glyph stays.
+    """
+    slack = min(
+        CJK_PUNCT_FILL_SLACK_PT,
+        max(12.0, float(measure) * CJK_PUNCT_FILL_SLACK_RATIO),
+    )
+    return float(room) > slack
 CJK_LINE_END_PUNCT = frozenset("。．？！；：，、")
 
 

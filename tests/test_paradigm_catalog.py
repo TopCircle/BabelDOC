@@ -21,6 +21,9 @@ from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.index import (
 )
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.index import index_row
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import (
+    right_step,
+)
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import (
     wider_below,
 )
 
@@ -51,6 +54,7 @@ _OUTLINES = {
     "mark/serial_repeated",
     "both/wider_below",
     "center/axis",
+    "toc/plain",
 }
 
 
@@ -98,6 +102,7 @@ def test_loaded_modules_keep_the_original_three_and_the_outline_claims():
     assert modules["taper/right_pin"].THRESHOLD == 8.0
     assert "rag" not in modules
     assert "mark" not in modules
+    assert "toc" not in modules
     for module in modules.values():
         assert callable(module.claim)
 
@@ -561,6 +566,40 @@ def test_a_lower_wide_step_and_a_single_spur_stay_apart():
     status, paradigm, _residual = pick(_results(_edges(1, 0.0, 0.0), spur))
     assert status == "matched"
     assert paradigm == "step/right_spur"
+
+
+def test_an_opening_indent_stays_a_lower_wide_step():
+    lines = [[84.0, 212.0, 400.0]]
+    lines += [[66.0, 210.0, 384.0 - index * 16.0] for index in range(6)]
+    lines += [[66.0, 546.0, 288.0 - index * 16.0] for index in range(3)]
+    lines.append([66.0, 164.0, 240.0])
+    edges = _edges(3, 0.0, 0.6)
+    assert right_step(edges, lines, "lower_wide") == 0.0
+    status, paradigm, residual = pick(_results(edges, lines))
+    assert status == "matched"
+    assert paradigm == "step/right_lower_wide"
+    assert residual == 0.0
+
+
+def test_a_hanging_indent_is_not_a_lower_wide_step():
+    lines = [[48.0, 212.0, 400.0]]
+    lines += [[66.0, 210.0, 384.0 - index * 16.0] for index in range(6)]
+    lines += [[66.0, 546.0, 288.0 - index * 16.0] for index in range(3)]
+    edges = _edges(3, 18.0, 0.6)
+    assert right_step(edges, lines, "lower_wide") is None
+    status, paradigm, _residual = pick(_results(edges, lines))
+    assert status == "matched"
+    assert paradigm == "hang/shallow"
+
+
+def test_a_later_left_step_is_not_a_lower_wide_step():
+    lines = [[66.0, 212.0, 400.0 - index * 16.0] for index in range(4)]
+    lines[2] = [90.0, 210.0, lines[2][2]]
+    lines += [[66.0, 546.0, 336.0 - index * 16.0] for index in range(3)]
+    edges = _edges(3, 24.0, 0.6)
+    assert right_step(edges, lines, "lower_wide") is None
+    _status, paradigm, _residual = pick(_results(edges, lines))
+    assert paradigm != "step/right_lower_wide"
 
 
 def test_one_deep_right_turn_is_a_bow_and_a_left_bow_stays_open():

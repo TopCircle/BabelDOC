@@ -202,3 +202,22 @@ def test_rewrap_recognizes_lowercase_b_pairs():
     """〖b0〗 pairs must count as present so we do not double-wrap."""
     output = "因〖b0〗阴道痉挛〖/b0〗（紧缩）"
     assert rewrap_styles_from_source(output, _spans((0, "vaginismus"))) is None
+
+
+def test_rewrap_handles_quoted_terms_with_trailing_punct():
+    """“Ladyscape.” in EN becomes "Ladyscape"。 in ZH (period outside quote)."""
+    output = '• "Ladyscape"。尽管修剪或脱毛全部或部分阴部对许多女性来说很常见'
+    recovered = rewrap_styles_from_source(
+        output,
+        _spans((0, "“Ladyscape.”")),
+    )
+    assert recovered is not None
+    assert '〖B0〗"Ladyscape"〖/B0〗。' in recovered or '〖B0〗"Ladyscape"。〖/B0〗' in recovered
+
+    # Also handle when closing quote was in a separate span so source_text is “Ladyscape.
+    recovered_split = rewrap_styles_from_source(
+        output,
+        _spans((0, "“Ladyscape.")),
+    )
+    assert recovered_split is not None
+    assert '〖B0〗"Ladyscape"〖/B0〗。' in recovered_split or '〖B0〗"Ladyscape"。〖/B0〗' in recovered_split

@@ -27,7 +27,7 @@ PLUGIN_VERSION = "1"
 def has_list_evidence(region: Region) -> bool:
     """True for a bullet glyph or a leading serial. This does not check shape."""
     marker = region.marker
-    if marker is not None and marker.is_bullet:
+    if marker is not None and getattr(marker, "is_bullet", False):
         return True
     text = region.source_text.replace("\xa0", " ").replace("\u2009", " ").lstrip()
     return bool(LIST_MARKER_RE.match(text))

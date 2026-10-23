@@ -7,9 +7,87 @@ the seal opened apart stays apart.
 
 from __future__ import annotations
 
+import re
+
 from babeldoc.format.pdf.document_il import Box
 from babeldoc.format.pdf.document_il.utils.layout_plan.seal import seal_lines
 from babeldoc.format.pdf.document_il.utils.rect_flow_stack import _lines_of
+
+_TOC_LEADER_RE = re.compile(
+    r"(?:\.{3,}|_{3,}|\-{3,}|\.(?:\s*\.){3,})\s*\d+",
+    re.MULTILINE,
+)
+_HEADING_PATTERN = re.compile(
+    r"^(?:part|chapter|section|technique|step|volume|book|act|appendix|bonus)\s+\d+[:\s\.]",
+    re.IGNORECASE,
+)
+
+
+def _has_list_marker(paragraph) -> bool:
+    from babeldoc.format.pdf.document_il.utils.layout_helper import BULLET_POINT_PATTERN
+    from babeldoc.format.pdf.document_il.utils.list_marker_repair import LIST_MARKER_RE
+    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+        paragraph_starts_with_list_marker,
+    )
+    from babeldoc.format.pdf.document_il.utils.rect_flow_stack import _marker_of
+
+    m = _marker_of(paragraph)
+    if m is not None and getattr(m, "is_bullet", False):
+        return True
+    if paragraph_starts_with_list_marker(paragraph):
+        return True
+    text = (getattr(paragraph, "unicode", None) or "").strip()
+    if text:
+        if BULLET_POINT_PATTERN.match(text[0]):
+            return True
+        if LIST_MARKER_RE.match(text):
+            return True
+    return False
+
+
+def _is_toc(paragraph) -> bool:
+    intent = getattr(paragraph, "layout_intent", None)
+    role = getattr(intent, "role", None) if intent is not None else None
+    role_val = getattr(role, "value", role) if role is not None else None
+    if role_val == "toc" or getattr(paragraph, "layout_label", None) == "toc":
+        return True
+    text = (getattr(paragraph, "unicode", None) or "").strip()
+    if bool(_TOC_LEADER_RE.search(text)):
+        return True
+    return False
+
+
+def _role_of_para(paragraph) -> str | None:
+    intent = getattr(paragraph, "layout_intent", None)
+    role = getattr(intent, "role", None) if intent is not None else None
+    return getattr(role, "value", role) if role is not None else getattr(paragraph, "layout_label", None)
+
+
+def _should_not_join(prev, curr) -> bool:
+    if _is_toc(prev) or _is_toc(curr):
+        return True
+    if _has_list_marker(curr):
+        return True
+    t_prev = (getattr(prev, "unicode", None) or "").strip()
+    t_curr = (getattr(curr, "unicode", None) or "").strip()
+    if bool(_HEADING_PATTERN.match(t_curr)) or bool(_HEADING_PATTERN.match(t_prev)):
+        return True
+    role_prev = _role_of_para(prev)
+    role_curr = _role_of_para(curr)
+    if role_prev != role_curr and (role_prev is not None or role_curr is not None):
+        return True
+    if role_prev in (
+        "title",
+        "heading",
+        "toc",
+        "chrome",
+        "caption",
+        "pull_quote",
+        "callout",
+        "formula",
+    ):
+        return True
+    return False
 
 
 def join_sealed_paragraphs(page) -> None:
@@ -32,8 +110,17 @@ def join_sealed_paragraphs(page) -> None:
         if len(group) < 2:
             continue
         ordered = sorted(group, key=lambda item: _top(item, records), reverse=True)
-        _absorb(ordered[0], ordered[1:])
-        remove.update(id(item) for item in ordered[1:])
+        chunks: list[list] = [[ordered[0]]]
+        for nxt in ordered[1:]:
+            if _should_not_join(chunks[-1][-1], nxt):
+                chunks.append([nxt])
+            else:
+                chunks[-1].append(nxt)
+        for chunk in chunks:
+            if len(chunk) < 2:
+                continue
+            _absorb(chunk[0], chunk[1:])
+            remove.update(id(item) for item in chunk[1:])
     if not remove:
         return
     page.pdf_paragraph = [

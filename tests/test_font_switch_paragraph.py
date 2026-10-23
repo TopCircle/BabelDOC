@@ -10,12 +10,25 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfFont
 from babeldoc.format.pdf.document_il.il_version_1 import PdfLine
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
+from babeldoc.format.pdf.document_il.il_version_1 import PdfSameStyleUnicodeCharacters
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
 from babeldoc.format.pdf.document_il.midend.paragraph_finder import ParagraphFinder
 from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
 from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+    apply_run_in_lead_style,
+)
+from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+    flatten_dominant_run_in,
+)
+from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
     line_ends_sentence,
+)
+from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+    remember_run_in_lead,
+)
+from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+    run_in_continues,
 )
 from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
     should_split_on_font_face_switch,
@@ -36,6 +49,24 @@ def _char(
         box=box,
         visual_bbox=VisualBbox(box=Box(x=box.x, y=box.y, x2=box.x2, y2=box.y2)),
         pdf_style=PdfStyle(font_id=font_id, font_size=size, graphic_state=None),
+    )
+
+
+def _mixed_line(
+    parts: list[tuple[str, str, float]], y: float, x0: float = 50.0
+) -> PdfParagraphComposition:
+    """One visual line of ``(text, font_id, size)`` runs."""
+    chars = []
+    x = x0
+    for text, font_id, size in parts:
+        for ch in text:
+            chars.append(_char(ch, x, y, font_id, size))
+            x += 6.0
+    return PdfParagraphComposition(
+        pdf_line=PdfLine(
+            box=Box(x=x0, y=y, x2=x, y2=y + 12),
+            pdf_character=chars,
+        )
     )
 
 
@@ -119,174 +150,390 @@ class TestFontSwitchParagraphSplit:
         # Label is not glued into the first body fragment
         assert "Ancilla" not in _para_text(paras[0])
 
-    def test_ocr_mid_sentence_times_to_courier_not_split(self):
-        """OCR dual-layer: mid-clause Times→smaller Courier stays one para for MT.
+    def test_run_in_title_stays_with_the_body_face(self):
+        """Bold lead-in wins the count, but the body face already ends the line.
 
-        font.unknown ends the first body with 11pt Times then 7.5pt Courier
-        ("occasional | sensationalism… never fakes"). Must not orphan the tail.
+        Day 1 item 4: ``Scent-ually massage her. For a peppery head-to-toe``
+        is one line. The next line is the same light face. That is one paragraph.
         """
-        pf = ParagraphFinder(_config(ocr_workaround=True))
-        long_a = "nothing but the facts and yes theres occasional bias occasional words"
-        long_b = "sensationalism occasional inaccuracy but a responsible journalist yes"
-        para = PdfParagraph(
-            box=Box(x=50, y=200, x2=340, y2=300),
-            pdf_style=PdfStyle(font_id="Font1", font_size=11.0, graphic_state=None),
-            pdf_paragraph_composition=[
-                _line(long_a, 280, "Font1"),
-                _line(long_b, 265, "Font2"),
-                _line("never, never, never fakes the news.", 250, "Font2"),
-            ],
-            unicode="x",
+        title = "Scent-ually massage her. "
+        tail = "For a peppery head-to-toe"
+        prev = _mixed_line(
+            [(title, "MyriadPro-Black", 9.7), (tail, "MyriadPro-Light", 11.8)],
+            280,
+            x0=168,
+        ).pdf_line
+        body = "turn-on, start with cinnamon-flavored lube that heats up when"
+        curr = _line(
+            body,
+            265,
+            "MyriadPro-Light",
+            x0=159,
+        ).pdf_line
+        for char in curr.pdf_character:
+            char.pdf_style.font_size = 11.8
+        assert run_in_continues(prev, curr)
+        assert not should_split_on_font_face_switch(
+            prev, curr, soft_mid_sentence=False
         )
-        # Times ~11pt then Courier ~7.5pt (real dual-layer size jump)
-        for ch in para.pdf_paragraph_composition[0].pdf_line.pdf_character:
-            ch.pdf_style.font_size = 11.2
-        for comp in para.pdf_paragraph_composition[1:]:
-            for ch in comp.pdf_line.pdf_character:
-                ch.pdf_style.font_size = 7.5
-        paras = [para]
-        pf.process_independent_paragraphs(paras, median_width=200.0)
-        assert len(paras) == 1
-        assert "sensationalism" in _para_text(paras[0])
-        assert "never" in _para_text(paras[0])
-
-    def test_ocr_title_to_author_size_hard_splits(self):
-        """OCR soft keep must not glue title (15pt) to author (12pt)."""
-        pf = ParagraphFinder(_config(ocr_workaround=True))
-        para = PdfParagraph(
-            box=Box(x=50, y=200, x2=340, y2=400),
-            pdf_style=PdfStyle(font_id="FTitle", font_size=15.0, graphic_state=None),
-            pdf_paragraph_composition=[
-                _line("The sociology of news production", 380, "FTitle"),
-                _line("Michael Schudson", 360, "FAuthor"),
-                _line("UNIVERSITY OF CALIFORNIA, SAN DIEGO", 340, "FUni"),
-            ],
-            unicode="x",
-        )
-        # distinct sizes on title vs author (helper uses 10pt default — set via chars)
-        for comp, size in zip(
-            para.pdf_paragraph_composition, (15.0, 12.0, 9.0), strict=True
-        ):
-            for ch in comp.pdf_line.pdf_character:
-                ch.pdf_style.font_size = size
-        paras = [para]
-        pf.process_independent_paragraphs(paras, median_width=200.0)
-        assert len(paras) >= 2
-        assert "Michael" not in _para_text(paras[0])
-        assert "sociology" in _para_text(paras[0]).lower() or "The" in _para_text(
-            paras[0]
-        )
-
-    def test_same_face_size_jump_splits_title_stack(self):
-        """font.unknown: title/author/uni share Times face — only size differs."""
-        pf = ParagraphFinder(_config(ocr_workaround=True))
-        para = PdfParagraph(
-            box=Box(x=50, y=200, x2=340, y2=400),
-            pdf_style=PdfStyle(font_id="Font1", font_size=15.0, graphic_state=None),
-            pdf_paragraph_composition=[
-                _line("The sociology of news production", 380, "Font1"),
-                _line("Michael Schudson", 360, "Font1"),
-                _line("UNIVERSITY OF CALIFORNIA, SAN DIEGO", 340, "Font1"),
-            ],
-            unicode="x",
-        )
-        for comp, size in zip(
-            para.pdf_paragraph_composition, (15.3, 11.8, 9.2), strict=True
-        ):
-            for ch in comp.pdf_line.pdf_character:
-                ch.pdf_style.font_size = size
-        # Policy unit
-        assert should_split_on_font_size_jump(
-            para.pdf_paragraph_composition[0].pdf_line,
-            para.pdf_paragraph_composition[1].pdf_line,
-        )
-        assert should_split_on_font_size_jump(
-            para.pdf_paragraph_composition[1].pdf_line,
-            para.pdf_paragraph_composition[2].pdf_line,
-        )
-        paras = [para]
-        pf.process_independent_paragraphs(paras, median_width=200.0)
-        assert len(paras) == 3
-        assert "UNIVERSITY" not in _para_text(paras[1])
-        assert "Schudson" in _para_text(paras[1])
-
-    def test_ocr_sentence_final_times_to_courier_splits(self):
-        """OCR path: clean sentence boundary → mono block is its own paragraph."""
-        pf = ParagraphFinder(_config(ocr_workaround=True))
-        para = PdfParagraph(
-            box=Box(x=50, y=200, x2=340, y2=300),
-            pdf_style=PdfStyle(font_id="Font1", font_size=10.0, graphic_state=None),
-            pdf_paragraph_composition=[
-                _line("body text about facts and bias.", 280, "Font1"),
-                _line("never never never fakes the news.", 265, "Font2"),
-            ],
-            unicode="x",
-        )
-        paras = [para]
-        pf.process_independent_paragraphs(paras, median_width=200.0)
-        assert len(paras) == 2
-        assert "never" not in _para_text(paras[0])
-        assert "never" in _para_text(paras[1])
-        assert "bias" in _para_text(paras[0])
-
-    def test_born_digital_sentence_final_still_splits(self):
         pf = ParagraphFinder(_config(ocr_workaround=False))
         para = PdfParagraph(
-            box=Box(x=50, y=200, x2=340, y2=300),
-            pdf_style=PdfStyle(font_id="Font1", font_size=10.0, graphic_state=None),
+            box=Box(x=150, y=200, x2=490, y2=300),
+            pdf_style=PdfStyle(
+                font_id="MyriadPro-Light", font_size=11.8, graphic_state=None
+            ),
             pdf_paragraph_composition=[
-                _line("body text about facts and bias.", 280, "Font1"),
-                _line("never never never fakes the news.", 265, "Font2"),
-            ],
-            unicode="x",
-        )
-        paras = [para]
-        pf.process_independent_paragraphs(paras, median_width=200.0)
-        assert len(paras) == 2
-
-    def test_same_font_not_split(self):
-        pf = ParagraphFinder(_config())
-        para = PdfParagraph(
-            box=Box(x=50, y=200, x2=340, y2=300),
-            pdf_style=PdfStyle(font_id="Font1", font_size=10.0, graphic_state=None),
-            pdf_paragraph_composition=[
-                _line("first line of body text here xx", 280, "Font1"),
-                _line("second line of body text here", 265, "Font1"),
-            ],
-            unicode="x",
-        )
-        paras = [para]
-        pf.process_independent_paragraphs(paras, median_width=200.0)
-        assert len(paras) == 1
-
-    def test_date_tail_still_splits(self):
-        """Regression: short centered (Dated: …) under affiliation stays separate."""
-        pf = ParagraphFinder(_config(ocr_workaround=False))
-        para = PdfParagraph(
-            box=Box(x=50, y=200, x2=500, y2=300),
-            pdf_style=PdfStyle(font_id="Font1", font_size=10.0, graphic_state=None),
-            pdf_paragraph_composition=[
-                _line(
-                    "Department of Applied Physics, Yale University",
+                _mixed_line(
+                    [
+                        (title, "MyriadPro-Black", 9.7),
+                        (tail, "MyriadPro-Light", 11.8),
+                    ],
                     280,
-                    "Font1",
-                    x0=80.0,
+                    x0=168,
                 ),
-                # short inset date line (same font — geometry triggers split)
-                _line("(Dated: January 1, 2024)", 265, "Font1", x0=180.0),
+                _line(body, 265, "MyriadPro-Light", x0=159),
             ],
             unicode="x",
         )
-        # make date line geometrically short/inset vs affil
-        affil = para.pdf_paragraph_composition[0].pdf_line
-        date = para.pdf_paragraph_composition[1].pdf_line
-        affil.box = Box(x=80, y=280, x2=480, y2=292)
-        date.box = Box(x=200, y=265, x2=360, y2=277)
+        for char in para.pdf_paragraph_composition[1].pdf_line.pdf_character:
+            char.pdf_style.font_size = 11.8
         paras = [para]
-        pf.process_independent_paragraphs(paras, median_width=400.0)
-        assert len(paras) == 2
-        assert "Dated" in _para_text(paras[1])
-        assert "Department" in _para_text(paras[0])
+        pf.process_independent_paragraphs(paras, median_width=300.0)
+        assert len(paras) == 1
+        assert "head-to-toe" in _para_text(paras[0])
+        assert "turn-on" in _para_text(paras[0])
+
+
+def test_a_long_run_in_lead_takes_the_body_face():
+    """22 bold glyphs tie 22 light glyphs. The lead-in joins the body face."""
+    title = "Scent-ually massage her."
+    tail = " For a peppery head-to-toe"
+    body = "turn-on, start with cinnamon-flavored lube that heats up when"
+    paragraph = PdfParagraph(
+        box=Box(x=150, y=200, x2=490, y2=300),
+        pdf_paragraph_composition=[
+            _mixed_line(
+                [(title, "MyriadPro-Black", 9.7), (tail, "MyriadPro-Light", 11.8)],
+                280,
+                x0=168,
+            ),
+            _line(body, 265, "MyriadPro-Light", x0=159),
+        ],
+        unicode="x",
+    )
+    for char in paragraph.pdf_paragraph_composition[1].pdf_line.pdf_character:
+        char.pdf_style.font_size = 11.8
+    assert flatten_dominant_run_in(paragraph)
+    faces = {
+        char.pdf_style.font_id
+        for char in paragraph.pdf_paragraph_composition[0].pdf_line.pdf_character
+        if char.char_unicode and not char.char_unicode.isspace()
+    }
+    assert faces == {"MyriadPro-Light"}
+
+
+def test_a_short_run_in_title_stays_bold():
+    """Section 5: the bold title is shorter than the light continuation."""
+    paragraph = PdfParagraph(
+        box=Box(x=150, y=200, x2=520, y2=300),
+        pdf_paragraph_composition=[
+            _mixed_line(
+                [
+                    ("Keep her guessing.", "MyriadPro-Black", 9.7),
+                    (" As you start to kiss her deeply, run your fingertips,", "MyriadPro-Light", 11.8),
+                ],
+                280,
+                x0=150,
+            ),
+            _line("lips or another body part along the spine today", 265, "MyriadPro-Light"),
+        ],
+        unicode="x",
+    )
+    assert not flatten_dominant_run_in(paragraph)
+    bold = [
+        char
+        for char in paragraph.pdf_paragraph_composition[0].pdf_line.pdf_character
+        if char.pdf_style.font_id == "MyriadPro-Black"
+    ]
+    assert bold
+    assert remember_run_in_lead(paragraph)
+
+
+def test_a_serial_marker_does_not_replace_the_name_face():
+    """Item 3: Medium is only the number. The name stays Black on both lines."""
+    paragraph = PdfParagraph(
+        box=Box(x=150, y=200, x2=520, y2=300),
+        pdf_paragraph_composition=[
+            _mixed_line(
+                [
+                    ("3. ", "Ubuntu-Medium", 12.5),
+                    ("Gently ", "MyriadPro-Black", 9.7),
+                ],
+                280,
+                x0=270,
+            ),
+            _line("scratch her.", 265, "MyriadPro-Black"),
+        ],
+        unicode="x",
+    )
+    assert not remember_run_in_lead(paragraph)
+    assert not flatten_dominant_run_in(paragraph)
+    first = paragraph.pdf_paragraph_composition[0].pdf_line.pdf_character
+    number = [c for c in first if c.char_unicode == "3"]
+    name = [c for c in first if c.char_unicode == "G"]
+    assert number[0].pdf_style.font_id == "Ubuntu-Medium"
+    assert name[0].pdf_style.font_id == "MyriadPro-Black"
+
+
+def _translated(text: str, font_id: str = "MyriadPro-Light") -> PdfParagraph:
+    return PdfParagraph(
+        box=Box(x=150, y=200, x2=520, y2=300),
+        pdf_paragraph_composition=[
+            PdfParagraphComposition(
+                pdf_same_style_unicode_characters=PdfSameStyleUnicodeCharacters(
+                    unicode=text,
+                    pdf_style=PdfStyle(
+                        font_id=font_id,
+                        font_size=11.8,
+                        graphic_state=None,
+                    ),
+                ),
+            ),
+        ],
+        unicode=text,
+    )
+
+
+def test_a_translated_sequence_name_keeps_the_lead_face():
+    """The name stays on the body line, in the lead face, through the first stop."""
+    title = "Scent-ually massage her."
+    tail = " For a peppery head-to-toe"
+    body = "turn-on, start with cinnamon-flavored lube that heats up when"
+    source = PdfParagraph(
+        box=Box(x=150, y=200, x2=490, y2=300),
+        pdf_paragraph_composition=[
+            _mixed_line(
+                [(title, "MyriadPro-Black", 9.7), (tail, "MyriadPro-Light", 11.8)],
+                280,
+                x0=168,
+            ),
+            _line(body, 265, "MyriadPro-Light", x0=159),
+        ],
+        unicode="x",
+    )
+    assert remember_run_in_lead(source)
+    assert flatten_dominant_run_in(source)
+    source.pdf_paragraph_composition = _translated(
+        "4. 为她做香喷喷的按摩。要想从头到脚都充满激情，可以从肉"
+    ).pdf_paragraph_composition
+    assert apply_run_in_lead_style(source)
+    name = source.pdf_paragraph_composition[0].pdf_same_style_unicode_characters
+    rest = source.pdf_paragraph_composition[1].pdf_same_style_unicode_characters
+    assert name.unicode == "4. 为她做香喷喷的按摩。"
+    assert name.pdf_style.font_id == "MyriadPro-Black"
+    assert name.pdf_style.font_size == 9.7
+    assert rest.unicode.startswith("要想")
+    assert rest.pdf_style.font_id == "MyriadPro-Light"
+
+
+def test_a_body_sentence_does_not_take_the_sequence_name_face():
+    """A dropped name leaves a comma in the first sentence. That stays body."""
+    source = PdfParagraph(
+        box=Box(x=150, y=200, x2=520, y2=300),
+        pdf_paragraph_composition=[
+            _mixed_line(
+                [
+                    ("Chill her for thrills.", "MyriadPro-Black", 9.7),
+                    (
+                        " Make ice from sparkling mineral water, then rub her",
+                        "MyriadPro-Light",
+                        11.8,
+                    ),
+                ],
+                280,
+                x0=150,
+            ),
+            _line("down with the cubes before you continue on", 265, "MyriadPro-Light"),
+        ],
+        unicode="x",
+    )
+    assert remember_run_in_lead(source)
+    source.pdf_paragraph_composition = _translated(
+        "6.用含气矿泉水制冰，然后用揉搓把冰块放下去。碳酸化会留下口袋。"
+    ).pdf_paragraph_composition
+    assert not apply_run_in_lead_style(source)
+    only = source.pdf_paragraph_composition[0].pdf_same_style_unicode_characters
+    assert only.pdf_style.font_id == "MyriadPro-Light"
+
+
+def test_ocr_mid_sentence_times_to_courier_not_split():
+    """OCR dual-layer: mid-clause Times→smaller Courier stays one para for MT.
+
+    font.unknown ends the first body with 11pt Times then 7.5pt Courier
+    ("occasional | sensationalism… never fakes"). Must not orphan the tail.
+    """
+    pf = ParagraphFinder(_config(ocr_workaround=True))
+    long_a = "nothing but the facts and yes theres occasional bias occasional words"
+    long_b = "sensationalism occasional inaccuracy but a responsible journalist yes"
+    para = PdfParagraph(
+        box=Box(x=50, y=200, x2=340, y2=300),
+        pdf_style=PdfStyle(font_id="Font1", font_size=11.0, graphic_state=None),
+        pdf_paragraph_composition=[
+            _line(long_a, 280, "Font1"),
+            _line(long_b, 265, "Font2"),
+            _line("never, never, never fakes the news.", 250, "Font2"),
+        ],
+        unicode="x",
+    )
+    # Times ~11pt then Courier ~7.5pt (real dual-layer size jump)
+    for ch in para.pdf_paragraph_composition[0].pdf_line.pdf_character:
+        ch.pdf_style.font_size = 11.2
+    for comp in para.pdf_paragraph_composition[1:]:
+        for ch in comp.pdf_line.pdf_character:
+            ch.pdf_style.font_size = 7.5
+    paras = [para]
+    pf.process_independent_paragraphs(paras, median_width=200.0)
+    assert len(paras) == 1
+    assert "sensationalism" in _para_text(paras[0])
+    assert "never" in _para_text(paras[0])
+
+def test_ocr_title_to_author_size_hard_splits():
+    """OCR soft keep must not glue title (15pt) to author (12pt)."""
+    pf = ParagraphFinder(_config(ocr_workaround=True))
+    para = PdfParagraph(
+        box=Box(x=50, y=200, x2=340, y2=400),
+        pdf_style=PdfStyle(font_id="FTitle", font_size=15.0, graphic_state=None),
+        pdf_paragraph_composition=[
+            _line("The sociology of news production", 380, "FTitle"),
+            _line("Michael Schudson", 360, "FAuthor"),
+            _line("UNIVERSITY OF CALIFORNIA, SAN DIEGO", 340, "FUni"),
+        ],
+        unicode="x",
+    )
+    # distinct sizes on title vs author (helper uses 10pt default — set via chars)
+    for comp, size in zip(
+        para.pdf_paragraph_composition, (15.0, 12.0, 9.0), strict=True
+    ):
+        for ch in comp.pdf_line.pdf_character:
+            ch.pdf_style.font_size = size
+    paras = [para]
+    pf.process_independent_paragraphs(paras, median_width=200.0)
+    assert len(paras) >= 2
+    assert "Michael" not in _para_text(paras[0])
+    assert "sociology" in _para_text(paras[0]).lower() or "The" in _para_text(
+        paras[0]
+    )
+
+def test_same_face_size_jump_splits_title_stack():
+    """font.unknown: title/author/uni share Times face — only size differs."""
+    pf = ParagraphFinder(_config(ocr_workaround=True))
+    para = PdfParagraph(
+        box=Box(x=50, y=200, x2=340, y2=400),
+        pdf_style=PdfStyle(font_id="Font1", font_size=15.0, graphic_state=None),
+        pdf_paragraph_composition=[
+            _line("The sociology of news production", 380, "Font1"),
+            _line("Michael Schudson", 360, "Font1"),
+            _line("UNIVERSITY OF CALIFORNIA, SAN DIEGO", 340, "Font1"),
+        ],
+        unicode="x",
+    )
+    for comp, size in zip(
+        para.pdf_paragraph_composition, (15.3, 11.8, 9.2), strict=True
+    ):
+        for ch in comp.pdf_line.pdf_character:
+            ch.pdf_style.font_size = size
+    # Policy unit
+    assert should_split_on_font_size_jump(
+        para.pdf_paragraph_composition[0].pdf_line,
+        para.pdf_paragraph_composition[1].pdf_line,
+    )
+    assert should_split_on_font_size_jump(
+        para.pdf_paragraph_composition[1].pdf_line,
+        para.pdf_paragraph_composition[2].pdf_line,
+    )
+    paras = [para]
+    pf.process_independent_paragraphs(paras, median_width=200.0)
+    assert len(paras) == 3
+    assert "UNIVERSITY" not in _para_text(paras[1])
+    assert "Schudson" in _para_text(paras[1])
+
+def test_ocr_sentence_final_times_to_courier_splits():
+    """OCR path: clean sentence boundary → mono block is its own paragraph."""
+    pf = ParagraphFinder(_config(ocr_workaround=True))
+    para = PdfParagraph(
+        box=Box(x=50, y=200, x2=340, y2=300),
+        pdf_style=PdfStyle(font_id="Font1", font_size=10.0, graphic_state=None),
+        pdf_paragraph_composition=[
+            _line("body text about facts and bias.", 280, "Font1"),
+            _line("never never never fakes the news.", 265, "Font2"),
+        ],
+        unicode="x",
+    )
+    paras = [para]
+    pf.process_independent_paragraphs(paras, median_width=200.0)
+    assert len(paras) == 2
+    assert "never" not in _para_text(paras[0])
+    assert "never" in _para_text(paras[1])
+    assert "bias" in _para_text(paras[0])
+
+def test_born_digital_sentence_final_still_splits():
+    pf = ParagraphFinder(_config(ocr_workaround=False))
+    para = PdfParagraph(
+        box=Box(x=50, y=200, x2=340, y2=300),
+        pdf_style=PdfStyle(font_id="Font1", font_size=10.0, graphic_state=None),
+        pdf_paragraph_composition=[
+            _line("body text about facts and bias.", 280, "Font1"),
+            _line("never never never fakes the news.", 265, "Font2"),
+        ],
+        unicode="x",
+    )
+    paras = [para]
+    pf.process_independent_paragraphs(paras, median_width=200.0)
+    assert len(paras) == 2
+
+def test_same_font_not_split():
+    pf = ParagraphFinder(_config())
+    para = PdfParagraph(
+        box=Box(x=50, y=200, x2=340, y2=300),
+        pdf_style=PdfStyle(font_id="Font1", font_size=10.0, graphic_state=None),
+        pdf_paragraph_composition=[
+            _line("first line of body text here xx", 280, "Font1"),
+            _line("second line of body text here", 265, "Font1"),
+        ],
+        unicode="x",
+    )
+    paras = [para]
+    pf.process_independent_paragraphs(paras, median_width=200.0)
+    assert len(paras) == 1
+
+def test_date_tail_still_splits():
+    """Regression: short centered (Dated: …) under affiliation stays separate."""
+    pf = ParagraphFinder(_config(ocr_workaround=False))
+    para = PdfParagraph(
+        box=Box(x=50, y=200, x2=500, y2=300),
+        pdf_style=PdfStyle(font_id="Font1", font_size=10.0, graphic_state=None),
+        pdf_paragraph_composition=[
+            _line(
+                "Department of Applied Physics, Yale University",
+                280,
+                "Font1",
+                x0=80.0,
+            ),
+            # short inset date line (same font — geometry triggers split)
+            _line("(Dated: January 1, 2024)", 265, "Font1", x0=180.0),
+        ],
+        unicode="x",
+    )
+    # make date line geometrically short/inset vs affil
+    affil = para.pdf_paragraph_composition[0].pdf_line
+    date = para.pdf_paragraph_composition[1].pdf_line
+    affil.box = Box(x=80, y=280, x2=480, y2=292)
+    date.box = Box(x=200, y=265, x2=360, y2=277)
+    paras = [para]
+    pf.process_independent_paragraphs(paras, median_width=400.0)
+    assert len(paras) == 2
+    assert "Dated" in _para_text(paras[1])
+    assert "Department" in _para_text(paras[0])
 
 
 class TestMonoFontMapping:

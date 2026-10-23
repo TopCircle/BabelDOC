@@ -969,6 +969,45 @@ def test_a_title_keeps_the_next_body_on_its_box():
     assert second.box.y2 == 200.0
 
 
+def test_an_outdented_title_keeps_the_next_body_on_its_box():
+    upper = [(102.0, 540.0, 200.0), (116.0, 500.0, 185.0), (130.0, 480.0, 170.0)]
+    title = [(78.0, 302.0, 140.0)]
+    lower = [(102.0, 540.0, 100.0), (116.0, 500.0, 85.0), (130.0, 480.0, 70.0)]
+    facts = _facts_blocks(
+        [
+            _block(upper, role="body"),
+            _block(title, role="title"),
+            _block(lower, role="body"),
+        ]
+    )
+    plan = build_plan(facts)
+    assert plan.paragraph_gap_links == ()
+    second = _placed_paragraph(
+        facts.regions[2].region_id,
+        box=_Box(102, 160, 540, 200),
+        chars=[_Char(182, 200)],
+    )
+    pack_body_paragraphs(_Page([second], plan))
+    assert second.box.y2 == 200.0
+
+
+def test_a_side_title_off_the_column_keeps_the_paragraph_gap():
+    upper = [(102.0, 400.0, 200.0), (116.0, 380.0, 185.0), (130.0, 360.0, 170.0)]
+    side = [(430.0, 560.0, 140.0)]
+    lower = [(102.0, 400.0, 100.0), (116.0, 380.0, 85.0), (130.0, 360.0, 70.0)]
+    facts = _facts_blocks(
+        [
+            _block(upper, role="body"),
+            _block(side, role="title"),
+            _block(lower, role="body"),
+        ]
+    )
+    plan = build_plan(facts)
+    assert len(plan.paragraph_gap_links) == 1
+    assert plan.paragraph_gap_links[0].region_id == facts.regions[2].region_id
+    assert plan.paragraph_gap_links[0].above_id == facts.regions[0].region_id
+
+
 def test_a_rect_follower_is_not_seated_twice():
     upper = [(56.0, 400.0, 100.0), (56.0, 400.0, 85.0), (56.0, 400.0, 70.0)]
     lower = [(56.0, 400.0, 47.0), (56.0, 400.0, 32.0), (56.0, 400.0, 17.0)]
@@ -1098,6 +1137,253 @@ def test_a_pocket_does_not_pull_a_rect_through_a_body_gap():
     pack_shaped_pockets(page)
     # Pocket ink bottom 500 and the 3pt fallback would land this column at 497.
     assert head.box.y2 == 335.0
+
+
+def _shelf(*rights: float, left: float = 50.0, top: float = 400.0, pitch: float = 15.0):
+    from babeldoc.format.pdf.document_il.utils.layout_plan.model import ContourLevel
+
+    return tuple(
+        ContourLevel(left, right, top - index * pitch, "observed")
+        for index, right in enumerate(rights)
+    )
+
+
+def test_a_narrow_pack_continues_down_onto_the_wide_lines():
+    from unittest.mock import MagicMock
+
+    from babeldoc.format.pdf.document_il.il_version_1 import Box
+    from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
+    from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
+    from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
+    from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
+    from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
+    from babeldoc.format.pdf.document_il.midend.typesetting import TypesettingUnit
+    from babeldoc.format.pdf.document_il.utils.layout_plan.model import LineEdgeLink
+    from babeldoc.format.pdf.translation_config import TranslationConfig
+    from babeldoc.translator.fixed_map_translator import FixedMapTranslator
+
+    levels = _shelf(*([150.0] * 6), *([450.0] * 3))
+    link = LineEdgeLink(
+        "step",
+        tuple((level.left, level.right, level.top) for level in levels),
+        "left",
+        "edge",
+        levels,
+    )
+    host = Box(x=50, y=0, x2=450, y2=500)
+    paragraph = PdfParagraph(
+        box=host,
+        pdf_style=PdfStyle(font_id="base", font_size=12, graphic_state=None),
+        pdf_paragraph_composition=[],
+        unicode="测试",
+        debug_id="shelf",
+    )
+
+    def _glyph() -> TypesettingUnit:
+        glyph = Box(x=0, y=0, x2=10, y2=12)
+        char = PdfCharacter(
+            char_unicode="中",
+            box=glyph,
+            visual_bbox=VisualBbox(box=Box(x=0, y=0, x2=10, y2=12)),
+            pdf_style=PdfStyle(font_id="base", font_size=12, graphic_state=None),
+        )
+        return TypesettingUnit(char=char)
+
+    ts = Typesetting(
+        TranslationConfig(
+            translator=FixedMapTranslator(),
+            input_file="shelf.pdf",
+            lang_in="en",
+            lang_out="zh-CN",
+            doc_layout_model=MagicMock(),
+            auto_extract_glossary=False,
+        )
+    )
+    ts._line_edges = link
+    ts._pocket_link = None
+    fitted, fitted_ok = ts._layout_typesetting_units(
+        [_glyph() for _ in range(100)],
+        host,
+        1.0,
+        1.05,
+        paragraph,
+        use_english_line_break=False,
+    )
+    assert fitted_ok is True
+    assert len(fitted) == 100
+    lines: dict[float, list] = {}
+    for unit in fitted:
+        lines.setdefault(round(unit.box.y, 1), []).append(unit)
+    tops = sorted(lines, reverse=True)
+    gaps = [tops[index] - tops[index + 1] for index in range(len(tops) - 1)]
+    assert max(gaps) < 20.0
+    # One full wide line, then a short last line. The column stays up.
+    wide = [
+        top
+        for top in tops
+        if max(unit.box.x2 for unit in lines[top]) > 400.0
+    ]
+    assert wide == [tops[-2]]
+    assert tops[0] > 340.0
+    last = lines[tops[-1]]
+    assert max(unit.box.x2 for unit in last) < 360.0
+    assert min(unit.box.x for unit in last) == 50.0
+    estimated = ts._estimate_line_widths(
+        [_glyph() for _ in range(100)],
+        host,
+        1.0,
+        12.0,
+        1.2,
+        paragraph=paragraph,
+        font_size=12.0,
+    )
+    wide_at = next(index for index, width in enumerate(estimated) if width > 300.0)
+    assert estimated[0] < 150.0
+    assert wide_at <= 5
+
+
+def test_a_short_last_line_on_the_lower_shelf_meets_the_right_edge():
+    from unittest.mock import MagicMock
+
+    from babeldoc.format.pdf.document_il.il_version_1 import Box
+    from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
+    from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
+    from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
+    from babeldoc.format.pdf.document_il.il_version_1 import VisualBbox
+    from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
+    from babeldoc.format.pdf.document_il.midend.typesetting import TypesettingUnit
+    from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import shelf_drop
+    from babeldoc.format.pdf.document_il.utils.layout_plan.model import LineEdgeLink
+    from babeldoc.format.pdf.translation_config import TranslationConfig
+    from babeldoc.translator.fixed_map_translator import FixedMapTranslator
+
+    straight = _shelf(*([150.0] * 6), *([450.0] * 3))
+    # Tail is 1.5 wide lines. One narrow line holds the rest.
+    assert shelf_drop(straight, [10.0] * 65) == 400.0 - 5 * 15.0
+    assert shelf_drop(straight, [10.0] * 150) is None
+    wobble = _shelf(160, 150, 168, 155, 170, 152, 450, 450, 450)
+    assert shelf_drop(wobble, [10.0] * 65) is None
+    inset = _shelf(*([450.0] * 4), *([250.0] * 3), *([450.0] * 3))
+    assert shelf_drop(inset, [10.0] * 65) is None
+    spur = _shelf(*([150.0] * 6), 450.0)
+    assert shelf_drop(spur, [10.0] * 65) is None
+
+    link = LineEdgeLink(
+        "step",
+        tuple((level.left, level.right, level.top) for level in straight),
+        "left",
+        "edge",
+        straight,
+    )
+    host = Box(x=50, y=0, x2=450, y2=500)
+    paragraph = PdfParagraph(
+        box=host,
+        pdf_style=PdfStyle(font_id="base", font_size=12, graphic_state=None),
+        pdf_paragraph_composition=[],
+        unicode="测试",
+        debug_id="shelf-last",
+    )
+
+    def _glyph() -> TypesettingUnit:
+        glyph = Box(x=0, y=0, x2=10, y2=12)
+        char = PdfCharacter(
+            char_unicode="中",
+            box=glyph,
+            visual_bbox=VisualBbox(box=Box(x=0, y=0, x2=10, y2=12)),
+            pdf_style=PdfStyle(font_id="base", font_size=12, graphic_state=None),
+        )
+        return TypesettingUnit(char=char)
+
+    ts = Typesetting(
+        TranslationConfig(
+            translator=FixedMapTranslator(),
+            input_file="shelf.pdf",
+            lang_in="en",
+            lang_out="zh-CN",
+            doc_layout_model=MagicMock(),
+            auto_extract_glossary=False,
+        )
+    )
+    ts._line_edges = link
+    ts._pocket_link = None
+    fitted, fitted_ok = ts._layout_typesetting_units(
+        [_glyph() for _ in range(65)],
+        host,
+        1.0,
+        1.05,
+        paragraph,
+        use_english_line_break=False,
+    )
+    assert fitted_ok is True
+    lines: dict[float, list] = {}
+    for unit in fitted:
+        lines.setdefault(round(unit.box.y, 1), []).append(unit)
+    tops = sorted(lines, reverse=True)
+    assert tops[-2] - tops[-1] < 20.0
+    assert max(unit.box.x2 for unit in lines[tops[-2]]) > 400.0
+    last = sorted(lines[tops[-1]], key=lambda unit: unit.box.x)
+    assert max(unit.box.x2 for unit in last) < 320.0
+    steps = [
+        last[index].box.x - last[index - 1].box.x
+        for index in range(1, len(last))
+    ]
+    assert max(steps) < 15.0
+
+
+def test_a_long_narrow_run_stays_high_and_leaves_a_short_tail():
+    from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import shelf_drop
+
+    long = _shelf(*([150.0] * 12), *([450.0] * 3))
+    # Tail is 600. Ten narrow lines hold the rest, so the column
+    # starts at sample 2 rather than handing those lines to the shelf.
+    assert shelf_drop(long, [10.0] * 160) == 400.0 - 2 * 15.0
+    assert shelf_drop(long, [10.0] * 400) is None
+
+
+def test_a_dropped_column_keeps_the_heading_on_its_gap():
+    from babeldoc.format.pdf.document_il.utils.paragraph_gap_stack import (
+        seat_dropped_headings,
+    )
+
+    def _para(lines):
+        chars = [_ink_char(x, y, x2, y2) for x, x2, y, y2 in lines]
+        composition = type(
+            "_Comp",
+            (),
+            {
+                "pdf_line": type(
+                    "_Line",
+                    (),
+                    {"box": None, "pdf_character": chars},
+                )(),
+                "pdf_formula": None,
+                "pdf_character": None,
+                "pdf_same_style_characters": None,
+            },
+        )()
+        paragraph = type("_Para", (), {})()
+        paragraph.box = _Box(lines[0][0], lines[-1][2], lines[0][1], lines[0][3])
+        paragraph.pdf_paragraph_composition = [composition]
+        return paragraph
+
+    body = _para(((66, 211, 418, 430), (66, 211, 403, 415)))
+    heading = _para(((114, 162, 550, 562),))
+    bar = _para(((66, 500, 476, 488),))
+    header = _para(((66, 160, 736, 748),))
+    page = type("_Page", (), {"pdf_paragraph": [header, heading, bar, body]})()
+    seat_dropped_headings(page, {id(body): 120.0})
+    assert heading.box.y2 == 442.0
+    glyph = heading.pdf_paragraph_composition[0].pdf_line.pdf_character[0]
+    assert glyph.box.y2 == 442.0
+    assert bar.box.y2 == 488.0
+    assert header.box.y2 == 748.0
+    assert body.box.y2 == 430.0
+    stayed = _para(((114, 162, 550, 562),))
+    seat_dropped_headings(
+        type("_Page", (), {"pdf_paragraph": [stayed, body]})(),
+        {id(body): 4.0},
+    )
+    assert stayed.box.y2 == 562.0
 
 
 def test_a_stair_without_a_figure_is_not_a_body_gap():

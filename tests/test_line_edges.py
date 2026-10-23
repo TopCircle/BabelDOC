@@ -20,6 +20,7 @@ from babeldoc.format.pdf.document_il.utils.layout_plan.list_chain import with_li
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import ContourLevel
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import LineBox
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import LineEdgeLink
+from babeldoc.format.pdf.document_il.utils.layout_plan.model import MarkerEvidence
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms import load_catalog
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.both.wider_below import (
     fill,
@@ -36,8 +37,29 @@ from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.contract import
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.hang.deep import (
     fill as deep_fill,
 )
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.hang.repeated import (
+    fill as repeated_fill,
+)
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.hang.shallow import (
     fill as shallow_fill,
+)
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.mark.bullet_hang import (
+    fill as bullet_hang_fill,
+)
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.mark.bullet_plain import (
+    fill as bullet_plain_fill,
+)
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.mark.bullet_repeated import (
+    fill as bullet_repeated_fill,
+)
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.mark.serial_hang import (
+    fill as serial_hang_fill,
+)
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.mark.serial_plain import (
+    fill as serial_plain_fill,
+)
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.mark.serial_repeated import (
+    fill as serial_repeated_fill,
 )
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.rag.deep_right import (
     fill as deep_right_fill,
@@ -47,6 +69,9 @@ from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.rag.left_edge i
 )
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.rag.right_edge import (
     fill as right_edge_fill,
+)
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.rect.full_column import (
+    fill as full_column_fill,
 )
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.rect.light_column import (
     fill as light_column_fill,
@@ -79,7 +104,7 @@ def _opening_lines():
     ]
 
 
-def _facts(lines, gate="single_page"):
+def _facts(lines, gate="single_page", marker=None, source_text=""):
     return build_facts(
         source_fingerprint="synthetic",
         page_index=0,
@@ -87,7 +112,13 @@ def _facts(lines, gate="single_page"):
         page_height=792.0,
         input_gate=gate,
         text_health=0.9,
-        blocks=[SourceBlock(lines=tuple(LineBox(*line) for line in lines))],
+        blocks=[
+            SourceBlock(
+                lines=tuple(LineBox(*line) for line in lines),
+                marker=marker,
+                source_text=source_text,
+            )
+        ],
     )
 
 
@@ -138,16 +169,25 @@ def test_only_wired_modules_carry_a_fill():
         "bow/right_inset",
         "center/axis",
         "hang/deep",
+        "hang/repeated",
         "hang/shallow",
+        "mark/bullet_hang",
+        "mark/bullet_plain",
+        "mark/bullet_repeated",
+        "mark/serial_hang",
+        "mark/serial_plain",
+        "mark/serial_repeated",
         "rag/right_edge",
         "rag/left_edge",
         "rag/deep_right",
+        "rect/full_column",
         "rect/light_column",
         "step/right_lower_wide",
         "step/right_spur",
         "step/right_upper_wide",
         "taper/left_pin",
         "taper/right_pin",
+        "toc/plain",
     }
     for name in wired:
         assert callable(catalog[name].fill)
@@ -302,6 +342,60 @@ def test_deep_hang_fill_keeps_each_line_and_its_top():
     assert interval_for_line_edges(link, 99, 170.0, 180.0) == (164.0, 400.0)
 
 
+def test_repeated_hang_fill_keeps_each_line_and_its_top():
+    lines = [
+        [100.0, 360.0, 200.0],
+        [118.0, 400.0, 184.0],
+        [118.0, 400.0, 168.0],
+        [100.0, 380.0, 152.0],
+        [118.0, 390.0, 136.0],
+        [118.0, 370.0, 120.0],
+    ]
+    edges = repeated_fill(lines)
+    assert edges[0] == (100.0, 360.0, 200.0)
+    assert edges[1] == (118.0, 400.0, 184.0)
+    assert edges[3] == (100.0, 380.0, 152.0)
+    plan = build_plan(_facts(lines))
+    assert len(plan.line_edge_links) == 1
+    link = plan.line_edge_links[0]
+    assert plan.decisions[0].contour_plugin == "hang/repeated"
+    assert plan.decisions[0].contour_status == "matched"
+    assert link.alignment == "left"
+    assert link.flow == "edge"
+    assert link.edges == edges
+    assert all(level.kind == "observed" for level in link.levels)
+    assert interval_for_line_edges(link, 0, 190.0, 198.0) == (100.0, 360.0)
+    assert interval_for_line_edges(link, 1, 170.0, 180.0) == (118.0, 400.0)
+    assert interval_for_line_edges(link, 3, 140.0, 150.0) == (100.0, 380.0)
+
+
+def test_full_column_fill_keeps_each_line_and_its_top():
+    lines = [
+        [36.0, 578.8, 443.5],
+        [36.0, 578.7, 425.5],
+        [36.0, 578.8, 407.5],
+        [36.0, 578.8, 389.5],
+        [36.0, 578.6, 371.5],
+        [36.0, 222.5, 353.5],
+    ]
+    edges = full_column_fill(lines)
+    assert edges[0] == (36.0, 578.8, 443.5)
+    assert edges[1] == (36.0, 578.7, 425.5)
+    assert edges[-1] == (36.0, 222.5, 353.5)
+    plan = build_plan(_facts(lines))
+    assert len(plan.line_edge_links) == 1
+    link = plan.line_edge_links[0]
+    assert plan.decisions[0].contour_plugin == "rect/full_column"
+    assert plan.decisions[0].contour_status == "matched"
+    assert link.alignment == "left"
+    assert link.flow == "edge"
+    assert link.edges == edges
+    assert all(level.kind == "observed" for level in link.levels)
+    assert interval_for_line_edges(link, 0, 435.0, 445.0) == (36.0, 578.8)
+    assert interval_for_line_edges(link, 1, 417.0, 427.0) == (36.0, 578.7)
+    assert interval_for_line_edges(link, 5, 345.0, 355.0) == (36.0, 222.5)
+
+
 def test_deep_right_fill_keeps_each_line_and_its_top():
     lines = [
         [100.0, 400.0, 200.0],
@@ -320,6 +414,156 @@ def test_deep_right_fill_keeps_each_line_and_its_top():
     assert interval_for_line_edges(link, 0, 192.0, 200.0) == (100.0, 400.0)
     assert interval_for_line_edges(link, 0, 168.5, 183.0) == (100.0, 300.0)
     assert interval_for_line_edges(link, 1) is None
+
+
+def test_bullet_hang_fill_keeps_each_line_and_its_top():
+    bullet = MarkerEvidence(text="•", font="Test", is_bullet=True)
+    lines = [
+        [100.0, 360.0, 200.0],
+        [118.0, 400.0, 184.0],
+        [118.0, 400.0, 168.0],
+        [118.0, 380.0, 152.0],
+    ]
+    edges = bullet_hang_fill(lines)
+    assert edges[0] == (100.0, 360.0, 200.0)
+    assert edges[1] == (118.0, 400.0, 184.0)
+    plan = build_plan(_facts(lines, marker=bullet))
+    assert len(plan.line_edge_links) == 1
+    link = plan.line_edge_links[0]
+    assert plan.decisions[0].contour_plugin == "mark/bullet_hang"
+    assert plan.decisions[0].contour_status == "matched"
+    assert link.alignment == "left"
+    assert link.flow == "edge"
+    assert link.edges == edges
+    assert all(level.kind == "observed" for level in link.levels)
+    assert interval_for_line_edges(link, 0, 190.0, 198.0) == (100.0, 360.0)
+    assert interval_for_line_edges(link, 1, 170.0, 180.0) == (118.0, 400.0)
+
+
+def test_bullet_plain_fill_keeps_each_line_and_its_top():
+    bullet = MarkerEvidence(text="•", font="Test", is_bullet=True)
+    lines = [
+        [100.0, 360.0, 200.0],
+        [100.0, 400.0, 184.0],
+        [100.0, 400.0, 168.0],
+        [100.0, 380.0, 152.0],
+    ]
+    edges = bullet_plain_fill(lines)
+    assert edges[0] == (100.0, 360.0, 200.0)
+    assert edges[1] == (100.0, 400.0, 184.0)
+    plan = build_plan(_facts(lines, marker=bullet))
+    assert len(plan.line_edge_links) == 1
+    link = plan.line_edge_links[0]
+    assert plan.decisions[0].contour_plugin == "mark/bullet_plain"
+    assert plan.decisions[0].contour_status == "matched"
+    assert link.alignment == "left"
+    assert link.flow == "edge"
+    assert link.edges == edges
+    assert all(level.kind == "observed" for level in link.levels)
+    assert interval_for_line_edges(link, 0, 190.0, 198.0) == (100.0, 360.0)
+    assert interval_for_line_edges(link, 1, 170.0, 180.0) == (100.0, 400.0)
+
+
+def test_bullet_repeated_fill_keeps_each_line_and_its_top():
+    bullet = MarkerEvidence(text="•", font="Test", is_bullet=True)
+    lines = [
+        [100.0, 360.0, 200.0],
+        [118.0, 400.0, 184.0],
+        [118.0, 400.0, 168.0],
+        [100.0, 380.0, 152.0],
+        [118.0, 390.0, 136.0],
+        [118.0, 370.0, 120.0],
+    ]
+    edges = bullet_repeated_fill(lines)
+    assert edges[0] == (100.0, 360.0, 200.0)
+    assert edges[1] == (118.0, 400.0, 184.0)
+    assert edges[3] == (100.0, 380.0, 152.0)
+    plan = build_plan(_facts(lines, marker=bullet))
+    assert len(plan.line_edge_links) == 1
+    link = plan.line_edge_links[0]
+    assert plan.decisions[0].contour_plugin == "mark/bullet_repeated"
+    assert plan.decisions[0].contour_status == "matched"
+    assert link.alignment == "left"
+    assert link.flow == "edge"
+    assert link.edges == edges
+    assert all(level.kind == "observed" for level in link.levels)
+    assert interval_for_line_edges(link, 0, 190.0, 198.0) == (100.0, 360.0)
+    assert interval_for_line_edges(link, 1, 170.0, 180.0) == (118.0, 400.0)
+    assert interval_for_line_edges(link, 3, 140.0, 150.0) == (100.0, 380.0)
+
+
+def test_serial_hang_fill_keeps_each_line_and_its_top():
+    lines = [
+        [100.0, 360.0, 200.0],
+        [118.0, 400.0, 184.0],
+        [118.0, 400.0, 168.0],
+        [118.0, 380.0, 152.0],
+    ]
+    edges = serial_hang_fill(lines)
+    assert edges[0] == (100.0, 360.0, 200.0)
+    assert edges[1] == (118.0, 400.0, 184.0)
+    plan = build_plan(_facts(lines, source_text="1. Item"))
+    assert len(plan.line_edge_links) == 1
+    link = plan.line_edge_links[0]
+    assert plan.decisions[0].contour_plugin == "mark/serial_hang"
+    assert plan.decisions[0].contour_status == "matched"
+    assert link.alignment == "left"
+    assert link.flow == "edge"
+    assert link.edges == edges
+    assert all(level.kind == "observed" for level in link.levels)
+    assert interval_for_line_edges(link, 0, 190.0, 198.0) == (100.0, 360.0)
+    assert interval_for_line_edges(link, 1, 170.0, 180.0) == (118.0, 400.0)
+
+
+def test_serial_plain_fill_keeps_each_line_and_its_top():
+    lines = [
+        [100.0, 360.0, 200.0],
+        [100.0, 400.0, 184.0],
+        [100.0, 400.0, 168.0],
+        [100.0, 380.0, 152.0],
+    ]
+    edges = serial_plain_fill(lines)
+    assert edges[0] == (100.0, 360.0, 200.0)
+    assert edges[1] == (100.0, 400.0, 184.0)
+    plan = build_plan(_facts(lines, source_text="1. Item"))
+    assert len(plan.line_edge_links) == 1
+    link = plan.line_edge_links[0]
+    assert plan.decisions[0].contour_plugin == "mark/serial_plain"
+    assert plan.decisions[0].contour_status == "matched"
+    assert link.alignment == "left"
+    assert link.flow == "edge"
+    assert link.edges == edges
+    assert all(level.kind == "observed" for level in link.levels)
+    assert interval_for_line_edges(link, 0, 190.0, 198.0) == (100.0, 360.0)
+    assert interval_for_line_edges(link, 1, 170.0, 180.0) == (100.0, 400.0)
+
+
+def test_serial_repeated_fill_keeps_each_line_and_its_top():
+    lines = [
+        [100.0, 360.0, 200.0],
+        [118.0, 400.0, 184.0],
+        [118.0, 400.0, 168.0],
+        [100.0, 380.0, 152.0],
+        [118.0, 390.0, 136.0],
+        [118.0, 370.0, 120.0],
+    ]
+    edges = serial_repeated_fill(lines)
+    assert edges[0] == (100.0, 360.0, 200.0)
+    assert edges[1] == (118.0, 400.0, 184.0)
+    assert edges[3] == (100.0, 380.0, 152.0)
+    plan = build_plan(_facts(lines, source_text="1. Item"))
+    assert len(plan.line_edge_links) == 1
+    link = plan.line_edge_links[0]
+    assert plan.decisions[0].contour_plugin == "mark/serial_repeated"
+    assert plan.decisions[0].contour_status == "matched"
+    assert link.alignment == "left"
+    assert link.flow == "edge"
+    assert link.edges == edges
+    assert all(level.kind == "observed" for level in link.levels)
+    assert interval_for_line_edges(link, 0, 190.0, 198.0) == (100.0, 360.0)
+    assert interval_for_line_edges(link, 1, 170.0, 180.0) == (118.0, 400.0)
+    assert interval_for_line_edges(link, 3, 140.0, 150.0) == (100.0, 380.0)
+
 
 
 def test_lower_wide_fill_keeps_the_step_and_opens_the_tail():
@@ -573,9 +817,8 @@ def test_a_real_opening_writes_its_line_edges():
 def test_a_straight_column_and_a_short_block_get_no_line_edges():
     straight = [[100.0, 400.0, 200.0 - index * 16.0] for index in range(4)]
     short = [[100.0, 180.0, 200.0], [140.0, 220.0, 184.0]]
-    # A straight column has no contour, so typesetting does not wrap it
-    # onto a figure edge.
-    assert build_plan(_facts(straight)).line_edge_links == ()
+    # A straight column is a full column with straight edges.
+    assert len(build_plan(_facts(straight)).line_edge_links) == 1
     assert build_plan(_facts(short)).line_edge_links == ()
     assert build_plan(_facts(_opening_lines(), gate="spread")).line_edge_links == ()
 
@@ -965,7 +1208,7 @@ def test_a_short_box_still_uses_the_lower_samples_at_body_size():
         "edge",
         tuple(
             ContourLevel(100.0, right, top, "observed")
-            for right, top in zip(rights, tops)
+            for right, top in zip(rights, tops, strict=False)
         ),
     )
     host = Box(x=100, y=175, x2=170, y2=200)
@@ -1329,14 +1572,13 @@ def test_a_side_quote_does_not_stop_the_lower_lines():
     setter._current_zone_index = type("_Zones", (), {"zones": [zone]})()
     assert Typesetting.get_max_bottom_space(setter, current, page) == 373.2
 
-    setter._line_edges = None
-    assert Typesetting.get_max_bottom_space(setter, current, page) == 391.0
-
     page.pdf_character = [
         type("_Char", (), {"box": _Box(60.0, 360.0, 230.0, 391.0)})(),
     ]
     setter._line_edges = type("_Link", (), {"edges": edges})()
     assert Typesetting.get_max_bottom_space(setter, current, page) == 391.0
+
+    setter._line_edges = None
 
 
 def test_a_column_quote_zone_does_not_stop_the_lower_lines():
@@ -1394,3 +1636,19 @@ def test_a_column_quote_zone_does_not_stop_the_lower_lines():
 
     setter._line_edges = None
     assert Typesetting.get_max_bottom_space(setter, current, page) == 385.2
+
+
+def test_toc_plain_matches_directory_block():
+    lines = [
+        [36.0, 300.0, 500.0],
+        [36.0, 300.0, 480.0],
+        [36.0, 300.0, 460.0],
+    ]
+    facts = _facts(lines, source_text="Table of Contents\nPart 1\nPart 2")
+    plan = build_plan(facts)
+    assert plan.decisions[0].contour_status == "matched"
+    assert plan.decisions[0].contour_plugin == "toc/plain"
+    assert plan.decisions[0].contour_residual == 0.0
+    link = plan.line_edge_links[0]
+    assert link.edges == ((36.0, 300.0, 500.0), (36.0, 300.0, 480.0), (36.0, 300.0, 460.0))
+

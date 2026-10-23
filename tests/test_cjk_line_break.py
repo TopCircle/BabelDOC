@@ -7,6 +7,9 @@ from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
 )
 from babeldoc.format.pdf.document_il.midend.line_break_optimizer import _line_cost
 from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
+    break_leaves_a_hole,
+)
+from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
     optimal_line_break,
 )
 from babeldoc.format.pdf.document_il.midend.typesetting import merge_cjk_units
@@ -102,6 +105,9 @@ class TestCJKDict:
         assert is_cjk_two_char_word("积聚")
         assert is_cjk_two_char_word("绳索")
         assert is_cjk_two_char_word("捆绑")
+        assert is_cjk_two_char_word("空调")
+        assert is_cjk_two_char_word("风扇")
+        assert is_cjk_two_char_word("按摩")
 
     def test_non_words(self):
         """非常见词组不应被识别。"""
@@ -639,3 +645,50 @@ class TestKinsoku:
             assert glued[raw.index("7")].can_break_line_cache is False
             assert glued[raw.index(glue)].can_break_line_cache is False
             assert glued[raw.index("。")].can_break_line_cache is not False
+
+    def test_massage_paragraph_keeps_the_verb_and_the_noun(self):
+        """Day 1 p17 section 4 must not break 按摩|她 or 空|调."""
+
+        class _U(MockUnit):
+            def __init__(self, ch: str):
+                super().__init__(width=11.8, unicode=ch, is_cjk_char=True)
+                self.can_break_line_cache = None
+
+            @property
+            def can_break_line(self):
+                if self.can_break_line_cache is not None:
+                    return self.can_break_line_cache
+                return True
+
+        text = (
+            "打开后，先是肉桂味的润滑剂，一碰就会热意起来。按摩她，"
+            "摩擦刺激用手指中的液体。在进行性交之前，打开风扇或空调，"
+            "看着她战栗因快感。"
+        )
+        units = [_U(ch) for ch in text]
+        merge_cjk_units(units)
+        mo = text.index("摩")
+        kong = text.index("空")
+        zhi = text.index("之")
+        assert units[mo].can_break_line_cache is False
+        assert units[kong].can_break_line_cache is False
+        assert units[zhi].can_break_line_cache is False
+        assert break_leaves_a_hole(59, 295)
+        assert not break_leaves_a_hole(24, 295)
+        breaks = optimal_line_break(
+            units,
+            [295.0, 330.4, 338.0],
+            scale=1.0,
+            space_width=0.0,
+            cjk_mode=True,
+        )
+        assert breaks is not None
+        lines = []
+        pts = [0] + breaks + [len(units)]
+        for a, b in zip(pts[:-1], pts[1:], strict=False):
+            lines.append("".join(u.try_get_unicode() for u in units[a:b]))
+        joined = "\n".join(lines)
+        assert "按摩\n她" not in joined
+        assert "空\n调" not in joined
+        assert "风\n扇" not in joined
+        assert "".join(lines) == text

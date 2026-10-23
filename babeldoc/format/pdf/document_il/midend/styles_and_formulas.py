@@ -693,6 +693,18 @@ class StylesAndFormulas:
             if not paragraph.pdf_paragraph_composition:
                 continue
 
+            # A long bold lead-in that already shares the line with the body
+            # face is part of the sentence. A style marker leaves that English.
+            from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+                flatten_dominant_run_in,
+            )
+            from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+                remember_run_in_lead,
+            )
+
+            remember_run_in_lead(paragraph)
+            flatten_dominant_run_in(paragraph)
+
             # 计算基准样式（除公式外所有文字样式的交集）
             base_style = self._calculate_base_style(paragraph)
             paragraph.pdf_style = base_style

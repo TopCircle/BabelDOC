@@ -83,11 +83,26 @@ def pack_list_items(page, paragraph_gap: float | None = None) -> None:
 
 
 def _blank_line(paragraphs) -> float:
-    """Distance that leaves one empty line between items.
+    """Distance between consecutive list items.
 
-    Prefer the step already used inside an item. A one-line item uses
-    that line's own height. Neither number is taken from a book.
+    When source paragraphs are tightly packed (e.g. a directory / TOC),
+    preserve the source gap so items do not expand and overlap later sections.
+    Otherwise, leave one empty line between items.
     """
+    source_gaps: list[float] = []
+    for i in range(len(paragraphs) - 1):
+        b1 = getattr(paragraphs[i], "box", None)
+        b2 = getattr(paragraphs[i + 1], "box", None)
+        if (
+            b1 is not None
+            and b2 is not None
+            and b1.y is not None
+            and b2.y2 is not None
+        ):
+            g = float(b1.y) - float(b2.y2)
+            if 0.5 <= g <= 30.0:
+                source_gaps.append(g)
+
     pitches: list[float] = []
     heights: list[float] = []
     for paragraph in paragraphs:
@@ -101,12 +116,19 @@ def _blank_line(paragraphs) -> float:
             height = top - bottom
             if height > 0.5:
                 heights.append(height)
+
+    median_h = heights[len(heights) // 2] if heights else 12.0
+    if source_gaps:
+        source_gaps.sort()
+        med_source = source_gaps[len(source_gaps) // 2]
+        if med_source < median_h:
+            return med_source
+
     if pitches:
         pitches.sort()
         return pitches[len(pitches) // 2]
     if heights:
-        heights.sort()
-        return heights[len(heights) // 2]
+        return median_h
     return BODY_PARAGRAPH_GAP
 
 

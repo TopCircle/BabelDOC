@@ -372,7 +372,7 @@ def normalize_leading_bullets_on_paragraph(
     leading: list[PdfParagraphComposition] = []
     remaining: list[PdfParagraphComposition] = []
     for composition in compositions:
-        if _is_source_leading_bullet(paragraph, composition):
+        if _is_source_leading_bullet(paragraph, composition) and not leading:
             leading.append(composition)
         else:
             remaining.append(composition)

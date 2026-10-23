@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Sequence
+from functools import cache
 from pathlib import Path
 from types import ModuleType
 
@@ -19,6 +20,7 @@ from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.contract import
 _PACKAGE = __name__
 
 
+@cache
 def load_modules() -> tuple[tuple[str, ModuleType], ...]:
     """Return ``(paradigm path, module)`` for every directory that claims."""
     root = Path(__file__).resolve().parent

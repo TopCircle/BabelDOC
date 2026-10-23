@@ -19,6 +19,29 @@ from babeldoc.format.pdf.document_il.utils.sentence_paragraph_repair import (
 )
 
 
+def _mixed(
+    parts: list[tuple[str, str, float]], *, x: float, y: float
+) -> PdfParagraphComposition:
+    chars = []
+    cursor = x
+    for text, font_id, size in parts:
+        for char in text:
+            chars.append(
+                PdfCharacter(
+                    char_unicode=char,
+                    box=Box(x=cursor, y=y, x2=cursor + 6, y2=y + 12),
+                    pdf_style=PdfStyle(font_id=font_id, font_size=size),
+                )
+            )
+            cursor += 6
+    return PdfParagraphComposition(
+        pdf_line=PdfLine(
+            box=Box(x=x, y=y, x2=max(cursor, x + 1), y2=y + 12),
+            pdf_character=chars,
+        )
+    )
+
+
 def _line(text: str, *, x: float, y: float, font_id: str = "Myriad", size: float = 12.0):
     chars = []
     cursor = x
@@ -123,6 +146,38 @@ def test_a_period_a_hyphen_a_bullet_and_another_face_stay_split():
 
     far = _para(_line("your fingers", x=200, y=386))
     assert merge_mid_sentence_paragraphs([_para(_line("Be sure to use", x=113, y=400)), far]) == 0
+
+
+def test_a_run_in_line_joins_the_body_opening_left():
+    """Title line sits right of the body. The body face already ends that line."""
+    title = "Scent-ually massage her. "
+    tail = "For a peppery head-to-toe"
+    upper = _para(
+        _mixed(
+            [(title, "MyriadPro-Black", 9.7), (tail, "MyriadPro-Light", 11.8)],
+            x=168,
+            y=400,
+        )
+    )
+    lower = _para(
+        _line("turn-on, start with cinnamon", x=159, y=384, font_id="MyriadPro-Light", size=11.8),
+        _line("touched and then she", x=150, y=370, font_id="MyriadPro-Light", size=11.8),
+    )
+    assert merge_mid_sentence_paragraphs([upper, lower]) == 1
+    assert "head-to-toe" in _text(upper)
+    assert "turn-on" in _text(upper)
+
+    stepped = _para(
+        _line("turn-on further left", x=140, y=384, font_id="MyriadPro-Light", size=11.8)
+    )
+    alone = _para(
+        _mixed(
+            [(title, "MyriadPro-Black", 9.7), (tail, "MyriadPro-Light", 11.8)],
+            x=168,
+            y=400,
+        )
+    )
+    assert merge_mid_sentence_paragraphs([alone, stepped]) == 0
 
 
 def test_repair_splits_the_stair_then_joins_the_sentence():

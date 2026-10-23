@@ -183,13 +183,13 @@ def _status(
 ) -> tuple[str, str, list[str]]:
     if facts.input_gate != "single_page":
         return "gate", "", []
+    if decision.contour_status == "matched" and decision.contour_plugin:
+        return "matched", decision.contour_plugin, []
     if decision.contour_status == "conflict":
         return "conflict", "", list(decision.contour_claims)
     if decision.fallback in _CONFLICT:
         claims = sorted({item.value for item in decision.rejected if item.value})
         return "conflict", "", claims
-    if decision.contour_status == "matched" and decision.contour_plugin:
-        return "matched", decision.contour_plugin, []
     if decision.base_strategy == "preserve":
         return "unmatched", "", []
     return "matched", decision.base_strategy, []

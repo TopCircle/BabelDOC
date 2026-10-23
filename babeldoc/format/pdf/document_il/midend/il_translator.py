@@ -443,6 +443,21 @@ class ILTranslator:
     _CJK_SENT_END_RE = re.compile(r"[。！？]")
 
     @classmethod
+    def _is_bibliography_paragraph(cls, paragraph: PdfParagraph) -> bool:
+        """True when a paragraph consists of bibliography / reference entries."""
+        text = getattr(paragraph, "unicode", None) or ""
+        if len(text) < 40:
+            return False
+        # Multiple author-year citations e.g. "Chalker, R. (2000)." or "Comfort, A. (1972)."
+        author_years = len(re.findall(r"\b[A-Z][a-zA-Z\-]+,\s+[A-Z]\..*?\(\d{4}\)", text))
+        if author_years >= 2:
+            return True
+        bracket_cites = len(re.findall(r"\[\d{1,3}\]\s+[A-Z]", text))
+        if bracket_cites >= 2:
+            return True
+        return False
+
+    @classmethod
     def count_sentence_ends(cls, text: str) -> int:
         """Count sentence-ending punctuation (EN or CJK)."""
         if not text:
@@ -1142,10 +1157,11 @@ class ILTranslator:
                 )
                 return None
 
-        # 如果没有指定 disable_rich_text_translate，使用配置中的值
+        # 如果没有指定 disable_rich_text_translate，使用配置中的值（非 LLM 引擎强制启用，使用 〖Bn〗 标记）
         if disable_rich_text_translate is None:
             disable_rich_text_translate = (
                 self.translation_config.disable_rich_text_translate
+                or not self.support_llm_translate
             )
 
         placeholder_id = 1
@@ -2083,6 +2099,21 @@ class ILTranslator:
                 if self.use_as_fallback:
                     # il translator llm only modifies unicode in some situations
                     paragraph.unicode = get_paragraph_unicode(paragraph)
+                # Bibliography / references: preserve original citations without MT distortion
+                if self._is_bibliography_paragraph(paragraph):
+                    text, translate_input = self.pre_translate_paragraph(
+                        paragraph, tracker, page_font_map, xobj_font_map, page=page
+                    )
+                    if text is not None:
+                        logger.info(
+                            "keep bibliography in English: id=%s text=%r",
+                            paragraph.debug_id,
+                            text[:60],
+                        )
+                        self.post_translate_paragraph(
+                            paragraph, tracker, translate_input, text
+                        )
+                    return
                 # Near-full: stash membership only (classified on EN
                 # before submit). Do not rematch live host.unicode.
                 if id(paragraph) in getattr(self, "_near_full_pullquotes", {}):

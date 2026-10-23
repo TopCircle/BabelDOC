@@ -156,3 +156,22 @@ def test_one_paragraph_is_left_where_it_is():
     page = _page([only])
     join_sealed_paragraphs(page)
     assert page.pdf_paragraph == [only]
+
+
+def test_list_items_with_markers_are_not_joined():
+    item1 = _paragraph([(36.0, 300.0, 400.0), (54.0, 300.0, 382.0)], "• First bullet point.")
+    item2 = _paragraph([(36.0, 300.0, 364.0), (54.0, 300.0, 346.0)], "• Second bullet point.")
+    page = _page([item1, item2])
+    join_sealed_paragraphs(page)
+    assert len(page.pdf_paragraph) == 2
+    assert "First" in page.pdf_paragraph[0].unicode
+    assert "Second" in page.pdf_paragraph[1].unicode
+
+
+def test_toc_items_with_leaders_are_not_joined():
+    toc1 = _paragraph([(36.0, 300.0, 400.0)], "Introduction ............ 1")
+    toc2 = _paragraph([(36.0, 300.0, 380.0)], "Chapter 1 ............... 5")
+    page = _page([toc1, toc2])
+    join_sealed_paragraphs(page)
+    assert len(page.pdf_paragraph) == 2
+

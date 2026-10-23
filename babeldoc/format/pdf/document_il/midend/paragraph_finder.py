@@ -633,7 +633,25 @@ class ParagraphFinder:
             repair_broken_sentences,
         )
 
-        repair_broken_sentences(paragraphs)
+        font_name_map = {}
+        if getattr(page, "pdf_font", None):
+            for pf in page.pdf_font:
+                if pf.font_id and pf.name:
+                    font_name_map[pf.font_id] = pf.name
+
+        print(f"DEBUG_REPAIR_START: font_name_map={font_name_map} paras={len(paragraphs)}")
+        for p in paragraphs:
+            txt = "".join(c.char_unicode for comp in p.pdf_paragraph_composition or [] if comp.pdf_line for c in comp.pdf_line.pdf_character or [])
+            if "stimulating" in txt or "swollen" in txt:
+                print(f"  BEFORE_REPAIR: debug_id={p.debug_id} txt={txt[:30]!r}..{txt[-30:]!r}")
+
+        repair_broken_sentences(paragraphs, font_name_map=font_name_map)
+
+        print(f"DEBUG_REPAIR_END: paras={len(paragraphs)}")
+        for p in paragraphs:
+            txt = "".join(c.char_unicode for comp in p.pdf_paragraph_composition or [] if comp.pdf_line for c in comp.pdf_line.pdf_character or [])
+            if "stimulating" in txt or "swollen" in txt:
+                print(f"  AFTER_REPAIR: debug_id={p.debug_id} txt={txt[:30]!r}..{txt[-30:]!r}")
 
         # A 30pt en-dash is the bullet of the line to its right. Its box
         # starts above that line, so the heading swallows it or it paints
@@ -870,6 +888,12 @@ class ParagraphFinder:
                     is_new_paragraph = True
 
             if is_new_paragraph:
+                logger.warning(
+                    "NEW_PARAGRAPH_CREATED char=%r layout=%r prev_layout=%r",
+                    char.char_unicode,
+                    getattr(char_layout, "id", None),
+                    getattr(current_layout, "id", None),
+                )
                 current_layout = char_layout
                 current_paragraph = PdfParagraph(
                     pdf_paragraph_composition=[],
@@ -1273,6 +1297,16 @@ class ParagraphFinder:
         soft_font = bool(
             getattr(self.translation_config, "ocr_workaround", False)
         )
+        font_name_map = {}
+        if (
+            hasattr(self, "_current_page")
+            and self._current_page
+            and getattr(self._current_page, "pdf_font", None)
+        ):
+            for pf in self._current_page.pdf_font:
+                if pf.font_id and pf.name:
+                    font_name_map[pf.font_id] = pf.name
+        logger.info("PARAGRAPH_FINDER font_name_map: %s", font_name_map)
 
         i = 0
         while i < len(paragraphs):
@@ -1302,7 +1336,17 @@ class ParagraphFinder:
                     ),
                     soft_mid_sentence_font_split=soft_font,
                     layout_label=getattr(paragraph, "layout_label", None),
+                    font_name_map=font_name_map,
                 ):
+                    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+                        line_text,
+                    )
+                    logger.info(
+                        "SPLIT_TRIGGERED j=%d prev=%r curr=%r",
+                        j,
+                        line_text(prev_line),
+                        line_text(current_line),
+                    )
                     new_paragraph = split_paragraph_at(
                         paragraph,
                         j,

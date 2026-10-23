@@ -22,6 +22,9 @@ from babeldoc.format.pdf.document_il import PdfParagraphComposition
 from babeldoc.format.pdf.document_il import PdfStyle
 from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
+    break_leaves_a_hole,
+)
+from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
     centered_line_breaks,
 )
 from babeldoc.format.pdf.document_il.midend.line_break_optimizer import (
@@ -34,22 +37,27 @@ from babeldoc.format.pdf.document_il.utils.cjk_kinsoku import is_cjk_line_end_fo
 from babeldoc.format.pdf.document_il.utils.cjk_kinsoku import (
     is_cjk_line_start_forbidden,
 )
+from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_tip_crumb
 from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
 from babeldoc.format.pdf.document_il.utils.formular_helper import update_formula_data
 from babeldoc.format.pdf.document_il.utils.layout_helper import box_to_tuple
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import LayoutAttempt
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     allows_full_measure_escalation,
-    clamp_callout_measure_to_design,
-    is_design_column_role,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import apply_wrap_flush
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     attempt_chain_for_paragraph,
 )
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    clamp_callout_measure_to_design,
+)
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import flags_to_attempt
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     full_measure_layout_box,
+)
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    is_design_column_role,
 )
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     layout_box_is_thin_vs_full_measure,
@@ -64,12 +72,13 @@ from babeldoc.format.pdf.document_il.utils.same_baseline import same_baseline_ov
 from babeldoc.format.pdf.document_il.utils.same_baseline import (
     separate_same_baseline_overlap,
 )
+from babeldoc.format.pdf.document_il.utils.wrap_shape import (
+    estimate_cjk_wrap_content_width,
+)
 from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import layout_intent_wrap_enabled
 from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
-from babeldoc.format.pdf.document_il.utils.wrap_shape import estimate_cjk_wrap_content_width
 from babeldoc.format.pdf.document_il.utils.wrap_shape import sanitize_wrap_shape_for_cjk
-from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_tip_crumb
 from babeldoc.format.pdf.document_il.utils.wrap_shape import (
     should_fallback_residual_to_block,
 )
@@ -130,6 +139,100 @@ def contour_line_skip(link, font_size: float) -> float | None:
         tuple((0.0, 0.0, float(level.top)) for level in levels),
         font_size,
     )
+
+
+_LEFT_STEP = 24.0
+_EDGE_HOLD = 8.0
+_SENTENCE_STOP = frozenset("。！？")
+_TAIL_SKIP = frozenset(" \t\"'“”‘’「」『』）】》〉〕］｝，、；：")
+
+
+def left_indent_holds(levels, left, right, next_left, next_right) -> bool:
+    """True when the next sample steps in on the left and stays there.
+
+    The line above shares this left, so a first-line outdent does not
+    match. The right edge stays, so a right-only step does not match.
+    A later sample that returns to the outer left does not match.
+    """
+    if not levels:
+        return False
+    if float(next_left) < float(left) + _LEFT_STEP:
+        return False
+    if abs(float(next_right) - float(right)) > _EDGE_HOLD:
+        return False
+    samples = sorted(levels, key=lambda item: float(item.top), reverse=True)
+    for idx in range(len(samples) - 1):
+        level = samples[idx]
+        nxt = samples[idx + 1]
+        if abs(float(level.left) - float(left)) > _EDGE_HOLD:
+            continue
+        if abs(float(level.right) - float(right)) > _EDGE_HOLD:
+            continue
+        if abs(float(nxt.left) - float(next_left)) > _EDGE_HOLD:
+            continue
+        if idx == 0:
+            continue
+        prev = samples[idx - 1]
+        if abs(float(prev.left) - float(level.left)) > _EDGE_HOLD:
+            continue
+        if any(
+            float(later.left) < float(next_left) - _EDGE_HOLD
+            for later in samples[idx + 1 :]
+        ):
+            continue
+        return True
+    return False
+
+
+def indent_continues(left, right, nxt, later) -> bool:
+    """True when the next interval steps in on the left and stays there.
+
+    A figure pocket has no contour samples. The right edge stays, so a
+    right-only step does not match. A later interval that returns to
+    the outer left does not match. No later interval means the
+    paragraph ends in the step.
+    """
+    if nxt is None:
+        return False
+    next_left, next_right = nxt
+    if float(next_left) < float(left) + _LEFT_STEP:
+        return False
+    if abs(float(next_right) - float(right)) > _EDGE_HOLD:
+        return False
+    if later is None:
+        return True
+    return float(later[0]) >= float(next_left) - _EDGE_HOLD
+
+
+def single_cjk_remainder(units) -> bool:
+    """True when the unplaced tail is one CJK character plus punctuation."""
+    content = 0
+    for unit in units:
+        if getattr(unit, "is_space", False):
+            continue
+        text = unit.try_get_unicode() or ""
+        if not text or text in _TAIL_SKIP or text in _SENTENCE_STOP:
+            continue
+        if not getattr(unit, "is_cjk_char", False):
+            return False
+        content += 1
+        if content > 1:
+            return False
+    return content == 1
+
+
+def _line_ends_on_stop(units, start: int) -> bool:
+    """True when this line already finished a sentence."""
+    for unit in reversed(units[start:]):
+        if getattr(unit, "is_space", False):
+            continue
+        text = unit.try_get_unicode() or ""
+        if text in _SENTENCE_STOP:
+            return True
+        if text in _TAIL_SKIP:
+            continue
+        return False
+    return False
 
 
 def contour_scale_floor(
@@ -1627,9 +1730,7 @@ class Typesetting:
         else:
             self._rect_fill_active = False
 
-        from babeldoc.format.pdf.document_il.utils.shaped_pocket_stack import (
-            pocket_for,
-        )
+        from babeldoc.format.pdf.document_il.utils.shaped_pocket_stack import pocket_for
 
         # A frozen figure gap is the line width. Do not fill it as a rectangle
         # and do not widen it to the full column.
@@ -3098,11 +3199,11 @@ class Typesetting:
 
         # Rectangular columns reflow before scale search, so joined runs
         # share one measure instead of each English line.
-        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
-            flow_rect_columns,
-        )
         from babeldoc.format.pdf.document_il.utils.list_flow_stack import (
             assign_list_boxes,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            flow_rect_columns,
         )
         from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
             assign_rect_flow_boxes,
@@ -3392,24 +3493,29 @@ class Typesetting:
         try:
             # Column runs were joined before scale search. Measure again
             # after the gap pass moves boxes.
-            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
-                close_rect_column_gaps,
-            )
-            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
-                flow_rect_columns,
-            )
-
-            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
-                mark_display_bands,
-            )
-            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
-                yield_to_display_bands,
+            from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+                assign_line_edge_boxes,
             )
             from babeldoc.format.pdf.document_il.utils.list_flow_stack import (
                 assign_list_boxes,
             )
             from babeldoc.format.pdf.document_il.utils.list_flow_stack import (
                 pack_list_items,
+            )
+            from babeldoc.format.pdf.document_il.utils.paragraph_gap_stack import (
+                pack_body_paragraphs,
+            )
+            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+                close_rect_column_gaps,
+            )
+            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+                flow_rect_columns,
+            )
+            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+                mark_display_bands,
+            )
+            from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+                yield_to_display_bands,
             )
             from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
                 BODY_PARAGRAPH_GAP,
@@ -3423,9 +3529,6 @@ class Typesetting:
             from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
                 moved_figure_gap_paragraphs,
             )
-            from babeldoc.format.pdf.document_il.utils.paragraph_gap_stack import (
-                pack_body_paragraphs,
-            )
             from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
                 pack_rect_flow,
             )
@@ -3434,9 +3537,6 @@ class Typesetting:
             )
             from babeldoc.format.pdf.document_il.utils.shaped_pocket_stack import (
                 _push_overlaps_down,
-            )
-            from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
-                assign_line_edge_boxes,
             )
             from babeldoc.format.pdf.document_il.utils.shaped_pocket_stack import (
                 assign_shaped_boxes,
@@ -3523,6 +3623,11 @@ class Typesetting:
             )
 
             _push_glyphs_below_bands(page.pdf_paragraph, page)
+            from babeldoc.format.pdf.document_il.utils.paragraph_gap_stack import (
+                seat_dropped_headings,
+            )
+
+            seat_dropped_headings(page, getattr(self, "_shelf_drops", None) or {})
         finally:
             self._page_layout_audit = None
             self._current_page = None
@@ -3841,6 +3946,12 @@ class Typesetting:
             pw = float(page.cropbox.box.x2 - page.cropbox.box.x)
         except Exception:
             pw = 612.0
+        from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+            apply_run_in_lead_style,
+        )
+
+        # Pop the saved name face even when this paragraph is then cleared.
+        apply_run_in_lead_style(paragraph)
         if is_figure_wrap_tip_crumb(paragraph, page_width=pw):
             paragraph.pdf_paragraph_composition = []
             paragraph.unicode = ""
@@ -4393,6 +4504,25 @@ class Typesetting:
         descent = source_descent(typesetting_units)
         if box.y is not None and font_size is not None and descent is not None:
             y = source_baseline(float(box.y), font_size, descent, y)
+        # The placed pen may sit lower, on a short tail. Widths taken from
+        # the top of the box break the wide lines too early and then stretch
+        # them. Start the estimate on the same pen.
+        if not self._sentence_flow():
+            edges = getattr(self, "_line_edges", None)
+            if edges is not None:
+                from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+                    shelf_drop,
+                )
+
+                drop_top = shelf_drop(
+                    getattr(edges, "levels", ()) or (),
+                    [float(unit.width) * scale for unit in typesetting_units],
+                )
+                if drop_top is not None:
+                    query_h = avg_height if avg_height > 0 else 1.0
+                    dropped = float(drop_top) - query_h
+                    if dropped < y:
+                        y = dropped
         line_idx = 0
         align = (
             self._resolve_effective_alignment(
@@ -4475,6 +4605,64 @@ class Typesetting:
         """True when the paragraph sits on a centered line contour."""
         link = getattr(self, "_line_edges", None)
         return link is not None and getattr(link, "alignment", None) == "center"
+
+    def _next_interval(
+        self,
+        current_y,
+        line_h,
+        box,
+        paragraph,
+        line_idx,
+        reference_widths,
+        alignment,
+        font_size,
+        scale,
+        line_skip,
+        hops=1,
+        span=None,
+    ):
+        """The interval the next line would use. None when it is empty.
+
+        A contour uses its samples. A figure pocket uses the edge at
+        that height. ``hops`` looks further down the same advance.
+        """
+        if line_h <= 0:
+            return None
+        advance = line_advance_distance(
+            font_size, scale, line_skip, line_h, line_h
+        )
+        next_y = float(current_y) - advance * max(int(hops), 1)
+        link = getattr(self, "_line_edges", None)
+        from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+            contour_span,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            drop_below_display_band,
+        )
+
+        used = contour_span(link, next_y, line_h) if link is not None else span
+        next_y = drop_below_display_band(
+            paragraph,
+            next_y,
+            line_h,
+            getattr(self, "_current_page", None),
+            used,
+        )
+        found = self._resolve_line_intervals(
+            next_y,
+            next_y + line_h,
+            box,
+            paragraph=paragraph,
+            line_idx=line_idx + 1,
+            reference_widths=reference_widths,
+            alignment=alignment,
+        )
+        if not found:
+            return None
+        left, right = found[0]
+        if right - left < 1.0:
+            return None
+        return left, right
 
     def _sentence_flow(self) -> bool:
         """True when the frame is a bound and the breaks follow the sentence."""
@@ -4608,11 +4796,17 @@ class Typesetting:
             # Only snap when the original box can host the EN column
             line_start = box.x
 
-        # Cap from the line start (after optional snap), and never past the
-        # longest original EN line measured from the original box left.
-        cap_x2 = min(available_x2, line_start + ref_w)
-        if box.x is not None:
-            cap_x2 = min(cap_x2, box.x + max_ref * 1.15)
+        # Cap from the line start (after optional snap).
+        # When an obstacle (figure/exclusion zone) constrains available_x2,
+        # available_x2 is already the clearance boundary — allow text to wrap
+        # closely up to it so it does not stay artificially far from the figure.
+        has_obstacle = box.x2 is not None and available_x2 < (box.x2 - 12.0)
+        if has_obstacle:
+            cap_x2 = available_x2
+        else:
+            cap_x2 = min(available_x2, line_start + ref_w)
+            if box.x is not None:
+                cap_x2 = min(cap_x2, box.x + max_ref * 1.15)
 
         if cap_x2 >= line_start + 8:
             return line_start, cap_x2
@@ -4789,6 +4983,27 @@ class Typesetting:
             current_y = self._seat_opening_pen(
                 current_y, avg_height, box, paragraph
             )
+            edges = getattr(self, "_line_edges", None)
+            if edges is not None:
+                from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+                    shelf_drop,
+                )
+
+                drop_top = shelf_drop(
+                    getattr(edges, "levels", ()) or (),
+                    [float(unit.width) * scale for unit in typesetting_units],
+                )
+                if drop_top is not None:
+                    query_h = avg_height if avg_height > 0 else 1.0
+                    dropped = float(drop_top) - query_h
+                    if dropped < current_y:
+                        delta = float(current_y) - dropped
+                        drops = getattr(self, "_shelf_drops", None)
+                        if drops is None:
+                            drops = {}
+                            self._shelf_drops = drops
+                        drops[id(paragraph)] = delta
+                        current_y = dropped
         box = copy.deepcopy(box)
 
         # Multi-interval pockets for this y-band (PR-06)
@@ -5023,6 +5238,27 @@ class Typesetting:
                 and i in break_points
                 and not allow_hung
             )
+            # A sentence step moves the planned break onto a line that
+            # still has room. Keeping that break stretches the few glyphs
+            # that crossed. A glyph that fits the gap stays on this line.
+            if (
+                dp_break
+                and fits_current
+                and getattr(self, "_pocket_link", None) is not None
+                and getattr(self, "_line_edges", None) is None
+            ):
+                dp_break = False
+            # The estimate can be narrower than the line being placed.
+            # A break that still leaves a hole is not this line's edge.
+            if (
+                dp_break
+                and fits_current
+                and break_leaves_a_hole(
+                    float(available_x2) - float(current_x),
+                    float(available_x2) - float(available_x),
+                )
+            ):
+                dp_break = False
             # Greedy wrap only when the unit cannot sit in the current pocket.
             # Skip English "2× open-paren" early wrap on CJK/OCR — that left
             # 「第11卷（」 alone on a line before 1989.
@@ -5033,7 +5269,53 @@ class Typesetting:
                 and i in break_points
             ):
                 self._sentence_extend_to = None
-            need_break = close_break or dp_break or (
+            # A new sentence starts on the indented line when the left
+            # steps in and the right wall stays. The short line keeps
+            # its own width.
+            step_break = False
+            coming = unit.try_get_unicode() or ""
+            if (
+                self.is_cjk
+                and fits_current
+                and not unit.is_space
+                and not self._sentence_flow()
+                and coming not in _SENTENCE_STOP
+                and coming not in _TAIL_SKIP
+                and _line_ends_on_stop(typeset_units, line_start_idx)
+            ):
+                line_h = max(line_height, avg_height)
+                peek = {
+                    "current_y": current_y,
+                    "line_h": line_h,
+                    "box": box,
+                    "paragraph": paragraph,
+                    "line_idx": layout_line_idx,
+                    "reference_widths": reference_widths,
+                    "alignment": alignment,
+                    "font_size": font_size,
+                    "scale": scale,
+                    "line_skip": line_skip,
+                }
+                if getattr(self, "_line_edges", None) is not None:
+                    nxt = self._next_interval(**peek)
+                    if nxt is not None:
+                        step_break = left_indent_holds(
+                            getattr(self._line_edges, "levels", ()) or (),
+                            available_x,
+                            available_x2,
+                            nxt[0],
+                            nxt[1],
+                        )
+                else:
+                    # A figure pocket has no samples. The next interval
+                    # is the edge at that height.
+                    step_span = (available_x, available_x2)
+                    nxt = self._next_interval(**peek, span=step_span)
+                    later = self._next_interval(**peek, hops=2, span=step_span)
+                    step_break = indent_continues(
+                        available_x, available_x2, nxt, later
+                    )
+            need_break = close_break or dp_break or step_break or (
                 not allow_hung and (
                     (not fits_current)
                     or (
@@ -5115,6 +5397,66 @@ class Typesetting:
                         orphan_pull_back = True
                         pull_to_next = list(line_units) + pull_to_next
                         del typeset_units[line_start_idx:]
+                # A display column must not leave one character on the
+                # last line. Steal one glyph down when the next frame
+                # holds it. The current line gets shorter, so the
+                # measure does not overflow.
+                if (
+                    not orphan_pull_back
+                    and alignment in ("center", "right")
+                    and getattr(self, "_line_edges", None) is not None
+                    and not is_design_column_role(paragraph)
+                    and not is_left_gutter_bar(box)
+                    and not rect_fill
+                    and single_cjk_remainder(typesetting_units[i:])
+                ):
+                    ink = [
+                        item
+                        for item in typeset_units[line_start_idx:]
+                        if not item.is_space
+                    ]
+                    if len(ink) >= 3:
+                        stolen = ink[-1]
+                        stolen_ch = stolen.try_get_unicode() or ""
+                        if (
+                            not is_cjk_line_start_forbidden(stolen_ch)
+                            and ink[-2].can_break_line
+                        ):
+                            line_h = max(line_height, avg_height, 1.0)
+                            nxt = self._next_interval(
+                                current_y,
+                                line_h,
+                                box,
+                                paragraph,
+                                layout_line_idx,
+                                reference_widths,
+                                alignment,
+                                font_size,
+                                scale,
+                                line_skip,
+                            )
+                            if nxt is not None:
+                                need = float(stolen.width)
+                                for pending in typesetting_units[i:]:
+                                    if getattr(pending, "is_space", False):
+                                        continue
+                                    need += float(pending.width) * scale
+                                    if decorative_tracking:
+                                        need += decorative_tracking
+                                if need <= (nxt[1] - nxt[0]) + 0.5:
+                                    while (
+                                        len(typeset_units) > line_start_idx
+                                        and typeset_units[-1].is_space
+                                    ):
+                                        pull_to_next.insert(
+                                            0, typeset_units.pop()
+                                        )
+                                    if (
+                                        typeset_units
+                                        and typeset_units[-1] is stolen
+                                    ):
+                                        typeset_units.pop()
+                                        pull_to_next.insert(0, stolen)
                 if pull_to_next:
                     # Rebuild line height state after pull-back
                     current_line_heights = [
@@ -5185,6 +5527,7 @@ class Typesetting:
                     # failed plan, so it must not shrink the whole paragraph.
                     if (
                         not dp_break
+                        and not step_break
                         and break_points is not None
                         and not self._sentence_flow()
                     ):
@@ -5204,14 +5547,22 @@ class Typesetting:
                             current_line_heights
                         ) if current_line_heights else 0.0
 
-                    # Finalize horizontal alignment for the completed line
+                    # Finalize horizontal alignment for the completed line.
+                    # A short line keeps its own width. Spreading a few
+                    # glyphs across the frame is the stretch to avoid.
+                    ink_end = line_available_x
+                    if typeset_units and typeset_units[-1].box is not None:
+                        ink_end = float(typeset_units[-1].box.x2)
+                    short_line = float(line_available_x2) - ink_end > 24.0
                     self._apply_line_horizontal_alignment(
                         typeset_units,
                         line_start_idx,
                         len(typeset_units),
                         line_available_x,
                         line_available_x2,
-                        self._alignment_in_frame(alignment),
+                        self._alignment_in_frame(
+                            alignment, last=step_break or short_line
+                        ),
                     )
                     line_start_idx = len(typeset_units)
 
@@ -5380,7 +5731,7 @@ class Typesetting:
 
             last_unit = relocated_unit
 
-        # Finalize alignment for the last line
+        # Finalize alignment for the last line. It keeps its own length.
         if typeset_units and line_start_idx < len(typeset_units):
             self._apply_line_horizontal_alignment(
                 typeset_units,

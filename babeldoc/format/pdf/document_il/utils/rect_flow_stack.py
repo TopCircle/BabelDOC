@@ -340,10 +340,10 @@ def _attach_page(
     blocks = []
     for paragraph in indexed:
         on_photo = _on_photo(paragraph)
+        lines = _lines_of(paragraph)
         # The tile's white is not skin. A column in that white is not a caption.
         if on_photo and _on_the_sheet(paragraph, figures):
             on_photo = False
-        lines = _lines_of(paragraph)
         blocks.append(
             SourceBlock(
                 lines=lines,
@@ -839,6 +839,13 @@ def _role_of(paragraph) -> str | None:
     # whole item formula. The list plugin never sees that item. Drop only
     # this tag so the existing marker rule can run.
     if role == "formula" and _opens_as_list(paragraph):
+        return None
+    lines = _lines_of(paragraph)
+    # A multi-line narrative/dialogue/bibliography block is a body column,
+    # never a standalone math equation or short decorative pull-quote / callout.
+    if role == "formula" and len(lines) >= 2:
+        return None
+    if role in ("pull_quote", "callout") and len(lines) >= 4:
         return None
     return role
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from babeldoc.format.pdf.document_il.utils.layout_plan.geometry import feature_lines
+from babeldoc.format.pdf.document_il.utils.layout_plan.geometry import is_toc_region
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import FigureBox
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import Region
 from babeldoc.format.pdf.document_il.utils.layout_plan.plugins.list_flow import (
@@ -60,8 +61,10 @@ def measure_region(
 
 
 def _marker(region: Region) -> str:
+    if is_toc_region(None, region):
+        return "toc"
     marker = region.marker
-    if marker is not None and marker.is_bullet:
+    if marker is not None and getattr(marker, "is_bullet", False):
         return "bullet"
     if has_list_evidence(region):
         return "serial"

@@ -38,3 +38,18 @@ def claim(
     if _step_kind(_coord(_strip_short_tail(lines), 1)) is not None:
         return None
     return max(edges.left_range, edges.right_range)
+
+
+def fill(lines: Sequence[Sequence[float]]) -> tuple[tuple[float, ...], ...]:
+    """A straight column, keeping each scanned line and its top.
+
+    Every line keeps its scanned left and right edges, and its top
+    height when present.
+    """
+    edges = []
+    for line in lines:
+        edge = [float(line[0]), float(line[1])]
+        if len(line) >= 3:
+            edge.append(float(line[2]))
+        edges.append(tuple(edge))
+    return tuple(edges)

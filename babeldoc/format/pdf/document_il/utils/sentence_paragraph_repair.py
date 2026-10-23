@@ -24,6 +24,9 @@ from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
     line_starts_with_list_marker,
 )
 from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+    run_in_continues,
+)
+from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
     split_paragraph_at,
 )
 from babeldoc.format.pdf.document_il.utils.text_recovery import HYPHEN_CHARS
@@ -35,13 +38,20 @@ _MIN_JOIN_GAP = -2.0
 _PARAGRAPH_GAP = 8.0
 _GAP_FACTOR = 4.0
 _MAX_LEFT_DELTA = 8.0
+# A column opening around a figure steps left about one leg. A step
+# to the right stays the old 8pt gate, so a new indent does not join.
+_OPEN_LEFT = 24.0
 _SIZE_RATIO = 1.18
 
 
-def repair_broken_sentences(paragraphs: list[PdfParagraph]) -> None:
+def repair_broken_sentences(
+    paragraphs: list[PdfParagraph],
+    *,
+    font_name_map: dict[str, str] | None = None,
+) -> None:
     """Split paragraph gaps after a sentence, then join a cut sentence."""
     split_sentence_paragraph_gaps(paragraphs)
-    merge_mid_sentence_paragraphs(paragraphs)
+    merge_mid_sentence_paragraphs(paragraphs, font_name_map=font_name_map)
 
 
 def split_sentence_paragraph_gaps(paragraphs: list[PdfParagraph]) -> int:
@@ -74,7 +84,11 @@ def split_sentence_paragraph_gaps(paragraphs: list[PdfParagraph]) -> int:
     return splits
 
 
-def merge_mid_sentence_paragraphs(paragraphs: list[PdfParagraph]) -> int:
+def merge_mid_sentence_paragraphs(
+    paragraphs: list[PdfParagraph],
+    *,
+    font_name_map: dict[str, str] | None = None,
+) -> int:
     """Join the nearest line below when this paragraph stops mid-sentence."""
     merges = 0
     changed = True
@@ -84,7 +98,9 @@ def merge_mid_sentence_paragraphs(paragraphs: list[PdfParagraph]) -> int:
             if not _stops_mid_sentence(upper):
                 continue
             lower = _nearest_below(paragraphs, upper)
-            if lower is None or not _can_continue(upper, lower):
+            if lower is None or not _can_continue(
+                upper, lower, font_name_map=font_name_map
+            ):
                 continue
             upper.pdf_paragraph_composition = list(
                 upper.pdf_paragraph_composition or []
@@ -174,7 +190,12 @@ def _top_line(paragraph: PdfParagraph):
     return max(lines, key=lambda line: float(line.box.y2))
 
 
-def _can_continue(upper: PdfParagraph, lower: PdfParagraph) -> bool:
+def _can_continue(
+    upper: PdfParagraph,
+    lower: PdfParagraph,
+    *,
+    font_name_map: dict[str, str] | None = None,
+) -> bool:
     if getattr(upper, "xobj_id", None) != getattr(lower, "xobj_id", None):
         return False
     upper_line = _bottom_line(upper)
@@ -183,14 +204,31 @@ def _can_continue(upper: PdfParagraph, lower: PdfParagraph) -> bool:
         return False
     if line_starts_with_list_marker(lower_line):
         return False
-    if _font_blocks(upper_line, lower_line):
+    if _font_blocks(upper_line, lower_line, font_name_map=font_name_map):
         return False
-    if abs(float(upper_line.box.x) - float(lower_line.box.x)) > _MAX_LEFT_DELTA:
+    if not _left_continues(upper_line.box.x, lower_line.box.x):
         return False
     return True
 
 
-def _font_blocks(upper_line, lower_line) -> bool:
+def _left_continues(upper_x, lower_x) -> bool:
+    """True when the next line is still this column.
+
+    The next line may open to the left by one step. A step to the right
+    stays within ``_MAX_LEFT_DELTA``.
+    """
+    delta = float(lower_x) - float(upper_x)
+    return -_OPEN_LEFT <= delta <= _MAX_LEFT_DELTA
+
+
+def _font_blocks(
+    upper_line,
+    lower_line,
+    *,
+    font_name_map: dict[str, str] | None = None,
+) -> bool:
+    if run_in_continues(upper_line, lower_line):
+        return False
     upper_size = line_dominant_font_size(upper_line)
     lower_size = line_dominant_font_size(lower_line)
     if upper_size and lower_size:
@@ -203,7 +241,68 @@ def _font_blocks(upper_line, lower_line) -> bool:
             return True
     upper_face = line_dominant_font_id(upper_line)
     lower_face = line_dominant_font_id(lower_line)
-    return bool(upper_face and lower_face and upper_face != lower_face)
+    if not (upper_face and lower_face):
+        return False
+    if upper_face == lower_face:
+        return False
+    if font_name_map:
+        upper_name = font_name_map.get(upper_face)
+        lower_name = font_name_map.get(lower_face)
+        if upper_name and lower_name:
+            from babeldoc.format.pdf.document_il.utils.face_traits import (
+                font_name_tokens,
+            )
+            from babeldoc.format.pdf.document_il.utils.face_traits import (
+                normalize_ps_font_name,
+            )
+
+            if normalize_ps_font_name(upper_name) == normalize_ps_font_name(
+                lower_name
+            ):
+                return False
+            style_tokens = frozenset(
+                {
+                    "bold",
+                    "heavy",
+                    "black",
+                    "semibold",
+                    "extrabold",
+                    "demibold",
+                    "demi",
+                    "medium",
+                    "light",
+                    "thin",
+                    "ultralight",
+                    "regular",
+                    "roman",
+                    "book",
+                    "italic",
+                    "oblique",
+                    "condensed",
+                    "cond",
+                }
+            )
+            base_upper = font_name_tokens(upper_name) - style_tokens
+            base_lower = font_name_tokens(lower_name) - style_tokens
+            if base_upper and base_lower and (base_upper & base_lower):
+                return False
+    return True
+
+
+def _facing_lefts(upper: PdfParagraph, lower: PdfParagraph) -> tuple[float, float]:
+    """Left edges of the two lines that would meet. Falls back to the boxes."""
+    upper_line = _bottom_line(upper)
+    lower_line = _top_line(lower)
+    if (
+        upper_line is not None
+        and lower_line is not None
+        and upper_line.box is not None
+        and lower_line.box is not None
+        and upper_line.box.x is not None
+        and lower_line.box.x is not None
+    ):
+        return float(upper_line.box.x), float(lower_line.box.x)
+    return float(upper.box.x), float(lower.box.x)
 
 
 def _nearest_below(paragraphs: list[PdfParagraph], upper: PdfParagraph):
@@ -221,7 +320,8 @@ def _nearest_below(paragraphs: list[PdfParagraph], upper: PdfParagraph):
         gap = float(upper.box.y) - float(other.box.y2)
         if gap < _MIN_JOIN_GAP or gap > _MAX_JOIN_GAP:
             continue
-        if abs(float(upper.box.x) - float(other.box.x)) > _MAX_LEFT_DELTA:
+        upper_x, lower_x = _facing_lefts(upper, other)
+        if not _left_continues(upper_x, lower_x):
             continue
         if best_gap is None or gap < best_gap:
             best = other

@@ -10,6 +10,7 @@ Typesetting reads the grant. It does not call claim again.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import replace
 
@@ -202,6 +203,85 @@ def _interval_on_levels(
     if host.right - host.left < 1.0:
         return None
     return (host.left, host.right)
+
+
+# Same wall and step the lower-wide walk uses. A shelf that returns,
+# wobbles, or is only one line wide is not this step.
+_SHELF_WALL = 8.0
+_SHELF_GAP = 32.0
+_SHELF_HOLD = 20.0
+# The shelf keeps one full line and half of the next. The rest stays
+# in the narrow column, so the column sits higher and the last line
+# is not filled.
+_SHELF_TAIL = 1.5
+
+
+def _lower_shelf(rights: Sequence[float]) -> int | None:
+    """Index of the first sample on a wider lower shelf."""
+    if len(rights) < 6:
+        return None
+    split = None
+    for index in range(1, len(rights)):
+        opened = rights[:index]
+        if max(opened) - min(opened) > _SHELF_WALL:
+            return None
+        if rights[index] >= max(opened) + _SHELF_GAP:
+            split = index
+            break
+    if split is None or split < 4 or len(rights) - split < 2:
+        return None
+    shelf = rights[split]
+    if any(abs(right - shelf) > _SHELF_HOLD for right in rights[split:]):
+        return None
+    return split
+
+
+def shelf_drop(
+    levels: Sequence[ContourLevel], widths: Sequence[float]
+) -> float | None:
+    """Sample top where the narrow column meets a short lower tail.
+
+    The shelf keeps one full line and part of the next, at the glyphs'
+    own width. The rest stays in the narrow column, so that column
+    starts higher instead of handing its lines to the shelf. A pack
+    that already continues onto the shelf stays where it is. A wobble,
+    a return, or one wide line does not move.
+    """
+    ordered = tuple(
+        sorted(levels or (), key=lambda level: float(level.top), reverse=True)
+    )
+    split = _lower_shelf([float(level.right) for level in ordered])
+    if split is None:
+        return None
+    spans = [
+        max(0.0, float(level.right) - float(level.left)) for level in ordered
+    ]
+    ink = [float(width) for width in widths]
+    text = sum(ink)
+    total = sum(spans)
+    if total <= 1.0 or text <= 1.0 or len(ink) < 2:
+        return None
+    remaining = text
+    consumed = 0
+    for index, span in enumerate(spans):
+        if remaining <= 1.0:
+            break
+        remaining -= span
+        consumed = index + 1
+    if consumed > split + 1:
+        return None
+    wide_spans = sorted(span for span in spans[split:] if span > 1.0)
+    narrow_spans = sorted(span for span in spans[:split] if span > 1.0)
+    if not wide_spans or not narrow_spans:
+        return None
+    tail = wide_spans[len(wide_spans) // 2] * _SHELF_TAIL
+    if tail >= text:
+        return None
+    narrow_span = narrow_spans[len(narrow_spans) // 2]
+    n_narrow = max(1, math.ceil((text - tail) / narrow_span - 1e-6))
+    if n_narrow >= split:
+        return None
+    return float(ordered[split - n_narrow].top)
 
 
 def _pitch(tops: Sequence[float]) -> float:
@@ -415,7 +495,18 @@ def _refuse_reason(decision: RegionDecision, region: Region | None) -> str | Non
     if not geometry_eligible(region):
         return "protected_role"
     if decision.fallback in _BASE_CONFLICTS:
-        return decision.fallback
+        from babeldoc.format.pdf.document_il.utils.layout_plan.plugins.list_flow import (
+            has_list_evidence,
+        )
+
+        has_marker = (
+            region.marker is not None
+            and getattr(region.marker, "is_bullet", False)
+        ) or has_list_evidence(region)
+        if decision.fallback == "list_and_shaped" and has_marker:
+            pass
+        else:
+            return decision.fallback
     if decision.base_strategy == "preserve" and _rejected_for(
         decision, "below_confidence"
     ):

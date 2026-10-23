@@ -57,7 +57,11 @@ def left_rag(edges: BlockEdges, lines: Sequence[Sequence[float]]) -> float | Non
 def right_step(
     edges: BlockEdges, lines: Sequence[Sequence[float]], kind: str
 ) -> float | None:
-    """Left-edge span when the right edge is the named two-width walk."""
+    """Left-edge span when the right edge is the named two-width walk.
+
+    The first line may sit to the right of a straight shelf. A first
+    line to the left of that shelf is a hang, not this walk.
+    """
     if edges.marker != "none":
         return None
     body = _strip_short_tail(lines)
@@ -65,11 +69,12 @@ def right_step(
         return None
     lefts = _coord(body, 0)
     rights = _coord(body, 1)
-    if _span(lefts) > _WALL:
+    wall = _shelf_span(lefts)
+    if wall is None:
         return None
     if _step_kind(rights) != kind:
         return None
-    return _span(lefts)
+    return wall
 
 
 def right_bow(
@@ -252,6 +257,24 @@ def _span(values: Sequence[float]) -> float:
     if len(values) == 0:
         return 0.0
     return max(values) - min(values)
+
+
+def _shelf_span(lefts: Sequence[float]) -> float | None:
+    """Span of a straight left wall.
+
+    One opening line may sit to the right. The shelf is the rest. A
+    first line left of the shelf, or a shelf that walks, is not straight.
+    """
+    if _span(lefts) <= _WALL:
+        return _span(lefts)
+    if len(lefts) < 2:
+        return None
+    shelf = lefts[1:]
+    if _span(shelf) > _WALL:
+        return None
+    if lefts[0] < min(shelf) - _SLACK:
+        return None
+    return _span(shelf)
 
 
 def _median(values: Sequence[float]) -> float:

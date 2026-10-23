@@ -187,6 +187,35 @@ def _term_pattern(src: str) -> re.Pattern[str]:
     if src.endswith((":", "：")):
         src = src[:-1].rstrip()
         colon = "[：:]"
+
+    has_quotes = any(ch in src for ch in ('"', '“', '”', "'", '‘', '’'))
+    if has_quotes:
+        has_open_quote = src and src[0] in ('"', '“', '”', "'", '‘', '’')
+        has_close_quote = src and src[-1] in ('"', '“', '”', "'", '‘', '’')
+        parts = []
+        n = len(src)
+        for idx, ch in enumerate(src):
+            if ch in ('"', '“', '”'):
+                parts.append(r"[\"“”]" if idx == 0 else r"[\s\xa0]*[\"“”]")
+            elif ch in ("'", '‘', '’'):
+                parts.append(r"['‘’]" if idx == 0 else r"[\s\xa0]*['‘’]")
+            elif ch in (".", ",", ";", "!", "?") and (
+                (idx == n - 2 and has_close_quote)
+                or idx == n - 1
+            ):
+                # Punctuation immediately before closing quote (e.g. "Ladyscape.")
+                # or at span end when quote was split into next span.
+                # DeepLX often moves it outside the quote as Chinese punct: "Ladyscape"。
+                parts.append(r"[.,;:!?\s\xa0]*")
+            elif ch.isspace() or ch == "\xa0":
+                parts.append(r"[\s\xa0]+")
+            else:
+                parts.append(re.escape(ch))
+        if has_open_quote and not has_close_quote:
+            parts.append(r"[\s\xa0]*[\"“”'‘’]?")
+        body = "".join(parts)
+        return re.compile(body + colon, re.IGNORECASE)
+
     words = src.split()
     if len(words) > 1:
         # ``Passion   Prescription`` / line-break spaces after MT
