@@ -1,9 +1,23 @@
-# BabelDOC — 当前状况（2026-10-20）
+# BabelDOC — 当前状况（2026-10-26）
 
-**布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008` · HEAD `d7c5f92`（领先 origin 1，工作区另有未提交改动）  
+**布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008` · HEAD `80ffec9`（已推送 origin）  
 **版本:** `0.6.4.95`（`babeldoc/const.py` 与 `pyproject.toml`，未 bump）  
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-10-26 — 序列标题粗体保留、垂直重叠保护与排除区伪标注修复（commit 80ffec9）
+
+1. **粗体样式标记保留 (`normalize_translated_text` / `ILTranslator`)**：
+   - 增加 `keep_style_markers=True`，防止富文本格式标记 `〖B0〗` 被过早正则清洗，修复《Oral Rapture》p18 等标题粗体样式在后处理阶段丢失的问题。
+2. **段落垂直重叠标题锚点保护 (`typesetting.py`)**：
+   - 在 `_resolve_paragraph_vertical_overlaps` 中确立标题/页眉的固定锚点地位，并在反向推移时加入守卫，禁止下方溢出段落将上方标题推入上一节或发生单行黏连。
+3. **单行小标题排除区伪标注修复 (`layout_intent_extractor.py`)**：
+   - 限制 `Rule 8` 中 `CALLOUT` 判定必须为多行文本（`n_lines >= 2`），防止像《Double Fingering Delight》p4 中的单行章节子标题（如 `Prepping for G-spot Fingering`）误建侧栏 quote 排除区域，从而避免排除区外扩将下方左对齐小标题（`Technique 1`）强行右推到页面中央的假居中问题。
+4. **吸附列宽保护 (`typesetting.py`)**：
+   - 修正 `_cap_available_with_reference`，当段落吸附回原始左列（`line_start < available_x`）时，保留基于 `ref_w` 的列宽上限，不受右侧障碍物干扰。
+5. **测试与验证**：
+   - 全部 223 项核心排版测试通过。
+   - 真实双语渲染图核对通过并已推送 `origin/plan/layout-paradigms-20261008`。
 
 ## 2026-10-20 — step/right_spur 小腿框已过（版本仍 0.6.4.95）
 
