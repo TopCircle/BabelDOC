@@ -497,12 +497,9 @@ def is_multiline_stream_climbing(
 
 
 def _has_drop_cap_glyph(chars: list[PdfCharacter]) -> bool:
-    from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_letter
+    from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_candidate
 
-    for ch in chars:
-        if is_drop_cap_letter(ch):
-            return True
-    return False
+    return any(is_drop_cap_candidate(ch, chars, i) for i, ch in enumerate(chars))
 
 
 def maybe_reorder_multiline_stream_climb(

@@ -72,10 +72,22 @@ class OnnxModel(DocLayoutModel):
                 if re.match(r"cpu", provider, re.IGNORECASE):
                     logger.info(f"Available Provider: {provider}")
                     providers.append(provider)
-        self.model = onnxruntime.InferenceSession(
-            model.SerializeToString(),
-            providers=providers,
-        )
+        try:
+            self.model = onnxruntime.InferenceSession(
+                model.SerializeToString(),
+                providers=providers,
+            )
+        except Exception as e:
+            if use_coreml:
+                logger.warning(
+                    f"CoreML provider initialization failed ({e}), falling back to CPUExecutionProvider"
+                )
+                self.model = onnxruntime.InferenceSession(
+                    model.SerializeToString(),
+                    providers=["CPUExecutionProvider"],
+                )
+            else:
+                raise
         self.lock = threading.Lock()
 
     @staticmethod

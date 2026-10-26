@@ -418,8 +418,11 @@ def _apply_prepared_order_to_mixed(
     prepared: list[PdfCharacter],
 ) -> list[PdfCharacter | str]:
     """Replay climb/drop-cap order onto a mixed marker+char token list."""
-    from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_letter
-    from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_pair
+    from babeldoc.format.pdf.document_il.utils.drop_cap import (
+        is_drop_cap_candidate,
+        is_drop_cap_letter,
+        is_drop_cap_pair,
+    )
 
     groups = _attach_string_groups(_group_mt_tokens(chars))
     id_to_group: dict[int, int] = {}
@@ -443,7 +446,10 @@ def _apply_prepared_order_to_mixed(
         drop_letters = [
             item
             for item in group
-            if isinstance(item, PdfCharacter) and is_drop_cap_letter(item)
+            if isinstance(item, PdfCharacter)
+            and is_drop_cap_candidate(
+                item, prepared, prep_index.get(id(item), 0)
+            )
         ]
         if drop_letters:
             rest = [

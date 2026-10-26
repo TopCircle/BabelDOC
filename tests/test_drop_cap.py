@@ -213,3 +213,46 @@ def test_oa_p33_todays_drop_cap():
     text = get_char_unicode_string(placed)
     assert text.lower().startswith("today")
     assert "Tlessons" not in text.replace(" ", "")
+
+
+def test_step_heading_not_drop_cap():
+    """Capitalized words like 'Step 4.' must not have 'S' treated as a drop cap."""
+    from babeldoc.format.pdf.document_il.utils.drop_cap import (
+        is_drop_cap_candidate,
+        place_drop_caps_before_continuations,
+    )
+
+    chars: list[PdfCharacter | str] = ["〖B0〗"]
+    x = 78.0
+    for c in "Step 4.":
+        chars.append(_ch(c, x, size=18.0, w=10.0, y=160.0, font_id="UniversLTStd-LightCn"))
+        x += 10.0
+    chars.append("〖/B0〗")
+    for c in " Don’t push her if she’s reluctant to tell you.":
+        chars.append(_ch(c, x, size=11.5, w=6.0, y=160.0, font_id="UniversLTStd-Light"))
+        x += 6.0
+
+    pdf_only = [c for c in chars if isinstance(c, PdfCharacter)]
+    # S at index 0 must NOT be a drop cap candidate because it is followed by 't' of same size
+    assert not is_drop_cap_candidate(pdf_only[0], pdf_only, 0)
+
+    # get_char_unicode_string must produce 'Step 4.', NOT 'tep 4.S'
+    out = get_char_unicode_string(chars)
+    assert "Step 4." in out
+    assert "tep 4.S" not in out
+    assert not out.startswith("〖B0〗tep 4.")
+
+
+def test_step_prefix_not_mangled_by_list_marker_repair():
+    """'步骤 5. 一旦...' must not be mangled into '5. 步骤 一旦...'."""
+    from babeldoc.format.pdf.document_il import il_version_1
+    from babeldoc.format.pdf.document_il.utils.list_marker_repair import (
+        normalize_embedded_numeric_markers_on_page,
+    )
+
+    para = il_version_1.PdfParagraph()
+    para.unicode = "步骤 5. 一旦她告诉你她的性幻想是什么"
+    changed = normalize_embedded_numeric_markers_on_page([para])
+    assert changed == 0
+    assert para.unicode == "步骤 5. 一旦她告诉你她的性幻想是什么"
+    assert not para.unicode.startswith("5. 步骤")

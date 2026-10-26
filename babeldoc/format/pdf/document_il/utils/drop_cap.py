@@ -49,6 +49,49 @@ def is_drop_cap_letter(ch: PdfCharacter) -> bool:
     return True
 
 
+def is_drop_cap_candidate(
+    ch: PdfCharacter,
+    chars: list[PdfCharacter],
+    i: int,
+) -> bool:
+    """True if *ch* at index *i* in *chars* is an isolated drop-cap glyph.
+
+    Capitalized words (``Step 4.``, ``The``) have subsequent letters of the
+    same font size; these must NOT be treated as drop caps.
+    """
+    if not is_drop_cap_letter(ch):
+        return False
+    ps = _font_size(ch)
+    if ps is None:
+        return False
+    if i + 1 < len(chars):
+        nxt = chars[i + 1]
+        nu = (nxt.char_unicode or "").strip()
+        if nu and (nu.isalpha() or nu.isdigit()):
+            ns = _font_size(nxt)
+            if ns is not None and ns >= ps * 0.8:
+                return False
+    if i > 0:
+        prev = chars[i - 1]
+        pu = (prev.char_unicode or "").strip()
+        if pu and (pu.isalpha() or pu.isdigit()):
+            prs = _font_size(prev)
+            if prs is not None and prs >= ps * 0.8:
+                return False
+    other_sizes = [
+        _font_size(c)
+        for j, c in enumerate(chars)
+        if j != i and _font_size(c) is not None
+    ]
+    if other_sizes:
+        import statistics
+
+        med = statistics.median(other_sizes)
+        if ps < med * DROP_CAP_SIZE_RATIO:
+            return False
+    return True
+
+
 def is_drop_cap_continuation(ch: PdfCharacter) -> bool:
     """True if *ch* starts the remainder of a word (lowercase Latin)."""
     u = (ch.char_unicode or "").strip()
@@ -123,7 +166,7 @@ def strip_drop_cap_padding(
         return chars
     remove: set[int] = set()
     for i, ch in enumerate(chars):
-        if not is_drop_cap_letter(ch):
+        if not is_drop_cap_candidate(ch, chars, i):
             continue
         j = i + 1
         while j < len(chars) and (chars[j].char_unicode or "").isspace():
@@ -159,7 +202,7 @@ def place_drop_caps_before_continuations(
     for _ in range(4):
         moved = False
         for i, ch in enumerate(result):
-            if not is_drop_cap_letter(ch):
+            if not is_drop_cap_candidate(ch, result, i):
                 continue
             # Adjacent lowercase is not done: W+d (darling) is a valid pair
             # while elcome sits further left on the same line.

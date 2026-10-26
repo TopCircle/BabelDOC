@@ -77,6 +77,17 @@ MID_LIST_IDEO_PERIOD_RE = re.compile(
     re.IGNORECASE,
 )
 
+_STEP_ORDINAL_PREFIX_RE = re.compile(
+    r"(?:步骤|第|Step|Stage|No\.?|章|节|课)$",
+    re.IGNORECASE,
+)
+
+
+def _is_step_or_ordinal(text: str, match: re.Match) -> bool:
+    start = match.start()
+    prefix = text[:start].rstrip()
+    return bool(_STEP_ORDINAL_PREFIX_RE.search(prefix))
+
 
 def _is_cjk_char0(ch: str) -> bool:
     o = ord(ch[0])
@@ -191,14 +202,19 @@ def normalize_embedded_numeric_markers_on_page(
         if not text.strip():
             continue
         leading = LIST_MARKER_RE.match(text.lstrip())
-        embedded = list(EMBEDDED_NUMERIC_MARKER_RE.finditer(text))
+        embedded = [
+            m for m in EMBEDDED_NUMERIC_MARKER_RE.finditer(text)
+            if not _is_step_or_ordinal(text, m)
+        ]
         if not leading and not embedded and not pending:
             continue
 
         # Remove embedded serials while preserving surrounding body text.
         found = [m.group("marker") for m in embedded]
         if embedded:
-            body = EMBEDDED_NUMERIC_MARKER_RE.sub(" ", text)
+            body = text
+            for m in reversed(embedded):
+                body = body[:m.start()] + " " + body[m.end():]
             body = re.sub(r"[ \t]{2,}", " ", body).strip()
             if leading:
                 marker_match = re.match(

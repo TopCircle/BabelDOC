@@ -4833,8 +4833,7 @@ class Typesetting:
         # available_x2 is already the clearance boundary — allow text to wrap
         # closely up to it so it does not stay artificially far from the figure.
         has_obstacle = (
-            line_start == available_x
-            and box.x2 is not None
+            box.x2 is not None
             and available_x2 < (box.x2 - 12.0)
         )
         if has_obstacle:
