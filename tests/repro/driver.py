@@ -33,14 +33,18 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 
-from babeldoc.format.pdf.document_il.utils.il_layout_fingerprint import (
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from babeldoc.format.pdf.document_il.utils.il_layout_fingerprint import (  # noqa: E402
     il_layout_fingerprint,
 )
-from babeldoc.format.pdf.document_il.xml_converter import XMLConverter
-from babeldoc.format.pdf.high_level import translate
-from babeldoc.format.pdf.translation_config import TranslationConfig
-from babeldoc.format.pdf.translation_config import WatermarkOutputMode
-from babeldoc.translator.fixed_map_translator import FixedMapTranslator
+from babeldoc.format.pdf.document_il.xml_converter import XMLConverter  # noqa: E402
+from babeldoc.format.pdf.high_level import translate  # noqa: E402
+from babeldoc.format.pdf.translation_config import TranslationConfig  # noqa: E402
+from babeldoc.format.pdf.translation_config import WatermarkOutputMode  # noqa: E402
+from babeldoc.translator.fixed_map_translator import FixedMapTranslator  # noqa: E402
 
 #: Summary artifact written into the user-facing working dir.
 SUMMARY_FILENAME = "repro_typsetting_summary.json"
@@ -261,6 +265,7 @@ def run_translate(
     header_height: float = DEFAULT_HEADER_HEIGHT,
     skip_footer: bool = True,
     footer_height: float = DEFAULT_FOOTER_HEIGHT,
+    no_dual: bool = True,
 ) -> dict:
     """Run the full pipeline and return the repro summary (and write it)."""
     working_dir = Path(working_dir)
@@ -282,7 +287,7 @@ def run_translate(
         output_dir=str(out_dir),
         working_dir=str(working_dir),
         debug=True,
-        no_dual=True,
+        no_dual=no_dual,
         watermark_output_mode=WatermarkOutputMode.NoWatermark,
         skip_header=skip_header,
         header_height=header_height,
@@ -323,6 +328,7 @@ def run_translate(
         "summary": summary,
         "summary_path": summary_path,
         "mono_pdf_path": result.mono_pdf_path,
+        "dual_pdf_path": getattr(result, "dual_pdf_path", None),
         "typsetting_path": typsetting_path,
     }
 
@@ -351,6 +357,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--footer-height", type=float, default=DEFAULT_FOOTER_HEIGHT)
     parser.add_argument("--no-skip-header", action="store_true")
     parser.add_argument("--no-skip-footer", action="store_true")
+    parser.add_argument("--dual", action="store_true", help="also generate dual-language PDF")
     return parser
 
 
@@ -367,9 +374,12 @@ def main(argv: list[str] | None = None) -> int:
         header_height=args.header_height,
         skip_footer=not args.no_skip_footer,
         footer_height=args.footer_height,
+        no_dual=not args.dual,
     )
     summary = result["summary"]
     print(f"mono pdf : {result['mono_pdf_path']}")
+    if result.get("dual_pdf_path"):
+        print(f"dual pdf : {result['dual_pdf_path']}")
     print(f"summary  : {result['summary_path']}")
     print(f"pages    : {sorted(summary['pages'])}")
     print(f"fingerprint: {summary['fingerprint_sha256']}")

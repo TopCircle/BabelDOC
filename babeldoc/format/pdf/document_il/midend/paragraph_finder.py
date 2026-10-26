@@ -639,19 +639,7 @@ class ParagraphFinder:
                 if pf.font_id and pf.name:
                     font_name_map[pf.font_id] = pf.name
 
-        print(f"DEBUG_REPAIR_START: font_name_map={font_name_map} paras={len(paragraphs)}")
-        for p in paragraphs:
-            txt = "".join(c.char_unicode for comp in p.pdf_paragraph_composition or [] if comp.pdf_line for c in comp.pdf_line.pdf_character or [])
-            if "stimulating" in txt or "swollen" in txt:
-                print(f"  BEFORE_REPAIR: debug_id={p.debug_id} txt={txt[:30]!r}..{txt[-30:]!r}")
-
         repair_broken_sentences(paragraphs, font_name_map=font_name_map)
-
-        print(f"DEBUG_REPAIR_END: paras={len(paragraphs)}")
-        for p in paragraphs:
-            txt = "".join(c.char_unicode for comp in p.pdf_paragraph_composition or [] if comp.pdf_line for c in comp.pdf_line.pdf_character or [])
-            if "stimulating" in txt or "swollen" in txt:
-                print(f"  AFTER_REPAIR: debug_id={p.debug_id} txt={txt[:30]!r}..{txt[-30:]!r}")
 
         # A 30pt en-dash is the bullet of the line to its right. Its box
         # starts above that line, so the heading swallows it or it paints

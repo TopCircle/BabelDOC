@@ -36,11 +36,9 @@ from babeldoc.format.pdf.document_il.utils.box_expand import is_callout_column
 from babeldoc.format.pdf.document_il.utils.figure_wrap import body_line_spans
 from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_paragraph
 from babeldoc.format.pdf.document_il.utils.figure_wrap import taper_prefix_widths
-from babeldoc.format.pdf.document_il.utils.layout_helper import (
-    _line_spans,
-    calculate_iou_for_boxes,
-    is_quote_block,
-)
+from babeldoc.format.pdf.document_il.utils.layout_helper import _line_spans
+from babeldoc.format.pdf.document_il.utils.layout_helper import calculate_iou_for_boxes
+from babeldoc.format.pdf.document_il.utils.layout_helper import is_quote_block
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
@@ -272,10 +270,27 @@ class LayoutIntentExtractor:
             return LayoutIntentRole.FIGURE_CAPTION
         # Rule 5 — section header / paragraph title; display TITLE only for
         # label=="title" AND is_display_title (vertical_gap).
+        if label == "title":
+            if is_display_title(para):
+                return LayoutIntentRole.TITLE
+            return LayoutIntentRole.SECTION_HEADER
         if label in _SECTION_HEADER_LABELS:
             return LayoutIntentRole.SECTION_HEADER
-        if label == "title" and is_display_title(para):
-            return LayoutIntentRole.TITLE
+        t = (getattr(para, "unicode", None) or "").strip()
+        if not t:
+            for comp in getattr(para, "pdf_paragraph_composition", None) or []:
+                if getattr(comp, "pdf_line", None) and comp.pdf_line.pdf_character:
+                    t = "".join(
+                        c.char_unicode or "" for c in comp.pdf_line.pdf_character
+                    ).strip()
+                    if t:
+                        break
+        from babeldoc.format.pdf.document_il.utils.sealed_paragraph_join import (
+            _HEADING_PATTERN,
+        )
+
+        if t and _HEADING_PATTERN.match(t):
+            return LayoutIntentRole.SECTION_HEADER
         return None
 
     def _build_intent(
@@ -482,12 +497,22 @@ class LayoutIntentExtractor:
         ):
             return LayoutIntentRole.PULL_QUOTE, None
         # Rule 8 — callout column. A labeled callout stays a callout.
-        # An unlabeled narrow box is only inferred as callout if it is short
-        # (<= 6 lines). Long narrow blocks are body / wrap columns.
+        # An unlabeled narrow box is only inferred as callout if it is a multi-line
+        # column (2 <= lines <= 6). Single lines and headings are body / section heads.
+        t = (getattr(para, "unicode", None) or "").strip()
+        from babeldoc.format.pdf.document_il.utils.sealed_paragraph_join import (
+            _HEADING_PATTERN,
+        )
+
+        n_lines = len(_line_spans(para))
+        is_heading = bool(_HEADING_PATTERN.match(t)) if t else False
         if label == _CALLOUT_LABEL or (
-            is_callout_column(para.box)
+            label not in _TITLE_CLASS_LABELS
+            and not is_heading
+            and n_lines >= 2
+            and n_lines <= 6
+            and is_callout_column(para.box)
             and not continues
-            and len(_line_spans(para)) <= 6
         ):
             return LayoutIntentRole.CALLOUT, None
         # Rule 9 — everything else.

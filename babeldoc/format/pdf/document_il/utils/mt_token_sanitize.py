@@ -105,6 +105,16 @@ _ISOLATED_LATIN_LETTER_RE = re.compile(
     r"(?<=[\u4e00-\u9fff])\s*(?![Gg](?=\s*点))[A-Za-z]\s*(?=[\u4e00-\u9fff])"
 )
 
+# Formula-glued leftovers: "抚摸 {v1}her 阴蒂" (placeholders kept for parse)
+_FORMULA_GLUED = {
+    "her": "",
+    "enemas": "灌肠",
+    "vag": "阴道",
+    "water": "水",
+    "enjoyable": "愉悦",
+    "inandout": "抽插",
+}
+
 
 def _scrub_cjk_embedded_english(text: str) -> str:
     """Remove/replace short English shards embedded between CJK characters."""
@@ -191,15 +201,6 @@ def _scrub_cjk_embedded_english(text: str) -> str:
     out = _YOU_HAVE_NOUN_RE.sub("有", out)
     out = _ISOLATED_YOU_RE.sub("", out)
     out = _ISOLATED_LATIN_LETTER_RE.sub("", out)
-    # Formula-glued leftovers: "抚摸 {v1}her 阴蒂" (placeholders kept for parse)
-    _FORMULA_GLUED = {
-        "her": "",
-        "enemas": "灌肠",
-        "vag": "阴道",
-        "water": "水",
-        "enjoyable": "愉悦",
-        "inandout": "抽插",
-    }
 
     def _formula_glued_repl(m: re.Match[str]) -> str:
         return m.group(1) + _FORMULA_GLUED.get(m.group(2).lower(), "")
@@ -352,6 +353,7 @@ def normalize_translated_text(
     text: str | None,
     *,
     keep_formula_placeholders: bool = False,
+    keep_style_markers: bool = False,
 ) -> str | None:
     """Canonical post-MT cleanup: controls + debris + residual style markers + compat NFKC.
 
@@ -362,6 +364,9 @@ def normalize_translated_text(
     Set *keep_formula_placeholders* when the caller still needs ``{vN}``
     tokens so ``parse_translate_output`` can reattach ``PdfFormula``.
 
+    Set *keep_style_markers* when the caller still needs ``〖Bn〗`` tokens so
+    ``parse_translate_output`` can parse bold/emphasis style spans.
+
     Safe on ``None`` / empty. Idempotent for clean text.
     """
     if text is None:
@@ -370,7 +375,7 @@ def normalize_translated_text(
         return text
     out = strip_ascii_controls(text)
     out = _scrub_mt_debris(out, keep_formula_placeholders=keep_formula_placeholders)
-    if out and ("〖B" in out or "〖b" in out):
+    if not keep_style_markers and out and ("〖B" in out or "〖b" in out):
         out = _STYLE_MARKER_RE.sub("", out)
     out = expand_latin_ligatures(out)
     out = _nfkc_cjk_compatibility(out)

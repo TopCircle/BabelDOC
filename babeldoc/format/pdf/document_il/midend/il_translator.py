@@ -1663,6 +1663,11 @@ class ILTranslator:
             else:
                 allowed_placeholder_tokens.add(placeholder.left_placeholder)
                 allowed_placeholder_tokens.add(placeholder.right_placeholder)
+        for span in getattr(input_text, "style_spans", []) or []:
+            allowed_placeholder_tokens.add(f"〖B{span.span_id}〗")
+            allowed_placeholder_tokens.add(f"〖/B{span.span_id}〗")
+            allowed_placeholder_tokens.add(f"〖b{span.span_id}〗")
+            allowed_placeholder_tokens.add(f"〖/b{span.span_id}〗")
 
         def remove_placeholder(text: str):
             """Remove placeholder artifacts and hallucinated placeholder-like tokens."""
@@ -1852,9 +1857,10 @@ class ILTranslator:
             if llm_translate_tracker := tracker.last_llm_translate_tracker():
                 llm_translate_tracker.set_placeholder_full_match()
             return False
-        # Keep {vN} until parse reattaches PdfFormula (OA p5 （,）).
+        # Keep {vN} until parse reattaches PdfFormula (OA p5 （,）),
+        # and keep 〖Bn〗 style markers so parse_translate_output can parse emphasis runs.
         translated_text = normalize_translated_text(
-            translated_text, keep_formula_placeholders=True
+            translated_text, keep_formula_placeholders=True, keep_style_markers=True
         )
         paragraph.pdf_paragraph_composition = self.parse_translate_output(
             translate_input,

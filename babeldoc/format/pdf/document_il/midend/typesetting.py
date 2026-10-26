@@ -3805,7 +3805,25 @@ class Typesetting:
                         continue
                     if not self._bbox_overlap(b1, b2):
                         continue
-                    if (p1.render_order or 0) <= (p2.render_order or 0):
+                    from babeldoc.format.pdf.document_il.utils.layout_intent import (
+                        LayoutIntentRole,
+                    )
+                    p1_role = getattr(
+                        getattr(p1, "layout_intent", None), "role", None
+                    )
+                    p2_role = getattr(
+                        getattr(p2, "layout_intent", None), "role", None
+                    )
+                    p1_label = (getattr(p1, "layout_label", None) or "").strip().lower()
+                    p2_label = (getattr(p2, "layout_label", None) or "").strip().lower()
+                    p1_is_head = p1_role in (LayoutIntentRole.TITLE, LayoutIntentRole.SECTION_HEADER) or p1_label in ("title", "section_header")
+                    p2_is_head = p2_role in (LayoutIntentRole.TITLE, LayoutIntentRole.SECTION_HEADER) or p2_label in ("title", "section_header")
+
+                    if p1_is_head and not p2_is_head:
+                        move, keep_box, move_box = p2, b1, b2
+                    elif p2_is_head and not p1_is_head:
+                        move, keep_box, move_box = p1, b2, b1
+                    elif (p1.render_order or 0) <= (p2.render_order or 0):
                         move, keep_box, move_box = p2, b1, b2
                     else:
                         move, keep_box, move_box = p1, b2, b1
@@ -3847,6 +3865,20 @@ class Typesetting:
                             )
                     elif move_box.y2 > keep_box.y2:
                         # move 段落在 keep 段落之上 → 收缩 move 底部
+                        move_role = getattr(
+                            getattr(move, "layout_intent", None), "role", None
+                        )
+                        move_label = (
+                            getattr(move, "layout_label", None) or ""
+                        ).strip().lower()
+                        if move_role in (
+                            LayoutIntentRole.TITLE,
+                            LayoutIntentRole.SECTION_HEADER,
+                        ) or move_label in ("title", "section_header"):
+                            # Heading / title has structural placement; content below it
+                            # must not push the heading upward into an upper title/header.
+                            continue
+
                         new_y = keep_box.y2 + 1
                         if new_y < (move.box.y2 or float("inf")):
                             move.box = Box(
@@ -4800,7 +4832,11 @@ class Typesetting:
         # When an obstacle (figure/exclusion zone) constrains available_x2,
         # available_x2 is already the clearance boundary — allow text to wrap
         # closely up to it so it does not stay artificially far from the figure.
-        has_obstacle = box.x2 is not None and available_x2 < (box.x2 - 12.0)
+        has_obstacle = (
+            line_start == available_x
+            and box.x2 is not None
+            and available_x2 < (box.x2 - 12.0)
+        )
         if has_obstacle:
             cap_x2 = available_x2
         else:
