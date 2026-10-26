@@ -377,3 +377,19 @@ def test_rect_explicit_right_fixed_keeps_intervals_without_right_flush():
     plan = resolve_line_interval_plan(paragraph, paragraph.box)
     assert plan.wrap_active is True
     assert apply_wrap_flush(paragraph, "left") == "left"
+
+
+def test_ragged_right_without_stepping_trend_is_rect_reflow():
+    """Ordinary ragged-right lines with outward jitter are not a taper."""
+    boxes = [
+        (92.0, 301.4, 200.0),
+        (92.0, 313.3, 185.0),
+        (92.0, 308.9, 170.0),
+        (92.0, 290.5, 155.0),
+        (92.0, 294.5, 140.0),
+        (92.0, 297.2, 125.0),
+    ]
+    mark = select_paradigm(LayoutIntentRole.BODY, None, boxes)
+    assert mark.paradigm is PlacementParadigm.RECT_REFLOW
+    assert mark.reason == "stable_column"
+

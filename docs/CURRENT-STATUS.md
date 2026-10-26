@@ -5,6 +5,18 @@
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
+## 2026-10-26 — 悬挂列表双重缩进修复、底图贯穿识别与自然参差避让消除（commit 待提交）
+
+1. **贯穿背景底图识别与栏宽误切排除 (`column_chain.py`)**：
+   - 在 `_figure_gap` 增加贯穿底图检测，当文本行跨越图片边界超过 40pt 时，识别为背景层，禁止切分列宽或将整段强行收窄。
+2. **文本右侧自然参差收窄误判消除 (`placement_paradigm.py`)**：
+   - 严密收紧 `_is_left_pin_taper` 与 `_is_right_pin_taper`，要求内缩步数严格多于外扩步数（`inward > outward`）且具备明确阶梯极值，普通自然参差判定回退为 `RECT_REFLOW / stable_column`，修复《Ten Minute Stamina Boost》p21 第一段假避让。
+3. **圆点列表悬挂双重缩进消除与正文基准对齐 (`typesetting.py`)**：
+   - 当 `line_edges` 已具备悬挂阶梯时，`_numbered_list_hang_inset` 自动停用冗余偏移，消除第 2 行起叠加缩进；
+   - 增加 `_first_body_unit_index` 与 `_line_edges_body_left`，在首行排完标记与空格后对齐正文起点至 `target_body_left`（92.0pt），《Ten Minute Stamina Boost》p21 圆点列表项悬挂完美对齐。
+4. **范式与测试**：
+   - `mark/bullet_hang` 填充核验通过，175 项排版单元测试 100% 通过。
+
 ## 2026-10-26 — 序号乱码修复、首字下沉保护、引言避让与范式技能（commit 53112ab, dee1fdc）
 
 1. **Step 序号倒装与丢字根治 (`drop_cap.py` / `list_marker_repair.py`)**：

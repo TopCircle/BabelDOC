@@ -2597,6 +2597,52 @@ class Typesetting:
             hang += float(getattr(units[index], "width", 0.0) or 0.0) * scale
         return hang if hang > 0.5 else 0.0
 
+    def _line_edges_body_left(self) -> float | None:
+        edges = getattr(self, "_line_edges", None)
+        if edges is None:
+            return None
+        levels = getattr(edges, "levels", ()) or ()
+        if len(levels) > 1 and levels[1].left > levels[0].left + 1.0:
+            return float(levels[1].left)
+        return None
+
+    @staticmethod
+    def _first_body_unit_index(
+        typesetting_units: list[TypesettingUnit] | None,
+        paragraph: il_version_1.PdfParagraph | None,
+    ) -> int:
+        units = list(typesetting_units or [])
+        if not units:
+            return 0
+        idx = 0
+        while idx < len(units) and getattr(units[idx], "is_space", False):
+            idx += 1
+        if idx < len(units) and _is_leading_bullet(units[idx]):
+            idx += 1
+            while idx < len(units) and getattr(units[idx], "is_space", False):
+                idx += 1
+            return idx
+        if Typesetting._looks_like_numbered_list_item(paragraph):
+            parts = []
+            for u in units:
+                ch = u.try_get_unicode() if hasattr(u, "try_get_unicode") else None
+                parts.append(ch or "")
+            full = "".join(parts)
+            lstripped = full.lstrip()
+            lead = len(full) - len(lstripped)
+            m = Typesetting._LIST_MARKER_RE.match(lstripped)
+            if m:
+                end_char = lead + len(m.group(0))
+                pos = 0
+                for u_idx, ch in enumerate(parts):
+                    pos += len(ch)
+                    if pos >= end_char:
+                        target = u_idx + 1
+                        while target < len(units) and getattr(units[target], "is_space", False):
+                            target += 1
+                        return target
+        return 0
+
     @staticmethod
     def _numbered_list_hang_inset(
         paragraph: il_version_1.PdfParagraph | None,
@@ -2607,6 +2653,7 @@ class Typesetting:
         alignment: str,
         ocr_workaround: bool,
         pocket_span: float,
+        line_edges=None,
     ) -> float:
         """Left inset for wrap lines of numbered lists (0 on first line / OCR / non-left).
 
@@ -2620,6 +2667,10 @@ class Typesetting:
             or paragraph is None
         ):
             return 0.0
+        if line_edges is not None:
+            levels = getattr(line_edges, "levels", ()) or ()
+            if len(levels) > 1 and levels[1].left > levels[0].left + 1.0:
+                return 0.0
         hang = Typesetting._list_marker_hang_width(
             paragraph, typesetting_units, scale
         )
@@ -4475,6 +4526,7 @@ class Typesetting:
             alignment=alignment,
             ocr_workaround=ocr_mode,
             pocket_span=max(0.0, ix2 - ix1),
+            line_edges=getattr(self, "_line_edges", None),
         )
         if hang > 0:
             intervals = Typesetting._inset_leftmost_interval(intervals, hang)
@@ -5164,6 +5216,12 @@ class Typesetting:
             if getattr(paragraph, "decorative_tracking", None)
             else 0
         )
+        edges_body_left = self._line_edges_body_left()
+        first_body_unit_idx = (
+            Typesetting._first_body_unit_index(typesetting_units, paragraph)
+            if edges_body_left is not None
+            else -1
+        )
 
         for i, unit in enumerate(typesetting_units):
             # 计算当前单元在当前缩放下的尺寸
@@ -5651,6 +5709,7 @@ class Typesetting:
                         alignment=alignment,
                         ocr_workaround=ocr_mode,
                         pocket_span=max(0.0, _ix2 - _ix1),
+                        line_edges=getattr(self, "_line_edges", None),
                     )
                     if _hang > 0:
                         intervals = Typesetting._inset_leftmost_interval(
@@ -5742,6 +5801,14 @@ class Typesetting:
             ):
                 all_units_fit = False
                 break
+
+            if (
+                layout_line_idx == 0
+                and i == first_body_unit_idx
+                and edges_body_left is not None
+                and current_x < edges_body_left
+            ):
+                current_x = edges_body_left
 
             # 放置当前单元
             relocated_unit = unit.relocate(current_x, current_y, scale)

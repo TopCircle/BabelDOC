@@ -1884,6 +1884,12 @@ def test_a_flat_column_beside_a_figure_uses_that_gap():
     _x0, tight_x1 = interval_for_pocket(tight_pocket, 0, 100.0, 116.0)
     assert tight_x1 == 200.0
 
+    # Background underlay figure whose left edge sits far inside the column lines
+    underlay = build_plan(_facts_with_figure(lines, FigureBox(150, 80, 260, 150)))
+    underlay_link = underlay.column_links[0]
+    assert underlay_link.gap_slices == ()
+    assert underlay_link.free_side == ""
+
 
 def test_a_side_display_keeps_the_body_on_its_own_right():
     """The chain's widest line does not cross a quote beside one member.

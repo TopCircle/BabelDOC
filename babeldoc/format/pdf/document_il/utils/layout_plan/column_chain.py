@@ -142,14 +142,18 @@ def _figure_gap(
         return "", ()
     ys = [line.y0 for line in region.lines]
     y_lo, y_hi = min(ys), max(ys)
+    min_x1 = min(line.x1 for line in region.lines)
+    max_x0 = max(line.x0 for line in region.lines)
     right_edges: list[float] = []
     left_edges: list[float] = []
     for figure in figures:
         if figure.y1 < y_lo or figure.y0 > y_hi:
             continue
-        if figure.x0 > left + 1.0:
+        # If every line in this column already extends far past the figure edge,
+        # the figure is an underlay background, not an obstacle bounding the column.
+        if figure.x0 > left + 1.0 and figure.x0 > min_x1 - 40.0:
             right_edges.append(figure.x0)
-        if figure.x1 < right - 1.0:
+        if figure.x1 < right - 1.0 and figure.x1 < max_x0 + 40.0:
             left_edges.append(figure.x1)
     side = ""
     if right_edges and min(right_edges) - right <= width:

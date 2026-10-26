@@ -72,6 +72,14 @@ class _LineFeatures:
     distinct_rights: int
     left_monotone: float
     right_monotone: float
+    left_inward: int = 0
+    left_outward: int = 0
+    right_inward: int = 0
+    right_outward: int = 0
+    peak_left_step: float = 0.0
+    peak_right_step: float = 0.0
+    stair_prefix_step_left: float = 0.0
+    stair_prefix_step_right: float = 0.0
 
 
 def select_paradigm(
@@ -133,23 +141,39 @@ def _is_taper(features: _LineFeatures) -> bool:
 
 def _is_right_pin_taper(features: _LineFeatures) -> bool:
     """Photo on the left: right edge pinned, left edge steps in."""
+    left_stepped = (
+        features.left_inward > features.left_outward
+        and (
+            features.peak_left_step >= _MIN_LEFT_RANGE
+            or (features.stair_prefix_step_left >= 30.0 and features.left_inward >= 3)
+        )
+    )
     return (
         features.full_count >= _MIN_TAPER_LINES
         and features.right_range <= _MAX_PINNED_RANGE
         and features.left_monotone >= _MIN_MONOTONE
         and features.left_range >= _MIN_LEFT_RANGE
         and features.distinct_lefts >= _MIN_TAPER_LINES
+        and left_stepped
     )
 
 
 def _is_left_pin_taper(features: _LineFeatures) -> bool:
     """Photo on the right: left edge pinned, right edge steps."""
+    right_stepped = (
+        features.right_inward > features.right_outward
+        and (
+            features.peak_right_step >= _MIN_RIGHT_FREE_RANGE
+            or (features.stair_prefix_step_right >= 30.0 and features.right_inward >= 3)
+        )
+    )
     return (
         features.full_count >= _MIN_TAPER_LINES
         and features.left_range <= _MAX_PINNED_RANGE
         and features.right_monotone >= _MIN_MONOTONE
         and features.right_range >= _MIN_RIGHT_FREE_RANGE
         and features.distinct_rights >= _MIN_TAPER_LINES
+        and right_stepped
     )
 
 
@@ -175,6 +199,14 @@ def _line_features(
     full = _full_lines_top_down(line_boxes)
     lefts = [box[0] for box in full]
     rights = [box[1] for box in full]
+    left_inward = sum(1 for i in range(len(lefts) - 1) if lefts[i + 1] - lefts[i] > 1.0)
+    left_outward = sum(1 for i in range(len(lefts) - 1) if lefts[i + 1] - lefts[i] < -1.0)
+    right_inward = sum(1 for i in range(len(rights) - 1) if rights[i + 1] - rights[i] < -1.0)
+    right_outward = sum(1 for i in range(len(rights) - 1) if rights[i + 1] - rights[i] > 1.0)
+    peak_left_step = lefts[-1] - min(lefts) if lefts else 0.0
+    peak_right_step = max(rights) - rights[-1] if rights else 0.0
+    stair_prefix_step_left = max(lefts) - lefts[0] if lefts else 0.0
+    stair_prefix_step_right = rights[0] - min(rights) if rights else 0.0
     return _LineFeatures(
         full_count=len(full),
         left_range=_span(lefts),
@@ -183,6 +215,14 @@ def _line_features(
         distinct_rights=_distinct_edges(rights),
         left_monotone=_monotone_share(lefts, outward="left"),
         right_monotone=_monotone_share(rights, outward="right"),
+        left_inward=left_inward,
+        left_outward=left_outward,
+        right_inward=right_inward,
+        right_outward=right_outward,
+        peak_left_step=peak_left_step,
+        peak_right_step=peak_right_step,
+        stair_prefix_step_left=stair_prefix_step_left,
+        stair_prefix_step_right=stair_prefix_step_right,
     )
 
 
