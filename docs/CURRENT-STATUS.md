@@ -1,9 +1,23 @@
 # BabelDOC — 当前状况（2026-10-26）
 
-**布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008` · HEAD `80ffec9`（已推送 origin）  
+**布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008` · HEAD `dee1fdc`  
 **版本:** `0.6.4.95`（`babeldoc/const.py` 与 `pyproject.toml`，未 bump）  
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-10-26 — 序号乱码修复、首字下沉保护、引言避让与范式技能（commit 53112ab, dee1fdc）
+
+1. **Step 序号倒装与丢字根治 (`drop_cap.py` / `list_marker_repair.py`)**：
+   - 增加 `is_drop_cap_candidate` 严密门禁，避免将 `Step 4.` / `Step 6.` 首字母误判为下沉大字抽离导致的 `4. tep S`、`6. tep S` 乱码；
+   - 在 `list_marker_repair.py` 中对 `步骤` / `第` 等中文步骤前缀实施保护，禁止将其拆解重组为 `5. 步骤`；
+   - 修复后《Forbidden Female Fantasies》p29 步骤标题统一呈现为规范的 `步骤 4.`、`步骤 5.`、`步骤 6.`。
+2. **正文与右侧引言（Pull Quote）避让恢复 (`typesetting.py`)**：
+   - 恢复 `has_obstacle` 障碍物裁切边界，Step 6 左列正文止于 `x2 = 943.3`，与右侧斜体引言（`x1 = 968.0`）保持 24.7pt 规整间距，零重叠。
+3. **CoreML 降级容错 (`doclayout.py`)**：
+   - 增加 CoreML 初始化异常捕获，macOS 缓存写入异常时平滑回退至 `CPUExecutionProvider`。
+4. **范式与工作流技能**：
+   - 《Forbidden Female Fantasies》p29 底部列表项命中 `mark/serial_plain`（残差 0.0）核验通过；
+   - 新增 Workspace Skill `.agents/skills/layout-paradigm-workflow/SKILL.md`。
 
 ## 2026-10-26 — 序列标题粗体保留、垂直重叠保护与排除区伪标注修复（commit 80ffec9）
 
