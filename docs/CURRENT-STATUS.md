@@ -1,11 +1,24 @@
 # BabelDOC — 当前状况（2026-10-27）
 
-**布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008` · HEAD `3784e71`  
+**布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008` · HEAD `e5e6d72`  
 **版本:** `0.6.4.95`（`babeldoc/const.py` 与 `pyproject.toml`，未 bump）  
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
-## 2026-10-27 — 字母目录项粘连错位修复、标题排除区误建消除与列垂直间距级联推移（commit 待提交）
+## 2026-10-27 — 悬挂列表项角色阻断修复与 mark/serial_hang 范式落地（commit e5e6d72）
+
+1. **列表项段落角色阻断修复 (`rect_flow_stack.py`)**：
+   - 之前在 `_role_of` 中仅对 `role == "formula"` 的列表项清理 tag，而当解析或意图标注产生 `role == "list"` 且首行具备列表特征 (`_opens_as_list`) 时，由于 `_GEOMETRY_ROLES` 严密限制不含 `list`，导致该段落因 `protected_role` 被拒绝进入 list_flow；
+   - 扩展判定为 `if (role == "formula" or role == "list") and _opens_as_list(paragraph): return None`，使候选段落能够顺利由 `list_flow` 进行 marker 识别与悬挂阶梯派发；
+   - 同时严格保留 `geometry.py:_GEOMETRY_ROLES` 对无 marker 纯文本的保护，杜绝无 marker 列表被 `rect_flow` 误收割。
+2. **范式落地与双语核验 (`mark/serial_hang`)**：
+   - 样本 1：《Last Longer Tonight》第 19 页（block `96460e`，`c)` 挤压法）：首行左缘 `740.0 pt`（`128.0 + 612.0`），续行严格缩进至 `758.0 pt`（`146.0 + 612.0`），悬挂缩进量精准为 **18.0 pt**，行高 `16.8 pt`，零碰撞；
+   - 样本 2：《Orgasmic Rocket Fuel》第 12 页（block `a0448f`，`b)` 确定肌肉位置）：首行左缘 `740.0 pt`，续行缩进至 `758.0 pt`，悬挂量精准为 **18.0 pt**，标点避头尾与分行规整；
+   - 真实双语渲染图及裁切对比已由 Circle 确认「过」。
+3. **测试与质量把关**：
+   - `ruff check` 与单元测试（包括 `test_layout_plan.py`、`test_style_marker_recover.py` 等 101 项测试）全部通过。
+
+## 2026-10-27 — 字母目录项粘连错位修复、标题排除区误建消除与列垂直间距级联推移（commit 2ad6b6f）
 
 1. **字母序列粘连拆分与全角句点规范化 (`list_marker_repair.py`)**：
    - 扩展 `_MID_OPTION_SPLIT_RE` 与 `_MID_OPTION_LOOSE_RE` 匹配全字母范围 `[a-zA-Z]` 及 `B.。大`、`E.。现实检查` 等全半角混排句号变体；

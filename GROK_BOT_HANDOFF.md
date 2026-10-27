@@ -3,9 +3,9 @@
 > **用途：** 当前 Grok Bot 账号额度用尽后，换账号登录，把**本文件全文**贴给新助手，即可接手 BabelDOC 布局范式与 OA dual 任务。  
 > **维护规则（强制）：** 凡对 `TopCircle/BabelDOC` 有实质修改并 `push` 到 `main`，**同一批改动必须更新本文件**（至少刷新「快照」「HEAD/版本」「进行中 / 下一步」「遗留」）。细节状态与 `docs/CURRENT-STATUS.md` 对齐；两者冲突时以 **快照日期更新的一方** 为准，并立刻同步另一份。  
 > **用户：** Circle · 时区 Asia/Shanghai · **一律用中文回复** · 结论先行，然后证据、风险、下一步 · Agent 名可用 BabelDOC。  
-> **本次刷新：** 2026-10-20，按 Circle 要求更新。布局分支尚未 push，版本未 bump。
+> **本次刷新：** 2026-10-27，按 Circle 要求更新。布局分支 plan/layout-paradigms-20261008 持续演进中，版本未 bump。
 
-> **2026-10-20 布局快照（版本仍 0.6.4.95）：** 逐范式填充停在 `step/right_spur`。Erotic Massage 印刷页 57 的小腿框填充已由 Circle 说「过」。审查 f24df175 的 2 个缺陷和 2 条建议已在同一天修完，`tests/test_indented_sentence_continue.py` 18 项通过。接受的 dual 没有为这次修复重渲。下一模块是 `bow/right_inset`，尚未开工。  
+> **2026-10-27 布局快照（版本仍 0.6.4.95）：** 范式工作流持续推进：已完成 `mark/bullet_plain`（目录项拆分、标题排除区消除、列级联推移）及 `mark/serial_hang`（悬挂列表角色阻断修复，两本样本双页核验已过）。全部排版与单元测试通过。下一模块按范式列表推进。  
 > **2026-10-07 main 仍有效：** 大标题 em 框、同一基线下移、目录/图形状态不合并、跨段连字符只接同一栏下一段。已在 `80fab28`，文档清理在 `398275a`。VPS `pdfmt-next-app` 按 `80fab28` 重建过。OA 整本 canonical dual 仍是 ZH 左 | EN 右，不要把它和下面的范式试页混用。
 
 ---

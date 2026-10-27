@@ -836,9 +836,9 @@ def _restore(page, state: dict) -> None:
 def _role_of(paragraph) -> str | None:
     role = _labeled_role(paragraph)
     # Styles stores a leading bullet as a formula, and intent then marks the
-    # whole item formula. The list plugin never sees that item. Drop only
-    # this tag so the existing marker rule can run.
-    if role == "formula" and _opens_as_list(paragraph):
+    # whole item formula or list. Drop only this tag so the existing marker
+    # rule can run.
+    if (role == "formula" or role == "list") and _opens_as_list(paragraph):
         return None
     lines = _lines_of(paragraph)
     # A multi-line narrative/dialogue/bibliography block is a body column,
