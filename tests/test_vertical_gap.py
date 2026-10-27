@@ -88,6 +88,15 @@ def test_is_display_title_by_size():
     assert is_display_title(p)
 
 
+def test_is_display_title_section_header_at_16pt():
+    p = _para([_ch("引", 50, 600, size=16.0)], label="title")
+    assert is_display_title(p)
+    p2 = _para([_ch("节", 50, 600, size=14.0)], label="section_header")
+    assert is_display_title(p2)
+    p3 = _para([_ch("正", 50, 600, size=10.0)], label="title")
+    assert not is_display_title(p3)
+
+
 def test_shift_paragraph_y():
     p = _para([_ch("a", 100, 400, size=12.0)])
     y0 = p.pdf_paragraph_composition[0].pdf_character.box.y

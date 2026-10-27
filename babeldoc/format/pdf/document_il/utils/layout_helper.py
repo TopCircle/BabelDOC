@@ -418,11 +418,8 @@ def _apply_prepared_order_to_mixed(
     prepared: list[PdfCharacter],
 ) -> list[PdfCharacter | str]:
     """Replay climb/drop-cap order onto a mixed marker+char token list."""
-    from babeldoc.format.pdf.document_il.utils.drop_cap import (
-        is_drop_cap_candidate,
-        is_drop_cap_letter,
-        is_drop_cap_pair,
-    )
+    from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_candidate
+    from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_pair
 
     groups = _attach_string_groups(_group_mt_tokens(chars))
     id_to_group: dict[int, int] = {}
@@ -2196,8 +2193,21 @@ def is_quote_block(
     from babeldoc.format.pdf.document_il.utils.figure_wrap import (
         is_figure_wrap_tip_crumb,
     )
+    from babeldoc.format.pdf.document_il.utils.list_marker_repair import (
+        paragraph_opens_as_list,
+    )
 
     if is_figure_wrap_tip_crumb(para, page_width=page_width):
+        return False
+
+    # 规则 1.7: lists, TOCs, and bullet items are never quotes
+    if paragraph_opens_as_list(para):
+        return False
+
+    # 规则 1.8: display titles and section headers are never quotes
+    from babeldoc.format.pdf.document_il.utils.vertical_gap import is_display_title
+
+    if is_display_title(para):
         return False
 
     # A pinned column's union is narrow and indented. That is body beside

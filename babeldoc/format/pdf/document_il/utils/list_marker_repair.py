@@ -31,12 +31,12 @@ logger = logging.getLogger(__name__)
 _BULLET_GUTTER_TOLERANCE = 6.0
 
 # Leading list markers (EN/CJK dual hanging indent).
-# Digits: full range. Letters: **a–d / A–D only** (quiz options) — avoid
-# hanging academic ``I. Introduction`` / ``A. Methods`` body titles.
-# Ideographic ``。`` — DeepLX often rewrites ``2.`` → ``2。``.
+# Digits: full range. Letters: a–z / A–Z (quiz options, TOC entries).
+# Ideographic ``。`` — DeepLX often rewrites ``2.`` → ``2。`` or ``B.`` → ``B.。``.
 LIST_MARKER_RE = re.compile(
     r"^(?:"
-    r"\d{1,3}\s*[\.．。、\)]\s*"  # 1.  1． 1。 1、  1)
+    r"[\u2022\u2023\u25E6\u2043\u2219\u25CB\u25CF\uf643•·■⚫⬤◆◇○●◦‣⁃▪▫]\s*"
+    r"|\d{1,3}\s*[\.．。、\)]\s*"  # 1.  1． 1。 1、  1)
     r"|[a-dA-D]\s*[\.．。、\)]\s*"  # a. b） (quiz)
     r"|\(\s*\d{1,3}\s*\)\s*"  # (1)
     r"|\(\s*[a-dA-D]\s*\)\s*"  # (a)
@@ -56,7 +56,7 @@ TRAILING_LIST_MARKER_RE = re.compile(
 
 # Leading serial with CJK/fullwidth punct that MT rewrote from ``1.`` / ``a.``
 LEADING_LIST_MARKER_DOT_RE = re.compile(
-    r"^(?P<lead>\s*)(?P<num>\d{1,3}|[a-dA-D])\s*(?P<punct>[。．、])\s*"
+    r"^(?P<lead>\s*)(?P<num>\d{1,3}|[a-zA-Z])\s*(?:\.\s*)?(?P<punct>[。．、])\s*"
 )
 
 # Translation may retain a source serial in the middle of an otherwise
@@ -100,13 +100,26 @@ def _is_cjk_char0(ch: str) -> bool:
 
 
 def looks_like_list_item(paragraph: il_version_1.PdfParagraph) -> bool:
-    """True when text starts like ``1.`` / ``a.`` / ``2。`` / ``(b)``."""
+    """True when text starts like ``•`` / ``1.`` / ``a.`` / ``2。`` / ``(b)``."""
     text = (getattr(paragraph, "unicode", None) or "").strip()
     if not text:
         return False
     # NBSP / thin space after marker still counts as list
     text = text.replace("\xa0", " ").replace("\u2009", " ")
     return bool(LIST_MARKER_RE.match(text))
+
+
+def paragraph_opens_as_list(paragraph: il_version_1.PdfParagraph) -> bool:
+    """True when paragraph text or initial composition character is a list/bullet marker."""
+    if looks_like_list_item(paragraph):
+        return True
+    comps = getattr(paragraph, "pdf_paragraph_composition", None) or []
+    if comps:
+        for c in composition_characters(comps[0]):
+            if is_bullet_point(c):
+                return True
+            break
+    return False
 
 
 def looks_like_numbered_list_item(paragraph: il_version_1.PdfParagraph) -> bool:
@@ -121,12 +134,12 @@ def marker_digit(marker: str) -> str | None:
 
 
 def marker_key(marker: str) -> str | None:
-    """Stable id for a list serial: digit string or quiz letter a–d (lower)."""
+    """Stable id for a list serial: digit string or quiz/list letter a–z (lower)."""
     s = (marker or "").strip()
     d = marker_digit(s)
     if d:
         return d
-    m = re.match(r"([a-dA-D])", s)
+    m = re.match(r"([a-zA-Z])", s)
     return m.group(1).lower() if m else None
 
 
@@ -154,15 +167,14 @@ def normalize_leading_list_marker_text(text: str | None) -> str | None:
     m = LEADING_LIST_MARKER_DOT_RE.match(t)
     if m:
         rest = t[m.end() :]
+        num = m.group("num")
         # CJK body: no space after ``1.`` (same as EN dual ``1.Start`` often);
         # Latin body: one space.
         if rest and not rest[0].isspace():
             if not _is_cjk_char0(rest):
                 rest = " " + rest
-        num = m.group("num")
-        # Letters stay lowercase for hang consistency (a. b. …)
         if num.isalpha():
-            num = num.lower()
+            num = num.upper() if m.group("num").isupper() else num.lower()
         t = f"{m.group('lead')}{num}.{rest}"
     # Mid-string tip serials only (``提示 3。最大值`` → keep label, ``3.``)
     t2 = MID_LIST_IDEO_PERIOD_RE.sub(
@@ -502,11 +514,11 @@ _GLUED_CONSEC_LETTERS_RE = re.compile(
 )
 # Mid-paragraph next options after CJK/Latin sentence end or semicolon
 _MID_OPTION_SPLIT_RE = re.compile(
-    r"(?<=[。；;!?！？])\s*(?=[a-dA-D]\.\s*)"
+    r"(?<=[。；;!?！？])\s*(?=[a-zA-Z]\s*(?:\.\s*)?[\.．。、\)])"
 )
-# Also split when options jammed: ``…； c.`` or ``…。 b.``
+# Also split when options jammed: ``…； c.`` or ``…。 b.`` or ``… B.。大``
 _MID_OPTION_LOOSE_RE = re.compile(
-    r"(?<=[\u4e00-\u9fffA-Za-z0-9）\)])\s+(?=[a-dA-D]\.\s*[\u4e00-\u9fffA-Za-z])"
+    r"(?<=[\u4e00-\u9fffA-Za-z0-9）\)])\s+(?=[a-zA-Z]\s*(?:\.\s*)?[\.．。、\)]\s*[\u4e00-\u9fffA-Za-z])"
 )
 
 

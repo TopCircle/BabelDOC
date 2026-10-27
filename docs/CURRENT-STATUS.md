@@ -1,11 +1,28 @@
-# BabelDOC — 当前状况（2026-10-26）
+# BabelDOC — 当前状况（2026-10-27）
 
-**布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008` · HEAD `dee1fdc`  
+**布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008` · HEAD `3784e71`  
 **版本:** `0.6.4.95`（`babeldoc/const.py` 与 `pyproject.toml`，未 bump）  
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
-## 2026-10-26 — 悬挂列表双重缩进修复、底图贯穿识别与自然参差避让消除（commit 待提交）
+## 2026-10-27 — 字母目录项粘连错位修复、标题排除区误建消除与列垂直间距级联推移（commit 待提交）
+
+1. **字母序列粘连拆分与全角句点规范化 (`list_marker_repair.py`)**：
+   - 扩展 `_MID_OPTION_SPLIT_RE` 与 `_MID_OPTION_LOOSE_RE` 匹配全字母范围 `[a-zA-Z]` 及 `B.。大`、`E.。现实检查` 等全半角混排句号变体；
+   - 增加 `paragraph_opens_as_list(para)` 判定，涵盖首字符为图形符号圆点（Wingdings / Symbol）与字母列表项的段落；
+   - 修复后《Bigger & Deeper》第 4 页 TOC 目录项 A..G 全部 7 个选项严格左对齐于 `x0 = 648.1 pt`，消除粘连和向右半页错位跳跃。
+2. **章节标题排除区误判消除 (`exclusion_zone.py` / `layout_helper.py` / `layout_intent_extractor.py`)**：
+   - 章节标题、TOC 目录项与列表项一律禁止建立 quote / pull_quote 排除区；
+   - 消除《Double Fingering Delight》第 4 页 `Part 1: Introduction` 产生的伪 quote 排除框对下方正文的水平横向推挤。
+3. **展示标题垂直间距与列内跟随级联 (`vertical_gap.py`)**：
+   - 在 `is_display_title` 中增加中文章节标题模式（`第\s*\d+\s*[部分章节卷]|技巧\s*\d+`）与字号阈值保护；
+   - 在 `enforce_title_body_gaps` 推移段落时，增加同列下游段落跟随级联（follower cascade），首项与全部 24 个列表项及后接 Part 2 协同推移；
+   - 消除首项与次项碰撞叠压问题，修复《Double Fingering Delight》第 4 页标题与列表项之间过小的垂直间距。
+4. **范式与测试**：
+   - `mark/bullet_plain` 双语试页核验完成；
+   - `ruff check` 与单元测试全部通过。
+
+## 2026-10-26 — 悬挂列表双重缩进修复、底图贯穿识别与自然参差避让消除（commit 3784e71）
 
 1. **贯穿背景底图识别与栏宽误切排除 (`column_chain.py`)**：
    - 在 `_figure_gap` 增加贯穿底图检测，当文本行跨越图片边界超过 40pt 时，识别为背景层，禁止切分列宽或将整段强行收窄。

@@ -18,6 +18,7 @@ for Δ comparison until P3.
 from __future__ import annotations
 
 import logging
+import re
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import Page
@@ -39,6 +40,11 @@ RELATIVE_GAP_EPS_PT = 2.0
 DISPLAY_TITLE_SIZE_PT = 28.0
 _TITLE_LABELS = frozenset({"title", "section_header"})
 _X_OVERLAP_SLACK = 8.0
+_DISPLAY_TITLE_HEAD_RE = re.compile(
+    r"^(?:part|chapter|section|technique|step|volume|book|act|appendix|bonus|"
+    r"第\s*\d+\s*[部分章节卷]|技巧\s*\d+)",
+    re.IGNORECASE,
+)
 
 
 def _iter_chars(paragraph: PdfParagraph):
@@ -91,12 +97,27 @@ def max_font_size(paragraph: PdfParagraph) -> float:
 
 
 def is_display_title(paragraph: PdfParagraph) -> bool:
-    """Large chapter/display title that must not collide with body below."""
+    """Large chapter/display title or section header that must not collide with body below."""
     label = (getattr(paragraph, "layout_label", None) or "").strip().lower()
+    intent = getattr(paragraph, "layout_intent", None)
+    role = getattr(intent, "role", None) if intent is not None else None
+
     size = max_font_size(paragraph)
     if size >= DISPLAY_TITLE_SIZE_PT:
         return True
-    if label in _TITLE_LABELS and size >= 18.0:
+    if (
+        label in _TITLE_LABELS
+        or role in (LayoutIntentRole.TITLE, LayoutIntentRole.SECTION_HEADER)
+    ) and size >= 14.0:
+        return True
+
+    t = (getattr(paragraph, "unicode", None) or "").strip()
+    if not t:
+        chars = []
+        for ch in _iter_chars(paragraph):
+            chars.append(ch.char_unicode or "")
+        t = "".join(chars).strip()
+    if t and _DISPLAY_TITLE_HEAD_RE.match(t) and size >= 12.0:
         return True
     return False
 
@@ -372,7 +393,8 @@ def enforce_title_body_gaps(
         body_top = float(bbox.y2)
         zh_gap = title_bottom - body_top
 
-        deficit = gap_deficit(zh_gap, en_gap, fallback=min_gap)
+        target_gap = max(en_gap if en_gap is not None else min_gap, 10.0)
+        deficit = gap_deficit(zh_gap, target_gap, fallback=min_gap)
         if deficit <= 0:
             continue
 
@@ -382,11 +404,27 @@ def enforce_title_body_gaps(
         if abs(dy) > max_dy:
             dy = -max_dy
 
-        shift_paragraph_y(body, dy)
-        new_ink = ink_box(body)
-        if new_ink is not None:
-            ink[id(body)] = new_ink
-        report.record_shift(dy, cascade=1)
+        to_shift = [body]
+        for cand in ordered:
+            if cand is body or cand is title:
+                continue
+            cbox = ink.get(id(cand))
+            if cbox is None:
+                continue
+            if (cbox.y2 or 0) > float(bbox.y2) + 1.0:
+                continue
+            if not boxes_x_overlap(bbox, cbox):
+                continue
+            if is_chrome_paragraph(cand, page):
+                continue
+            to_shift.append(cand)
+
+        for p in to_shift:
+            shift_paragraph_y(p, dy)
+            new_ink = ink_box(p)
+            if new_ink is not None:
+                ink[id(p)] = new_ink
+        report.record_shift(dy, cascade=len(to_shift))
         report.record_violation(
             debug_id=getattr(body, "debug_id", None),
             kind="gap",

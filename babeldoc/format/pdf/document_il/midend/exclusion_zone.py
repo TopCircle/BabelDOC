@@ -107,8 +107,6 @@ class ExclusionZoneBuilder:
         zones: list[ExclusionZone] = []
         zones.extend(_collect_quote_zones(page, quote_config))
         zones.extend(_collect_figure_zones(page))
-        # 未来扩展:
-        # zones.extend(_collect_table_zones(page))
         return zones
 
 
@@ -145,15 +143,31 @@ def _para_is_quote_for_zone(
     )
     from babeldoc.format.pdf.document_il.utils.layout_helper import is_quote_block
     from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+    from babeldoc.format.pdf.document_il.utils.list_marker_repair import (
+        paragraph_opens_as_list,
+    )
+    from babeldoc.format.pdf.document_il.utils.vertical_gap import is_display_title
 
+    intent = getattr(para, "layout_intent", None)
+    label = (getattr(para, "layout_label", None) or "").strip().lower()
+    if label in ("title", "section_header"):
+        return False
     if is_figure_wrap_paragraph(para):
         return False
-    intent = getattr(para, "layout_intent", None)
-    if not config.enable_legacy_quote_geometry:
-        if intent is not None:
-            role = getattr(intent, "role", None)
-            if role is LayoutIntentRole.WRAP_COLUMN:
-                return False
+    if paragraph_opens_as_list(para):
+        return False
+    if is_display_title(para):
+        return False
+    if intent is not None:
+        role = getattr(intent, "role", None)
+        if role in (
+            LayoutIntentRole.LIST,
+            LayoutIntentRole.WRAP_COLUMN,
+            LayoutIntentRole.TITLE,
+            LayoutIntentRole.SECTION_HEADER,
+        ):
+            return False
+        if not config.enable_legacy_quote_geometry:
             return role in (
                 LayoutIntentRole.PULL_QUOTE,
                 LayoutIntentRole.CALLOUT,

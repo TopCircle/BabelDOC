@@ -53,6 +53,23 @@ class TestExpandGluedQuizOptions:
         assert "\n" in t
         assert "b." in t and "c." in t
 
+    def test_split_alphabetical_toc_options_through_g(self):
+        raw = (
+            "A. 阴茎大小的历史 B.。大阴茎神话 C.。那么, 大小重要吗?\n"
+            "D. 关于阴茎的几个有趣事实\n"
+            "E.。现实检查 F. 两种尺寸 G。女性真正想要的是什么"
+        )
+        expanded = expand_glued_quiz_options_text(raw)
+        lines = [line.strip() for line in expanded.split("\n") if line.strip()]
+        assert len(lines) == 7
+        assert lines[0].startswith("A.")
+        assert lines[1].startswith("B.")
+        assert lines[2].startswith("C.")
+        assert lines[3].startswith("D.")
+        assert lines[4].startswith("E.")
+        assert lines[5].startswith("F.")
+        assert lines[6].startswith("G")
+
 
 class TestSplitGluedQuizParagraphs:
     def test_splits_into_multiple_paras(self):
@@ -100,8 +117,23 @@ class TestSplitGluedQuizParagraphs:
         p = _para("a.a. 花香。")
         out = split_glued_quiz_options_on_page([p])
         assert len(out) == 1
-        assert out[0].unicode.startswith("a.")
-        assert "a.a." not in out[0].unicode
+        assert out[0].unicode == "a. 花香。"
+
+    def test_splits_alphabetical_toc_seven_items(self):
+        raw = (
+            "A. 阴茎大小的历史 B.。大阴茎神话 C.。那么, 大小重要吗?\n"
+            "D. 关于阴茎的几个有趣事实\n"
+            "E.。现实检查 F. 两种尺寸 G。女性真正想要的是什么"
+        )
+        p = _para(raw)
+        p.box = Box(x=36, y=480, x2=268, y2=588)
+        out = split_glued_quiz_options_on_page([p])
+        assert len(out) == 7
+        prefixes = ["A.", "B.", "C.", "D.", "E.", "F.", "G."]
+        for i, prefix in enumerate(prefixes):
+            assert out[i].unicode.startswith(prefix)
+            assert out[i].box.x == 36
+            assert out[i].box.x2 == 268
 
 
 class TestLeadingSymbolBulletRepair:

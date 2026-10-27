@@ -51,6 +51,9 @@ from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
     infer_wrap_mode_from_line_boxes,
 )
+from babeldoc.format.pdf.document_il.utils.list_marker_repair import (
+    paragraph_opens_as_list,
+)
 from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
 from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
 from babeldoc.format.pdf.document_il.utils.vertical_gap import is_display_title
@@ -257,6 +260,11 @@ class LayoutIntentExtractor:
         # Rule 1 — site chrome (header/footer/URL/page number/abandon).
         if is_chrome_paragraph(para, page):
             return LayoutIntentRole.CHROME
+        # Rule 1.5 — list items (bullet / numbered). Must precede formula check so
+        # symbol/dingbat bullet compositions are never hijacked as math formulas.
+        label = (getattr(para, "layout_label", None) or "").strip().lower()
+        if paragraph_opens_as_list(para) or label == "list":
+            return LayoutIntentRole.LIST
         # Rule 2 — composition carries a formula.
         for comp in para.pdf_paragraph_composition or []:
             if comp.pdf_formula is not None:
@@ -278,13 +286,21 @@ class LayoutIntentExtractor:
             return LayoutIntentRole.SECTION_HEADER
         t = (getattr(para, "unicode", None) or "").strip()
         if not t:
+            chars = []
             for comp in getattr(para, "pdf_paragraph_composition", None) or []:
-                if getattr(comp, "pdf_line", None) and comp.pdf_line.pdf_character:
-                    t = "".join(
-                        c.char_unicode or "" for c in comp.pdf_line.pdf_character
-                    ).strip()
-                    if t:
-                        break
+                if comp.pdf_character is not None:
+                    chars.append(comp.pdf_character.char_unicode or "")
+                elif comp.pdf_line and comp.pdf_line.pdf_character:
+                    chars.extend(c.char_unicode or "" for c in comp.pdf_line.pdf_character)
+                elif (
+                    comp.pdf_same_style_characters
+                    and comp.pdf_same_style_characters.pdf_character
+                ):
+                    chars.extend(
+                        c.char_unicode or ""
+                        for c in comp.pdf_same_style_characters.pdf_character
+                    )
+            t = "".join(chars).strip()
         from babeldoc.format.pdf.document_il.utils.sealed_paragraph_join import (
             _HEADING_PATTERN,
         )
@@ -481,6 +497,9 @@ class LayoutIntentExtractor:
             band = self._match_subtitle_overlay(para, ink, titles)
             if band is not None:
                 return LayoutIntentRole.SUBTITLE_OVERLAY, band
+        # Rule 6.5 — lists and TOCs are content lists, never quotes or callouts
+        if paragraph_opens_as_list(para) or label == "list":
+            return LayoutIntentRole.LIST, None
         # Rule 7 — pull quote (P0 single source: is_quote_block).
         # A flat column on the same left as a wrap, with the photo in its
         # margin, is that column. The quote test sees the margin and would
