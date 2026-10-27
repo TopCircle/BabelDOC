@@ -166,6 +166,16 @@ def interval_for_line_edges(
     levels = tuple(getattr(link, "levels", ()) or ())
     if not levels:
         return None
+    # For hanging-indent lists (bullet or serial), line 0 is the hanging marker line,
+    # and lines 1+ are indented body lines.
+    if len(levels) > 1 and levels[1].left > levels[0].left + 1.0:
+        if line_idx == 0:
+            return (float(levels[0].left), float(levels[0].right))
+        body_left = float(levels[1].left)
+        res = _interval_on_levels(levels, float(y_bottom), float(y_top))
+        if res is not None:
+            return (max(body_left, res[0]), res[1])
+        return (body_left, float(levels[-1].right))
     return _interval_on_levels(levels, float(y_bottom), float(y_top))
 
 

@@ -356,7 +356,9 @@ def _is_digit_unit(unit: TypesettingUnit) -> bool:
 # En dash, em dash, figure dash, minus. A 30pt dash is a list bullet.
 # Hyphen-minus stays a word break.
 _DASH_BULLET_CHARS = frozenset("\u2013\u2014\u2012\u2212")
-_BULLET_HANG_CHARS = frozenset("•·●▪◦►▸\x12") | _DASH_BULLET_CHARS
+_BULLET_HANG_CHARS = (
+    frozenset("•·‧●○▪▫◦‣⁃►▸■□⚫⬤◆◇∙\x12\uf643") | _DASH_BULLET_CHARS
+)
 
 
 def _marker_line_height(unit_height: float, unit, font_size: float) -> float:
@@ -391,7 +393,10 @@ def _is_leading_bullet(unit: TypesettingUnit) -> bool:
         for glyph in (getattr(formula, "pdf_character", None) or [])
         if (getattr(glyph, "char_unicode", None) or "").strip()
     ]
-    return bool(glyphs) and all(is_bullet_point(glyph) for glyph in glyphs)
+    return bool(glyphs) and all(
+        is_bullet_point(glyph) or (glyph.char_unicode or "") in _BULLET_HANG_CHARS
+        for glyph in glyphs
+    )
 
 
 def _is_percent_bridge(unit: TypesettingUnit) -> bool:
@@ -4327,6 +4332,7 @@ class Typesetting:
             found = interval_for_line_edges(
                 line_edges, line_idx, y_bottom, y_top
             )
+
             if found is None:
                 # No common interval. An empty list becomes the full box
                 # in the capacity path and would cover the obstacle.
@@ -5462,14 +5468,39 @@ class Typesetting:
                 if _unit_char(unit) in _PERCENT_AFTER_DIGIT:
                     _stick_number_to_percent(typeset_units, line_start_idx)
                 # If breaking here would end the line after a non-breakable unit
-                # (感|情, 第11卷（|1989), pull that tail onto the new line.
+                # (感|情, 第11卷（|1989), or begin the next line with a line-start
+                # forbidden punctuation mark, pull that tail onto the new line.
                 while len(typeset_units) > line_start_idx:
+                    first_on_next = None
+                    if pull_to_next:
+                        for u in reversed(pull_to_next):
+                            if not getattr(u, "is_space", False):
+                                first_on_next = u
+                                break
+                    if first_on_next is None:
+                        first_on_next = next(
+                            (
+                                u
+                                for u in typesetting_units[i:]
+                                if not getattr(u, "is_space", False)
+                            ),
+                            None,
+                        )
+                    first_on_next_ch = (
+                        first_on_next.try_get_unicode() if first_on_next else ""
+                    )
+
                     tail = typeset_units[-1]
                     tail_ch = tail.try_get_unicode() or ""
                     illegal_eol = (not tail.can_break_line) or is_cjk_line_end_forbidden(
                         tail_ch
                     )
-                    if not illegal_eol:
+                    illegal_sol = bool(
+                        getattr(self, "is_cjk", False)
+                        and first_on_next_ch
+                        and is_cjk_line_start_forbidden(first_on_next_ch)
+                    )
+                    if not (illegal_eol or illegal_sol):
                         break
                     pull_to_next.append(typeset_units.pop())
                 pull_to_next.reverse()
@@ -5811,6 +5842,7 @@ class Typesetting:
                 current_x = edges_body_left
 
             # 放置当前单元
+
             relocated_unit = unit.relocate(current_x, current_y, scale)
             typeset_units.append(relocated_unit)
 

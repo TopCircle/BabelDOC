@@ -285,6 +285,21 @@ def _font_blocks(
             base_upper = font_name_tokens(upper_name) - style_tokens
             base_lower = font_name_tokens(lower_name) - style_tokens
             if base_upper and base_lower and (base_upper & base_lower):
+                bold_tokens = frozenset(
+                    {"bold", "heavy", "black", "semibold", "extrabold", "demibold"}
+                )
+                upper_is_bold = bool(font_name_tokens(upper_name) & bold_tokens)
+                lower_is_bold = bool(font_name_tokens(lower_name) & bold_tokens)
+                lower_text = "".join(
+                    ch.char_unicode or "" for ch in (lower_line.pdf_character or [])
+                ).lstrip()
+                if (
+                    upper_is_bold
+                    and not lower_is_bold
+                    and lower_text
+                    and lower_text[0].isupper()
+                ):
+                    return True
                 return False
     return True
 

@@ -336,6 +336,47 @@ def find_content_below(
     return best[1] if best else None
 
 
+def find_content_above(
+    page: Page,
+    lower: PdfParagraph,
+    *,
+    lower_box: Box | None = None,
+    ink: dict[int, Box] | None = None,
+) -> PdfParagraph | None:
+    """Nearest non-protected paragraph strictly above *lower* (x-overlap)."""
+    lbox = lower_box or (ink.get(id(lower)) if ink else None) or layout_box(lower)
+    if lbox is None or lbox.y2 is None:
+        return None
+    lower_top = float(lbox.y2)
+
+    best: tuple[float, PdfParagraph] | None = None
+    for cand in page.pdf_paragraph or []:
+        if cand is lower:
+            continue
+        if is_chrome_paragraph(cand, page):
+            continue
+        cbox = (ink.get(id(cand)) if ink else None) or layout_box(cand)
+        if cbox is None or cbox.y is None or cbox.y2 is None:
+            continue
+        cand_layout = layout_box(cand)
+        lower_layout = layout_box(lower)
+        if (
+            cand_layout
+            and lower_layout
+            and cand_layout.y2 is not None
+            and lower_layout.y2 is not None
+        ):
+            if float(cand_layout.y2) <= float(lower_layout.y2) + 0.5:
+                continue
+        elif float(cbox.y) <= lower_top - 1.0:
+            continue
+        if not boxes_x_overlap(lbox, cbox):
+            continue
+        if best is None or float(cbox.y) < best[0]:
+            best = (float(cbox.y), cand)
+    return best[1] if best else None
+
+
 def enforce_title_body_gaps(
     page: Page,
     *,
@@ -375,6 +416,45 @@ def enforce_title_body_gaps(
     for title in ordered:
         if not is_display_title(title):
             continue
+
+        # Check content above title to prevent upper blocks from crowding into the title
+        upper = find_content_above(
+            page,
+            title,
+            lower_box=ink[id(title)],
+            ink=ink,
+        )
+        if upper is not None and id(upper) in ink:
+            ubox = ink[id(upper)]
+            tbox = ink[id(title)]
+            upper_bottom = float(ubox.y)
+            title_top = float(tbox.y2)
+            zh_gap_above = upper_bottom - title_top
+
+            en_gap_above = None
+            u_layout = layout_box(upper)
+            t_layout = layout_box(title)
+            if (
+                u_layout
+                and t_layout
+                and u_layout.y is not None
+                and t_layout.y2 is not None
+            ):
+                en_gap_above = float(u_layout.y) - float(t_layout.y2)
+
+            target_gap_above = max(
+                en_gap_above if en_gap_above is not None and en_gap_above > 0 else 22.0,
+                22.0,
+            )
+            deficit_above = target_gap_above - zh_gap_above
+            if deficit_above > 1.0:
+                dy_above = -min(deficit_above, max_dy)
+                shift_paragraph_y(title, dy_above)
+                new_ink = ink_box(title)
+                if new_ink is not None:
+                    ink[id(title)] = new_ink
+                report.record_shift(dy_above, cascade=1)
+
         body = find_content_below(
             page,
             title,

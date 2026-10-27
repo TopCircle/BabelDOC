@@ -321,6 +321,17 @@ def _scrub_mt_debris(text: str, *, keep_formula_placeholders: bool = False) -> s
     out = _MULTI_SPACE_RE.sub(" ", out)
     out = re.sub(r" +\n", "\n", out)
     out = re.sub(r"([^\s]) +([。．.!？?，,；;：:])", r"\1\2", out)
+    # Strip illegal punctuation directly after bullet markers ("• ，" -> "• ")
+    out = re.sub(
+        r"(?m)^([•·●▪◦►▸\x12■⚫⬤◆◇○●◦‣⁃▫\uf643]\s*)[，,。．、：:；;]+",
+        r"\1",
+        out,
+    )
+    # Paragraph or line start punctuation strip
+    out = re.sub(r"^[，,。．、：:；;]+", "", out)
+    # Convert MT-generated ASCII double quotes with spaced interior CJK to proper CJK smart quotes:
+    # ' " 应做 " ' -> ' “应做” '
+    out = re.sub(r'"\s+([\u4e00-\u9fff][^\"]*?)\s+"', r'“\1”', out)
     out = re.sub(r"(?m)^ +", "", out)
     return out
 

@@ -1,9 +1,28 @@
-# BabelDOC — 当前状况（2026-10-27）
+# BabelDOC — 当前状况（2026-10-28）
 
-**布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008` · HEAD `e5e6d72`  
+**布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008`
 **版本:** `0.6.4.95`（`babeldoc/const.py` 与 `pyproject.toml`，未 bump）  
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-10-28 — 标点避头尾修复、小标题间距与跟随解耦、圆点字形尺寸与 mark/bullet_repeated 范式落地
+
+1. **中文行首禁则全面覆盖 (`cjk_kinsoku.py` / `typesetting.py`)**：
+   - 将常用半角标点（`.`, `,`, `)`, `"` 等）纳入 `_CJK_LINE_START_FORBIDDEN`，避免 CJK 混排时半角符号孤立出现在行首；
+   - 在 `typesetting.py` 自动折行检查中加入 `first_on_next` 前瞻探测：折行点若使下一行以行首禁止符开头，则自动向后回拉前置字符至下一行，彻底根除行首出现孤立标点符号。
+2. **小标题上方间距保证与正文解耦 (`vertical_gap.py`)**：
+   - 增加 `find_content_above` 向上寻找最近非保护段落，计算 `deficit_above = target_gap_above - zh_gap_above`；
+   - 当小标题因上方列表扩展而与上方内容拥挤时，推动小标题向下移入下方预留充足的留白区（`dy_above`），且仅推移小标题本身而不强行推挤下游正文，消除《Blown Away》第 15 页 `要吞下还是不要吞下` 与上方列表项紧贴（间距 -0.9pt）且脱离下方正文（间距 43.1pt）的问题，修复后上方留白 15.7pt，下方间距 6.0pt。
+3. **Ubuntu 字体特征识别与中文圆点字形恢复 (`face_traits.py` / `fontmap.py` / `il_translator.py`)**：
+   - `_SANS_TOKENS` 增加 `"ubuntu"`，防止 `Ubuntu-Light` / `Ubuntu-Bold` 错误降级为衬线宋体；
+   - 针对列表项目符号（`•·‧●▪▫◦‣⁃`），强制映射到无衬线黑体字族（`SourceHanSansCN`），字号与笔画粗细完美还原英文字体（直径从 1.63pt 恢复至 2.97pt ~ 3.58pt）；
+   - 在翻译阶段正则清洗 MT 偶发的连字符 `-` / 中点替换，恢复源文本原生圆点。
+4. **公式单元特殊项目符号悬挂缩进支持 (`typesetting.py`)**：
+   - 在 `_is_leading_bullet` 中对保留为公式单元（`formular`）的符号字族（如 Webdings `\x12`、PUA `\uf643`）字符编码进行 `_BULLET_HANG_CHARS` 穿透识别；
+   - 确保特殊列表符号不仅完整保留，而且第 2 行起精准应用 14.88pt 悬挂缩进，修复《Oral Fingering Fantasy》第 7 页列表续行未缩进问题。
+5. **双语试页核验与过关**：
+   - 样本 1：《Blown Away》第 15 页（小标题间距与圆点大小）Circle 确认「过」；
+   - 样本 2：《Oral Fingering Fantasy》第 7 页（13 项 Webdings 列表与悬挂缩进）全部验证通过。
 
 ## 2026-10-27 — 悬挂列表项角色阻断修复与 mark/serial_hang 范式落地（commit e5e6d72）
 

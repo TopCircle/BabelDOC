@@ -19,16 +19,19 @@ from __future__ import annotations
 # early wraps and short intermediate lines (worse than mid-word 的|背).
 # Word preference lives in cjk_dict (secondary, can still yield).
 
-# 行首禁用：断行后下一行首字不能是这些（以全角/CJK 标点为主）
+# 行首禁用：断行后下一行首字不能是这些标点符号（除开引号“‘与开括号外，严禁标点出现在行首）
 CJK_LINE_START_FORBIDDEN: frozenset[str] = frozenset(
     # 中文点号 / 结束标点
     "。．？！；：，、"
     # 结束括号 / 引号
     "）】》」』〗〉〕］｝"
     "”’"
-    # 全角连接 / 间隔 / 省略（行首难看）；不含半角 .,%/
+    # 全角连接 / 间隔 / 省略
     "・·‧～—–…％‰°"
-    "／"  # fullwidth solidus only
+    "／"  # fullwidth solidus
+    # 半角/ASCII 标点、闭括号、闭引号与连接符（行首禁则）
+    ",.?!;:)]}>\"'"
+    "-/"
     # 量词/年份：避免「（1989 | 年）」在 dual-layer 窄行被拆开
     "年月日时分秒"
 )

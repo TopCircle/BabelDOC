@@ -13,6 +13,7 @@ import re
 # Full tokens only (after CamelCase / separator split).
 _SANS_TOKENS: frozenset[str] = frozenset(
     {
+        "ubuntu",
         "myriad",
         "helvetica",
         "arial",

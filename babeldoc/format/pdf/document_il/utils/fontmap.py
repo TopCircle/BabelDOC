@@ -234,6 +234,13 @@ class FontMapper:
         if monospaced:
             serif = False
 
+        # Bullet and dingbat list markers in CJK serif fonts (SourceHanSerif CN/TW/HK)
+        # are mapped to a tiny 0.116-em dot (1.6pt at 14pt) shared with hyphenation point.
+        # Mapping them to sans (SourceHanSans) yields standard 0.21-0.25-em round bullets (3.0-3.6pt)
+        # matching Latin originals.
+        if char_unicode in "•·‧●▪▫◦‣⁃" and serif:
+            serif = False
+
         script_font_map_result = self.map_in_type(
             bold, italic, monospaced, serif, char_unicode, "script"
         )

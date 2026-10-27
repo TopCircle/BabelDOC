@@ -1859,6 +1859,19 @@ class ILTranslator:
             return False
         # Keep {vN} until parse reattaches PdfFormula (OA p5 （,）),
         # and keep 〖Bn〗 style markers so parse_translate_output can parse emphasis runs.
+        # Preserve source bullet marker if MT replaced it with ASCII hyphen/dash
+        # e.g. "• Text..." -> "- 译文..." => "• 译文..."
+        src_text = getattr(translate_input, "unicode", None) or ""
+        src_bullet_m = re.match(r"^\s*([•·●▪◦►▸■⚫⬤◆◇○●◦‣⁃▫])\s*", src_text)
+        if src_bullet_m:
+            bullet_sym = src_bullet_m.group(1)
+            if re.match(r"^\s*[-‑–—‧·]\s*", translated_text):
+                translated_text = re.sub(
+                    r"^\s*[-‑–—‧·]\s*", f"{bullet_sym} ", translated_text
+                )
+            elif not re.match(r"^\s*[•·●▪◦►▸■⚫⬤◆◇○●◦‣⁃▫]\s*", translated_text):
+                translated_text = f"{bullet_sym} " + translated_text.lstrip()
+
         translated_text = normalize_translated_text(
             translated_text, keep_formula_placeholders=True, keep_style_markers=True
         )
