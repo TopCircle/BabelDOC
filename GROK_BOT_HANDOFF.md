@@ -5,6 +5,17 @@
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
+## 2026-10-28 — 复合列表编号正则增强与 mark/serial_repeated 范式落地
+
+1. **复合列表编号（`1.)` / `8.)` / `1.）` / `a.)`）支持与悬挂缩进恢复 (`list_marker_repair.py`)**：
+   - 之前 `LIST_MARKER_RE` 与 `TRAILING_LIST_MARKER_RE` 仅匹配单字符后置标点（`[\.．。、\)]`），遇到点加括号的复合序号（如 `8.)`）时仅截取 `8.`，导致括号 `)` 被当作正文首字推移至缩进位置而与数字割裂；同时导致 `_list_marker_hang_width` 计算缩进时漏计括号与空格宽度（仅 8.3pt），使续行对齐在括号下方而非正文下方；
+   - 将数字及字母正则增强为支持 `(?:[\.．]\s*[\)）]|[\.．。、\)])`，复合编号整体保留在行首一体排版，且折行精确挂接在正文字符正下方。
+2. **自动化测试与回归保障 (`tests/test_paragraph_alignment.py`)**：
+   - 新增 `test_layout_compound_dot_paren_numbered_list_hang_indent`，自动化验证复合序号 `8.) ` 不撕裂、正文字符首字索引识别准确、折行悬挂缩进完全覆盖标记宽度。
+3. **双语试页核验与过关 (`mark/serial_repeated`)**：
+   - 样本 1：《Female Orgasm Secrets Revealed》第 75 页（`1) ... 2) ...` 共用区块列表），折行精确悬挂 18.0pt，避头尾正常，Circle 确认「过」；
+   - 样本 2：《Last All Night Vol 2》第 37 页（`1.) ... 8.) ...` 复合编号列表），复合序号完整无撕裂，条目 5 单段完整合流无纵向断层，续行精准悬挂对齐，Circle 确认「过」。
+
 ## 2026-10-28 — 标点避头尾修复、小标题间距与跟随解耦、圆点字形尺寸与 mark/bullet_repeated 范式落地
 
 1. **中文行首禁则全面覆盖 (`cjk_kinsoku.py` / `typesetting.py`)**：

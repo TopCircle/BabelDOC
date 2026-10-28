@@ -1083,6 +1083,55 @@ class TestLayoutStyleConsistency:
         assert wrap_units[0].box.x == pytest.approx(50.0 + hang, abs=1.5)
         assert wrap_units[0].box.x > 50.0 + 8.0
 
+    def test_layout_compound_dot_paren_numbered_list_hang_indent(self):
+        """Compound list markers like ``8.) `` keep dot and paren together without split."""
+        ts = self._typesetting()
+        box = Box(x=50, y=100, x2=170, y2=400)
+        text = "8.) 永远永远永远永远永远永远永远永远"
+        para = PdfParagraph(
+            box=box,
+            pdf_style=PdfStyle(font_id="base", font_size=10.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode=text,
+            first_line_indent=0.0,
+            alignment="left",
+        )
+        units = []
+        for ch in text:
+            w = 5.5 if ch.isascii() or ch == " " else 12.0
+            units.append(self._unit(ch=ch, width=w))
+        hang = Typesetting._list_marker_hang_width(para, units, scale=1.0)
+        # "8.) " has 4 ascii characters * 5.5 = 22.0
+        assert hang > 15.0
+
+        first_body_idx = Typesetting._first_body_unit_index(units, para)
+        # First body unit must be the first CJK character, not ')'
+        assert first_body_idx == 4
+        assert units[first_body_idx].try_get_unicode() == "永"
+
+        placed, _ = ts._layout_typesetting_units(
+            units,
+            box,
+            scale=1.0,
+            line_skip=1.05,
+            paragraph=para,
+            use_english_line_break=False,
+            break_points=None,
+            reference_widths=None,
+        )
+        assert placed
+        # First line: marker at left edge of box
+        assert placed[0].box.x == pytest.approx(50.0, abs=0.5)
+        # '8', '.', ')' must be contiguous on the first line
+        assert placed[0].try_get_unicode() == "8"
+        assert placed[1].try_get_unicode() == "."
+        assert placed[2].try_get_unicode() == ")"
+        assert placed[2].box.x < 50.0 + hang
+        y0 = placed[0].box.y
+        wrap_units = [u for u in placed if u.box and u.box.y < y0 - 1.0]
+        assert wrap_units
+        assert wrap_units[0].box.x == pytest.approx(50.0 + hang, abs=1.5)
+
     def test_layout_percent_keeps_digits_across_a_zero_width_mark(self):
         """A percent that does not fit takes ``57`` with it, even across ZWSP."""
         ts = self._typesetting()

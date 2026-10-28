@@ -36,8 +36,7 @@ _BULLET_GUTTER_TOLERANCE = 6.0
 LIST_MARKER_RE = re.compile(
     r"^(?:"
     r"[\u2022\u2023\u25E6\u2043\u2219\u25CB\u25CF\uf643•·■⚫⬤◆◇○●◦‣⁃▪▫]\s*"
-    r"|\d{1,3}\s*[\.．。、\)]\s*"  # 1.  1． 1。 1、  1)
-    r"|[a-dA-D]\s*[\.．。、\)]\s*"  # a. b） (quiz)
+    r"|(?:\d{1,3}|[a-dA-D])\s*(?:[\.．]\s*[\)）]|[\.．。、\)])\s*"  # 1.  1． 1。 1、  1)  1.)  1.）
     r"|\(\s*\d{1,3}\s*\)\s*"  # (1)
     r"|\(\s*[a-dA-D]\s*\)\s*"  # (a)
     r"|[①-⑳]\s*"
@@ -50,7 +49,7 @@ LIST_MARKER_RE = re.compile(
 # ``The answer is 42.`` is not stripped.
 TRAILING_LIST_MARKER_RE = re.compile(
     r"(?P<body>.*[。．.!?！？])\s*"
-    r"(?P<marker>(?:\d{1,3}|[a-dA-D])\s*[\.．。、\)])\s*$",
+    r"(?P<marker>(?:\d{1,3}|[a-dA-D])\s*(?:[\.．]\s*[\)）]|[\.．。、\)]))\s*$",
     re.DOTALL,
 )
 
