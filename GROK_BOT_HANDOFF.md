@@ -5,6 +5,14 @@
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
+## 2026-10-28 — mark/bullet_plain 范式核验与全 mark 族收官
+
+1. **mark/bullet_plain 范式核验**：
+   - 依赖排版引擎对显式 `line_edges` 的伪悬挂抑制机制，平直圆点列表严格按原书几何行左缘对齐，圆点后文字保持 10.0pt 标准缩进；
+   - 样本 1：《Bigger Deeper》第 4 页（15 行平直圆点目录列表），中文圆点统一对齐于 `665.3 pt`，正文对齐于 `675.3 pt`，排版严整；
+   - 样本 2：《Double Fingering Delight》第 4 页（24 行平直圆点列表），中文圆点统一对齐于 `670.3 pt`，正文对齐于 `680.3 pt`，无异常阶梯与列宽偏移；
+   - 审查报告与切片：`bullet-plain-review.md`。
+
 ## 2026-10-28 — 轮廓约束抑制伪列表悬挂与 mark/serial_plain 范式落地
 
 1. **轮廓约束抑制假列表悬挂 (`typesetting.py`)**：
