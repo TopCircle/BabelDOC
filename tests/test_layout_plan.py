@@ -2467,6 +2467,23 @@ def test_list_wrap_starts_to_the_right_of_the_marker():
     )
     assert bullet_hang > 0.5
 
+    # When line_edges is present (e.g. plain straight-edge list mark/serial_plain),
+    # no artificial hang inset is added.
+    line_edges = type("_Edges", (), {"levels": ()})()
+    assert (
+        Typesetting._numbered_list_hang_inset(
+            numbered,
+            units,
+            1.0,
+            line_idx=1,
+            alignment="left",
+            ocr_workaround=False,
+            pocket_span=400.0,
+            line_edges=line_edges,
+        )
+        == 0.0
+    )
+
 
 def test_formula_bullet_uses_the_existing_hang():
     """A bullet stored as a formula still hangs by that unit's width."""

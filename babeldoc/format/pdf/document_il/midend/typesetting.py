@@ -2670,12 +2670,9 @@ class Typesetting:
             or alignment != "left"
             or line_idx <= 0
             or paragraph is None
+            or line_edges is not None
         ):
             return 0.0
-        if line_edges is not None:
-            levels = getattr(line_edges, "levels", ()) or ()
-            if len(levels) > 1 and levels[1].left > levels[0].left + 1.0:
-                return 0.0
         hang = Typesetting._list_marker_hang_width(
             paragraph, typesetting_units, scale
         )

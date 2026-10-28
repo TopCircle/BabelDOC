@@ -5,6 +5,17 @@
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
+## 2026-10-28 — 轮廓约束抑制伪列表悬挂与 mark/serial_plain 范式落地
+
+1. **轮廓约束抑制假列表悬挂 (`typesetting.py`)**：
+   - 之前 `_numbered_list_hang_inset` 仅在 `levels[1].left > levels[0].left + 1.0`（存在悬挂）时返回 0.0；而对于 `mark/serial_plain` / `mark/bullet_plain` 等原生平直列表（`levels[1].left == levels[0].left`），因未满足该分支条件而错误穿透执行了通用列表悬挂计算，强制在折行添加了 10.5pt 的假悬挂缩进；
+   - 调整为只要段落显式附带 `line_edges is not None` 轮廓约束，即严格遵照轮廓给定的左缘（直边或台阶），抑制额外的启发式悬挂，使直边序号列表折行 100% 保持在左缘齐平。
+2. **自动化测试保障 (`tests/test_layout_plan.py`)**：
+   - 增加对 `line_edges` 存在时抑制 `_numbered_list_hang_inset` 假悬挂的断言，确保直边列表不发生多余位移。
+3. **双语试页核验与过关 (`mark/serial_plain`)**：
+   - 样本 1：《Forbidden Female Fantasies》第 29 页（`a. Plan your fun...` 长文本列表项），11 行中文全部严格左对齐于 `726.0 pt`，残差 0.00，平直度完全还原英文，Circle 确认「过」；
+   - 样本 2：《Mastering Her G-Spot》第 55 页（`1.` ~ `8.` 步骤序号列表），首行统一严格对齐于 `726.4 pt`，排版规整，Circle 确认「过」。
+
 ## 2026-10-28 — 复合列表编号正则增强与 mark/serial_repeated 范式落地
 
 1. **复合列表编号（`1.)` / `8.)` / `1.）` / `a.)`）支持与悬挂缩进恢复 (`list_marker_repair.py`)**：
