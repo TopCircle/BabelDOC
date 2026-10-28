@@ -46,6 +46,7 @@ _OUTLINES = {
     "hang/shallow",
     "hang/deep",
     "hang/repeated",
+    "indent/first_line",
     "mark/bullet_hang",
     "mark/bullet_plain",
     "mark/bullet_repeated",
@@ -103,6 +104,7 @@ def test_loaded_modules_keep_the_original_three_and_the_outline_claims():
     assert "rag" not in modules
     assert "mark" not in modules
     assert "toc" not in modules
+    assert "indent" not in modules
     for module in modules.values():
         assert callable(module.claim)
 
@@ -261,9 +263,7 @@ def test_free_edge_of_18_matches_on_the_pinned_range():
 
 def test_a_3pt_step_back_on_an_outward_run_stays_a_left_pin():
     rights = [300.0, 297.0, 305.0, 313.0, 321.0, 329.0]
-    lines = [
-        [36.0, right, 400.0 - index * 16.0] for index, right in enumerate(rights)
-    ]
+    lines = [[36.0, right, 400.0 - index * 16.0] for index, right in enumerate(rights)]
     status, paradigm, residual = pick(_results(_edges(6, 0.0, 32.0), lines))
     assert status == "matched"
     assert paradigm == "taper/left_pin"
@@ -681,8 +681,7 @@ def test_a_hanging_bullet_is_not_a_plain_marker():
 def test_a_full_last_line_that_stops_short_stays_a_right_pin():
     steps = (0.0, 4.0, 8.0, 12.0, 15.0, 17.0, 19.0, 21.0)
     lines = [
-        [199.0 + step, 512.6, 400.0 - index * 15.0]
-        for index, step in enumerate(steps)
+        [199.0 + step, 512.6, 400.0 - index * 15.0] for index, step in enumerate(steps)
     ]
     lines[-1] = [220.0, 427.9, lines[-1][2]]
     status, paradigm, residual = pick(_results(_edges(8, 21.0, 84.7), lines))
@@ -723,6 +722,40 @@ def test_a_hang_the_right_pin_already_owns_stays_a_pin():
     edges = _edges(5, 20.0, 0.0)
     shelf = dict(load_modules())["hang/shallow"]
     assert shelf.claim(edges, lines) == 0.0
+    status, paradigm, residual = pick(_results(edges, lines))
+    assert status == "matched"
+    assert paradigm == "taper/right_pin"
+    assert residual == 0.0
+
+
+def test_first_line_indent_matches_in_catalog():
+    lines = [
+        [120.0, 400.0, 200.0],
+        [100.0, 400.0, 185.0],
+        [100.0, 395.0, 170.0],
+        [100.0, 250.0, 155.0],
+    ]
+    edges = _edges(4, 20.0, 150.0)
+    status, paradigm, residual = pick(_results(edges, lines))
+    assert status == "matched"
+    assert paradigm == "indent/first_line"
+    assert residual == 0.0
+
+
+def test_right_pin_matches_contour_with_slight_tail_recoil():
+    lines = [
+        [290.0, 577.7, 489.0],
+        [301.0, 577.7, 471.0],
+        [318.0, 577.7, 453.0],
+        [335.0, 577.7, 435.0],
+        [342.0, 577.7, 417.0],
+        [347.0, 577.7, 399.0],
+        [350.0, 577.7, 381.0],
+        [350.0, 577.7, 363.0],
+        [345.0, 577.7, 345.0],
+        [340.0, 521.9, 327.0],
+    ]
+    edges = _edges(10, 60.0, 55.8)
     status, paradigm, residual = pick(_results(edges, lines))
     assert status == "matched"
     assert paradigm == "taper/right_pin"

@@ -27,7 +27,11 @@ def light_column(edges: BlockEdges, lines: Sequence[Sequence[float]]) -> float |
     """Wider wall span. One line may miss a 16pt wall. A shelf is not a wall."""
     if edges.marker != "none" or edges.full_count < 2 or len(lines) < 2:
         return None
-    if _hang_indent(lines) is not None or _repeated_indent(lines) is not None:
+    if (
+        _hang_indent(lines) is not None
+        or _repeated_indent(lines) is not None
+        or _first_line_indent(lines) is not None
+    ):
         return None
     lefts = _coord(lines, 0)
     rights = _coord(lines, 1)
@@ -187,6 +191,8 @@ def _rag(
     if free == 0 and (
         _hang_indent(lines) is not None or _repeated_indent(lines) is not None
     ):
+        return None
+    if free == 1 and _first_line_indent(lines) is not None:
         return None
     body = _strip_short_tail(lines)
     if len(body) < 3:
@@ -404,3 +410,35 @@ def _plateau_span(lines: Sequence[Sequence[float]]) -> float:
     body = _strip_short_tail(lines)
     lefts = _coord(body, 0)
     return _span(lefts[1:])
+
+
+def first_line_indent(
+    edges: BlockEdges, lines: Sequence[Sequence[float]]
+) -> float | None:
+    """Flatness of the left margin when the opening line is indented."""
+    if edges.marker != "none":
+        return None
+    return _first_line_indent(lines)
+
+
+def _first_line_indent(lines: Sequence[Sequence[float]]) -> float | None:
+    if len(lines) < 2:
+        return None
+    lefts = _coord(lines, 0)
+    indent = lefts[0] - lefts[1]
+    if indent < 7.0 or indent > 60.0:
+        return None
+    rest_lefts = lefts[1:]
+    if _span(rest_lefts) > 2.5:
+        return None
+    if len(lines) >= 3 and lefts[1] - lefts[2] > 2.0:
+        return None
+    rights = _coord(lines, 1)
+    outer_right = max(rights)
+    if outer_right - rights[0] > _HANG_DEEP:
+        return None
+    body = _strip_short_tail(lines)
+    body_rights = _coord(body, 1)
+    if _step_kind(body_rights) is not None or _bow_kind(body_rights) is not None:
+        return None
+    return _span(rest_lefts)

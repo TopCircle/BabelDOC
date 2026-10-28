@@ -5,6 +5,29 @@
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
+## 2026-10-28 — 首行缩进范式 indent/first_line 构建与人体曲面避让彻底修复
+
+1. **首行缩进独立范式落地 (`indent/first_line`)**：
+   - 注册独立范式 `babeldoc/format/pdf/document_il/utils/layout_plan/paradigms/indent/first_line`（阈值 `8.0`）；
+   - 判据完善 (`outline.py::_first_line_indent`)：首行缩进 $7.0 \le \Delta \le 60.0\text{pt}$，正文行高精度列齐（极差 $\le 2.5\text{pt}$），遇阶梯外扩避让则主动拒绝（$\Delta > 2.0\text{pt}$），杜绝曲面插图误吞；
+   - 填充防撞与对齐 (`indent/first_line::fill`)：严格保留各行扫描左界，末行延展至正文列宽，杜绝过早折行；
+   - 排他避让：`rect/light_column`、`rag/right_edge` 与 `taper/right_pin` 均对检测到的首行缩进段落主动让位。
+
+2. **复合人体轮廓避让与压图彻底根治**：
+   - **中部女性手臂/乳房大面积压图彻底根治 (`taper/right_pin`)**：
+     - 英文原版避让凸出人体（$60\text{pt}$ 弓形包裹），此前因最后两行微收 $10\text{pt}$ 被旧 `one_direction` 苛刻拒绝而沦入默认 `rect_flow`，导致全部 7 行中文拉直在 $x=290$ 碾压人体；
+     - 拓展 `_runs_one_way` 支持深避让（$\ge 18\text{pt}$）与尾部微回弹（$\le 12\text{pt}$ 且 $\Delta_{\text{last}} \le 0$），成功认领并以 $0.6066\text{pt}$ 残差高精度贴合人体流动，重叠率直接归零。
+   - **顶部女性肩膀处擦边彻底分离 (`rect/light_column`)**：
+     - 修复末行被强拉至最左界 `outer_left = 224.0` 的问题，中文两行保留自身避让起点 $x = 236.0$；
+     - 像素级实测证实文字相对人体最外凸起享有 $>7.4\text{pt}$ 净空安全间距，完全消除摩擦。
+   - **样 2（《Female Pleasure Spots》第 17 页）后背内衣曲面**：
+     - 收紧正文散度判定（$\le 2.5\text{pt}$），杜绝将后背内衣弧线错判为首行缩进，内衣压字彻底消除。
+
+3. **双语试页核验与用户确认**：
+   - 样本 1：《Double Fingering Delight》第 10 页全页（肩膀安全分离、中部人体 0 压图贴合、底部标准首行缩进 8.0pt），用户确认「过」；
+   - 样本 2：《Female Pleasure Spots》第 17 页（排除误判，后背内衣 0 压字），用户确认「过」；
+   - 审查报告与实页切片：`visual-comparison-double-fingering-p10.md`、`indent-first-line-review.md`。
+
 ## 2026-10-28 — 左齐右毛边短段落范式真空修复与 rag/right_edge 范式增强
 
 1. **短段落转折自适应下限与悬挂排他性保护 (`outline.py`)**：

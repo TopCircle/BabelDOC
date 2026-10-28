@@ -17,6 +17,9 @@ from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.contract import
     one_direction,
 )
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import (
+    _first_line_indent,
+)
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import (
     _hang_indent,
 )
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import (
@@ -43,9 +46,24 @@ def claim(edges: BlockEdges, lines: Sequence[Sequence[float]]) -> float | None:
 def _candidate(edges: BlockEdges, lines: Sequence[Sequence[float]]) -> bool:
     if edges.marker != "none" or edges.full_count < 4:
         return False
-    if not one_direction([float(line[0]) for line in lines]):
+    if not _runs_one_way([float(line[0]) for line in lines]):
+        return False
+    if _first_line_indent(lines) is not None:
         return False
     return edges.left_range >= _FREE_EDGE
+
+
+def _runs_one_way(values: Sequence[float]) -> bool:
+    if len(values) < 2:
+        return False
+    if one_direction(values):
+        return True
+    deltas = [values[index + 1] - values[index] for index in range(len(values) - 1)]
+    pos_sum = sum(delta for delta in deltas if delta > 0.0)
+    neg_sum = sum(-delta for delta in deltas if delta < 0.0)
+    if pos_sum >= _FREE_EDGE and neg_sum <= 12.0 and deltas[-1] <= 0.0:
+        return True
+    return False
 
 
 def _keep_shared_range(lines: Sequence[Sequence[float]]) -> bool:

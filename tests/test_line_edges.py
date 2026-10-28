@@ -43,6 +43,9 @@ from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.hang.repeated i
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.hang.shallow import (
     fill as shallow_fill,
 )
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.indent.first_line import (
+    fill as first_line_fill,
+)
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.mark.bullet_hang import (
     fill as bullet_hang_fill,
 )
@@ -171,6 +174,7 @@ def test_only_wired_modules_carry_a_fill():
         "hang/deep",
         "hang/repeated",
         "hang/shallow",
+        "indent/first_line",
         "mark/bullet_hang",
         "mark/bullet_plain",
         "mark/bullet_repeated",
@@ -290,6 +294,31 @@ def test_short_rag_right_edge_with_single_turn_matches_and_fills():
     assert link.flow == "edge"
     assert interval_for_line_edges(link, 0, 190.0, 198.0) == (100.0, 300.0)
     assert interval_for_line_edges(link, 1, 175.0, 182.0) == (100.0, 335.0)
+
+
+def test_first_line_indent_fill_and_plan():
+    lines = [
+        [120.0, 400.0, 200.0],
+        [100.0, 400.0, 185.0],
+        [100.0, 395.0, 170.0],
+        [100.0, 250.0, 155.0],
+    ]
+    edges = first_line_fill(lines)
+    assert edges[0] == (120.0, 400.0, 200.0)
+    assert edges[1] == (100.0, 400.0, 185.0)
+    assert edges[2] == (100.0, 400.0, 170.0)
+    assert edges[3] == (100.0, 400.0, 155.0)
+    plan = build_plan(_facts(lines))
+    assert len(plan.line_edge_links) == 1
+    link = plan.line_edge_links[0]
+    assert plan.decisions[0].contour_plugin == "indent/first_line"
+    assert plan.decisions[0].contour_status == "matched"
+    assert link.alignment == "left"
+    assert link.flow == "edge"
+    assert interval_for_line_edges(link, 0, 192.0, 202.0) == (120.0, 400.0)
+    assert interval_for_line_edges(link, 1, 178.0, 188.0) == (100.0, 400.0)
+    assert interval_for_line_edges(link, 2, 162.0, 172.0) == (100.0, 400.0)
+    assert interval_for_line_edges(link, 3, 148.0, 158.0) == (100.0, 400.0)
 
 
 def test_left_edge_fill_is_each_lines_own_edge():
@@ -587,7 +616,6 @@ def test_serial_repeated_fill_keeps_each_line_and_its_top():
     assert interval_for_line_edges(link, 3, 140.0, 150.0) == (100.0, 380.0)
 
 
-
 def test_lower_wide_fill_keeps_the_step_and_opens_the_tail():
     source = inspect.getsource(lower_wide_fill)
     assert "scanned_edge_gap" not in source
@@ -687,9 +715,7 @@ def test_left_pin_fill_is_each_lines_own_edge():
 def test_right_pin_fill_is_each_lines_own_edge():
     source = inspect.getsource(right_pin_fill)
     assert "scanned_edge_gap" not in source
-    lines = [
-        [300.0 - index * 4.0, 578.0, 400.0 - index * 16.0] for index in range(6)
-    ]
+    lines = [[300.0 - index * 4.0, 578.0, 400.0 - index * 16.0] for index in range(6)]
     pairs = right_pin_fill(lines)
     assert pairs == tuple((line[0], line[1]) for line in lines)
     plan = build_plan(_facts(lines))
@@ -773,9 +799,7 @@ def test_light_column_fill_keeps_one_dip_that_comes_back():
         319.7,
         176.1,
     ]
-    lines = [
-        [36.0, right, 500.0 - index * 18.0] for index, right in enumerate(rights)
-    ]
+    lines = [[36.0, right, 500.0 - index * 18.0] for index, right in enumerate(rights)]
     pairs = light_column_fill(lines)
     assert pairs[-1] == (36.0, 322.7)
     assert pairs[:-1] == tuple((36.0, right) for right in rights[:-1])
@@ -783,17 +807,13 @@ def test_light_column_fill_keeps_one_dip_that_comes_back():
 
 def test_light_column_fill_still_flattens_two_dips():
     rights = [322.0, 308.0, 321.0, 309.0, 320.0, 322.0]
-    lines = [
-        [36.0, right, 200.0 - index * 18.0] for index, right in enumerate(rights)
-    ]
+    lines = [[36.0, right, 200.0 - index * 18.0] for index, right in enumerate(rights)]
     assert light_column_fill(lines) == tuple((36.0, 322.0) for _ in rights)
 
 
 def test_light_column_fill_still_flattens_a_one_line_notch():
     rights = [400.0, 400.0, 388.0, 400.0, 400.0]
-    lines = [
-        [100.0, right, 200.0 - index * 18.0] for index, right in enumerate(rights)
-    ]
+    lines = [[100.0, right, 200.0 - index * 18.0] for index, right in enumerate(rights)]
     assert light_column_fill(lines) == tuple((100.0, 400.0) for _ in rights)
 
 
@@ -1651,9 +1671,7 @@ def test_a_column_quote_zone_does_not_stop_the_lower_lines():
     )()
     setter = object.__new__(Typesetting)
     setter._line_edges = type("_Link", (), {"edges": edges})()
-    setter._current_zone_index = type(
-        "_Zones", (), {"zones": [column, side]}
-    )()
+    setter._current_zone_index = type("_Zones", (), {"zones": [column, side]})()
     assert Typesetting.get_max_bottom_space(setter, current, page) == 373.2
 
     setter._line_edges = None
@@ -1672,5 +1690,8 @@ def test_toc_plain_matches_directory_block():
     assert plan.decisions[0].contour_plugin == "toc/plain"
     assert plan.decisions[0].contour_residual == 0.0
     link = plan.line_edge_links[0]
-    assert link.edges == ((36.0, 300.0, 500.0), (36.0, 300.0, 480.0), (36.0, 300.0, 460.0))
-
+    assert link.edges == (
+        (36.0, 300.0, 500.0),
+        (36.0, 300.0, 480.0),
+        (36.0, 300.0, 460.0),
+    )

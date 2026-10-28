@@ -66,6 +66,8 @@ def _pair(line, index, last, outer_left, outer_right, right_dip, own_left):
     left = float(line[0])
     right = float(line[1])
     if index == last:
+        if own_left and outer_right - right <= _WALL:
+            return (left, outer_right)
         return (outer_left, outer_right)
     if right_dip:
         return (_kept_left(left, outer_left, own_left), right)
