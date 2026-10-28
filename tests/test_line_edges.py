@@ -270,6 +270,28 @@ def test_right_edge_fill_is_each_lines_own_edge():
     assert interval_for_line_edges(link, 99, 172.0, 180.0) == (100.0, 160.0)
 
 
+def test_short_rag_right_edge_with_single_turn_matches_and_fills():
+    """A 4-line flush-left block with a natural ragged right edge (1 turn).
+
+    For short blocks (<= 5 lines), right_rag requires only 1 direction change,
+    capturing natural paragraphs where the right edge only folds once.
+    """
+    lines = [
+        [100.0, 300.0, 200.0],
+        [100.0, 335.0, 184.0],
+        [100.0, 320.0, 168.0],
+        [100.0, 310.0, 152.0],
+    ]
+    plan = build_plan(_facts(lines))
+    assert len(plan.line_edge_links) == 1
+    assert plan.decisions[0].contour_plugin == "rag/right_edge"
+    assert plan.decisions[0].contour_status == "matched"
+    link = plan.line_edge_links[0]
+    assert link.flow == "edge"
+    assert interval_for_line_edges(link, 0, 190.0, 198.0) == (100.0, 300.0)
+    assert interval_for_line_edges(link, 1, 175.0, 182.0) == (100.0, 335.0)
+
+
 def test_left_edge_fill_is_each_lines_own_edge():
     source = inspect.getsource(left_edge_fill)
     assert "scanned_edge_gap" not in source

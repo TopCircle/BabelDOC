@@ -184,7 +184,9 @@ def _rag(
 ) -> float | None:
     if edges.marker != "none":
         return None
-    if free == 0 and _repeated_indent(lines) is not None:
+    if free == 0 and (
+        _hang_indent(lines) is not None or _repeated_indent(lines) is not None
+    ):
         return None
     body = _strip_short_tail(lines)
     if len(body) < 3:
@@ -203,7 +205,8 @@ def _is_rag_edge(
         return False
     if _span_without_one_stray(moving, stray_is_low=stray_is_low) <= _COLUMN:
         return False
-    if _turn_count(moving) < 2:
+    min_turns = 1 if (stray_is_low and len(moving) <= 5) else 2
+    if _turn_count(moving) < min_turns:
         return False
     if _step_kind(moving) is not None or _bow_kind(moving) is not None:
         return False

@@ -5,6 +5,19 @@
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
+## 2026-10-28 — 左齐右毛边短段落范式真空修复与 rag/right_edge 范式增强
+
+1. **短段落转折自适应下限与悬挂排他性保护 (`outline.py`)**：
+   - 针对正文右毛边（`stray_is_low=True`，即左平齐右参差），在行数 $3 \le n \le 5$ 时将转折门槛自适应调整为 $\text{turn\_count} \ge 1$，消除 3 行段落因数学极限（最多 1 次转折）及 4~5 行同向微增/微缩段落被硬性判定为 `unmatched` 的缺陷；
+   - 在 `_rag` 中增加显式 `_hang_indent` 排他判定，杜绝左毛边误吞悬挂缩进；
+   - 恢复 `line_edges.py` 中 `interval_for_line_edges` 纯净高度层级查询，全套 229 项单元测试全绿。
+2. **全量语料库回归与实测收益**：
+   - 全库 66,300 个块实测：新增精确匹配 425 个多行正文段落，0 回退（Regression=0），0 冲突（Conflict=0）。
+3. **双语试页核验与过关**：
+   - 样本 1：《All Tied Up》第 7 印刷页（PDF 第 8 页，块 `0a9753`，5 行正文）精准匹配为 `rag/right_edge`（残差 0.00），用户确认「过」；
+   - 样本 2：《All Tied Up》第 8 印刷页（PDF 第 9 页，块 `e11cd8`，4 行正文）精准匹配为 `rag/right_edge`（残差 0.00），用户确认「过」；
+   - 审查报告与切片：`rag-right-edge-review.md`。
+
 ## 2026-10-28 — mark/bullet_plain 范式核验与全 mark 族收官
 
 1. **mark/bullet_plain 范式核验**：
