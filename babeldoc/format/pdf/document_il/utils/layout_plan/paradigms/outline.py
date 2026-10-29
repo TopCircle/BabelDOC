@@ -97,6 +97,44 @@ def right_bow(
     return _span(lefts)
 
 
+def left_step(
+    edges: BlockEdges, lines: Sequence[Sequence[float]], kind: str
+) -> float | None:
+    """Right-edge span when the left edge is the named two-width walk."""
+    if edges.marker != "none":
+        return None
+    if _hang_indent(lines) is not None or _first_line_indent(lines) is not None:
+        return None
+    body = _strip_short_tail(lines)
+    if len(body) < 4:
+        return None
+    lefts = _coord(body, 0)
+    rights = _coord(body, 1)
+    if _span(rights) > _WALL:
+        return None
+    if _step_kind_left(lefts) != kind:
+        return None
+    return _span(rights)
+
+
+def left_bow(
+    edges: BlockEdges, lines: Sequence[Sequence[float]], kind: str
+) -> float | None:
+    """Right-edge span when the left edge makes one deep turn."""
+    if edges.marker != "none":
+        return None
+    if _hang_indent(lines) is not None or _first_line_indent(lines) is not None:
+        return None
+    body = _strip_short_tail(lines)
+    lefts = _coord(body, 0)
+    rights = _coord(body, 1)
+    if _span(rights) > _WALL or _off_wall(lefts, off_is_low=False) < 2:
+        return None
+    if _bow_kind_left(lefts) != kind:
+        return None
+    return _span(rights)
+
+
 def hang(
     edges: BlockEdges, lines: Sequence[Sequence[float]], band: str
 ) -> float | None:
@@ -214,8 +252,12 @@ def _is_rag_edge(
     min_turns = 1 if (stray_is_low and len(moving) <= 5) else 2
     if _turn_count(moving) < min_turns:
         return False
-    if _step_kind(moving) is not None or _bow_kind(moving) is not None:
-        return False
+    if stray_is_low:
+        if _step_kind(moving) is not None or _bow_kind(moving) is not None:
+            return False
+    else:
+        if _step_kind_left(moving) is not None or _bow_kind_left(moving) is not None:
+            return False
     return True
 
 
@@ -369,6 +411,59 @@ def _deep_turn(values: Sequence[float], index: int, *, extreme_is_min: bool) -> 
         left = values[index] - min(values[: index + 1])
         right = values[index] - min(values[index:])
     return left >= _LEG and right >= _LEG
+
+
+def _step_kind_left(values: Sequence[float]) -> str | None:
+    levels = _two_levels_left(values)
+    if levels is not None:
+        return levels
+    if _spur_left(values):
+        return "spur"
+    return None
+
+
+def _two_levels_left(values: Sequence[float]) -> str | None:
+    if len(values) < 4:
+        return None
+    for cut in range(2, len(values) - 1):
+        head = values[:cut]
+        tail = values[cut:]
+        if _span(head) > _STEP_INNER or _span(tail) > _STEP_INNER:
+            continue
+        gap = _median(head) - _median(tail)
+        if gap >= _STEP_GAP:
+            return "lower_wide"
+        if gap <= -_STEP_GAP:
+            return "upper_wide"
+    return None
+
+
+def _spur_left(values: Sequence[float]) -> bool:
+    if len(values) < 4:
+        return False
+    outer = min(values)
+    sticking = [index for index, value in enumerate(values) if value <= outer + _SLACK]
+    if len(sticking) != 1:
+        return False
+    rest = [value for index, value in enumerate(values) if index not in sticking]
+    if len(rest) < 3 or _span(rest) > _STEP_INNER:
+        return False
+    return min(rest) - outer >= _STEP_GAP
+
+
+def _bow_kind_left(values: Sequence[float]) -> str | None:
+    """One deep turn on the left edge."""
+    if len(values) < 6 or _turn_count(values) != 1:
+        return None
+    low = min(range(len(values)), key=values.__getitem__)
+    high = max(range(len(values)), key=values.__getitem__)
+    if _deep_turn(values, high, extreme_is_min=False):
+        return "inset"
+    if _spur_left(values):
+        return None
+    if _deep_turn(values, low, extreme_is_min=True):
+        return "bulge"
+    return None
 
 
 def _hang_indent(lines: Sequence[Sequence[float]]) -> float | None:

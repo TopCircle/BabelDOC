@@ -25,6 +25,12 @@ from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms import load_cat
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.both.wider_below import (
     fill,
 )
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.bow.left_bulge import (
+    fill as left_bulge_fill,
+)
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.bow.left_inset import (
+    fill as left_inset_fill,
+)
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.bow.right_bulge import (
     fill as right_bulge_fill,
 )
@@ -78,6 +84,15 @@ from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.rect.full_colum
 )
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.rect.light_column import (
     fill as light_column_fill,
+)
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.step.left_lower_wide import (
+    fill as left_lower_wide_fill,
+)
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.step.left_spur import (
+    fill as left_spur_fill,
+)
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.step.left_upper_wide import (
+    fill as left_upper_wide_fill,
 )
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.step.right_lower_wide import (
     fill as lower_wide_fill,
@@ -168,6 +183,8 @@ def test_only_wired_modules_carry_a_fill():
     catalog = {item.name: item for item in load_catalog()}
     wired = {
         "both/wider_below",
+        "bow/left_bulge",
+        "bow/left_inset",
         "bow/right_bulge",
         "bow/right_inset",
         "center/axis",
@@ -186,6 +203,9 @@ def test_only_wired_modules_carry_a_fill():
         "rag/deep_right",
         "rect/full_column",
         "rect/light_column",
+        "step/left_lower_wide",
+        "step/left_spur",
+        "step/left_upper_wide",
         "step/right_lower_wide",
         "step/right_spur",
         "step/right_upper_wide",
@@ -666,6 +686,78 @@ def test_upper_wide_fill_keeps_the_step_and_the_narrow_tail():
     assert interval_for_line_edges(link, 0, 458.0, 468.0)[1] == 537.0
     assert interval_for_line_edges(link, 0, 428.0, 438.0)[1] == 375.0
     assert interval_for_line_edges(link, 0, 372.0, 382.0)[1] == 375.0
+
+
+def test_left_lower_wide_fill_keeps_the_step_and_opens_the_tail():
+    source = inspect.getsource(left_lower_wide_fill)
+    assert "scanned_edge_gap" not in source
+    lines = [
+        [278.0, 512.7, 160.0],
+        [278.0, 512.6, 145.0],
+        [278.0, 512.7, 130.0],
+        [102.0, 512.7, 115.0],
+        [102.0, 512.7, 100.0],
+        [102.0, 512.6, 85.0],
+        [102.0, 512.7, 70.0],
+        [102.0, 292.5, 55.0],
+    ]
+    pairs = left_lower_wide_fill(lines)
+    assert pairs[0] == (278.0, 512.7, 160.0)
+    assert pairs[3] == (102.0, 512.7, 115.0)
+    assert pairs[-1] == (102.0, 512.7, 55.0)
+    plan = build_plan(_facts(lines))
+    link = plan.line_edge_links[0]
+    assert link.flow == "edge"
+    assert interval_for_line_edges(link, 0, 150.0, 160.0)[0] == 278.0
+    assert interval_for_line_edges(link, 0, 70.0, 85.0)[0] == 102.0
+
+
+def test_left_upper_wide_fill_keeps_the_step_and_the_narrow_tail():
+    source = inspect.getsource(left_upper_wide_fill)
+    assert "scanned_edge_gap" not in source
+    lines = [
+        [78.0, 537.0, 500.0],
+        [78.0, 534.0, 485.0],
+        [78.0, 537.0, 470.0],
+        [78.0, 534.0, 455.0],
+        [240.0, 534.0, 440.0],
+        [240.0, 534.0, 425.0],
+        [240.0, 534.1, 410.0],
+        [240.0, 534.0, 395.0],
+        [240.0, 337.0, 380.0],
+    ]
+    pairs = left_upper_wide_fill(lines)
+    assert pairs[0] == (78.0, 537.0, 500.0)
+    assert pairs[4] == (240.0, 534.0, 440.0)
+    assert pairs[-1] == (240.0, 537.0, 380.0)
+    plan = build_plan(_facts(lines))
+    assert len(plan.line_edge_links) == 1
+    link = plan.line_edge_links[0]
+    assert link.flow == "edge"
+    assert interval_for_line_edges(link, 0, 458.0, 468.0)[0] == 78.0
+    assert interval_for_line_edges(link, 0, 428.0, 438.0)[0] == 240.0
+    assert interval_for_line_edges(link, 0, 372.0, 382.0)[0] == 240.0
+
+
+def test_left_spur_and_left_bow_fills_keep_lines():
+    spur_lines = [
+        [140.0, 400.0, 200.0],
+        [140.0, 400.0, 184.0],
+        [90.0, 400.0, 168.0],
+        [140.0, 400.0, 152.0],
+        [140.0, 400.0, 136.0],
+    ]
+    spur_pairs = left_spur_fill(spur_lines)
+    assert spur_pairs[0] == (140.0, 400.0, 200.0)
+    assert spur_pairs[2] == (90.0, 400.0, 168.0)
+
+    bow_lines = [
+        [100.0, 400.0, 200.0],
+        [140.0, 400.0, 184.0],
+        [100.0, 400.0, 168.0],
+    ]
+    assert left_inset_fill(bow_lines) == tuple((line[0], line[1]) for line in bow_lines)
+    assert left_bulge_fill(bow_lines) == tuple((line[0], line[1]) for line in bow_lines)
 
 
 def test_spur_fill_keeps_the_wide_line_and_the_narrow_tail():

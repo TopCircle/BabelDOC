@@ -41,8 +41,13 @@ _OUTLINES = {
     "step/right_upper_wide",
     "step/right_lower_wide",
     "step/right_spur",
+    "step/left_lower_wide",
+    "step/left_upper_wide",
+    "step/left_spur",
     "bow/right_inset",
     "bow/right_bulge",
+    "bow/left_inset",
+    "bow/left_bulge",
     "hang/shallow",
     "hang/deep",
     "hang/repeated",
@@ -759,6 +764,69 @@ def test_right_pin_matches_contour_with_slight_tail_recoil():
     status, paradigm, residual = pick(_results(edges, lines))
     assert status == "matched"
     assert paradigm == "taper/right_pin"
+    assert residual == 0.0
+
+
+def test_left_lower_wide_matches_in_catalog():
+    lines = [
+        [150.0, 400.0, 200.0],
+        [150.0, 400.0, 184.0],
+        [100.0, 400.0, 168.0],
+        [100.0, 400.0, 152.0],
+    ]
+    edges = _edges(2, 50.0, 0.0)
+    status, paradigm, residual = pick(_results(edges, lines))
+    assert status == "matched"
+    assert paradigm == "step/left_lower_wide"
+    assert residual == 0.0
+
+
+def test_left_upper_wide_matches_in_catalog():
+    lines = [
+        [100.0, 400.0, 200.0],
+        [100.0, 400.0, 184.0],
+        [150.0, 400.0, 168.0],
+        [150.0, 400.0, 152.0],
+    ]
+    edges = _edges(2, 50.0, 0.0)
+    status, paradigm, residual = pick(_results(edges, lines))
+    assert status == "matched"
+    assert paradigm == "step/left_upper_wide"
+    assert residual == 0.0
+
+
+def test_left_spur_matches_in_catalog():
+    lines = [
+        [140.0, 400.0, 200.0],
+        [140.0, 400.0, 184.0],
+        [90.0, 400.0, 168.0],
+        [140.0, 400.0, 152.0],
+        [140.0, 400.0, 136.0],
+    ]
+    edges = _edges(1, 50.0, 0.0)
+    status, paradigm, residual = pick(_results(edges, lines))
+    assert status == "matched"
+    assert paradigm == "step/left_spur"
+    assert residual == 0.0
+
+
+def test_left_bow_inset_and_bulge_match_in_catalog():
+    inset = [
+        [100.0 + (4.0 * step), 400.0, 200.0 - index * 16.0]
+        for index, step in enumerate([0, 5, 9, 11, 13, 15, 14, 11, 8, 7])
+    ]
+    status, paradigm, residual = pick(_results(_edges(10, 60.0, 0.0), inset))
+    assert status == "matched"
+    assert paradigm == "bow/left_inset"
+    assert residual == 0.0
+
+    bulge = [
+        [100.0 + (4.0 * step), 400.0, 200.0 - index * 16.0]
+        for index, step in enumerate([20, 17, 16, 4, 0, 3, 4, 8, 7])
+    ]
+    status, paradigm, residual = pick(_results(_edges(9, 80.0, 0.0), bulge))
+    assert status == "matched"
+    assert paradigm == "bow/left_bulge"
     assert residual == 0.0
 
 
