@@ -115,7 +115,9 @@ def _width_for(
     return widths[idx]
 
 
-def align_frame_line(units, frame_right: float) -> None:
+def align_frame_line(
+    units, frame_right: float, max_step: float | None = None
+) -> None:
     """Spread a line so its right edge meets the frame.
 
     The frame was already scanned. Characters were filled left to right.
@@ -138,6 +140,8 @@ def align_frame_line(units, frame_right: float) -> None:
     if slack <= 0.5:
         return
     step = slack / (len(glyphs) - 1)
+    if max_step is not None and step > max_step:
+        return
     ordered = sorted(
         (
             unit

@@ -1,9 +1,39 @@
-# BabelDOC — 当前状况（2026-10-28）
+# BabelDOC — 当前状况（2026-10-29）
 
 **布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008`
 **版本:** `0.6.4.95`（`babeldoc/const.py` 与 `pyproject.toml`，未 bump）  
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-10-29 — Phase 3 左侧环绕避让范式落地、行内标头接续与正文列表两端对齐
+
+1. **Phase 3 左侧环绕避让范式族全部就绪 (`bow/left_*`, `step/left_*`)**：
+   - 补齐左侧 5 个排版避让范式：
+     - `bow/left_inset`: 右平直，左缘向内凹入一步后回弹（如绕圆形插图）；
+     - `bow/left_bulge`: 右平直，左缘向外凸出一步后收回；
+     - `step/left_upper_wide`: 右平直，左缘上宽下窄阶梯；
+     - `step/left_lower_wide`: 右平直，左缘上窄下宽阶梯；
+     - `step/left_spur`: 右平直，仅单行向左伸出阶梯。
+   - 在 `outline.py` 中增加左侧阶梯与凹凸特征判据（`left_step`, `left_bow`, `_step_kind_left`, `_bow_kind_left`），并在 `_is_rag_edge` 增加对左侧范式候选的排他性保护，杜绝左毛边误吞。
+   - 在 `load_catalog()` 中注册全部 5 个左侧范式（阈值 `8.0`），全套 57 项范式目录测试与 22 项行边提取测试全绿。
+
+2. **行内彩色标头接续与假断段消除 (`paragraph_split_policy.py`)**：
+   - 修复 `line_fills_differ` 将行内彩色引言（如紫色标头后接黑色正文）误判为不同段落的问题：
+     - 原逻辑直接对比首行全部字符与次行字符的图形状态指令集 `{purple, black} != {black}`，导致 Bullet 1 第一行行末被强行切成独立短段落，第一行右侧留下 142pt 空白；
+     - 增加行尾图形状态与下一行前瞻匹配：当上一行行尾（`prev_chars[-5:]`）正文颜色与下一行一致时，判定为同一段落内行内彩色标头，不再假切分。
+
+3. **正文列表与分栏段落两端填满对齐 (`typesetting.py` / `shaped_pocket_stack.py`)**：
+   - 将列表项与矩形分栏正文纳入 `_alignment_in_frame` 的两端对齐管理（`framed=True`），使普通列表项的中间行执行 `align_frame_line` 填满至右边距；
+   - 重构 `short_line` 判定：由粗暴的 `slack > 24pt` 改为字符级拉伸步长校验 `step = slack / (n_glyphs - 1)`，仅当 `step > 3.5pt` 或字符数 `< 4` 时视为短行，确保正文中短空隙行均匀分散对齐，段末行保持左对齐。
+
+4. **双语试页核验与用户确认**：
+   - 样本 1：《7 Day Orgasm》第 6 印刷页（PDF 第 6 页 / 0-indexed page 5）：
+     - Bullet 1 首行不再腰斩，L1~L4 完美左右对齐填满至 `x2 = 1183.8 pt`；
+     - Bullet 2 中间行全部齐平至 `1183.8 pt`；
+     - Bullet 3 贴合圆形图片轮廓平滑环绕（`bow/left_inset`，10 行轮廓，Regular 11.8pt 字体）；
+     - Circle 确认「过」。
+   - 样本 2：《Better Sex Through D/s》第 7 印刷页：左上宽阶梯环绕（`step/left_upper_wide`），Circle 确认「过」。
+   - 报告与切片：`day7-p6-justification-fix-report.md`、`left-wrap-review.md`。
 
 ## 2026-10-28 — 首行缩进范式 indent/first_line 构建与人体曲面避让彻底修复
 

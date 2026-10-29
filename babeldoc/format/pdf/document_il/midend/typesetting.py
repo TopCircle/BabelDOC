@@ -5674,7 +5674,10 @@ class Typesetting:
                     ink_end = line_available_x
                     if typeset_units and typeset_units[-1].box is not None:
                         ink_end = float(typeset_units[-1].box.x2)
-                    short_line = float(line_available_x2) - ink_end > 24.0
+                    n_glyphs = len(typeset_units) - line_start_idx
+                    slack = float(line_available_x2) - ink_end
+                    step = slack / max(1, n_glyphs - 1)
+                    short_line = n_glyphs < 4 or step > 3.5
                     self._apply_line_horizontal_alignment(
                         typeset_units,
                         line_start_idx,
@@ -5682,7 +5685,9 @@ class Typesetting:
                         line_available_x,
                         line_available_x2,
                         self._alignment_in_frame(
-                            alignment, last=step_break or short_line
+                            alignment,
+                            last=step_break or short_line,
+                            paragraph=paragraph,
                         ),
                     )
                     line_start_idx = len(typeset_units)
@@ -5870,7 +5875,9 @@ class Typesetting:
                 len(typeset_units),
                 line_available_x,
                 line_available_x2,
-                self._alignment_in_frame(alignment, last=True),
+                self._alignment_in_frame(
+                    alignment, last=True, paragraph=paragraph
+                ),
             )
 
         # DP 模式下如果贪心插入了额外断行，说明 DP 的行宽估算与实际不匹配，
@@ -5886,7 +5893,13 @@ class Typesetting:
 
         return typeset_units, all_units_fit
 
-    def _alignment_in_frame(self, alignment: str, *, last: bool = False) -> str:
+    def _alignment_in_frame(
+        self,
+        alignment: str,
+        *,
+        last: bool = False,
+        paragraph: il_version_1.PdfParagraph | None = None,
+    ) -> str:
         """A left frame meets both edges. Center and right stay as set.
 
         The contour already set the line width. A centered line sits in
@@ -5896,6 +5909,21 @@ class Typesetting:
         framed = getattr(self, "_pocket_link", None) is not None or getattr(
             self, "_line_edges", None
         ) is not None
+        if not framed and paragraph is not None:
+            page = getattr(self, "_current_page", None)
+            if page is not None:
+                from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
+                    _rect_links,
+                )
+                from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
+                    list_links_on,
+                )
+
+                reg_id = getattr(paragraph, "layout_region_id", None)
+                if reg_id and (
+                    reg_id in list_links_on(page) or reg_id in _rect_links(page)
+                ):
+                    framed = True
         if (
             last
             or not framed

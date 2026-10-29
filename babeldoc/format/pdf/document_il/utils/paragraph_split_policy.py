@@ -345,11 +345,22 @@ def _passthroughs_differ(
 
 
 def line_fills_differ(prev_line: PdfLine | None, curr_line: PdfLine | None) -> bool:
-    """True when both lines have graphic-state strings and the sets differ."""
-    return _passthroughs_differ(
-        _graphic_instructions(line_chars_ltr(prev_line)),
-        _graphic_instructions(line_chars_ltr(curr_line)),
-    )
+    """True when both lines have graphic-state strings and the sets differ.
+
+    If prev_line has a run-in lead (e.g. colored bullet title) but its trailing
+    body text shares the fill with curr_line, the lines belong to the same
+    paragraph.
+    """
+    prev_chars = line_chars_ltr(prev_line)
+    curr_chars = line_chars_ltr(curr_line)
+    prev_gs = _graphic_instructions(prev_chars)
+    curr_gs = _graphic_instructions(curr_chars)
+    if not _passthroughs_differ(prev_gs, curr_gs):
+        return False
+    tail_gs = _graphic_instructions(prev_chars[-5:])
+    if tail_gs is not None and not _passthroughs_differ(tail_gs, curr_gs):
+        return False
+    return True
 
 
 def line_starts_with_list_marker(line: PdfLine | None) -> bool:
