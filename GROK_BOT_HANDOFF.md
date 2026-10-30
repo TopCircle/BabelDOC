@@ -5,6 +5,20 @@
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
+## 2026-10-30 — bow/right_inset（右弧形内凹避让）双语试页双样本核验通过
+
+1. **范式几何特征与识别结果 (`bow/right_inset`)**：
+   - 几何定义：左平直（左缘极差 $\le 8.0\text{pt}$），右侧因避让圆形/弧形人体或插图而呈现「单峰内凹步进」；
+   - 候选语料全库 27 块全部精准收敛，双样本实测残差均为 **0.00**（阈值 8.0）：
+     - 样本 1：《Sizzling Squirting Positions》第 12 印刷页（Block `71c0dd`，20 行中文避让模特手肘外凸弧线，残差 0.0）；
+     - 样本 2：《Sizzling Squirting Positions》第 30 印刷页（Block `bddf4c`，15 行中文平滑沿胸肩弧度收拢，残差 0.0）。
+
+2. **排版质量与视觉安全评估**：
+   - **零碰撞与 Gutter 保证**：中文字符与右侧高精插图之间保留 $>10\sim 15\text{pt}$ 完整安全距离走廊，零压图、零文字溢出；
+   - **两端对齐与末行自然收尾**：中间行均匀填满各自有效列宽，段末行自然靠左短行，未触发错误的分散拉伸；
+   - **测试保障**：109 项范式目录测试与行边测试 100% 通过。
+   - 审查报告与切片：`bow-right-inset-review.md`。
+
 ## 2026-10-30 — 列表行内标题翻译、样式泄露与标点符号标准化修复
 
 1. **行内标题样式泄露消除 (`paragraph_split_policy.py` / `styles_and_formulas.py`)**：
