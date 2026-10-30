@@ -1787,3 +1787,19 @@ def test_toc_plain_matches_directory_block():
         (36.0, 300.0, 480.0),
         (36.0, 300.0, 460.0),
     )
+
+
+def test_top_slab_protection_when_baseline_slightly_below_slab_bottom():
+    """When Chinese line 0 height exceeds English pitch, line 0 must keep slab 0."""
+    link = LineEdgeLink(
+        region_id="r1",
+        edges=((144.0, 640.0, 401.16), (162.0, 640.0, 388.43)),
+        levels=(
+            ContourLevel(144.0, 640.0, 401.16),
+            ContourLevel(162.0, 640.0, 388.43),
+        ),
+    )
+    # Line 0 height 13.0pt: y_bottom=388.16 (< 388.43), y_top=401.16
+    interval = interval_for_line_edges(link, 0, 388.16, 401.16)
+    assert interval == (144.0, 640.0)
+

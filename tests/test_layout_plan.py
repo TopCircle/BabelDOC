@@ -2172,6 +2172,95 @@ def test_shorter_pocket_pulls_the_rect_column_up():
     assert pocket.box.y == 140.0
 
 
+def _pocket_column_page(extra):
+    column = _column_lines(72, 400, 80)
+    facts = build_facts(
+        source_fingerprint="synthetic",
+        page_index=0,
+        page_width=612.0,
+        page_height=792.0,
+        input_gate="single_page",
+        text_health=0.9,
+        blocks=[_block(_STAIR), _block(column)],
+        figures=_STAIR_FIGURES,
+    )
+    plan = build_plan(facts)
+    pocket = _placed_paragraph(
+        facts.regions[0].region_id,
+        box=_Box(150.0, 140.0, 570.0, 160.0),
+        chars=[_Char(140.0, 155.0)],
+    )
+    column_chars = [_Char(60.0, 78.0), _Char(42.0, 60.0)]
+    body = _placed_paragraph(
+        facts.regions[1].region_id,
+        box=_Box(72.0, 40.0, 400.0, 80.0),
+        chars=column_chars,
+    )
+    page = _Page([pocket, body, *extra], plan)
+    return page, column_chars, pocket
+
+
+def test_a_paragraph_in_the_gap_holds_the_rect_column():
+    """A heading between the pocket and the column keeps the column down."""
+    title_char = _ink_char(72, 100, 300, 118)
+    title = _placed_paragraph(
+        "heading",
+        box=_Box(72.0, 96.0, 300.0, 120.0),
+        chars=[title_char],
+    )
+    title.layout_label = "title"
+    page, column_chars, pocket = _pocket_column_page([title])
+    pack_shaped_pockets(page, paragraph_gap=6.0)
+    assert column_chars[0].box.y2 == 78.0
+    assert title_char.box.y2 == 118.0
+    assert pocket.box.y == 140.0
+
+
+def test_a_heading_beside_the_gap_still_lets_the_column_rise():
+    title_char = _ink_char(450, 100, 560, 118)
+    title = _placed_paragraph(
+        "heading",
+        box=_Box(450.0, 96.0, 560.0, 120.0),
+        chars=[title_char],
+    )
+    title.layout_label = "title"
+    page, column_chars, _pocket = _pocket_column_page([title])
+    pack_shaped_pockets(page, paragraph_gap=6.0)
+    assert column_chars[0].box.y2 == 131.0
+    assert title_char.box.y2 == 118.0
+
+
+def test_chrome_in_the_gap_does_not_hold_the_column():
+    footer_char = _ink_char(72, 100, 300, 118)
+    footer = _placed_paragraph(
+        "foot",
+        box=_Box(72.0, 96.0, 300.0, 120.0),
+        chars=[footer_char],
+    )
+    footer.layout_label = "footer"
+    footer.unicode = "12"
+    page, column_chars, _pocket = _pocket_column_page([footer])
+    pack_shaped_pockets(page, paragraph_gap=6.0)
+    assert column_chars[0].box.y2 == 131.0
+    assert footer_char.box.y2 == 118.0
+
+
+def test_a_heading_is_not_pushed_below_the_body():
+    upper_char = _ink_char(100, 200, 400, 214)
+    upper = _placed_paragraph(
+        "upper", box=_Box(100, 200, 400, 214), chars=[upper_char]
+    )
+    title_char = _ink_char(120, 190, 380, 204)
+    title = _placed_paragraph(
+        "title", box=_Box(120, 190, 380, 204), chars=[title_char]
+    )
+    title.layout_label = "title"
+    page = _Page([upper, title], LayoutPlan("synthetic", 0, "single_page", ()))
+    _push_overlaps_down(page, 3.0)
+    assert title_char.box.y2 == 204.0
+    assert upper_char.box.y2 == 214.0
+
+
 def test_longer_pocket_pushes_the_next_body_down():
     """Two pockets share ink. The lower one moves down by the caller's gap."""
     upper_char = _ink_char(113, 140, 400, 160)

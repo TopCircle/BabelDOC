@@ -1132,6 +1132,22 @@ class TestLayoutStyleConsistency:
         assert wrap_units
         assert wrap_units[0].box.x == pytest.approx(50.0 + hang, abs=1.5)
 
+    def test_first_body_unit_index_returns_negative_one_for_plain_paragraphs(self):
+        """A plain paragraph (without bullet or numbered marker) has no body offset."""
+        text = "李，乔纳森-Z.，杰伊-A. 利维和伊丽莎白。"
+        para = PdfParagraph(
+            box=Box(x=144, y=100, x2=640, y2=400),
+            pdf_style=PdfStyle(font_id="base", font_size=12.0, graphic_state=None),
+            pdf_paragraph_composition=[],
+            unicode=text,
+            first_line_indent=0.0,
+            alignment="left",
+        )
+        units = [self._unit(ch=ch, width=12.0) for ch in text]
+        first_body_idx = Typesetting._first_body_unit_index(units, para)
+        assert first_body_idx == -1
+
+
     def test_layout_percent_keeps_digits_across_a_zero_width_mark(self):
         """A percent that does not fit takes ``57`` with it, even across ZWSP."""
         ts = self._typesetting()

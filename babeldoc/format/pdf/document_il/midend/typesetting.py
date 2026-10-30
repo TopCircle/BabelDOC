@@ -2618,7 +2618,7 @@ class Typesetting:
     ) -> int:
         units = list(typesetting_units or [])
         if not units:
-            return 0
+            return -1
         idx = 0
         while idx < len(units) and getattr(units[idx], "is_space", False):
             idx += 1
@@ -2646,7 +2646,7 @@ class Typesetting:
                         while target < len(units) and getattr(units[target], "is_space", False):
                             target += 1
                         return target
-        return 0
+        return -1
 
     @staticmethod
     def _numbered_list_hang_inset(
