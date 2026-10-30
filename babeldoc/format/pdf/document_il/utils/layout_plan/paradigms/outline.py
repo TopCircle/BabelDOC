@@ -287,7 +287,8 @@ def _strip_short_tail(
 ) -> list[Sequence[float]]:
     kept = list(lines)
     dropped = 0
-    while len(kept) >= 3 and dropped < 2:
+    max_drop = 3 if len(lines) >= 8 else 2
+    while len(kept) >= 4 and dropped < max_drop:
         last = kept[-1]
         previous = kept[-2]
         right_inset = float(previous[1]) - float(last[1])

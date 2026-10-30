@@ -1024,3 +1024,51 @@ def test_one_short_line_stays_light_and_a_stacked_hang_stays_a_hang():
     assert status == "matched"
     assert paradigm == "hang/repeated"
     assert residual == 0.0
+
+
+def test_strip_short_tail_keeps_minimum_three_lines_and_expands_capacity():
+    from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import (
+        _strip_short_tail,
+    )
+
+    # 1. A 3-line block with a short tail line keeps all 3 lines so paradigms like rag don't starve
+    three_lines = [
+        [100.0, 400.0, 200.0],
+        [100.0, 360.0, 184.0],
+        [100.0, 250.0, 168.0],
+    ]
+    assert len(_strip_short_tail(three_lines)) == 3
+
+    # 2. A 4-line block with a short tail drops at most 1 line, retaining 3 body lines
+    four_lines = [
+        [100.0, 400.0, 200.0],
+        [100.0, 400.0, 184.0],
+        [100.0, 400.0, 168.0],
+        [100.0, 250.0, 152.0],
+    ]
+    assert len(_strip_short_tail(four_lines)) == 3
+
+    # 3. An 8-line block with 3 progressive short tail lines drops up to 3 lines, retaining 5 body lines
+    eight_lines = [
+        [100.0, 500.0, 300.0],
+        [100.0, 500.0, 284.0],
+        [100.0, 500.0, 268.0],
+        [100.0, 500.0, 252.0],
+        [100.0, 500.0, 236.0],
+        [100.0, 470.0, 220.0],
+        [100.0, 430.0, 204.0],
+        [100.0, 350.0, 188.0],
+    ]
+    assert len(_strip_short_tail(eight_lines)) == 5
+
+    # 4. A 6-line block drops at most 2 lines, preventing dropping 50% of the block
+    six_lines = [
+        [100.0, 500.0, 300.0],
+        [100.0, 500.0, 284.0],
+        [100.0, 500.0, 268.0],
+        [100.0, 470.0, 252.0],
+        [100.0, 430.0, 236.0],
+        [100.0, 350.0, 220.0],
+    ]
+    assert len(_strip_short_tail(six_lines)) == 4
+
