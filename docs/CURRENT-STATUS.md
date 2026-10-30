@@ -5,15 +5,38 @@
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
+## 2026-10-30 — hang/shallow 试页核验与首行悬挂排版修复
+
+1. **范式与修复摘要**：
+   - 范式：`hang/shallow`（浅悬挂缩进，首行凸出，后续缩进 12–48pt）。
+   - 根因 1（`line_edges.py`）：首行基线因中文行高大于英文 source pitch 而略低于第一层 slab 底部时，`_interval_on_levels` 误滑入第二层 slab，导致首行外凸丢失；增加首行顶部判定防护（`if slabs[0][0] is samples[0] and y_top >= samples[0].top - 1.0: host = samples[0]`）。
+   - 根因 2（`typesetting.py`）：`_first_body_unit_index` 对非项目符号、非数字编号的段落默认返回 `0`，排版循环将第 0 个单元误当列表正文起始强推至 `edges_body_left`，导致首行整体缩进；改为无 marker 时严格返回 `-1`。
+   - 测试通过：`tests/test_line_edges.py` 57 项全过，`tests/test_paragraph_alignment.py` 63 项全过，`test_layout_plan.py` 105 项全过。`ruff check` 无告警。
+
+2. **样本核验判定（依用户审查指令更新）**：
+   - **《Last Longer Tonight》印刷页 17**（`llt-p17`）：
+     - 条目 `e)` 首行靠外在 128.0，后续续行对齐在 146.0（差值 18.0pt）；序号 2 靠外在 74.0，后续在 92.0。首行外凸与续行缩进完全吻合。
+     - **审查判定：整体可以（已过）。**
+   - **《Hot Licks: Module 4》印刷页 40**（`hl4-p40`，APA 参考文献）：
+     - 结构对齐整体可以（首行 144.0，续行 162.0），但部分条目为学术人名/期刊专有名词被 DeepLX 保留英文，仅少量完整从句被译出中文。
+     - **审查判定：用户明确指示文献类不要求翻译，不再作为试页测试项，直接去掉。**
+   - **《Female Orgasm Secrets Revealed》印刷页 3**（`fosr-p3`）与 **《Double Her Desire》印刷页 2**（`dhd1-p2`）：
+     - 均为目录（TOC）页面，多条独立目录项被并为单一文本块按连贯段落折行，破坏目录行结构。
+     - **审查判定：完全不对，不可过，目录项不得按悬挂正文段落合流。**
+
+
+
 ## 2026-10-30 — step/right_lower_wide 试页核验
 
-产品代码未改。两份 OneDrive 源 PDF 的 mtime 与大小在渲染前后相同。`tmp/fill-lower-wide/orgasmic-sex-positions-p44i/` 仍是 441143 字节（2026-10-23 14:08），这次没有覆盖。
+口袋和下面的矩形栏之间如果已经有段落，上拉会停住。标题不会被当成下一段正文推走。OneDrive 源 PDF 的 mtime 与大小未变。`tmp/fill-lower-wide/orgasmic-sex-positions-p44i/` 仍是 441143 字节（2026-10-23 14:08），这次没有覆盖。
 
 1. **《Explosive Ejaculation Stimulation》印刷页 10**（PDF 第 10 页）
    - 原始文本块 digest `5a79623e893dd8cd`，22 行，`step/right_lower_wide` 残差 0.0。布局日志块 `e4b9b5` 同样命中，残差 0.0。
    - 剥掉短尾后，台阶切在第 15 行（0 起，y=582.5）。左缘齐在 36.0。上半段右缘中位 286.8，下半段右缘中位 323.7，差 36.9pt。
    - 右侧照片从 x=255.3 起。中文正文保持 12pt，左缘 36.0。前 17 条满行的右缘贴着同一高度的英文行，偏差 −1.6…+1.6pt，没有比英文更深入照片。中文在第 18 行收束（右缘 132.0）。英文其后还有 4 条宽行（右缘 321.6–323.9），没有对应中文，末行也没有被拉到 324。
-   - dual：`tmp/fill-right-lower-wide/ees-p10/Explosive Ejaculation Stimulation.no_watermark.zh-CN.dual.pdf`（1467523 字节）。切片：同目录 `step-crop.png`、`body-crop.png`。
+   - 三行 21pt 黄字停在引言和正文之间。中文 y（向下）195.9 / 238.9 / 281.9，英文 195.3 / 231.2 / 267.2。第二行「让潮喷如此」比英文低 7.7pt，第三行低 14.7pt。
+   - **大字号标题装饰下划线剔除修复**：原英文三行黄字下方有 3 条 3.0pt 粗的黄色矢量下划线（长度与英文行长匹配）。因中文行高与长度变化，原英文下划线残留并横穿中文第 2、3 行，且向右悬空多达 171pt。修复 `styles_and_formulas.py`：纠正 Document IL 坐标系下段落包围盒的上下边界方向判断（$y=0$ 在页面底部，下划线位于 $y \le \text{para\_box.y}$），字号提取字段名修正为 `pdf_character` 并按字号动态放宽下划线判定距离（$0.35 \times \text{font\_size}$），支持 3.5pt 粗细的矢量线条剔除，并增加全宽分割线宽度保护。重新渲染后中文侧 3 条残留下划线完全清除（ZH drawings: 0），英文侧完整保留。
+   - dual：`tmp/fill-right-lower-wide/ees-p10c/Explosive Ejaculation Stimulation.no_watermark.zh-CN.dual.pdf`（1467558 字节，16:00 重渲）。`ees-p10` 那份黄字在页底，不要用。
 
 2. **《Orgasmic Sex Positions》印刷页 44**（PDF 第 44 页）
    - 目录 digest `8c65ba3eb697667b` 不在原始文本块上。现场轮廓 digest `535de1d0a83a4863`。布局日志块 `c49366` 命中 `step/right_lower_wide`，残差 0.0。

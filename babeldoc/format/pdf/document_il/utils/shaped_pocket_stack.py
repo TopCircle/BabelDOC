@@ -24,6 +24,8 @@ from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragrap
 _X_OVERLAP = 0.35
 # How far below a line with no edge of its own the curve may already be rising.
 _INK_LOOK = 8.0
+# A heading keeps the line it was rendered on. It is not a lower body.
+_HEADING_ROLES = frozenset({"title", "section_header"})
 
 
 def pocket_links_on(page) -> dict[str, PocketLink]:
@@ -200,10 +202,11 @@ def pack_shaped_pockets(page, paragraph_gap: float = BODY_PARAGRAPH_GAP) -> None
     A shorter pocket pulls the rect column below it up. The pull seats that
     column one rendered line step plus its scanned paragraph white under the
     pocket. A column a body-paragraph gap already seated stays there.
-    ``paragraph_gap`` fills in when the scan found no extra white.
-    When two bodies still share ink, the lower one moves down. A rect chain
-    uses that same white. Anything else keeps the ink clearance. Chrome stays
-    put. A page with no pocket is left alone.
+    A paragraph already in the gap between the pocket and that column holds
+    the column. ``paragraph_gap`` fills in when the scan found no extra white.
+    When two bodies still share ink, the lower one moves down. A heading
+    stays on its line. A rect chain uses that same white. Anything else keeps
+    the ink clearance. Chrome stays put. A page with no pocket is left alone.
     """
     pockets = pocket_links_on(page)
     if not pockets:
@@ -233,12 +236,14 @@ def _pull_rect_columns(page, pockets, rects, paragraph_gap: float) -> None:
         if ink is not None:
             pocket_inks.append((paragraph, ink[0], ink[1]))
     pocket_inks.sort(key=lambda item: item[1])
+    obstacles = _gap_obstacles(page, set(pockets))
     chains = _link_chains(rects)
     for paragraph, _top, bottom in pocket_inks:
         _pull_column_up(
             by_region,
             chains,
             pocket_inks,
+            obstacles,
             paragraph,
             bottom,
             paragraph_gap,
@@ -246,8 +251,30 @@ def _pull_rect_columns(page, pockets, rects, paragraph_gap: float) -> None:
         )
 
 
+def _gap_obstacles(page, pocket_ids: set[str]) -> list:
+    """Non-chrome paragraphs a pull must not cross. Pockets are separate."""
+    found = []
+    for paragraph in getattr(page, "pdf_paragraph", None) or []:
+        if getattr(paragraph, "layout_region_id", None) in pocket_ids:
+            continue
+        if is_chrome_paragraph(paragraph, page):
+            continue
+        ink = ink_span(paragraph)
+        if ink is None:
+            continue
+        found.append((paragraph, ink[0], ink[1]))
+    return found
+
+
 def _pull_column_up(
-    by_region, chains, pocket_inks, pocket, pocket_bottom, gap, anchored
+    by_region,
+    chains,
+    pocket_inks,
+    obstacles,
+    pocket,
+    pocket_bottom,
+    gap,
+    anchored,
 ) -> None:
     chosen = None
     chosen_top = None
@@ -262,6 +289,8 @@ def _pull_column_up(
         if top > pocket_bottom + 0.5:
             continue
         if _blocked(pocket_bottom, top, pocket_inks):
+            continue
+        if _held_open(pocket_bottom, top, head, obstacles):
             continue
         pocket_box = _box_of(pocket_inks, pocket_bottom)
         if pocket_box is None or not _overlaps_x(pocket_box, getattr(head, "box", None)):
@@ -302,6 +331,28 @@ def _blocked(pocket_bottom, rect_top, pocket_inks) -> bool:
     return False
 
 
+def _held_open(pocket_bottom, rect_top, head, obstacles) -> bool:
+    """True when a paragraph already occupies the gap this pull would cross."""
+    head_box = getattr(head, "box", None)
+    for paragraph, top, bottom in obstacles:
+        if paragraph is head:
+            continue
+        if not (bottom < pocket_bottom - 0.5 and top > rect_top):
+            continue
+        if _overlaps_x(head_box, getattr(paragraph, "box", None)):
+            return True
+    return False
+
+
+def _is_heading(paragraph) -> bool:
+    intent = getattr(paragraph, "layout_intent", None)
+    role = getattr(intent, "role", None) if intent is not None else None
+    if role is not None and str(getattr(role, "value", role)) in _HEADING_ROLES:
+        return True
+    label = (getattr(paragraph, "layout_label", None) or "").strip().lower()
+    return label in _HEADING_ROLES
+
+
 def _box_of(pocket_inks, pocket_bottom):
     for paragraph, _top, bottom in pocket_inks:
         if abs(bottom - pocket_bottom) <= 0.5:
@@ -339,6 +390,8 @@ def _push_overlaps_down(page, gap: float) -> None:
     links = _rect_links(page)
     for index, upper in enumerate(bodies):
         for lower in bodies[index + 1 :]:
+            if _is_heading(lower):
+                continue
             if getattr(upper, "xobj_id", None) != getattr(lower, "xobj_id", None):
                 continue
             _push_below(upper, lower, gap, floor, links)
