@@ -1,9 +1,46 @@
-# BabelDOC — 当前状况（2026-10-29）
+# BabelDOC — 当前状况（2026-10-30）
 
 **布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008`
 **版本:** `0.6.4.95`（`babeldoc/const.py` 与 `pyproject.toml`，未 bump）  
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-10-30 — 列表行内标题翻译、样式泄露与标点符号标准化修复
+
+1. **行内标题样式泄露消除 (`paragraph_split_policy.py` / `styles_and_formulas.py`)**：
+   - 根因分析：在未发生样式拍平（`flatten_dominant_run_in` 返回 `False`）时，`remember_run_in_lead` 仍无条件记录了标题样式；排版阶段 `apply_run_in_lead_style` 误判并将小号紫色粗体字强行刷至整个问句末尾（如 `d) TimE: 这一切都是为了性吗？` 全句染紫变粗）；
+   - 修复：
+     - 在 `paragraph_split_policy.py` 增加 `forget_run_in_lead(paragraph)`，当不拍平时立即注销，避免后续阶段误用；
+     - `apply_run_in_lead_style` 增加防护：若段落已由 `ILTranslator` 生成具有 2 种及以上字体的 compositions，禁止二次覆盖；
+     - `_title_clause_end` 补充中英文冒号 `：:` 为标题截断标志，杜绝向正文句子外溢。
+
+2. **样式标记内部混合大小写与标题规整 (`il_translator.py` / `text_recovery.py`)**：
+   - 根因分析：排版字体采用 Small Caps 导致提取出大小写交替的单词（`TimE:`, `aTTEnTion:`, `sEducTion:`），在经过 style marker 时被 MT 判定为代码标识符而原样保留或未加翻译；
+   - 修复：在 `text_recovery.py` 增加 `normalize_style_span_text`，处理 decorative mid-caps 后使用句式首字母大写（Sentence Case，如 `Attention:`, `Seduction:`），MT 识别为规范标头并准确翻译（`注意：`, `诱惑：`）；同时统一将 CJK 字符后的英文冒号 `:` 转为规范全角中文冒号 `：`。
+
+3. **列表标号与括号规范化 (`list_marker_repair.py`)**：
+   - 扩展 `LIST_MARKER_RE` / `TRAILING_LIST_MARKER_RE` 匹配范围，涵盖全小写字母 `[a-z]` 以及小写括号标号；
+   - 增加 `LEADING_LIST_MARKER_PAREN_RE` 修复 MT 将 `a)`、`e)` 误译为全角 `a ）`、`e ）` 的问题，统一转回规范紧凑半角括号 `a) `。
+
+## 2026-10-30 — Phase 4 段末短行剥离重构与全库 999 块新增匹配
+
+1. **几何剥离底线守卫与弹性剥离重构 (`outline.py::_strip_short_tail`)**：
+   - 消除 3 行与 4 行短段落体量饿死（Body Starvation）：
+     - 范式（`_rag`, `marked`, `_hang_indent` 等）普遍硬性要求 `len(body) >= 3`；
+     - 原逻辑在 `len(kept) == 3` 时仍盲目 pop，导致短段落被削减至 2 行后被所有范式无差别拒绝；
+     - 重构为守卫 `len(kept) >= 4`，确保剥离后 `len(body)` 永不低于 3 行；
+   - 针对 ≥8 行长段落扩展 `max_drop = 3`，增强对签名、落款及多行短尾的容错率；
+   - 限制 ≤6 行短段落最多剥离 2 行，防止将阶梯或圆弧下半段切除。
+
+2. **全量语料库回归实测增益 (66,300 块)**：
+   - 全库 19,162 个多行正文块实测：**净新增精准匹配 +999 个块**！
+   - 新增分布：`rag/right_edge` +371、`rag/deep_right` +164、`mark/bullet_hang` +151、`mark/serial_hang` +132、`hang/shallow` +86、`mark/serial_plain` +64、`hang/deep` +17、`mark/bullet_plain` +14；
+   - **全库破坏性回退：0（Regressions = 0）**。
+
+3. **双语试页核验**：
+   - 样本 1：《7 Day Orgasm》第 3 天 第 10 页（块 `8b71d2` 准确匹配 `mark/serial_plain`，整页匹配跃升至 8 块）；
+   - 样本 2：《7 Day Orgasm》第 4 天 第 10 页（`rect/full_column` 与 `rect/light_column` 规整排版）；
+   - 审查报告与切片：`strip-short-tail-review.md`。
 
 ## 2026-10-29 — Phase 3 左侧环绕避让范式落地、行内标头接续与正文列表两端对齐
 

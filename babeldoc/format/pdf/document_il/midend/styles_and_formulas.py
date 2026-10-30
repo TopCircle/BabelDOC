@@ -699,11 +699,15 @@ class StylesAndFormulas:
                 flatten_dominant_run_in,
             )
             from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+                forget_run_in_lead,
+            )
+            from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
                 remember_run_in_lead,
             )
 
             remember_run_in_lead(paragraph)
-            flatten_dominant_run_in(paragraph)
+            if not flatten_dominant_run_in(paragraph):
+                forget_run_in_lead(paragraph)
 
             # 计算基准样式（除公式外所有文字样式的交集）
             base_style = self._calculate_base_style(paragraph)

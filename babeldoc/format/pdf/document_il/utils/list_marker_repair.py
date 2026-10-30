@@ -36,9 +36,9 @@ _BULLET_GUTTER_TOLERANCE = 6.0
 LIST_MARKER_RE = re.compile(
     r"^(?:"
     r"[\u2022\u2023\u25E6\u2043\u2219\u25CB\u25CF\uf643•·■⚫⬤◆◇○●◦‣⁃▪▫]\s*"
-    r"|(?:\d{1,3}|[a-dA-D])\s*(?:[\.．]\s*[\)）]|[\.．。、\)])\s*"  # 1.  1． 1。 1、  1)  1.)  1.）
-    r"|\(\s*\d{1,3}\s*\)\s*"  # (1)
-    r"|\(\s*[a-dA-D]\s*\)\s*"  # (a)
+    r"|(?:\d{1,3}|[a-z]|[A-D])\s*(?:[\.．]\s*[\)）]|[\.．。、])\s*"  # 1. 1． 1。 1、 a. b. A. D.
+    r"|(?:\d{1,3}|[a-zA-Z])\s*[\)）]\s*"  # 1) a) e) f) g) a） e）
+    r"|[\(（]\s*(?:\d{1,3}|[a-zA-Z])\s*[\)）]\s*"  # (1) (a) (e) （a）
     r"|[①-⑳]\s*"
     r")"
 )
@@ -49,13 +49,18 @@ LIST_MARKER_RE = re.compile(
 # ``The answer is 42.`` is not stripped.
 TRAILING_LIST_MARKER_RE = re.compile(
     r"(?P<body>.*[。．.!?！？])\s*"
-    r"(?P<marker>(?:\d{1,3}|[a-dA-D])\s*(?:[\.．]\s*[\)）]|[\.．。、\)]))\s*$",
+    r"(?P<marker>(?:\d{1,3}|[a-z]|[A-D])\s*(?:[\.．]\s*[\)）]|[\.．。、])|(?:\d{1,3}|[a-zA-Z])\s*[\)）])\s*$",
     re.DOTALL,
 )
 
 # Leading serial with CJK/fullwidth punct that MT rewrote from ``1.`` / ``a.``
 LEADING_LIST_MARKER_DOT_RE = re.compile(
     r"^(?P<lead>\s*)(?P<num>\d{1,3}|[a-zA-Z])\s*(?:\.\s*)?(?P<punct>[。．、])\s*"
+)
+
+# Leading serial with parenthesis that MT rewrote (e.g. ``a）`` / ``a ）`` / ``1）``)
+LEADING_LIST_MARKER_PAREN_RE = re.compile(
+    r"^(?P<lead>\s*)(?:(?P<open>[\(（])\s*)?(?P<num>\d{1,3}|[a-zA-Z])\s*[\)）](?P<space>\s*)"
 )
 
 # Translation may retain a source serial in the middle of an otherwise
@@ -175,6 +180,17 @@ def normalize_leading_list_marker_text(text: str | None) -> str | None:
         if num.isalpha():
             num = num.upper() if m.group("num").isupper() else num.lower()
         t = f"{m.group('lead')}{num}.{rest}"
+    else:
+        pm = LEADING_LIST_MARKER_PAREN_RE.match(t)
+        if pm:
+            rest = t[pm.end() :]
+            num = pm.group("num")
+            lead = pm.group("lead")
+            sep = " " if (pm.group("space") or rest) else ""
+            if pm.group("open"):
+                t = f"{lead}({num}){sep}{rest}"
+            else:
+                t = f"{lead}{num}){sep}{rest}"
     # Mid-string tip serials only (``提示 3。最大值`` → keep label, ``3.``)
     t2 = MID_LIST_IDEO_PERIOD_RE.sub(
         lambda mm: mm.group(0).replace("。", ".", 1),

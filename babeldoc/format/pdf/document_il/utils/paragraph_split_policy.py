@@ -200,13 +200,18 @@ def remember_run_in_lead(paragraph: PdfParagraph) -> bool:
     return True
 
 
+def forget_run_in_lead(paragraph: PdfParagraph) -> None:
+    """Clear saved lead style if paragraph was not flattened."""
+    _RUN_IN_LEADS.pop(id(paragraph), None)
+
+
 def _title_clause_end(text: str) -> int | None:
     """Index just past the name. A leading ``4.`` is the serial, not the end."""
     match = _LEAD_SERIAL_RE.match(text)
     i = match.end() if match else 0
     while i < len(text):
         ch = text[i]
-        if ch in "。！？":
+        if ch in "：:。！？":
             return i + 1
         if ch in ".!?" and (i + 1 >= len(text) or not text[i + 1].isdigit()):
             return i + 1
@@ -229,6 +234,11 @@ def apply_run_in_lead_style(paragraph: PdfParagraph) -> bool:
         if styled is None or not styled.unicode:
             return False
         pieces.append((styled.unicode, styled.pdf_style))
+    # If the paragraph already has distinct styled runs (e.g. style markers
+    # already separated the lead title from the body), do not clobber them.
+    unique_faces = {p[1].font_id for p in pieces if p[1] and p[1].font_id}
+    if len(unique_faces) >= 2:
+        return False
     text = "".join(piece for piece, _style in pieces)
     end = _title_clause_end(text)
     if end is None:

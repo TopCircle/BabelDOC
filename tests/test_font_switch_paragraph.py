@@ -754,3 +754,40 @@ def test_figure_caption_short_stack_not_split():
         layout_label="figure_caption",
         **kwargs,
     )
+
+
+def test_normalize_style_span_text_titles_and_mid_caps():
+    """Verify decorative mid-caps and label headings are normalized and capitalized."""
+    from babeldoc.format.pdf.document_il.utils.text_recovery import (
+        normalize_style_span_text,
+    )
+
+    assert normalize_style_span_text("aTTEnTion:") == "Attention:"
+    assert normalize_style_span_text("sEducTion:") == "Seduction:"
+    assert (
+        normalize_style_span_text("ExTEndEd EyE-conTacT.")
+        == "Extended eye-contact."
+    )
+    assert normalize_style_span_text("TimE:") == "Time:"
+    assert normalize_style_span_text("Touching:") == "Touching:"
+    assert normalize_style_span_text("Kissing:") == "Kissing:"
+    assert normalize_style_span_text("alcohol:") == "Alcohol:"
+    # Body text without mid-caps and not a label is preserved untouched
+    assert (
+        normalize_style_span_text("this yourself your fingers should")
+        == "this yourself your fingers should"
+    )
+    assert normalize_style_span_text("blindfolding") == "blindfolding"
+
+
+def test_run_in_lead_colon_delimiter_no_leak():
+    """Run-in titles ending with colon must delimit at the colon, not leak into sentence."""
+    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+        _title_clause_end,
+    )
+
+    assert _title_clause_end("时间: 这一切都是为了性吗？") == 3
+    assert _title_clause_end("时间：这一切都是为了性吗？") == 3
+    assert _title_clause_end("引诱：如果你希望你们的关系") == 3
+    assert _title_clause_end("Extended eye-contact. Gazing at each other") == 21
+

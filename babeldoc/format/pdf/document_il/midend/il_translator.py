@@ -1330,6 +1330,28 @@ class ILTranslator:
         text = assemble_midcap_title_unicode(
             paragraph, chars, para_width=para_w
         )
+        if style_spans:
+            # Normalize decorative mid-caps and label casing inside style marker spans so MT sees clean words
+            # (e.g. 〖B1〗TimE:〖/B1〗 → 〖B1〗Time:〖/B1〗, 〖B1〗aTTEnTion:〖/B1〗 → 〖B1〗Attention:〖/B1〗)
+            def _normalize_style_span_mid_caps(m: re.Match) -> str:
+                tag, inner, close_tag = m.group(1), m.group(2), m.group(3)
+                norm = text_recovery.normalize_style_span_text(inner)
+                return f"{tag}{norm}{close_tag}"
+
+            text = re.sub(
+                r"(〖[Bb]\d+〗)([\s\S]*?)(〖/[Bb]\d+〗)",
+                _normalize_style_span_mid_caps,
+                text,
+            )
+            style_spans = [
+                StyleSpan(
+                    s.span_id,
+                    s.style,
+                    text_recovery.normalize_style_span_text(s.source_text),
+                )
+                for s in style_spans
+            ]
+
         translate_input = self.TranslateInput(text, placeholders, paragraph.pdf_style)
         translate_input.set_original_placeholder_tokens(original_placeholder_tokens)
 
@@ -1511,6 +1533,7 @@ class ILTranslator:
                 unstyled = ILTranslator._strip_style_markers(
                     output[last_end : m.start()]
                 )
+                unstyled = unstyled.replace("\xa0", " ")
                 if unstyled.strip():
                     comp = PdfParagraphComposition()
                     comp.pdf_same_style_unicode_characters = (
@@ -1523,6 +1546,21 @@ class ILTranslator:
                     result.append(comp)
 
             if styled_text.strip():
+                # If the original style span ended with a colon, ensure translated text also ends with a colon
+                # (e.g. "Kissing:" translated as "亲吻" without colon).
+                src_span = next(
+                    (s for s in (input_text.style_spans or []) if s.span_id == span_id),
+                    None,
+                )
+                if src_span and (src_span.source_text or "").rstrip().endswith((":", "：")):
+                    if not styled_text.rstrip().endswith((":", "：")):
+                        rest_after = output[m.end() :]
+                        if not re.match(r"^\s*([：:])", rest_after):
+                            styled_text = styled_text.rstrip() + "："
+                    elif styled_text.rstrip().endswith(":") and any("\u4e00" <= ch <= "\u9fff" for ch in styled_text):
+                        styled_text = styled_text.rstrip()[:-1] + "："
+
+                styled_text = styled_text.replace("\xa0", " ")
                 comp = PdfParagraphComposition()
                 comp.pdf_same_style_unicode_characters = (
                     PdfSameStyleUnicodeCharacters()
@@ -1545,6 +1583,7 @@ class ILTranslator:
 
         if last_end < len(output):
             remaining = ILTranslator._strip_style_markers(output[last_end:])
+            remaining = remaining.replace("\xa0", " ")
             if remaining.strip():
                 comp = PdfParagraphComposition()
                 comp.pdf_same_style_unicode_characters = (

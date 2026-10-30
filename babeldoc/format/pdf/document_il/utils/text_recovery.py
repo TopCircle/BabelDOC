@@ -896,6 +896,32 @@ def normalize_decorative_title_case(text: str) -> str:
     return rejoin_known_split_latin_words(text)
 
 
+def normalize_style_span_text(inner: str) -> str:
+    """Normalize text inside style markers for MT readability.
+
+    1. Normalize decorative mid-caps (e.g. "aTTEnTion:" -> "attention:").
+    2. For short heading labels (ending with colon/period) or spans that had
+       decorative mid-caps, capitalize the initial letter (sentence case) so MT
+       treats them as headings/titles rather than code identifiers/parameters.
+    """
+    if not inner:
+        return inner
+    had_mid_caps = has_decorative_mid_caps(inner)
+    if had_mid_caps:
+        inner = normalize_decorative_title_case(inner)
+    stripped = inner.strip()
+    is_heading_label = (
+        len(stripped) <= 60
+        and stripped.endswith((":", "：", ".", "。"))
+    )
+    if had_mid_caps or is_heading_label:
+        m = regex.search(r"[A-Za-z]", inner)
+        if m and m.group(0).islower():
+            idx = m.start()
+            inner = inner[:idx] + inner[idx].upper() + inner[idx + 1 :]
+    return inner
+
+
 # 〖B0〗 / 〖/B0〗 must keep the B capital: .lower() on a mid-caps running
 # title turns them into 〖b0〗, DeepLX then concatenates leftover b0 with the
 # chapter index (OA p59 ``章b08 直接推送``).
