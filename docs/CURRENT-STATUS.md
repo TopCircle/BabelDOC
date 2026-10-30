@@ -5,6 +5,23 @@
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
+## 2026-10-30 — step/right_lower_wide 试页核验
+
+产品代码未改。两份 OneDrive 源 PDF 的 mtime 与大小在渲染前后相同。`tmp/fill-lower-wide/orgasmic-sex-positions-p44i/` 仍是 441143 字节（2026-10-23 14:08），这次没有覆盖。
+
+1. **《Explosive Ejaculation Stimulation》印刷页 10**（PDF 第 10 页）
+   - 原始文本块 digest `5a79623e893dd8cd`，22 行，`step/right_lower_wide` 残差 0.0。布局日志块 `e4b9b5` 同样命中，残差 0.0。
+   - 剥掉短尾后，台阶切在第 15 行（0 起，y=582.5）。左缘齐在 36.0。上半段右缘中位 286.8，下半段右缘中位 323.7，差 36.9pt。
+   - 右侧照片从 x=255.3 起。中文正文保持 12pt，左缘 36.0。前 17 条满行的右缘贴着同一高度的英文行，偏差 −1.6…+1.6pt，没有比英文更深入照片。中文在第 18 行收束（右缘 132.0）。英文其后还有 4 条宽行（右缘 321.6–323.9），没有对应中文，末行也没有被拉到 324。
+   - dual：`tmp/fill-right-lower-wide/ees-p10/Explosive Ejaculation Stimulation.no_watermark.zh-CN.dual.pdf`（1467523 字节）。切片：同目录 `step-crop.png`、`body-crop.png`。
+
+2. **《Orgasmic Sex Positions》印刷页 44**（PDF 第 44 页）
+   - 目录 digest `8c65ba3eb697667b` 不在原始文本块上。现场轮廓 digest `535de1d0a83a4863`。布局日志块 `c49366` 命中 `step/right_lower_wide`，残差 0.0。
+   - 剥掉短尾后，台阶切在第 19 行。左架 66.0（英文首行左缘 84.0）。上半段右缘中位 213.9，下半段右缘中位 549.8，差 335.9pt。
+   - 插图 x=222.0–612.0，y=203.9–520.0。中文窄栏 15 行，字号 12.50，左缘 66.0，右缘 210.0–211.7，距插图左缘 10.3–12.0pt。第一宽行 y=527.2（在插图底边之下），右缘 547.0（英文 549.8）。第二宽行右缘 418.0，没有拉满。
+   - 新 dual 的正文行框与 p44i 一致。标题「飞天狗」左缘是 66.4（p44i 为 114.0），y=288.4。
+   - dual：`tmp/fill-right-lower-wide/osp-p44/Orgasmic Sex Positions.no_watermark.zh-CN.dual.pdf`（441151 字节）。切片：同目录 `step-crop.png`、`cn-column.png`。
+
 ## 2026-10-30 — bow/right_inset（右弧形内凹避让）双语试页双样本核验通过
 
 1. **范式几何特征与识别结果 (`bow/right_inset`)**：
