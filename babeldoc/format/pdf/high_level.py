@@ -1057,9 +1057,6 @@ def _do_translate_single(
         from babeldoc.format.pdf.document_il.utils.mixed_column_split import (
             split_mixed_column_wraps,
         )
-        from babeldoc.format.pdf.document_il.utils.sealed_paragraph_join import (
-            join_sealed_paragraphs,
-        )
         from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
             absorb_short_continuations,
         )
@@ -1084,6 +1081,9 @@ def _do_translate_single(
         from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
             run_legacy_column_flow,
         )
+        from babeldoc.format.pdf.document_il.utils.sealed_paragraph_join import (
+            join_sealed_paragraphs,
+        )
 
         # Seal-joined lines are one paragraph. A straight run glued to a
         # wrap is cut apart after that, so the plan can label each part.
@@ -1106,6 +1106,40 @@ def _do_translate_single(
         logger.warning(
             "rect column prepare failed; continuing", exc_info=True
         )
+
+    # Column join runs after the first split. A directory row it pulled
+    # back onto the line above is cut again before translation. A page
+    # number inside the leader formula is lifted after that.
+    try:
+        from babeldoc.format.pdf.document_il.midend.paragraph_finder import (
+            generate_base58_id,
+        )
+        from babeldoc.format.pdf.document_il.utils.toc_rows import capture_toc_leaders
+        from babeldoc.format.pdf.document_il.utils.toc_rows import clear_toc_source
+        from babeldoc.format.pdf.document_il.utils.toc_rows import (
+            detach_leader_page_numbers,
+        )
+        from babeldoc.format.pdf.document_il.utils.toc_rows import fit_directory_boxes
+        from babeldoc.format.pdf.document_il.utils.toc_rows import remember_toc_source
+        from babeldoc.format.pdf.document_il.utils.toc_rows import (
+            separate_glued_directory_rows,
+        )
+
+        clear_toc_source()
+        for page in getattr(docs, "page", None) or []:
+            separate_glued_directory_rows(
+                page.pdf_paragraph,
+                new_debug_id_factory=generate_base58_id,
+            )
+            capture_toc_leaders(page.pdf_paragraph)
+            detach_leader_page_numbers(
+                page.pdf_paragraph,
+                new_debug_id_factory=generate_base58_id,
+            )
+            fit_directory_boxes(page.pdf_paragraph)
+            remember_toc_source(page.pdf_paragraph)
+    except Exception:
+        logger.warning("directory row split failed; continuing", exc_info=True)
 
     # Generate Flow Debug SVG files for layout analysis visualization
     if translation_config.debug:

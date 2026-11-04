@@ -59,15 +59,13 @@ def left_rag(edges: BlockEdges, lines: Sequence[Sequence[float]]) -> float | Non
 
 
 def right_step(
-    edges: BlockEdges, lines: Sequence[Sequence[float]], kind: str
+    _edges: BlockEdges, lines: Sequence[Sequence[float]], kind: str
 ) -> float | None:
     """Left-edge span when the right edge is the named two-width walk.
 
     The first line may sit to the right of a straight shelf. A first
     line to the left of that shelf is a hang, not this walk.
     """
-    if edges.marker != "none":
-        return None
     body = _strip_short_tail(lines)
     if len(body) < 4:
         return None
@@ -85,7 +83,7 @@ def right_bow(
     edges: BlockEdges, lines: Sequence[Sequence[float]], kind: str
 ) -> float | None:
     """Left-edge span when the right edge makes one deep turn."""
-    if edges.marker != "none":
+    if edges.marker not in ("none", "bullet", "number"):
         return None
     body = _strip_short_tail(lines)
     lefts = _coord(body, 0)
@@ -98,11 +96,9 @@ def right_bow(
 
 
 def left_step(
-    edges: BlockEdges, lines: Sequence[Sequence[float]], kind: str
+    _edges: BlockEdges, lines: Sequence[Sequence[float]], kind: str
 ) -> float | None:
     """Right-edge span when the left edge is the named two-width walk."""
-    if edges.marker != "none":
-        return None
     if _hang_indent(lines) is not None or _first_line_indent(lines) is not None:
         return None
     body = _strip_short_tail(lines)
@@ -121,7 +117,7 @@ def left_bow(
     edges: BlockEdges, lines: Sequence[Sequence[float]], kind: str
 ) -> float | None:
     """Right-edge span when the left edge makes one deep turn."""
-    if edges.marker != "none":
+    if edges.marker not in ("none", "bullet", "number"):
         return None
     if _hang_indent(lines) is not None or _first_line_indent(lines) is not None:
         return None
@@ -492,6 +488,8 @@ def _repeated_indent(lines: Sequence[Sequence[float]]) -> float | None:
     floors = [index for index, value in enumerate(lefts) if value <= floor + _SLACK]
     indented = [value for value in lefts if value >= floor + _HANG_MIN]
     if len(floors) < 2 or len(indented) < 3 or _span(indented) > _WALL:
+        return None
+    if min(indented) - floor > _HANG_DEEP:
         return None
     seen = False
     for value in lefts:

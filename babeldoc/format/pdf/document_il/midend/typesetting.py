@@ -1641,7 +1641,13 @@ class Typesetting:
                         pw = float(page.cropbox.box.x2 - page.cropbox.box.x)
                     except Exception:
                         pw = 612.0
-                    if is_figure_wrap_tip_crumb(paragraph, page_width=pw):
+                    from babeldoc.format.pdf.document_il.utils.toc_rows import (
+                        is_toc_paragraph,
+                    )
+
+                    if is_figure_wrap_tip_crumb(
+                        paragraph, page_width=pw
+                    ) and not is_toc_paragraph(paragraph):
                         paragraph.pdf_paragraph_composition = []
                         paragraph.unicode = ""
                         paragraph.optimal_scale = 1.0
@@ -1852,6 +1858,8 @@ class Typesetting:
             filtered_zones = page_zones.filter_for_paragraph(
                 paragraph.box,
                 drop_all_figures=drop_figure_zones,
+                paragraph=paragraph,
+                page=page,
             )
         prev_zones = page_zones
         prev_wrap = getattr(self, "_wrap_enabled", None)
@@ -1912,8 +1920,11 @@ class Typesetting:
         from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
             stays_in_source_box,
         )
+        from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
 
-        pinned = on_photo or stays_in_source_box(paragraph)
+        pinned = on_photo or stays_in_source_box(paragraph) or is_toc_paragraph(
+            paragraph
+        )
         ocr_mode = bool(
             getattr(self.translation_config, "ocr_workaround", False)
         )
@@ -3010,6 +3021,10 @@ class Typesetting:
 
         if stays_in_source_box(paragraph):
             return box
+        from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
+
+        if is_toc_paragraph(paragraph):
+            return box
 
         # Figure-wrap: never left-expand over the side photo (OA p19).
         # Single policy in wrap_shape.should_skip_pre_expand_for_wrap.
@@ -3171,6 +3186,8 @@ class Typesetting:
         precomputed_scale: float,
         use_english_line_break: bool = True,
         line_skip: float | None = None,
+        *,
+        layout_attempt: LayoutAttempt | None = None,
     ):
         """使用预计算的缩放因子进行排版"""
         if not paragraph.box:
@@ -3185,6 +3202,7 @@ class Typesetting:
             use_english_line_break,
             apply_layout=True,
             line_skip=line_skip,
+            layout_attempt=layout_attempt,
         )
 
     def _fonts_for_typesetting(self, page):
@@ -3462,6 +3480,18 @@ class Typesetting:
             )
             return RetypesetResult(success=False, reason="exception during retypeset")
 
+    def _toc_leader_glyph(self, font_id: str | None, text: str):
+        """Glyph id of a leader in the font the title is already using."""
+        if not text:
+            return None
+        font = self.font_mapper.fontid2font.get(font_id) if font_id else None
+        if font is None or not font.has_glyph(ord(text)):
+            font = self.font_mapper.base_font
+        glyph_id = font.has_glyph(ord(text)) if font is not None else 0
+        if not glyph_id:
+            return None
+        return font.font_id, int(glyph_id)
+
     def render_page(self, page: il_version_1.Page):
         fonts = self._collect_fonts_for_page(page)
         if (
@@ -3597,7 +3627,6 @@ class Typesetting:
             from babeldoc.format.pdf.document_il.utils.shaped_pocket_stack import (
                 pack_shaped_pockets,
             )
-
             mark_display_bands(page)
             yield_to_display_bands(page)
             assign_rect_flow_boxes(page)
@@ -3681,6 +3710,16 @@ class Typesetting:
             )
 
             seat_dropped_headings(page, getattr(self, "_shelf_drops", None) or {})
+            from babeldoc.format.pdf.document_il.utils.toc_rows import paint_toc_leaders
+            from babeldoc.format.pdf.document_il.utils.toc_rows import (
+                pin_toc_row_baselines,
+            )
+
+            pin_toc_row_baselines(page.pdf_paragraph)
+            paint_toc_leaders(
+                page.pdf_paragraph,
+                glyph_for=self._toc_leader_glyph,
+            )
         finally:
             self._page_layout_audit = None
             self._current_page = None
@@ -3692,6 +3731,10 @@ class Typesetting:
         Units are read before the composition is cleared. Passthrough is
         not used: it would keep the widths from the previous height.
         """
+        from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+            LayoutAttempt,
+        )
+
         for paragraph in paragraphs:
             saved = list(paragraph.pdf_paragraph_composition or [])
             try:
@@ -3702,7 +3745,11 @@ class Typesetting:
                 # optimal_scale would shrink them again.
                 paragraph.pdf_paragraph_composition = []
                 self.retypeset_with_precomputed_scale(
-                    paragraph, page, units, 1.0
+                    paragraph,
+                    page,
+                    units,
+                    1.0,
+                    layout_attempt=LayoutAttempt.PRIMARY,
                 )
                 self._update_paragraph_render_order(paragraph)
             except Exception:
@@ -3827,6 +3874,14 @@ class Typesetting:
                         continue
                     if is_chrome_paragraph(p1, page) or is_chrome_paragraph(p2, page):
                         # never shrink / retypeset skipped site chrome
+                        continue
+                    from babeldoc.format.pdf.document_il.utils.toc_rows import (
+                        is_toc_paragraph,
+                    )
+
+                    # A directory row stays on its source line. Pushing a
+                    # chain walks the list off the page.
+                    if is_toc_paragraph(p1) or is_toc_paragraph(p2):
                         continue
                     b1 = rendered_boxes.get(id(p1))
                     b2 = rendered_boxes.get(id(p2))
@@ -4037,7 +4092,11 @@ class Typesetting:
 
         # Pop the saved name face even when this paragraph is then cleared.
         apply_run_in_lead_style(paragraph)
-        if is_figure_wrap_tip_crumb(paragraph, page_width=pw):
+        from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
+
+        if is_figure_wrap_tip_crumb(paragraph, page_width=pw) and not is_toc_paragraph(
+            paragraph
+        ):
             paragraph.pdf_paragraph_composition = []
             paragraph.unicode = ""
             return
@@ -4320,6 +4379,18 @@ class Typesetting:
         Architecture: docs/line-interval-architecture.md. Typesetting only wires.
         A frozen figure pocket is the interval. It is not the English line.
         """
+        # A contents row is one band from its own left edge. A line-edge
+        # or a figure zone must not park the title in the leader.
+        if (
+            paragraph is not None
+            and box is not None
+            and box.x is not None
+            and box.x2 is not None
+        ):
+            from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
+
+            if is_toc_paragraph(paragraph):
+                return [(float(box.x), float(box.x2))]
         line_edges = getattr(self, "_line_edges", None)
         if line_edges is not None:
             from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
@@ -4335,6 +4406,7 @@ class Typesetting:
                 # in the capacity path and would cover the obstacle.
                 anchor = box.x if box is not None and box.x is not None else 0.0
                 return [(float(anchor), float(anchor))]
+
             return [found]
         pocket = getattr(self, "_pocket_link", None)
         if pocket is not None:
@@ -4891,7 +4963,7 @@ class Typesetting:
             box.x2 is not None
             and available_x2 < (box.x2 - 12.0)
         )
-        if has_obstacle:
+        if has_obstacle and line_start == available_x:
             cap_x2 = available_x2
         else:
             cap_x2 = min(available_x2, line_start + ref_w)

@@ -25,6 +25,9 @@ from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.utils.layout_audit import LayoutAuditReport
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+    is_display_band_owner,
+)
 from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
 from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
 
@@ -417,13 +420,18 @@ def enforce_title_body_gaps(
         if not is_display_title(title):
             continue
 
-        # Check content above title to prevent upper blocks from crowding into the title
-        upper = find_content_above(
-            page,
-            title,
-            lower_box=ink[id(title)],
-            ink=ink,
-        )
+        # Check content above title to prevent upper blocks from crowding into the title.
+        # A title bound to a graphic banner/band is visually fixed to that graphic;
+        # shifting it downward would move it off the banner.
+        if is_display_band_owner(title, page):
+            upper = None
+        else:
+            upper = find_content_above(
+                page,
+                title,
+                lower_box=ink[id(title)],
+                ink=ink,
+            )
         if upper is not None and id(upper) in ink:
             ubox = ink[id(upper)]
             tbox = ink[id(title)]
@@ -495,7 +503,11 @@ def enforce_title_body_gaps(
                 continue
             if not boxes_x_overlap(bbox, cbox):
                 continue
-            if is_chrome_paragraph(cand, page):
+            if (
+                is_chrome_paragraph(cand, page)
+                or is_gap_protected(cand, page)
+                or is_display_band_owner(cand, page)
+            ):
                 continue
             to_shift.append(cand)
 
@@ -586,7 +598,11 @@ def enforce_title_body_gaps_legacy(
                 continue
             if is_display_title(cand) and max_font_size(cand) >= max_font_size(title) * 0.85:
                 continue
-            if is_chrome_paragraph(cand, page):
+            if (
+                is_chrome_paragraph(cand, page)
+                or is_gap_protected(cand, page)
+                or is_display_band_owner(cand, page)
+            ):
                 continue
             body = cand
             break
@@ -612,7 +628,11 @@ def enforce_title_body_gaps_legacy(
                 continue
             if is_display_title(cand):
                 continue
-            if is_chrome_paragraph(cand, page):
+            if (
+                is_chrome_paragraph(cand, page)
+                or is_gap_protected(cand, page)
+                or is_display_band_owner(cand, page)
+            ):
                 continue
             to_shift.append(cand)
 

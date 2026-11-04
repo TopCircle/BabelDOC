@@ -13,10 +13,6 @@ from babeldoc.format.pdf.document_il import Box
 from babeldoc.format.pdf.document_il.utils.layout_plan.seal import seal_lines
 from babeldoc.format.pdf.document_il.utils.rect_flow_stack import _lines_of
 
-_TOC_LEADER_RE = re.compile(
-    r"(?:\.{3,}|_{3,}|\-{3,}|\.(?:\s*\.){3,})\s*\d+",
-    re.MULTILINE,
-)
 _HEADING_PATTERN = re.compile(
     r"^(?:part|chapter|section|technique|step|volume|book|act|appendix|bonus)\s+\d+[:\s\.]",
     re.IGNORECASE,
@@ -45,32 +41,41 @@ def _has_list_marker(paragraph) -> bool:
     return False
 
 
-def _is_toc(paragraph) -> bool:
-    intent = getattr(paragraph, "layout_intent", None)
-    role = getattr(intent, "role", None) if intent is not None else None
-    role_val = getattr(role, "value", role) if role is not None else None
-    if role_val == "toc" or getattr(paragraph, "layout_label", None) == "toc":
-        return True
-    text = (getattr(paragraph, "unicode", None) or "").strip()
-    if bool(_TOC_LEADER_RE.search(text)):
-        return True
-    return False
-
-
 def _role_of_para(paragraph) -> str | None:
     intent = getattr(paragraph, "layout_intent", None)
     role = getattr(intent, "role", None) if intent is not None else None
     return getattr(role, "value", role) if role is not None else getattr(paragraph, "layout_label", None)
 
 
+def _text_of_para(paragraph) -> str:
+    text = getattr(paragraph, "unicode", None)
+    if text:
+        return text.strip()
+    from babeldoc.format.pdf.document_il.utils.rect_flow_stack import _source_text
+
+    return _source_text(paragraph).strip()
+
+
 def _should_not_join(prev, curr) -> bool:
-    if _is_toc(prev) or _is_toc(curr):
+    from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
+    from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
+
+    if is_layout_debug_stub(prev) or is_layout_debug_stub(curr):
+        return True
+    if is_toc_paragraph(prev) or is_toc_paragraph(curr):
         return True
     if _has_list_marker(curr):
         return True
-    t_prev = (getattr(prev, "unicode", None) or "").strip()
-    t_curr = (getattr(curr, "unicode", None) or "").strip()
+    t_prev = _text_of_para(prev)
+    t_curr = _text_of_para(curr)
     if bool(_HEADING_PATTERN.match(t_curr)) or bool(_HEADING_PATTERN.match(t_prev)):
+        return True
+    if (
+        len(_lines_of(prev)) == 1
+        and t_prev.isupper()
+        and len(t_prev.split()) <= 6
+        and not t_prev.endswith((".", "!", "?", ",", ";", ":"))
+    ):
         return True
     role_prev = _role_of_para(prev)
     role_curr = _role_of_para(curr)
@@ -129,9 +134,13 @@ def join_sealed_paragraphs(page) -> None:
 
 
 def _records(paragraphs):
+    from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
+
     records = []
     pool = []
     for paragraph in paragraphs:
+        if is_layout_debug_stub(paragraph):
+            continue
         lines = _lines_of(paragraph)
         records.append((paragraph, lines))
         pool.extend(lines)

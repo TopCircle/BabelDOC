@@ -38,9 +38,12 @@ def claim(edges: BlockEdges, lines: Sequence[Sequence[float]]) -> float | None:
     """Residual is the pinned edge. A short or folded free edge is not a candidate."""
     if not _candidate(edges, lines):
         return None
+    pinned = _pinned_after_tail(lines)
+    if pinned >= THRESHOLD:
+        return pinned
     if edges.right_range < THRESHOLD or _keep_shared_range(lines):
         return edges.right_range
-    return _pinned_after_tail(lines)
+    return pinned
 
 
 def _candidate(edges: BlockEdges, lines: Sequence[Sequence[float]]) -> bool:

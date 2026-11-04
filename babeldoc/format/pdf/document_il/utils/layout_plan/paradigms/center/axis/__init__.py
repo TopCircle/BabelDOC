@@ -18,7 +18,7 @@ from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.contract import
 )
 
 THRESHOLD: float = 24.0
-ALIGNMENT = "right"
+ALIGNMENT = "center"
 
 _MIN_LINES = 4
 _PITCH = 22.0

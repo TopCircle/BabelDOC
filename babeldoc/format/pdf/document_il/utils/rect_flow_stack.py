@@ -598,6 +598,8 @@ def _append_figure(found: list[FigureBox], box, width: float, height: float) -> 
         x0, x1 = x1, x0
     if x1 - x0 <= 1.0 or y1 - y0 <= 1.0:
         return
+    if (x1 - x0) >= width * 0.85 and (y1 - y0) >= height * 0.70:
+        return
     if x0 <= 2.0 and y0 <= 2.0 and x1 >= width - 2.0 and y1 >= height - 2.0:
         return
     found.append(FigureBox(x0, y0, x1, y1))
@@ -616,19 +618,57 @@ def column_gap_for(page, paragraph):
     return _pocket_from_column(link)
 
 
-def figure_gap_tops(page) -> dict[str, float]:
-    """Box top of each rect column that has a figure gap, by region id.
+def _paragraph_has_figure_gap(paragraph, page, link=None) -> bool:
+    if link is not None and getattr(link, "gap_slices", None):
+        return True
+    try:
+        from babeldoc.format.pdf.document_il.utils.figure_wrap import (
+            is_figure_wrap_paragraph,
+        )
 
-    A straight column with no slices is absent. The map is for one call.
-    """
+        if is_figure_wrap_paragraph(paragraph):
+            return True
+    except Exception:
+        pass
+    box = getattr(paragraph, "box", None)
+    if box is None or box.y is None or box.y2 is None:
+        return False
+    pw, ph = _page_size(page)
+    for fig in getattr(page, "pdf_figure", None) or []:
+        fb = getattr(fig, "box", None)
+        if fb is not None and fb.y is not None and fb.y2 is not None:
+            if fb.x is not None and fb.x2 is not None and pw > 0 and ph > 0:
+                if (fb.x2 - fb.x) >= 0.95 * pw and (fb.y2 - fb.y) >= 0.95 * ph:
+                    continue
+            if max(float(box.y), float(fb.y)) < min(float(box.y2), float(fb.y2)):
+                return True
+    for form in getattr(page, "pdf_form", None) or []:
+        if (
+            getattr(form, "form_type", None) == "image"
+            and getattr(form, "box", None) is not None
+        ):
+            fb = form.box
+            if fb.y is not None and fb.y2 is not None:
+                if fb.x is not None and fb.x2 is not None and pw > 0 and ph > 0:
+                    if (fb.x2 - fb.x) >= 0.95 * pw and (fb.y2 - fb.y) >= 0.95 * ph:
+                        continue
+                if max(float(box.y), float(fb.y)) < min(float(box.y2), float(fb.y2)):
+                    return True
+    return False
+
+
+def figure_gap_tops(page) -> dict[str, float]:
+    """Box top of each rect column or wrap paragraph that has a figure gap."""
     links = _rect_links(page)
     tops: dict[str, float] = {}
-    if not links:
-        return tops
     for paragraph in getattr(page, "pdf_paragraph", None) or []:
         region_id = getattr(paragraph, "layout_region_id", None)
-        link = links.get(region_id)
-        if region_id is None or link is None or not link.gap_slices:
+        if region_id is None:
+            region_id = getattr(paragraph, "debug_id", None)
+        if region_id is None:
+            continue
+        link = links.get(region_id) if links else None
+        if not _paragraph_has_figure_gap(paragraph, page, link=link):
             continue
         box = getattr(paragraph, "box", None)
         if box is None or box.y2 is None:
@@ -648,6 +688,8 @@ def moved_figure_gap_paragraphs(page, tops: dict[str, float]) -> list:
     found = []
     for paragraph in getattr(page, "pdf_paragraph", None) or []:
         region_id = getattr(paragraph, "layout_region_id", None)
+        if region_id is None:
+            region_id = getattr(paragraph, "debug_id", None)
         if region_id not in tops:
             continue
         box = getattr(paragraph, "box", None)
@@ -835,10 +877,9 @@ def _restore(page, state: dict) -> None:
 
 def _role_of(paragraph) -> str | None:
     role = _labeled_role(paragraph)
-    # Styles stores a leading bullet as a formula, and intent then marks the
-    # whole item formula or list. Drop only this tag so the existing marker
-    # rule can run.
-    if (role == "formula" or role == "list") and _opens_as_list(paragraph):
+    # A list item may be mislabeled by DocLayout / layout parser as formula,
+    # title, section_header, or list. Drop any such tag so the marker rule can run.
+    if _opens_as_list(paragraph):
         return None
     lines = _lines_of(paragraph)
     # A multi-line narrative/dialogue/bibliography block is a body column,
@@ -846,6 +887,8 @@ def _role_of(paragraph) -> str | None:
     if role == "formula" and len(lines) >= 2:
         return None
     if role in ("pull_quote", "callout") and len(lines) >= 4:
+        return None
+    if role in ("title", "section_header") and len(lines) >= 4:
         return None
     return role
 
@@ -925,7 +968,17 @@ def _skin_cuts_box(box, figures) -> bool:
 
 
 def _source_text(paragraph) -> str:
-    return getattr(paragraph, "unicode", None) or ""
+    text = getattr(paragraph, "unicode", None)
+    if text:
+        return text
+    from babeldoc.format.pdf.document_il.utils.layout_helper import (
+        get_paragraph_unicode,
+    )
+
+    try:
+        return get_paragraph_unicode(paragraph) or ""
+    except Exception:
+        return ""
 
 
 def _lines_of(paragraph) -> tuple[LineBox, ...]:

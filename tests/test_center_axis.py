@@ -112,8 +112,8 @@ def test_the_fill_keeps_each_scanned_line():
     assert len(plan.line_edge_links) == 1
     link = plan.line_edge_links[0]
     assert link.edges == pairs
-    assert link.alignment == "right"
-    assert link.to_dict()["alignment"] == "right"
+    assert link.alignment == "center"
+    assert link.to_dict()["alignment"] == "center"
     assert [level.top for level in link.levels] == [line[2] for line in _AXIS]
     assert [level.kind for level in link.levels] == ["observed"] * len(_AXIS)
 
@@ -133,7 +133,7 @@ def test_the_fill_keeps_each_scanned_line():
     page.layout_plan = plan
     page.pdf_paragraph = [_Paragraph()]
     assign_line_edge_boxes(page)
-    assert page.pdf_paragraph[0].alignment == "right"
+    assert page.pdf_paragraph[0].alignment == "center"
     assert page.pdf_paragraph[0].box.x == pytest.approx(min(line[0] for line in _AXIS))
     assert page.pdf_paragraph[0].box.x2 == pytest.approx(max(line[1] for line in _AXIS))
     assert page.pdf_paragraph[0].first_line_indent == 0
@@ -141,7 +141,7 @@ def test_the_fill_keeps_each_scanned_line():
 
 def test_body_fills_stay_left_aligned():
     catalog = {item.name: item for item in load_catalog()}
-    assert catalog["center/axis"].alignment == "right"
+    assert catalog["center/axis"].alignment == "center"
     for name, item in catalog.items():
         if name == "center/axis":
             continue
@@ -185,9 +185,9 @@ def test_the_width_is_the_contour_at_that_height():
     assert interval_for_line_edges(link, 0, 290.0, 303.0) == pytest.approx(
         (417.004, 551.578)
     )
-    # A band across two slabs stays inside their overlap.
+    # The baseline at 300.0 sits on the 6th slab (top 303.496, below 278.504).
     assert interval_for_line_edges(link, 0, 300.0, 310.0) == pytest.approx(
-        (417.004, 520.932)
+        (417.004, 551.578)
     )
     # These edges have no height. The old assertion still returned the
     # second English edge for a query at y 0–10, which is index 1, not

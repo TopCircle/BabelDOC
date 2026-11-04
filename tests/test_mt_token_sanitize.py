@@ -162,6 +162,13 @@ def test_scrub_cjk_embedded_english_oa_crumbs():
     assert "有机缘" in (normalize_translated_text("所以这里机缘让你") or "")
 
 
+def test_fosr_chapter_min_blowing_title():
+    src = "第六章：How to give her a min 口交"
+    assert normalize_translated_text(src) == "第六章：如何给她一分钟口交"
+    nbsp = "第六章：How\u00a0to\u00a0give\u00a0her\u00a0a\u00a0min\u00a0口交"
+    assert normalize_translated_text(nbsp) == "第六章：如何给她一分钟口交"
+
+
 def test_scrub_s30_latin_crumb_classes():
     """Systematic OA Latin crumb classes (leftover / hyphen / debug / ligature)."""
     assert "enjoyable" not in (normalize_translated_text("更好、更 enjoyable 的角度") or "")

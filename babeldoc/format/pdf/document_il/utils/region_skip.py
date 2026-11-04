@@ -238,7 +238,7 @@ def is_layout_debug_stub(paragraph: PdfParagraph) -> bool:
     if re.match(r"^(?:paragraph\[|pagenumber[: ])", uni):
         return True
     for comp in getattr(paragraph, "pdf_paragraph_composition", None) or []:
-        ss = comp.pdf_same_style_unicode_characters
+        ss = getattr(comp, "pdf_same_style_unicode_characters", None)
         if ss is not None and getattr(ss, "debug_info", False):
             return True
     return False

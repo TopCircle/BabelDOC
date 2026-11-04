@@ -122,6 +122,8 @@ def _figures(page) -> tuple[FigureBox, ...]:
             x0, x1 = x1, x0
         if x1 - x0 <= 1.0 or top - bottom <= 1.0:
             continue
+        if (x1 - x0) >= width * 0.85 and (top - bottom) >= height * 0.70:
+            continue
         if x0 <= 2.0 and bottom <= 2.0 and x1 >= width - 2.0 and top >= height - 2.0:
             continue
         found.append(FigureBox(x0, bottom, x1, top))

@@ -112,3 +112,60 @@ def unittest_mock_list_links(list_links, rect_links):
             p1.__exit__(*args)
 
     return CombinedMock()
+
+
+def test_multi_line_run_in_lead_does_not_split():
+    """Multi-line heading run-in lead (e.g. bold heading wrapping to line 2 before body) does not split."""
+    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+        multi_line_run_in_continues,
+    )
+    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+        should_split_line_pair,
+    )
+
+    def mk_line(text, font_id, x=100.0, y=500.0):
+        chars = [
+            PdfCharacter(
+                char_unicode=c,
+                box=Box(x=x + i * 6, y=y, x2=x + (i + 1) * 6, y2=y + 10),
+                pdf_style=PdfStyle(font_id=font_id, font_size=10.0),
+            )
+            for i, c in enumerate(text)
+        ]
+        return PdfLine(
+            box=Box(x=x, y=y, x2=x + len(text) * 6, y2=y + 10),
+            pdf_character=chars,
+        )
+
+    # Line 0: bold numbered title
+    l0 = mk_line(
+        "3. SIT DOWN WITH YOUR LADY ONCE A DAY AND DISCUSS WHAT'S",
+        "BoldFont",
+    )
+    # Line 1: finishes bold title, continues with body text
+    chars_l1 = [
+        PdfCharacter(
+            char_unicode=c,
+            box=Box(x=100 + i * 6, y=485, x2=100 + (i + 1) * 6, y2=495),
+            pdf_style=PdfStyle(font_id="BoldFont", font_size=10.0),
+        )
+        for i, c in enumerate("GOING ON WITH HER. ")
+    ] + [
+        PdfCharacter(
+            char_unicode=c,
+            box=Box(x=214 + i * 6, y=485, x2=214 + (i + 1) * 6, y2=495),
+            pdf_style=PdfStyle(font_id="BodyFont", font_size=10.0),
+        )
+        for i, c in enumerate("This means talking about what she feels...")
+    ]
+    l1 = PdfLine(box=Box(x=100, y=485, x2=500, y2=495), pdf_character=chars_l1)
+
+    assert multi_line_run_in_continues(l0, l1)
+    assert not should_split_line_pair(
+        l0,
+        l1,
+        median_width=400,
+        split_short_lines=True,
+        short_line_split_factor=0.6,
+    )
+

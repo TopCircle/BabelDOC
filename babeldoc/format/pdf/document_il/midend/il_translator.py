@@ -1084,10 +1084,28 @@ class ILTranslator:
             self.record_skip(page, paragraph, SkipReason.EMPTY_COMPOSITION)
             return
 
-        # Skip pure numeric paragraphs
-        if is_pure_numeric_paragraph(paragraph):
+        # A contents page number is body, not a running footer. Translate it
+        # so the digit is drawn with the embedded font at its source x.
+        from babeldoc.format.pdf.document_il.utils.toc_rows import formula_digit_text
+        from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
+        from babeldoc.format.pdf.document_il.utils.toc_rows import (
+            paragraph_leader_title,
+        )
+
+        keep_toc_number = is_toc_paragraph(paragraph)
+        if is_pure_numeric_paragraph(paragraph) and not keep_toc_number:
             self.record_skip(page, paragraph, SkipReason.PURE_NUMERIC)
             return None
+
+        # Underscore / dot leaders are not a formula in the middle of the title.
+        leader_title = paragraph_leader_title(paragraph)
+        if leader_title:
+            translate_input = self.TranslateInput(
+                leader_title,
+                [],
+                paragraph.pdf_style,
+            )
+            return translate_input
 
         # Skip paragraphs with only placeholders
         if is_placeholder_only_paragraph(paragraph):
@@ -1144,6 +1162,9 @@ class ILTranslator:
                 )
                 return translate_input
             elif composition.pdf_formula:
+                digits = formula_digit_text(composition.pdf_formula)
+                if digits:
+                    return self.TranslateInput(digits, [], paragraph.pdf_style)
                 # 不需要翻译纯公式
                 return None
             elif composition.pdf_same_style_unicode_characters:

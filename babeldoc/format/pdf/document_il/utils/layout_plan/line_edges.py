@@ -195,7 +195,7 @@ def _interval_on_levels(
     right = min(level.right for level, _below in slabs)
     if right - left < 1.0:
         return None
-    if slabs[0][0] is samples[0] and y_top >= samples[0].top - 1.0:
+    if slabs[0][0] is samples[0] and y_top >= samples[0].top - 4.0:
         host = samples[0]
     else:
         host = slabs[0][0]

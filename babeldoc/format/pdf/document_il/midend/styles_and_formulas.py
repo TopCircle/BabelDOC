@@ -7,6 +7,7 @@ from babeldoc.format.pdf.document_il.il_version_1 import Document
 from babeldoc.format.pdf.document_il.il_version_1 import GraphicState
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
+from babeldoc.format.pdf.document_il.il_version_1 import PdfCurve
 from babeldoc.format.pdf.document_il.il_version_1 import PdfFormula
 from babeldoc.format.pdf.document_il.il_version_1 import PdfLine
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
@@ -1366,7 +1367,7 @@ class StylesAndFormulas:
             # IoU fails for 0.5pt-tall underlines (IoU ≈ 0.03 << 0.9).
             # Instead check: curve height <= 3.5pt AND within paragraph vertical
             # bounds (with font-size-scaled margin for descenders and underlines).
-            if curve.box and _is_thin_horizontal_line(curve.box):
+            if curve.box and _is_thin_horizontal_line(curve.box, curve):
                 if _curve_within_paragraph_vertical_bounds(curve.box, para_entries):
                     curves_to_remove.append(curve)
 
@@ -1413,20 +1414,52 @@ def _get_paragraph_font_size(para: PdfParagraph) -> float:
     return 12.0
 
 
-def _is_thin_horizontal_line(box: Box) -> bool:
+def _get_curve_stroke_width(curve: PdfCurve | None) -> float | None:
+    """Extract stroke width in points from curve graphic state or instructions."""
+    if curve is None or not getattr(curve, "stroke_path", False):
+        return None
+    if curve.graphic_state and curve.graphic_state.passthrough_per_char_instruction:
+        m = re.findall(
+            r"(?:^|\s)([\d.]+)\s+w\b",
+            curve.graphic_state.passthrough_per_char_instruction,
+        )
+        if m:
+            try:
+                return float(m[-1])
+            except ValueError:
+                pass
+    return None
+
+
+def _is_thin_horizontal_line(box: Box, curve: PdfCurve | None = None) -> bool:
     """Check if a bounding box looks like an underline: very thin and horizontal.
 
     PDF underlines are often zero-height lines (h=0.00) drawn as degenerate
     rectangles or line operators. We treat height <= 1pt as thin-horizontal
     if the width is substantial, or thin rectangles up to 3.5pt with high aspect ratio.
+
+    A stroked line with identical y coordinates (y1 == y2) has box height 0.0,
+    but its visual thickness comes from stroke_width (e.g. 22pt banner). We check
+    the effective thickness: max(box.y2 - box.y, stroke_width).
     """
     height = box.y2 - box.y
     width = box.x2 - box.x
     if width < 3.0:
         return False
-    if height <= 1.0:
+
+    stroke_w = _get_curve_stroke_width(curve)
+    if stroke_w is not None and stroke_w > 0:
+        effective_height = max(height, stroke_w)
+    else:
+        effective_height = height
+
+    # Any curve with effective thickness > 3.5pt is a decorative banner/bar, NOT an underline
+    if effective_height > 3.5:
+        return False
+
+    if effective_height <= 1.0:
         return True  # zero or near-zero height = line, not shape
-    if height <= 3.5 and width / height > 3.0:
+    if effective_height <= 3.5 and width / effective_height > 3.0:
         return True  # thin rectangle / decorative underline stroke
     return False
 
@@ -1435,7 +1468,7 @@ def _curve_within_paragraph_vertical_bounds(
     curve_box: Box,
     para_boxes: list[Box] | list[tuple[Box, float]],
 ) -> bool:
-    """Check if a thin curve sits within the vertical range of any paragraph.
+    """Check if a thin curve sits within the underline vertical range of any paragraph.
 
     In Document IL (PDF coordinate system), y=0 is at page bottom, and y increases
     upwards. Thus para_box.y is the visual bottom of the text, and para_box.y2 is
@@ -1444,10 +1477,9 @@ def _curve_within_paragraph_vertical_bounds(
     Underlines appear visually below the text baseline (lower y: curve_y <= para_box.y).
     For standard body text (9-12pt), descenders and underline offset are within ~3-4pt.
     For larger headings (e.g. 20-30pt), the underline offset scales with font size (~0.25-0.35x).
-    Top margin (on para_box.y2) is kept conservative (~2pt) to avoid catching dividing rules
-    immediately preceding a heading.
+    An underline must sit near the baseline (curve_mid_y <= para_box.y + 0.35 * font_size).
+    It must NEVER sit in the upper half of the text (that would be a background banner or strikethrough).
     """
-    TOP_MARGIN = 2.0  # noqa: N806  # pts — conservative tolerance for glyph bbox at visual top (higher y)
     curve_mid_y = (curve_box.y + curve_box.y2) / 2
     curve_width = curve_box.x2 - curve_box.x
 
@@ -1460,10 +1492,11 @@ def _curve_within_paragraph_vertical_bounds(
 
         underline_margin = max(3.5, 0.35 * font_size)
 
-        # Check vertical containment:
+        # Underline sits near or below the text baseline:
         # Visual bottom is para_box.y; underline sits at or below it: (para_box.y - underline_margin)
-        # Visual top is para_box.y2; conservative top margin: (para_box.y2 + TOP_MARGIN)
-        if (para_box.y - underline_margin) <= curve_mid_y <= (para_box.y2 + TOP_MARGIN):
+        # It must not sit higher than lower portion of text: para_box.y + 0.35 * font_size
+        max_underline_y = min((para_box.y + para_box.y2) / 2, para_box.y + 0.35 * font_size)
+        if (para_box.y - underline_margin) <= curve_mid_y <= max_underline_y:
             # Check horizontal: curve must at least partially overlap paragraph
             if curve_box.x2 > para_box.x and curve_box.x < para_box.x2:
                 # An underline cannot be substantially wider than the text it underlines.

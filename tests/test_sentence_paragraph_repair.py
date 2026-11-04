@@ -42,7 +42,15 @@ def _mixed(
     )
 
 
-def _line(text: str, *, x: float, y: float, font_id: str = "Myriad", size: float = 12.0):
+def _line(
+    text: str,
+    *,
+    x: float,
+    y: float,
+    x2: float | None = None,
+    font_id: str = "Myriad",
+    size: float = 12.0,
+):
     chars = []
     cursor = x
     for char in text:
@@ -56,7 +64,12 @@ def _line(text: str, *, x: float, y: float, font_id: str = "Myriad", size: float
         cursor += 6
     return PdfParagraphComposition(
         pdf_line=PdfLine(
-            box=Box(x=x, y=y, x2=max(cursor, x + 1), y2=y + 12),
+            box=Box(
+                x=x,
+                y=y,
+                x2=x2 if x2 is not None else max(cursor, x + 1),
+                y2=y + 12,
+            ),
             pdf_character=chars,
         )
     )
@@ -219,3 +232,176 @@ def test_a_split_tail_keeps_the_xobject_and_joins_below():
     assert paragraphs[1].xobj_id == 7
     assert paragraphs[1].vertical is True
     assert _text(paragraphs[1]) == "and then she|kept going"
+
+
+def test_wrap_continuation_around_side_figure_joins():
+    """A sentence stepping right to wrap around a figure joins when right edges align."""
+    upper = _para(
+        _line("Next, move your body up as much as possible while still keeping your penis inside", x=84, y=338),
+        _line("of her. You want the weight of your body propped up by your hands and your pubic", x=66, y=323),
+    )
+    # Right edge is pinned to x=550
+    upper.box.x2 = 550.0
+    for comp in upper.pdf_paragraph_composition:
+        comp.pdf_line.box.x2 = 550.0
+
+    lower = _para(
+        _line("mound grinding into hers. With each thrust, focus on rubbing the fleshy part", x=312, y=308),
+        _line("of your body just above where the penis meets the flesh along her slit.", x=312, y=293),
+    )
+    lower.box.x2 = 550.0
+    for comp in lower.pdf_paragraph_composition:
+        comp.pdf_line.box.x2 = 550.0
+
+    paragraphs = [upper, lower]
+    repair_broken_sentences(paragraphs)
+    assert len(paragraphs) == 1
+    joined = _text(paragraphs[0])
+    assert "and your pubic|mound grinding into hers" in joined
+
+
+def test_same_line_horizontal_split_joins():
+    """Two paragraph boxes meeting mid-line join and splice that line into one."""
+    upper = _para(
+        _line("There are several ways to rebuild intimacy in your relationship.", x=113, y=544),
+        _line("Because women are usually the ones who don't", x=113, y=530),
+    )
+    # Line 2 ends at x2=208
+    upper.pdf_paragraph_composition[1].pdf_line.box.x2 = 208.0
+
+    lower = _para(
+        _line("enjoy having sex when there is lack of intimacy", x=211, y=530),
+        _line("in their relationship, this exercise provides women with what they need.", x=113, y=516),
+    )
+    lower.pdf_paragraph_composition[0].pdf_line.box.x2 = 328.0
+
+    paragraphs = [upper, lower]
+    repair_broken_sentences(paragraphs)
+    assert len(paragraphs) == 1
+    joined = _text(paragraphs[0])
+    assert "the ones who don't" in joined
+    assert "enjoy having sex when" in joined
+    # The two segments on y=530 are spliced into one line
+    assert paragraphs[0].pdf_paragraph_composition[1].pdf_line.box.x2 == 328.0
+
+
+def test_multi_line_run_in_paragraph_merge():
+    """A multi-line run-in title paragraph merges with the body paragraph below."""
+
+    def _line_mixed(lead_txt, body_txt, x=161.0, y=108.0):
+        chars = [
+            PdfCharacter(
+                char_unicode=c,
+                box=Box(x=x + i * 6, y=y, x2=x + (i + 1) * 6, y2=y + 12),
+                pdf_style=PdfStyle(font_id="LeadFont", font_size=12.0),
+            )
+            for i, c in enumerate(lead_txt)
+        ]
+        offset = len(lead_txt) * 6
+        chars += [
+            PdfCharacter(
+                char_unicode=c,
+                box=Box(
+                    x=x + offset + i * 6,
+                    y=y,
+                    x2=x + offset + (i + 1) * 6,
+                    y2=y + 12,
+                ),
+                pdf_style=PdfStyle(font_id="BodyFont", font_size=12.0),
+            )
+            for i, c in enumerate(body_txt)
+        ]
+        total_len = len(lead_txt) + len(body_txt)
+        return PdfParagraphComposition(
+            pdf_line=PdfLine(
+                box=Box(x=x, y=y, x2=x + total_len * 6, y2=y + 12),
+                pdf_character=chars,
+            )
+        )
+
+    # Line 0 in upper paragraph: all in LeadFont
+    l0 = _line(
+        "3. SIT DOWN WITH YOUR LADY ONCE A DAY AND DISCUSS WHAT'S",
+        x=140.0,
+        y=124.0,
+        font_id="LeadFont",
+    )
+    upper = _para(l0)
+
+    # Lower paragraph: starts with LeadFont "GOING ON WITH HER. ", transitions to BodyFont
+    l1 = _line_mixed(
+        "GOING ON WITH HER. ",
+        "This means talking to her about what she has been feeling...",
+        x=161.0,
+        y=108.0,
+    )
+    lower = _para(l1)
+
+    paragraphs = [upper, lower]
+    repair_broken_sentences(paragraphs)
+    assert len(paragraphs) == 1
+    joined = _text(paragraphs[0])
+    assert "3. SIT DOWN WITH YOUR LADY ONCE A DAY AND DISCUSS WHAT'S" in joined
+    assert "GOING ON WITH HER. This means talking" in joined
+
+
+def test_all_caps_heading_does_not_merge_into_body():
+    upper = _para(_line("CLIMAX CUE", x=402.0, y=240.0, font_id="FuturaMed", size=13.0))
+    lower = _para(
+        _line(
+            "This is another one of those positions that I find unusual.",
+            x=402.0,
+            y=226.0,
+            font_id="FuturaLight",
+            size=13.0,
+        )
+    )
+    paragraphs = [upper, lower]
+    repair_broken_sentences(paragraphs)
+    assert len(paragraphs) == 2
+    assert _text(paragraphs[0]) == "CLIMAX CUE"
+    assert "This is another one" in _text(paragraphs[1])
+
+
+def test_multi_word_line_ending_with_hyphen_merges():
+    upper = _para(
+        _line(
+            "Do you feel inadequate because you're not a five-",
+            x=314.0,
+            y=440.0,
+            x2=576.0,
+        )
+    )
+    lower = _para(
+        _line(
+            "in-a-row guy? Remember that multiple orgasms",
+            x=325.0,
+            y=422.0,
+            x2=578.0,
+        )
+    )
+    paragraphs = [upper, lower]
+    repair_broken_sentences(paragraphs)
+    assert len(paragraphs) == 1
+    joined = _text(paragraphs[0])
+    assert "not a five-|in-a-row guy?" in joined
+
+
+def test_sentence_gap_cut_with_moderate_body_leading():
+    lines = [
+        _line("says Paul Joannides, author of", x=353.0, y=183.0),
+        _line("Getting It On! A Book About The Wonders", x=350.0, y=165.0),
+        _line("of Sex.", x=348.0, y=147.0),
+        _line("In conclusion, don't put too much pressure", x=360.0, y=120.0),
+        _line("on yourself. Sure, many of us perceive sex", x=365.0, y=102.0),
+    ]
+    paragraph = _para(*lines)
+    paragraphs = [paragraph]
+    assert split_sentence_paragraph_gaps(paragraphs) == 1
+    assert len(paragraphs) == 2
+    assert _text(paragraphs[0]).endswith("of Sex.")
+    assert _text(paragraphs[1]).startswith("In conclusion,")
+
+
+
+

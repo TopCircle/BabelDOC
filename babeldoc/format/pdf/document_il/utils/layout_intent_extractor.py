@@ -839,6 +839,8 @@ class LayoutIntentExtractor:
             y0, y1 = y1, y0
         if x1 < x0:
             x0, x1 = x1, x0
+        if (x1 - x0) >= width * 0.85 and (y1 - y0) >= height * 0.70:
+            return True
         return x0 <= 2.0 and y0 <= 2.0 and x1 >= width - 2.0 and y1 >= height - 2.0
 
     @staticmethod

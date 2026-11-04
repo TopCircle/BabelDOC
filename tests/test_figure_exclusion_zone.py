@@ -554,6 +554,50 @@ class TestFilterForParagraph:
         filtered = index.filter_for_paragraph(body, drop_all_figures=True)
         assert len(filtered.zones) == 0
 
+    def test_keeps_corridor_figures_when_para_widens_below(self):
+        """When a paragraph starts in a corridor between two images and widens below,
+        neither figure zone is an artistic overlay, so both must be kept."""
+        para_box = Box(x=102.0, y=111.0, x2=512.0, y2=258.0)
+        z_left = ExclusionZone(
+            box=Box(x=-13.7, y=190.1, x2=222.6, y2=344.0),
+            kind=ZONE_FIGURE,
+        )
+        z_right = ExclusionZone(
+            box=Box(x=378.0, y=204.8, x2=624.0, y2=370.1),
+            kind=ZONE_FIGURE,
+        )
+        # Mock paragraph with lines in the corridor (x=231..370 at y=205..255)
+        # widening right below right image (x=231..510 at y=183..195)
+        # and widening left below left image (x=102..510 at y=168..180)
+        class _MockLine:
+            def __init__(self, x, y, x2, y2):
+                self.box = Box(x=x, y=y, x2=x2, y2=y2)
+
+        class _MockComp:
+            def __init__(self, line):
+                self.pdf_line = line
+
+        class _MockPara:
+            def __init__(self, lines):
+                self.pdf_paragraph_composition = [_MockComp(l) for l in lines]
+
+        lines = [
+            _MockLine(231.4, 243.3, 368.8, 255.3),
+            _MockLine(231.8, 228.3, 368.8, 240.3),
+            _MockLine(231.5, 213.3, 368.8, 225.3),
+            _MockLine(232.0, 198.3, 369.7, 210.3),
+            _MockLine(232.0, 183.3, 509.6, 195.3),
+            _MockLine(102.9, 168.3, 509.8, 180.3),
+        ]
+        para = _MockPara(lines)
+        index = ExclusionZoneIndex([z_left, z_right])
+        filtered = index.filter_for_paragraph(para_box, paragraph=para)
+        assert len(filtered.zones) == 2
+        # And available range inside the corridor is narrowed to 222.6..378.0
+        avail_x, avail_x2 = filtered.get_available_x_range(220, 240, 102.0, 512.0)
+        assert avail_x == 222.6
+        assert avail_x2 == 378.0
+
     def test_min_usable_line_width_scales_with_para(self):
         assert min_usable_line_width(None) == MIN_USABLE_LINE_WIDTH_PT
         # 15% of 500 = 75 > 28

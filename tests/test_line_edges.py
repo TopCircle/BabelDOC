@@ -750,6 +750,14 @@ def test_left_spur_and_left_bow_fills_keep_lines():
     spur_pairs = left_spur_fill(spur_lines)
     assert spur_pairs[0] == (140.0, 400.0, 200.0)
     assert spur_pairs[2] == (90.0, 400.0, 168.0)
+    spur_plan = build_plan(_facts(spur_lines))
+    assert len(spur_plan.line_edge_links) == 1
+    assert spur_plan.decisions[0].contour_plugin == "step/left_spur"
+    spur_link = spur_plan.line_edge_links[0]
+    assert spur_link.flow == "edge"
+    assert interval_for_line_edges(spur_link, 0, 195.0, 205.0) == (140.0, 400.0)
+    assert interval_for_line_edges(spur_link, 0, 163.0, 173.0) == (90.0, 400.0)
+    assert interval_for_line_edges(spur_link, 0, 131.0, 141.0) == (140.0, 400.0)
 
     bow_lines = [
         [100.0, 400.0, 200.0],
@@ -758,6 +766,19 @@ def test_left_spur_and_left_bow_fills_keep_lines():
     ]
     assert left_inset_fill(bow_lines) == tuple((line[0], line[1]) for line in bow_lines)
     assert left_bulge_fill(bow_lines) == tuple((line[0], line[1]) for line in bow_lines)
+
+    bulge_lines = [
+        [100.0 + (4.0 * step), 400.0, 200.0 - index * 16.0]
+        for index, step in enumerate([20, 17, 16, 4, 0, 3, 4, 8, 7])
+    ]
+    bulge_plan = build_plan(_facts(bulge_lines))
+    assert len(bulge_plan.line_edge_links) == 1
+    assert bulge_plan.decisions[0].contour_plugin == "bow/left_bulge"
+    bulge_link = bulge_plan.line_edge_links[0]
+    assert bulge_link.flow == "edge"
+    assert interval_for_line_edges(bulge_link, 0, 195.0, 205.0) == (180.0, 400.0)
+    assert interval_for_line_edges(bulge_link, 0, 131.0, 141.0) == (100.0, 400.0)
+    assert interval_for_line_edges(bulge_link, 0, 67.0, 77.0) == (128.0, 400.0)
 
 
 def test_spur_fill_keeps_the_wide_line_and_the_narrow_tail():
@@ -1802,4 +1823,20 @@ def test_top_slab_protection_when_baseline_slightly_below_slab_bottom():
     # Line 0 height 13.0pt: y_bottom=388.16 (< 388.43), y_top=401.16
     interval = interval_for_line_edges(link, 0, 388.16, 401.16)
     assert interval == (144.0, 640.0)
+
+
+def test_top_slab_protection_when_top_slightly_below_first_level_top():
+    """When query y_top sits a few points below level 0 top, line 0 still keeps slab 0."""
+    link = LineEdgeLink(
+        region_id="r1",
+        edges=((140.1, 500.0, 137.24), (161.1, 500.0, 123.24)),
+        levels=(
+            ContourLevel(140.1, 500.0, 137.24),
+            ContourLevel(161.1, 500.0, 123.24),
+        ),
+    )
+    # Ink bbox y2=134.49 (2.75pt below 137.24), height=12.0pt -> y_bottom=122.49 (< 123.24)
+    interval = interval_for_line_edges(link, 0, 122.49, 134.49)
+    assert interval == (140.1, 500.0)
+
 

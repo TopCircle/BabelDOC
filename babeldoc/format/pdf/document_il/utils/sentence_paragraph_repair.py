@@ -10,6 +10,7 @@ left for the hyphen join.
 from __future__ import annotations
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
+from babeldoc.format.pdf.document_il.il_version_1 import PdfLine
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
     line_dominant_font_id,
@@ -23,25 +24,61 @@ from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
 from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
     line_starts_with_list_marker,
 )
+from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import line_text
 from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
     run_in_continues,
 )
 from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
     split_paragraph_at,
 )
+from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+    text_ends_sentence,
+)
 from babeldoc.format.pdf.document_il.utils.text_recovery import HYPHEN_CHARS
+from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
 
 # Body leading leaves about 2pt between line boxes. A new paragraph on
 # these pages leaves about 11pt. 6pt still joins a line; 8pt is a new paragraph.
 _MAX_JOIN_GAP = 6.0
-_MIN_JOIN_GAP = -2.0
+_MIN_JOIN_GAP = -14.0
 _PARAGRAPH_GAP = 8.0
-_GAP_FACTOR = 4.0
+_GAP_FACTOR = 2.0
 _MAX_LEFT_DELTA = 8.0
 # A column opening around a figure steps left about one leg. A step
 # to the right stays the old 8pt gate, so a new indent does not join.
 _OPEN_LEFT = 24.0
 _SIZE_RATIO = 1.18
+_MID_SENTENCE_CONNECTORS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "to",
+        "of",
+        "in",
+        "for",
+        "with",
+        "on",
+        "at",
+        "from",
+        "by",
+        "about",
+        "your",
+        "my",
+        "her",
+        "his",
+        "their",
+        "our",
+        "its",
+        "that",
+        "which",
+        "who",
+        "as",
+        "into",
+    }
+)
 
 
 def repair_broken_sentences(
@@ -102,9 +139,38 @@ def merge_mid_sentence_paragraphs(
                 upper, lower, font_name_map=font_name_map
             ):
                 continue
-            upper.pdf_paragraph_composition = list(
-                upper.pdf_paragraph_composition or []
-            ) + list(lower.pdf_paragraph_composition or [])
+            upper_line = _bottom_line(upper)
+            lower_line = _top_line(lower)
+            if (
+                upper_line is not None
+                and lower_line is not None
+                and _same_line_continues(upper_line, lower_line)
+            ):
+                upper_line.pdf_character = list(
+                    upper_line.pdf_character or []
+                ) + list(lower_line.pdf_character or [])
+                if upper_line.box and lower_line.box:
+                    upper_line.box.x2 = max(
+                        float(upper_line.box.x2), float(lower_line.box.x2)
+                    )
+                    upper_line.box.y = min(
+                        float(upper_line.box.y), float(lower_line.box.y)
+                    )
+                    upper_line.box.y2 = max(
+                        float(upper_line.box.y2), float(lower_line.box.y2)
+                    )
+                lower_comps = [
+                    comp
+                    for comp in lower.pdf_paragraph_composition or []
+                    if getattr(comp, "pdf_line", None) is not lower_line
+                ]
+                upper.pdf_paragraph_composition = (
+                    list(upper.pdf_paragraph_composition or []) + lower_comps
+                )
+            else:
+                upper.pdf_paragraph_composition = list(
+                    upper.pdf_paragraph_composition or []
+                ) + list(lower.pdf_paragraph_composition or [])
             upper.box = _union_box(upper.box, lower.box)
             paragraphs.remove(lower)
             merges += 1
@@ -152,14 +218,35 @@ def _ordered_lines(paragraph: PdfParagraph):
     return rows
 
 
+def _is_all_caps_heading_line(line: PdfLine | None) -> bool:
+    if line is None:
+        return False
+    text = line_text(line).strip()
+    return (
+        text.isupper()
+        and 1 <= len(text.split()) <= 6
+        and not text.endswith((".", "!", "?", ",", ";", ":"))
+    )
+
+
 def _stops_mid_sentence(paragraph: PdfParagraph) -> bool:
     line = _bottom_line(paragraph)
     if line is None:
         return False
+    if _is_all_caps_heading_line(line):
+        return False
     text = "".join(
         char.char_unicode or "" for char in (line.pdf_character or [])
     ).rstrip()
-    if not text or text[-1] in HYPHEN_CHARS:
+    if not text:
+        return False
+    if text[-1] in HYPHEN_CHARS:
+        # A single-word hyphen stem (e.g. "stimula-") is left for
+        # merge_hyphen_wrapped_paragraphs to fuse as a single word.
+        # A multi-word line ending with a hyphen (e.g. "not a five-") is
+        # a compound broken across lines and stops mid-sentence.
+        if len(text.split()) > 1:
+            return True
         return False
     return not line_ends_sentence(line)
 
@@ -196,17 +283,21 @@ def _can_continue(
     *,
     font_name_map: dict[str, str] | None = None,
 ) -> bool:
+    if is_toc_paragraph(upper) or is_toc_paragraph(lower):
+        return False
     if getattr(upper, "xobj_id", None) != getattr(lower, "xobj_id", None):
         return False
     upper_line = _bottom_line(upper)
     lower_line = _top_line(lower)
     if upper_line is None or lower_line is None:
         return False
+    if _is_all_caps_heading_line(upper_line):
+        return False
     if line_starts_with_list_marker(lower_line):
         return False
     if _font_blocks(upper_line, lower_line, font_name_map=font_name_map):
         return False
-    if not _left_continues(upper_line.box.x, lower_line.box.x):
+    if not _lines_continue(upper_line, lower_line):
         return False
     return True
 
@@ -221,13 +312,112 @@ def _left_continues(upper_x, lower_x) -> bool:
     return -_OPEN_LEFT <= delta <= _MAX_LEFT_DELTA
 
 
+def _same_line_continues(upper_line: PdfLine, lower_line: PdfLine) -> bool:
+    """True when lower_line is the right-hand continuation of upper_line on the same line."""
+    if (
+        upper_line.box is None
+        or lower_line.box is None
+        or upper_line.box.x2 is None
+        or lower_line.box.x is None
+        or upper_line.box.y is None
+        or lower_line.box.y is None
+    ):
+        return False
+    if line_starts_with_list_marker(lower_line):
+        return False
+    # Must be on the same vertical baseline (within 3pt)
+    if abs(float(upper_line.box.y) - float(lower_line.box.y)) > 3.0:
+        return False
+    # lower_line must be to the right of upper_line, within reasonable word space gap
+    gap_x = float(lower_line.box.x) - float(upper_line.box.x2)
+    if not (-2.0 <= gap_x <= 15.0):
+        return False
+    upper_text = line_text(upper_line).rstrip()
+    lower_text = line_text(lower_line).lstrip()
+    if not upper_text or not lower_text:
+        return False
+    if text_ends_sentence(upper_text):
+        return False
+    stripped_lower = lower_text.lstrip("’'\"“”")
+    if (stripped_lower and stripped_lower[0].islower()) or upper_text[-1] in ",;:-—":
+        return True
+    if lower_text[0] in "’'":
+        return True
+    last_word = upper_text.split()[-1].lower()
+    return last_word in _MID_SENTENCE_CONNECTORS
+
+
+def _wrap_continues(upper_line: PdfLine, lower_line: PdfLine) -> bool:
+    """True when lower_line continues upper_line around a side obstruction.
+
+    When left edges step inwards or outwards to clear a photo or figure,
+    the lines still belong to one paragraph if right edges remain aligned
+    to the same column margin and the text continues mid-sentence.
+    """
+    if (
+        upper_line.box is None
+        or lower_line.box is None
+        or upper_line.box.x2 is None
+        or lower_line.box.x2 is None
+    ):
+        return False
+    if line_starts_with_list_marker(lower_line):
+        return False
+    upper_x2 = float(upper_line.box.x2)
+    lower_x2 = float(lower_line.box.x2)
+    if abs(upper_x2 - lower_x2) > _MAX_LEFT_DELTA:
+        return False
+    upper_text = line_text(upper_line).rstrip()
+    lower_text = line_text(lower_line).lstrip()
+    if not upper_text or not lower_text:
+        return False
+    if text_ends_sentence(upper_text):
+        return False
+    stripped_lower = lower_text.lstrip("’'\"“”")
+    if (stripped_lower and stripped_lower[0].islower()) or upper_text[-1] in ",;:-—":
+        return True
+    if lower_text[0] in "’'":
+        return True
+    last_word = upper_text.split()[-1].lower()
+    return last_word in _MID_SENTENCE_CONNECTORS
+
+
+def _lines_continue(upper_line: PdfLine | None, lower_line: PdfLine | None) -> bool:
+    if (
+        upper_line is None
+        or lower_line is None
+        or upper_line.box is None
+        or lower_line.box is None
+        or upper_line.box.x is None
+        or lower_line.box.x is None
+    ):
+        return False
+    if _same_line_continues(upper_line, lower_line):
+        return True
+    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+        multi_line_run_in_continues,
+    )
+
+    if multi_line_run_in_continues(upper_line, lower_line):
+        return True
+    if _left_continues(float(upper_line.box.x), float(lower_line.box.x)):
+        return True
+    return _wrap_continues(upper_line, lower_line)
+
+
 def _font_blocks(
     upper_line,
     lower_line,
     *,
     font_name_map: dict[str, str] | None = None,
 ) -> bool:
-    if run_in_continues(upper_line, lower_line):
+    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+        multi_line_run_in_continues,
+    )
+
+    if run_in_continues(upper_line, lower_line) or multi_line_run_in_continues(
+        upper_line, lower_line
+    ):
         return False
     upper_size = line_dominant_font_size(upper_line)
     lower_size = line_dominant_font_size(lower_line)
@@ -323,6 +513,9 @@ def _facing_lefts(upper: PdfParagraph, lower: PdfParagraph) -> tuple[float, floa
 def _nearest_below(paragraphs: list[PdfParagraph], upper: PdfParagraph):
     if upper.box is None or None in (upper.box.y, upper.box.y2, upper.box.x):
         return None
+    upper_line = _bottom_line(upper)
+    if upper_line is None:
+        return None
     best = None
     best_gap = None
     for other in paragraphs:
@@ -332,11 +525,16 @@ def _nearest_below(paragraphs: list[PdfParagraph], upper: PdfParagraph):
             continue
         if getattr(upper, "xobj_id", None) != getattr(other, "xobj_id", None):
             continue
-        gap = float(upper.box.y) - float(other.box.y2)
+        lower_line = _top_line(other)
+        if lower_line is None:
+            continue
+        if _same_line_continues(upper_line, lower_line):
+            gap = 0.0
+        else:
+            gap = float(upper.box.y) - float(other.box.y2)
         if gap < _MIN_JOIN_GAP or gap > _MAX_JOIN_GAP:
             continue
-        upper_x, lower_x = _facing_lefts(upper, other)
-        if not _left_continues(upper_x, lower_x):
+        if not _lines_continue(upper_line, lower_line):
             continue
         if best_gap is None or gap < best_gap:
             best = other

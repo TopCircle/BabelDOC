@@ -63,6 +63,14 @@ def blocked(
     low = top(lower)
     for other in obstacles:
         if top(other) <= low or bottom(other) >= high:
+            # An obstacle beside upper that extends down over lower
+            # will block lower when upper shrinks in translation.
+            if (
+                bottom(other) > low
+                and bottom(other) < top(upper)
+                and _cross(lower, other) >= _CROSS
+            ):
+                return True
             continue
         if shares_column_left(edge(upper), edge(other)):
             return True

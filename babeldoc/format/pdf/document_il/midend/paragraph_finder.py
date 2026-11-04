@@ -650,8 +650,25 @@ class ParagraphFinder:
 
         join_dash_bullets(paragraphs)
 
+        # A section rule and the next entry, or a title and its page number,
+        # are still one paragraph here. Split them before a column join can
+        # paint both as one sentence.
+        from babeldoc.format.pdf.document_il.utils.toc_rows import (
+            separate_glued_directory_rows,
+        )
+
+        separate_glued_directory_rows(
+            paragraphs, new_debug_id_factory=generate_base58_id
+        )
+
         for paragraph in paragraphs:
             self.update_paragraph_data(paragraph, update_unicode=True, page=page)
+
+        from babeldoc.format.pdf.document_il.utils.toc_rows import (
+            join_or_drop_header_bang,
+        )
+
+        join_or_drop_header_bang(paragraphs)
 
         # Narrow design-PDF policy: repair contiguous plain-text runs sharing
         # one xobject when the source paints paragraphs bottom-to-top.
@@ -759,6 +776,11 @@ class ParagraphFinder:
     def merge_alternating_line_number_paragraphs(self, paragraphs: list[PdfParagraph]):
         # a 代表正文
         # l 代表行号
+        from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
+        from babeldoc.format.pdf.document_il.utils.toc_rows import (
+            toc_page_number_on_the_right,
+        )
+
         if not paragraphs or len(paragraphs) < 3:
             return
         i = 0
@@ -775,7 +797,15 @@ class ParagraphFinder:
             # 现在 j 指向候选的 c
             if saw_l and j < len(paragraphs):
                 c = paragraphs[j]
-                if self._same_layout_and_xobj(a, c):
+                # A directory page number sits on the right. A paper line
+                # number sits in the left gutter. Only the gutter joins.
+                number_on_the_right = any(
+                    toc_page_number_on_the_right(paragraphs[k], a)
+                    for k in range(i + 1, j)
+                )
+                if self._same_layout_and_xobj(a, c) and not (
+                    is_toc_paragraph(a) or is_toc_paragraph(c) or number_on_the_right
+                ):
                     a.pdf_paragraph_composition.extend(c.pdf_paragraph_composition)
                     self.update_paragraph_data(a)
                     del paragraphs[j]
@@ -1274,11 +1304,23 @@ class ParagraphFinder:
         median_width: float,
     ):
         from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+            line_ends_sentence,
+        )
+        from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+            line_text,
+        )
+        from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
             should_split_line_pair,
         )
         from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
             split_paragraph_at,
         )
+        from babeldoc.format.pdf.document_il.utils.toc_rows import all_toc_rows
+        from babeldoc.format.pdf.document_il.utils.toc_rows import is_chapter_heading
+        from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_entry_line
+        from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_page_header
+        from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_stack
+        from babeldoc.format.pdf.document_il.utils.toc_rows import toc_label_stays
 
         # OCR dual-layer: soft mid-sentence face keep (font.unknown).
         # Born-digital (arXiv figure labels vs body): hard face split.
@@ -1296,12 +1338,73 @@ class ParagraphFinder:
                     font_name_map[pf.font_id] = pf.name
         logger.info("PARAGRAPH_FINDER font_name_map: %s", font_name_map)
 
+        # Unicode is still empty here. The heading and the leaders are on
+        # the lines. Two leaders, or a contents heading, mark the page.
+        # Each already-separate directory row is labeled before a later
+        # join can fuse those rows into one paragraph.
+        on_toc_page = False
+        entry_count = 0
+        for candidate in paragraphs:
+            blob = getattr(candidate, "unicode", None) or ""
+            if not blob.strip():
+                blob = "".join(
+                    line_text(comp.pdf_line)
+                    for comp in candidate.pdf_paragraph_composition or []
+                    if getattr(comp, "pdf_line", None) is not None
+                )
+            if is_toc_page_header(blob):
+                on_toc_page = True
+                break
+            for comp in candidate.pdf_paragraph_composition or []:
+                line = getattr(comp, "pdf_line", None)
+                if line is not None and is_toc_entry_line(line):
+                    entry_count += 1
+            if entry_count >= 2:
+                on_toc_page = True
+                break
+
+        def _mark_directory(paragraph: PdfParagraph) -> None:
+            if not on_toc_page:
+                return
+            rows = [
+                comp.pdf_line
+                for comp in paragraph.pdf_paragraph_composition or []
+                if getattr(comp, "pdf_line", None) is not None
+            ]
+            if not all_toc_rows(rows):
+                return
+            # A contents entry the detector called a title is still a row.
+            # A chapter head and the contents banner stay titles.
+            if len(rows) == 1:
+                text = line_text(rows[0]).strip()
+                if is_toc_page_header(text) or is_chapter_heading(text):
+                    return
+            elif toc_label_stays(getattr(paragraph, "layout_label", None)):
+                return
+            if (getattr(paragraph, "layout_label", None) or "").strip().lower() != "toc":
+                paragraph.layout_label = "toc"
+
         i = 0
         while i < len(paragraphs):
             paragraph = paragraphs[i]
+            _mark_directory(paragraph)
             if len(paragraph.pdf_paragraph_composition) <= 1:  # 跳过只有一行的段落
                 i += 1
                 continue
+
+            lines = [
+                comp.pdf_line
+                for comp in paragraph.pdf_paragraph_composition
+                if getattr(comp, "pdf_line", None) is not None
+            ]
+            label = (getattr(paragraph, "layout_label", None) or "").strip().lower()
+            kept = toc_label_stays(label)
+            nonempty = [line for line in lines if line_text(line).strip()]
+            force = (not kept) and (
+                is_toc_stack(lines, on_toc_page=on_toc_page) or label == "toc"
+            )
+            if force and label != "toc":
+                paragraph.layout_label = "toc"
 
             j = 1
             while j < len(paragraph.pdf_paragraph_composition):
@@ -1313,6 +1416,25 @@ class ParagraphFinder:
                 prev_line = prev_composition.pdf_line
                 current_comp = paragraph.pdf_paragraph_composition[j]
                 current_line = current_comp.pdf_line if current_comp else None
+                entry_cut = is_toc_entry_line(prev_line) or (
+                    current_line is not None and is_toc_entry_line(current_line)
+                )
+                # A title and its page number are two lines, not a stack.
+                # Mark them so a later merge cannot glue the next row on.
+                # A short prose citation still ends a sentence, so it stays prose.
+                others = [
+                    line for line in nonempty if not is_toc_entry_line(line)
+                ]
+                short_directory = (
+                    entry_cut
+                    and not kept
+                    and len(nonempty) <= 3
+                    and all(not line_ends_sentence(line) for line in others)
+                )
+                if short_directory and (
+                    getattr(paragraph, "layout_label", None) or ""
+                ).strip().lower() != "toc":
+                    paragraph.layout_label = "toc"
 
                 if should_split_line_pair(
                     prev_line,
@@ -1325,10 +1447,8 @@ class ParagraphFinder:
                     soft_mid_sentence_font_split=soft_font,
                     layout_label=getattr(paragraph, "layout_label", None),
                     font_name_map=font_name_map,
+                    toc_stack=force,
                 ):
-                    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
-                        line_text,
-                    )
                     logger.info(
                         "SPLIT_TRIGGERED j=%d prev=%r curr=%r",
                         j,
@@ -1342,6 +1462,8 @@ class ParagraphFinder:
                     )
                     self.update_paragraph_data(paragraph)
                     self.update_paragraph_data(new_paragraph)
+                    _mark_directory(paragraph)
+                    _mark_directory(new_paragraph)
                     paragraphs.insert(i + 1, new_paragraph)
                     break
                 j += 1

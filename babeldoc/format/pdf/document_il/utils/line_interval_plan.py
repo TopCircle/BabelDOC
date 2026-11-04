@@ -356,6 +356,8 @@ class LineIntervalPlan:
             ):
                 from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
                     ZONE_QUOTE,
+                )
+                from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
                     ExclusionZoneIndex,
                 )
 
@@ -616,6 +618,26 @@ def attempt_chain_for_paragraph(
     # walks CJK into the photo. Role may be BODY if wrap classification missed.
     if wrap_mode in (WrapMode.LEFT_FIXED, WrapMode.RIGHT_FIXED):
         return [LayoutAttempt.PRIMARY]
+
+    # Stepped or wrap corridor (e.g. between photos or multi-edge wrap):
+    # original lines stepped by >= 24pt to avoid obstacles. FULL_MEASURE
+    # drops figure zones and walks CJK into the photos.
+    rm = getattr(paragraph, "reference_metrics", None) if paragraph else None
+    widths = getattr(rm, "per_line_widths", None) or []
+    if widths and (max(widths) - min(widths)) >= 24.0:
+        return [LayoutAttempt.PRIMARY]
+    if not widths and paragraph is not None:
+        lines = []
+        for comp in getattr(paragraph, "pdf_paragraph_composition", None) or []:
+            line = getattr(comp, "pdf_line", None)
+            if line is not None and getattr(line, "box", None) is not None:
+                if line.box.x is not None and line.box.x2 is not None:
+                    w = float(line.box.x2) - float(line.box.x)
+                    if w > 0:
+                        lines.append(w)
+        if lines and (max(lines) - min(lines)) >= 24.0:
+            return [LayoutAttempt.PRIMARY]
+
     if shape or role is LayoutIntentRole.WRAP_COLUMN:
         return [LayoutAttempt.PRIMARY, LayoutAttempt.FULL_MEASURE]
     # Thin residual bodies also get FULL_MEASURE as second chance (CJK)

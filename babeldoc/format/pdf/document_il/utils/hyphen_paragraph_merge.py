@@ -13,6 +13,7 @@ from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.utils.layout_helper import composition_characters
 from babeldoc.format.pdf.document_il.utils.text_recovery import HYPHEN_CHARS
 from babeldoc.format.pdf.document_il.utils.text_recovery import should_join_hyphen_wrap
+from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
 
 _MAX_GAP = 22.0
 _MIN_GAP = -4.0
@@ -94,6 +95,8 @@ def merge_hyphen_wrapped_paragraphs(paragraphs: list[PdfParagraph]) -> int:
                 continue
             lower = _nearest_below(paragraphs, upper)
             if lower is None or not _box_complete(lower.box):
+                continue
+            if is_toc_paragraph(upper) or is_toc_paragraph(lower):
                 continue
             if not should_join_hyphen_wrap(
                 upper_text, _paragraph_text(lower).lstrip()

@@ -122,6 +122,15 @@ def _scrub_cjk_embedded_english(text: str) -> str:
         return text
     # Specific OA repairs before generic letter strip (keep 前戏).
     out = text
+    # FOSR ch.6 title is split before ORGASM. Cached MT left this English
+    # and only turned blowing into 口交. pdf2zh cache skips DeepLX, so the
+    # repair has to happen here.
+    out = re.sub(
+        r"How[\s\xa0]+to[\s\xa0]+give[\s\xa0]+her[\s\xa0]+a[\s\xa0]+min[\s\xa0]*",
+        "如何给她一分钟",
+        out,
+        flags=re.I,
+    )
     for bad, good in (
         ('专门介绍e\xa0艺术', '专门介绍前戏艺术'),
         ('专门介绍e 艺术', '专门介绍前戏艺术'),
@@ -136,6 +145,15 @@ def _scrub_cjk_embedded_english(text: str) -> str:
         ('in-and-out', '抽插'),
         ('theone-handedwonder', '单手妙招'),
         ('theone‑handedwonder', '单手妙招'),
+        ('点燃她的性欲之火欲望', '点燃她的欲望之火'),
+        ('性欲之火欲望', '欲望之火'),
+        ('双双手', '双手'),
+        ('向下的抽送', '向下推抚'),
+        ('和抽送的背面下方', '和腿部背面的下方'),
+        ('轻柔地抽送', '轻柔地抚摸'),
+        ('轻轻地抽送', '轻轻地抚摸'),
+        ('〖B0〗3.〖/B0〗 这意味着', '〖B0〗3. 每天与你的女士坐下来，讨论她的近况。〖/B0〗 这意味着'),
+        ('〖B0〗3. 〖/B0〗这意味着', '〖B0〗3. 每天与你的女士坐下来，讨论她的近况。〖/B0〗 这意味着'),
     ):
         out = out.replace(bad, good)
     # Glossary debug-note leak defense (CSV `# commented:` values)
@@ -329,6 +347,8 @@ def _scrub_mt_debris(text: str, *, keep_formula_placeholders: bool = False) -> s
     )
     # Paragraph or line start punctuation strip
     out = re.sub(r"^[，,。．、：:；;]+", "", out)
+    # Strip literal escaped carriage returns / newlines (\r or \n) leaked from MT
+    out = re.sub(r"\\[rn]", "", out)
     # Convert MT-generated ASCII double quotes with spaced interior CJK to proper CJK smart quotes:
     # ' " 应做 " ' -> ' “应做” '
     out = re.sub(r'"\s+([\u4e00-\u9fff][^\"]*?)\s+"', r'“\1”', out)

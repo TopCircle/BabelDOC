@@ -175,3 +175,13 @@ def test_toc_items_with_leaders_are_not_joined():
     join_sealed_paragraphs(page)
     assert len(page.pdf_paragraph) == 2
 
+
+def test_layout_debug_stubs_are_not_joined_into_body():
+    body = _paragraph([(36.0, 300.0, 400.0), (36.0, 300.0, 380.0)], "Real body text.")
+    stub = _paragraph([(36.0, 300.0, 360.0)], "fallback_line")
+    page = _page([body, stub])
+    join_sealed_paragraphs(page)
+    assert len(page.pdf_paragraph) == 2
+    assert "fallback_line" not in page.pdf_paragraph[0].unicode
+
+

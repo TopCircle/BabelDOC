@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import unicodedata
 
+from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.utils.placement_paradigm import ParadigmMark
@@ -191,6 +192,10 @@ def keep_gutter_displays(page) -> None:
 
 def uses_rect_column_fill(paragraph) -> bool:
     """True when this paragraph should fill one left-aligned column."""
+    from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
+
+    if is_toc_paragraph(paragraph):
+        return False
     if id(paragraph) in _DISPLAY_IDS:
         return False
     if is_gutter_display(paragraph):
@@ -257,6 +262,19 @@ def mark_display_bands(page) -> None:
             bottom -= max(18.0, _source_font_size(paragraph) * 0.55)
         found.append((bottom, top, band_x, band_x2))
     _PAGE_BANDS[id(page)] = found
+
+
+def is_display_band_owner(paragraph, page=None) -> bool:
+    """True when this paragraph is bound to a display band or filled bar."""
+    if paragraph is None:
+        return False
+    if id(paragraph) in _DISPLAY_IDS:
+        return True
+    if page is not None:
+        bars = _filled_bars(page)
+        if bars and _matching_bar(paragraph, bars) is not None:
+            return True
+    return False
 
 
 def yield_to_display_bands(page) -> None:
@@ -672,7 +690,9 @@ def _push_glyphs_below_bands(paragraphs, page) -> None:
     if not bands:
         return
     for paragraph in paragraphs or []:
-        if id(paragraph) in _DISPLAY_IDS:
+        from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
+
+        if id(paragraph) in _DISPLAY_IDS or is_toc_paragraph(paragraph):
             continue
         _push_paragraph_below_bands(paragraph, bands)
 
@@ -1053,8 +1073,6 @@ def _filled_bars(page) -> list:
         # Real curves carry debug_info="a". Only boolean True is a debug box.
         if getattr(shape, "debug_info", None) is True:
             continue
-        if not getattr(shape, "fill_background", False):
-            continue
         box = getattr(shape, "box", None)
         if box is None or box.x is None or box.y is None:
             continue
@@ -1062,6 +1080,22 @@ def _filled_bars(page) -> list:
             continue
         width = abs(float(box.x2) - float(box.x))
         height = abs(float(box.y2) - float(box.y))
+        if not getattr(shape, "fill_background", False):
+            from babeldoc.format.pdf.document_il.midend.styles_and_formulas import (
+                _get_curve_stroke_width,
+            )
+
+            sw = _get_curve_stroke_width(shape)
+            if sw is not None and _BAR_MIN_H <= sw <= _BAR_MAX_H and width >= _BAR_MIN_W:
+                half_sw = sw / 2.0
+                bar_box = Box(
+                    x=min(float(box.x), float(box.x2)),
+                    y=min(float(box.y), float(box.y2)) - half_sw,
+                    x2=max(float(box.x), float(box.x2)),
+                    y2=max(float(box.y), float(box.y2)) + half_sw,
+                )
+                bars.append(bar_box)
+            continue
         if width < _BAR_MIN_W or height < _BAR_MIN_H or height > _BAR_MAX_H:
             continue
         if page_h > 0 and height > page_h * _BAR_PAGE_FRACTION:
@@ -1669,7 +1703,12 @@ def _indented_body(lead, body) -> bool:
 
     The lead starts a list item. The body box is indented a little to the
     right and usually overlaps that first line, so a gap test never sees it.
+    A directory row under a section rule is the next entry, not that body.
     """
+    from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
+
+    if is_toc_paragraph(lead) or is_toc_paragraph(body):
+        return False
     if not _is_short_line(lead):
         return False
     dx = float(body.box.x) - float(lead.box.x)
@@ -1784,6 +1823,10 @@ def _spans_display_band(ordered, page) -> bool:
 
 
 def _continues(upper, lower) -> bool:
+    from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
+
+    if is_toc_paragraph(upper) or is_toc_paragraph(lower):
+        return False
     gap = float(upper.box.y) - float(lower.box.y2)
     line_h = max(8.0, float(upper.box.y2) - float(upper.box.y))
     if gap > _CONTINUE_GAP:
@@ -1826,6 +1869,10 @@ def absorb_short_continuations(page) -> None:
 
 
 def _is_orphan_tail(paragraph) -> bool:
+    from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
+
+    if is_toc_paragraph(paragraph):
+        return False
     box = getattr(paragraph, "box", None)
     if box is None or None in (box.x, box.y, box.x2, box.y2):
         return False

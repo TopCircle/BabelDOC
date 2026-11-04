@@ -123,9 +123,60 @@ def _seat(link: ParagraphGapLink, by_region, rects) -> None:
     lower = by_region.get(link.region_id)
     if upper is None or lower is None:
         return
+    # A contents row keeps the source gap. Seating it under the previous
+    # body line pulls it up through the entries in between.
+    from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
+
+    if is_toc_paragraph(upper) or is_toc_paragraph(lower):
+        return
+    # A paragraph with frozen line edges must not be shifted
+    from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+        line_edge_ids,
+    )
+
+    page = getattr(lower, "page", None)
+    if page is not None and link.region_id in line_edge_ids(page):
+        return
+
     extra = link.paragraph_gap if link.paragraph_gap > 0.0 else BODY_PARAGRAPH_GAP
     dy = _line_break_dy(upper, lower, extra)
+    if dy > 0.0:
+        dy = _clamp_dy_against_obstacles(lower, dy, by_region.values(), extra)
+    if abs(dy) < 0.1:
+        return
     _shift_target(link.region_id, lower, dy, by_region, rects)
+
+
+def _clamp_dy_against_obstacles(
+    lower, dy: float, all_paragraphs, extra: float
+) -> float:
+    """Clamp upward shift so lower never collides with obstacles or quotes above it."""
+    lbox = getattr(lower, "box", None)
+    if lbox is None or lbox.x is None or lbox.x2 is None or lbox.y2 is None:
+        return dy
+    lx1 = float(lbox.x)
+    lx2 = float(lbox.x2)
+    ly2 = float(lbox.y2)
+
+    clamped_dy = dy
+    for other in all_paragraphs:
+        if other is lower:
+            continue
+        obox = getattr(other, "box", None)
+        if obox is None or obox.x is None or obox.x2 is None or obox.y is None:
+            continue
+        ox1 = float(obox.x)
+        ox2 = float(obox.x2)
+        oy1 = float(obox.y)
+        # Check horizontal overlap
+        if min(lx2, ox2) - max(lx1, ox1) < 8.0:
+            continue
+        # In DocumentIL, y grows upward. If other is above lower:
+        if oy1 >= ly2 - 0.5:
+            allowed = (oy1 - extra) - ly2
+            if allowed < clamped_dy:
+                clamped_dy = max(0.0, allowed)
+    return clamped_dy
 
 
 def _shift_target(region_id, lower, dy, by_region, rects) -> None:

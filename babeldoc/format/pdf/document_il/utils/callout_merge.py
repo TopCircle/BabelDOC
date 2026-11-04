@@ -27,6 +27,7 @@ from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
 from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
     paragraph_starts_with_list_marker,
 )
+from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
 
 if TYPE_CHECKING:
     from babeldoc.format.pdf.document_il.il_version_1 import Page
@@ -175,6 +176,8 @@ def _can_merge_vertical(
     lower: PdfParagraph,
     excluded: set[int] | frozenset[int] = frozenset(),
 ) -> bool:
+    if is_toc_paragraph(upper) or is_toc_paragraph(lower):
+        return False
     bu, bl = _box(upper), _box(lower)
     if bu is None or bl is None:
         return False
@@ -214,6 +217,8 @@ def _can_merge_right_pinned_wrap(
     excluded: set[int] | frozenset[int] = frozenset(),
 ) -> bool:
     """Stacked figure-wrap rows: right edge pinned, width up to ~280pt."""
+    if is_toc_paragraph(upper) or is_toc_paragraph(lower):
+        return False
     bu, bl = _box(upper), _box(lower)
     if bu is None or bl is None:
         return False
@@ -471,6 +476,8 @@ def _y_iou(a: PdfParagraph, b: PdfParagraph) -> float:
 
 def _can_merge_horizontal_prefix(left: PdfParagraph, right: PdfParagraph) -> bool:
     """Geometry + prefix gate for dual-column callout (left short, right fuller)."""
+    if is_toc_paragraph(left) or is_toc_paragraph(right):
+        return False
     bl, br = _box(left), _box(right)
     if bl is None or br is None:
         return False

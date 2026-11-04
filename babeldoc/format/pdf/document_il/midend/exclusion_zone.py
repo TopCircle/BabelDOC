@@ -323,6 +323,23 @@ def _collect_figure_zones(page: Page) -> list[ExclusionZone]:
             return
         seen_boxes.add(key)
 
+        pw = _get_page_width(page)
+        ph = _get_page_height(page)
+        if pw > 0 and ph > 0:
+            box_w = box.x2 - box.x
+            box_h = box.y2 - box.y
+            if box_w >= pw * 0.85 and box_h >= ph * 0.70:
+                logger.debug(
+                    "Skipping full-page background figure/image: box=(%.1f, %.1f, %.1f, %.1f) covers page (%.1f x %.1f)",
+                    box.x,
+                    box.y,
+                    box.x2,
+                    box.y2,
+                    pw,
+                    ph,
+                )
+                return
+
         # 使用固定 padding（绝对值，单位 pt）
         # 12pt 是合理的图文间距，与 get_adaptive_image_padding 的最小值一致
         padding = 12.0
@@ -470,6 +487,102 @@ def _box_intersection_area(a: Box, b: Box) -> float:
     return (x2 - x1) * (y2 - y1)
 
 
+def _extract_paragraph_line_levels(
+    paragraph: PdfParagraph | None,
+    page: Page | None = None,
+) -> list[tuple[float, float, float, float]]:
+    """Extract (bottom, top, left, right) for lines in the paragraph.
+
+    Reads line_edges if available, else compositions.
+    """
+    if paragraph is None:
+        return []
+    if page is not None:
+        from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+            line_edges_for,
+        )
+
+        link = line_edges_for(page, paragraph)
+        if link is not None and getattr(link, "levels", None):
+            return [
+                (
+                    float(lvl.top - 12.0),
+                    float(lvl.top),
+                    float(lvl.left),
+                    float(lvl.right),
+                )
+                for lvl in link.levels
+                if getattr(lvl, "top", None) is not None
+                and getattr(lvl, "left", None) is not None
+                and getattr(lvl, "right", None) is not None
+            ]
+    levels: list[tuple[float, float, float, float]] = []
+    for comp in getattr(paragraph, "pdf_paragraph_composition", None) or []:
+        line = getattr(comp, "pdf_line", None)
+        box = getattr(line, "box", None) if line is not None else None
+        if box is not None and None not in (box.x, box.x2, box.y, box.y2):
+            levels.append((float(box.y), float(box.y2), float(box.x), float(box.x2)))
+    return levels
+
+
+def _figure_is_artistic_overlay(
+    para_box: Box,
+    z: Box,
+    paragraph: PdfParagraph | None = None,
+    page: Page | None = None,
+) -> bool:
+    """True if original text intentionally runs into the figure bounding box.
+
+    If lines exist at the zone's vertical height and stay outside (wrap clearance),
+    the zone is a real obstacle, not an artistic overlay.
+    """
+    levels = _extract_paragraph_line_levels(paragraph, page)
+    if levels:
+        intersecting = []
+        for bottom, top, left, right in levels:
+            line_h = max(1.0, top - bottom)
+            v_overlap = max(0.0, min(top, z.y2) - max(bottom, z.y))
+            if v_overlap >= 0.5 * line_h:
+                intersecting.append((bottom, top, left, right))
+
+        if intersecting:
+            has_clearance = False
+            penetrates = False
+            for _bottom, _top, left, right in intersecting:
+                # Left-side figure zone:
+                if z.x2 < para_box.x2:
+                    if left >= z.x2 - 8.0:
+                        has_clearance = True
+                    elif left < z.x2 - 8.0 and right > z.x2:
+                        penetrates = True
+                # Right-side figure zone:
+                elif z.x > para_box.x:
+                    if right <= z.x + 8.0:
+                        has_clearance = True
+                    elif left < z.x and right > z.x + 8.0:
+                        penetrates = True
+
+            # If lines clearly wrap around the obstacle, it is NOT an artistic overlay!
+            if has_clearance:
+                return False
+            if penetrates:
+                return True
+            return False
+
+    v_overlap = max(0.0, min(para_box.y2, z.y2) - max(para_box.y, z.y))
+    para_h = para_box.y2 - para_box.y
+    full_overlap = para_h > 0 and v_overlap >= 0.6 * para_h
+
+    # Figure fully contains the paragraph (text on photo / full overlay):
+    if z.x <= para_box.x + 8.0 and z.x2 >= para_box.x2 - 8.0 and full_overlap:
+        return True
+    if para_box.x < z.x and para_box.x2 > z.x + 8.0 and full_overlap:
+        return True
+    if para_box.x < z.x2 - 8.0 and para_box.x2 > z.x2 and full_overlap:
+        return True
+    return False
+
+
 class ExclusionZoneIndex:
     """基于 R-tree 的排除区域空间索引。
 
@@ -491,6 +604,8 @@ class ExclusionZoneIndex:
         max_coverage: float = 0.35,
         min_residual_width: float | None = None,
         drop_all_figures: bool = False,
+        paragraph: PdfParagraph | None = None,
+        page: Page | None = None,
     ) -> ExclusionZoneIndex:
         """Filter figure zones for one paragraph (quotes always kept).
 
@@ -554,7 +669,9 @@ class ExclusionZoneIndex:
             # Original text already runs into the figure bbox → freeform/artistic
             # wrap encoded in line widths. Hard clip → ugly equal-width column.
             # (EN lines on Orgasms p.3 end near x=400 while figure starts ~231.)
-            if para_box.x2 > z.x + 8.0:
+            if _figure_is_artistic_overlay(
+                para_box, z, paragraph=paragraph, page=page
+            ):
                 dropped += 1
                 artistic_overlay = True
                 logger.debug(

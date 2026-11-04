@@ -35,9 +35,9 @@ _TOC_LEADER_RE = re.compile(r"\.{20,}")
 
 
 def line_text(line: PdfLine | None) -> str:
-    if line is None or not line.pdf_character:
+    if line is None or not getattr(line, "pdf_character", None):
         return ""
-    return "".join(c.char_unicode or "" for c in line.pdf_character)
+    return "".join(getattr(c, "char_unicode", "") or "" for c in line.pdf_character)
 
 
 def line_dominant_font_id(line: PdfLine | None) -> str | None:
@@ -113,6 +113,48 @@ def run_in_continues(prev_line: PdfLine | None, curr_line: PdfLine | None) -> bo
     return hi / lo < _SOFT_SIZE_RATIO_HARD_SPLIT
 
 
+def multi_line_run_in_continues(
+    prev_line: PdfLine | None, curr_line: PdfLine | None
+) -> bool:
+    """True when a sequence title/lead-in started on prev_line and wraps to curr_line.
+
+    For multi-line numbered headings such as:
+      3. SIT DOWN WITH YOUR LADY ONCE A DAY AND DISCUSS WHAT’S
+      GOING ON WITH HER. This means talking to her...
+    Line 1 is entirely in the lead face, and line 2 starts in the same lead
+    face before switching to the body face. Between lines 1 and 2 the font
+    did not switch at the boundary, and line 1 did not end a sentence.
+    """
+    if prev_line is None or curr_line is None:
+        return False
+    if line_ends_sentence(prev_line):
+        return False
+    prev_face = line_dominant_font_id(prev_line)
+    if not prev_face:
+        return False
+    non_space_curr = [
+        c
+        for c in (curr_line.pdf_character or [])
+        if (c.char_unicode or "").strip()
+    ]
+    if not non_space_curr:
+        return False
+    curr_first_style = non_space_curr[0].pdf_style
+    curr_first_face = curr_first_style.font_id if curr_first_style else None
+    if curr_first_face != prev_face:
+        return False
+    # In a multi-line run-in heading, curr_line must contain a transition from
+    # prev_face to a different font face (the body face).
+    curr_faces = {
+        c.pdf_style.font_id
+        for c in non_space_curr
+        if c.pdf_style and c.pdf_style.font_id
+    }
+    if not any(f != prev_face for f in curr_faces):
+        return False
+    return True
+
+
 # Saved before the lead-in is painted in the body face. Translation sees one
 # run. Typesetting puts this face back on the translated name.
 # PdfParagraph has no weakref slot. Keyed by id for the life of one render.
@@ -156,7 +198,47 @@ def _classify_run_in(
             body_style = style
     body_n = counts.get(body_face, 0)
     if body_style is None or body_n == 0:
-        return None
+        if not counts:
+            return None
+        lead_n, lead_face = counts.most_common(1)[0]
+        for char in first:
+            style = char.pdf_style
+            if style is not None and style.font_id == lead_face:
+                lead_style = style
+                break
+        if lead_style is None or line_ends_sentence(lines[0]):
+            return None
+        second = [
+            char
+            for char in lines[1].pdf_character
+            if (char.char_unicode or "").strip()
+        ]
+        second_lead_chars = []
+        for char in second:
+            style = char.pdf_style
+            face = style.font_id if style is not None else None
+            if face == body_face and body_style is None:
+                body_style = style
+            elif face == lead_face:
+                second_lead_chars.append(char)
+        if body_style is None or not second_lead_chars:
+            return None
+        lead_n += len(second_lead_chars)
+        body_n = sum(
+            1 for c in second if c.pdf_style and c.pdf_style.font_id == body_face
+        )
+        lead_text_0 = "".join(
+            c.char_unicode or ""
+            for c in first
+            if c.pdf_style and c.pdf_style.font_id == lead_face
+        )
+        lead_text_1 = "".join(c.char_unicode or "" for c in second_lead_chars)
+        lead_text = f"{lead_text_0} {lead_text_1}".strip()
+        if _LEAD_SERIAL_RE.fullmatch(lead_text) or not text_ends_sentence(
+            lead_text
+        ):
+            return None
+        return lines, lead_face, lead_style, body_style, lead_n, body_n
     others = [(count, face) for face, count in counts.items() if face != body_face]
     if not others:
         return None
@@ -288,15 +370,16 @@ def flatten_dominant_run_in(paragraph: PdfParagraph) -> bool:
     lines, lead_face, _lead_style, body_style, lead_n, body_n = found
     if lead_n < body_n:
         return False
-    for char in lines[0].pdf_character:
-        style = char.pdf_style
-        if style is None or style.font_id != lead_face:
-            continue
-        char.pdf_style = PdfStyle(
-            font_id=body_style.font_id,
-            font_size=body_style.font_size,
-            graphic_state=body_style.graphic_state,
-        )
+    for line in lines[:2]:
+        for char in line.pdf_character or []:
+            style = char.pdf_style
+            if style is None or style.font_id != lead_face:
+                continue
+            char.pdf_style = PdfStyle(
+                font_id=body_style.font_id,
+                font_size=body_style.font_size,
+                graphic_state=body_style.graphic_state,
+            )
     return True
 
 
@@ -422,6 +505,7 @@ def is_toc_leader_line(prev_line: PdfLine) -> bool:
     return bool(_TOC_LEADER_RE.search(line_text(prev_line)))
 
 
+
 def is_font_face_switch(
     prev_line: PdfLine,
     curr_line: PdfLine,
@@ -535,44 +619,55 @@ def should_split_on_font_face_switch(
     # merely wins the character count is not a new paragraph.
     if run_in_continues(prev_line, curr_line):
         return False
+    if multi_line_run_in_continues(prev_line, curr_line):
+        return False
     # When font names are available, weight/style switches within the same
     # font family (e.g. Ubuntu-Light -> Ubuntu-Bold) do NOT split mid-sentence.
     if font_name_map and not line_ends_sentence(prev_line):
-        prev_fid = line_dominant_font_id(prev_line)
-        curr_fid = line_dominant_font_id(curr_line)
-        prev_name = font_name_map.get(prev_fid)
-        curr_name = font_name_map.get(curr_fid)
-        if prev_name and curr_name:
-            from babeldoc.format.pdf.document_il.utils.face_traits import (
-                font_name_tokens,
-            )
+        t_prev = line_text(prev_line).strip()
+        t_curr = line_text(curr_line).strip()
+        is_all_caps_heading = (
+            t_prev.isupper()
+            and len(t_prev.split()) <= 6
+            and not t_prev.endswith((".", "!", "?", ",", ";", ":"))
+            and (not t_curr or t_curr[0].isupper() or not t_curr[0].isalpha())
+        )
+        if not is_all_caps_heading:
+            prev_fid = line_dominant_font_id(prev_line)
+            curr_fid = line_dominant_font_id(curr_line)
+            prev_name = font_name_map.get(prev_fid)
+            curr_name = font_name_map.get(curr_fid)
+            if prev_name and curr_name:
+                from babeldoc.format.pdf.document_il.utils.face_traits import (
+                    font_name_tokens,
+                )
 
-            style_tokens = frozenset(
-                {
-                    "bold",
-                    "heavy",
-                    "black",
-                    "semibold",
-                    "extrabold",
-                    "demibold",
-                    "demi",
-                    "medium",
-                    "light",
-                    "thin",
-                    "ultralight",
-                    "regular",
-                    "roman",
-                    "book",
-                    "italic",
-                    "oblique",
-                    "condensed",
-                    "cond",
-                }
-            )
-            base_prev = font_name_tokens(prev_name) - style_tokens
-            base_curr = font_name_tokens(curr_name) - style_tokens
-            if base_prev and base_curr and (base_prev & base_curr):
-                return False
+                style_tokens = frozenset(
+                    {
+                        "bold",
+                        "heavy",
+                        "black",
+                        "semibold",
+                        "extrabold",
+                        "demibold",
+                        "demi",
+                        "medium",
+                        "light",
+                        "thin",
+                        "ultralight",
+                        "regular",
+                        "roman",
+                        "book",
+                        "italic",
+                        "oblique",
+                        "condensed",
+                        "cond",
+                    }
+                )
+                base_prev = font_name_tokens(prev_name) - style_tokens
+                base_curr = font_name_tokens(curr_name) - style_tokens
+                if base_prev and base_curr and (base_prev & base_curr):
+                    return False
 
     if not soft_mid_sentence:
         return True
@@ -821,17 +916,25 @@ def should_split_line_pair(
     soft_mid_sentence_font_split: bool = False,
     layout_label: str | None = None,
     font_name_map: dict[str, str] | None = None,
+    toc_stack: bool = False,
 ) -> bool:
     """Whether to split a multi-line paragraph so ``curr_line`` starts a new para.
 
     Order is intentional: cheap geometric/text checks first, then face switch.
     ``soft_mid_sentence_font_split`` is True under OCR workaround (see
-    ``should_split_on_font_face_switch``).
+    ``should_split_on_font_face_switch``). ``toc_stack`` keeps every directory
+    row on its own line, including a row with no leader.
     """
-    if is_toc_leader_line(prev_line):
+    from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_entry_line
+
+    if is_toc_leader_line(prev_line) or is_toc_entry_line(prev_line):
+        return True
+    if curr_line is not None and is_toc_entry_line(curr_line):
         return True
     if curr_line is None:
         return False
+    if toc_stack and line_text(curr_line).strip():
+        return True
 
     if line_starts_with_list_marker(curr_line):
         return True
@@ -858,6 +961,7 @@ def should_split_line_pair(
         and prev_width > 0
         and prev_width < median_width * short_line_split_factor
         and not caption_stack
+        and line_ends_sentence(prev_line)
     ):
         return True
     # Size jump first: same face, different pt (font.unknown title stack).
