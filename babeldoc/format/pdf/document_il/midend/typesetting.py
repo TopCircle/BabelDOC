@@ -1717,6 +1717,7 @@ class Typesetting:
         layout_attempt: LayoutAttempt | None = None,
         wrap_enabled: bool | None = None,
         drop_figure_zones: bool = False,
+        _depth: int = 0,
     ) -> tuple[float, list[TypesettingUnit] | None]:
         """查找最优缩放因子并可选择性地执行布局
 
@@ -1728,6 +1729,13 @@ class Typesetting:
         for one release; prefer ``layout_attempt=``.
         """
         if not paragraph.box:
+            return initial_scale, None
+
+        if _depth > 4:
+            logger.warning(
+                "Recursion limit reached in _find_optimal_scale_and_layout (debug_id=%s)",
+                getattr(paragraph, "debug_id", None),
+            )
             return initial_scale, None
 
         from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
@@ -1765,13 +1773,13 @@ class Typesetting:
             self._rect_fill_active = False
             wrap_enabled = True
             drop_figure_zones = False
-            if layout_attempt is LayoutAttempt.FULL_MEASURE:
+            if layout_attempt is not LayoutAttempt.FULL_MEASURE:
                 layout_attempt = LayoutAttempt.PRIMARY
         elif pocket is not None:
             self._rect_fill_active = False
             wrap_enabled = True
             drop_figure_zones = False
-            if layout_attempt is LayoutAttempt.FULL_MEASURE:
+            if layout_attempt is not LayoutAttempt.FULL_MEASURE:
                 layout_attempt = LayoutAttempt.PRIMARY
 
         cfg_wrap = layout_intent_wrap_enabled(
@@ -1805,6 +1813,7 @@ class Typesetting:
                     apply_layout=apply_layout,
                     line_skip=line_skip,
                     layout_attempt=attempt,
+                    _depth=_depth + 1,
                 )
                 last = (scale, units)
                 if attempt is LayoutAttempt.FULL_MEASURE:
@@ -1884,6 +1893,7 @@ class Typesetting:
                 line_skip,
                 wrap_enabled=wrap_enabled,
                 drop_figure_zones=drop_figure_zones,
+                _depth=_depth,
             )
         finally:
             self._current_zone_index = prev_zones
@@ -1905,6 +1915,7 @@ class Typesetting:
         *,
         wrap_enabled: bool = True,
         drop_figure_zones: bool = False,
+        _depth: int = 0,
     ) -> tuple[float, list[TypesettingUnit] | None]:
         """Core scale search + layout (zone index already filtered)."""
         self._ocr_normalize_paragraph_geometry(paragraph)
@@ -2039,6 +2050,7 @@ class Typesetting:
                     if (
                         getattr(self, "_pocket_link", None) is None
                         and getattr(self, "_line_edges", None) is None
+                        and self._layout_attempt is not LayoutAttempt.FULL_MEASURE
                         and self.is_cjk
                         and paragraph is not None
                         and (wrap_enabled or not drop_figure_zones)
@@ -2065,6 +2077,7 @@ class Typesetting:
                             apply_layout=apply_layout,
                             line_skip=line_skip,
                             layout_attempt=LayoutAttempt.FULL_MEASURE,
+                            _depth=_depth + 1,
                         )
                     if apply_layout:
                         # DP 断行优化：在最终布局时尝试更优的断行方案
@@ -2382,6 +2395,7 @@ class Typesetting:
                 line_skip=line_skip,
                 wrap_enabled=wrap_enabled,
                 drop_figure_zones=drop_figure_zones,
+                _depth=_depth,
             )
 
         # Drop figure exclusion zones and re-search (parameterized, no flag).
@@ -2390,6 +2404,7 @@ class Typesetting:
         if (
             getattr(self, "_pocket_link", None) is None
             and getattr(self, "_line_edges", None) is None
+            and self._layout_attempt is not LayoutAttempt.FULL_MEASURE
             and not drop_figure_zones
             and allows_full_measure_escalation(paragraph, is_cjk=self.is_cjk)
             and getattr(self, "_current_zone_index", None) is not None
@@ -2411,6 +2426,7 @@ class Typesetting:
                 apply_layout=apply_layout,
                 line_skip=line_skip,
                 layout_attempt=LayoutAttempt.FULL_MEASURE,
+                _depth=_depth + 1,
             )
 
         # Force-layout candidate (apply path only) — also feeds wrap fallback.
@@ -2446,7 +2462,9 @@ class Typesetting:
         if (
             self.is_cjk
             and paragraph is not None
+            and getattr(self, "_pocket_link", None) is None
             and getattr(self, "_line_edges", None) is None
+            and self._layout_attempt is not LayoutAttempt.FULL_MEASURE
             and (wrap_enabled or not drop_figure_zones)
             and self._cjk_should_abandon_narrow_column(
                 paragraph,
@@ -2471,6 +2489,7 @@ class Typesetting:
                 apply_layout=apply_layout,
                 line_skip=line_skip,
                 layout_attempt=LayoutAttempt.FULL_MEASURE,
+                _depth=_depth + 1,
             )
 
         # Force-apply at readable floor even if text overflows the box.

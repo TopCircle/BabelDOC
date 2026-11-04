@@ -737,10 +737,7 @@ def do_translate(
         return result
 
     except Exception as e:
-        if translation_config.debug:
-            logger.exception("translate error:")
-        else:
-            logger.error(f"translate error: {e}")
+        logger.exception(f"translate error: {e}")
         pm.disable = False
         pm.translate_error(e)
         raise

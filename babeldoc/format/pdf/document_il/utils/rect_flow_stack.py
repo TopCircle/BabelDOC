@@ -516,6 +516,19 @@ def _photo_ink(form, doc) -> list[FigureBox] | None:
     span_y = y1 - y0
     if span_y <= 1.0:
         return None
+    try:
+        import numpy as np
+
+        arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape((height_px, width_px, pix.n))
+        r = arr[:, :, 0].astype(np.int16)
+        g = arr[:, :, 1].astype(np.int16)
+        b = arr[:, :, 2].astype(np.int16)
+        darkest = np.minimum(np.minimum(r, g), b)
+        ink_mask = (darkest < _INK_LO) | (
+            (r - b >= _SKIN_WARMTH) & (b < 248) & (darkest < 250)
+        )
+    except Exception:
+        ink_mask = None
     bands: list[FigureBox] = []
     row = 0
     row_step = max(1, round(height_px * (_INK_BAND / span_y)))
@@ -523,7 +536,15 @@ def _photo_ink(form, doc) -> list[FigureBox] | None:
         next_row = min(height_px, row + row_step)
         page_top = y1 - (row / height_px) * span_y
         page_bottom = y1 - (next_row / height_px) * span_y
-        left, right = _ink_span(pix, row, next_row - 1)
+        if ink_mask is not None:
+            band_ink_cols = np.where(ink_mask[row:next_row].any(axis=0))[0]
+            if band_ink_cols.size > 0:
+                left = int(band_ink_cols[0])
+                right = int(band_ink_cols[-1])
+            else:
+                left, right = None, None
+        else:
+            left, right = _ink_span(pix, row, next_row - 1)
         if left is not None and right is not None:
             bands.append(
                 FigureBox(

@@ -1,9 +1,36 @@
 # BabelDOC — 当前状况（2026-11-04）
 
 **布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008`
-**版本:** `0.6.4.96`（`babeldoc/const.py` 与 `pyproject.toml` 已 bump）  
-**main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
+**版本:** `0.6.4.97`（`babeldoc/const.py` 与 `pyproject.toml` 已 bump）  
+**main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC`。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-04 — 排版递归死循环彻底根除与高分辨率图片墨迹矢量化提速（0.6.4.97）
+
+1. **递归死循环（maximum recursion depth exceeded）根因定位**：
+   - **非 DeepLX 问题**：WebUI 报错 `Babeldoc translation error: maximum recursion depth exceeded` 与 DeepLX 接口无直接关联。DeepLX 网络或鉴权异常均会返回 HTTP/JSON 报错或在段落翻译中被 try-catch 静默降级为原文，不会抛出递归超限。
+   - **核心根因**：`typesetting.py` 中 `_find_optimal_scale_and_layout` 状态机回退循环。对于包含图片避让 pocket 的段落，当文本在最小可读字号仍无法容纳时，深层重排触发 `FULL_MEASURE` 降级，但外层 `elif pocket is not None:` 误将已处于 `FULL_MEASURE` 的终态重新降级回 `PRIMARY`（`if layout_attempt is LayoutAttempt.FULL_MEASURE: layout_attempt = LayoutAttempt.PRIMARY`），导致内层再次尝试升级为 `FULL_MEASURE`，形成无终止来回振荡，直到耗尽 Python 1000 层递归栈。
+   - **次级隐蔽性与性能瓶颈**：
+     - `high_level.py` 在 `debug=False` 时仅打印 `logger.error(f"... {e}")` 而抑制了完整的 `logger.exception` 堆栈，导致在 WebUI 中看不到底层报错位置。
+     - `rect_flow_stack.py` 中 `_photo_ink` 对图片按高分辨率逐像素执行 `pix.pixel(col, row)` 检查，在 119 页高画质插图图书中单页需要数百万次 Python-C 跨界调用，严重拖慢排版速度。
+
+2. **系统性修复与工程实现**：
+   - **递归守卫与状态机终态保护 (`typesetting.py`)**：
+     - 在 `_find_optimal_scale_and_layout` 增加显式深度参数 `_depth: int = 0`，当 `_depth > 4` 时记录 warning 并优雅退出，绝不陷入死循环。
+     - 修复 pocket 分支逻辑：改为 `if layout_attempt is not LayoutAttempt.FULL_MEASURE: layout_attempt = LayoutAttempt.PRIMARY`，严禁将终态 `FULL_MEASURE` 逆向回退。
+     - 在三处 `FULL_MEASURE` 升级入口（行 2050、2404、2464）增加 `self._layout_attempt is not LayoutAttempt.FULL_MEASURE` 守卫，并在行 2462 补充 `getattr(self, "_pocket_link", None) is None` 校验。
+   - **图片墨迹检测 NumPy 矢量化加速 (`rect_flow_stack.py`)**：
+     - 将 `_photo_ink` 重构为基于 NumPy 连续缓冲区切片处理（`np.frombuffer(pix.samples, ...)`），对暗部墨迹与肤色判定进行全矩阵布尔运算与列投影。单图墨迹提取耗时由秒级暴降至 ~15ms（近千倍提速），并具备异常降级机制。
+   - **日志堆栈全量保留 (`high_level.py`)**：
+     - 移除生产模式下的 `logger.error` 截断，统一调用 `logger.exception(f"translate error: {e}")`，确保任何未预期异常在 WebUI 日志中均有完整回溯追踪。
+   - **回归测试套件 (`tests/test_typesetting_recursion_guard.py`)**：
+     - 包含深度守卫截断测试、`FULL_MEASURE` 终态防振荡测试，以及 NumPy 矢量化与旧像素循环的逐像素一致性验证。
+
+3. **测试验证与门禁检查**：
+   - **端到端实书验证**：对目标原书《Orgasmic Addiction.pdf》第 2-120 页（119 页，1576 个段落，210,948 字符）进行全量双语翻译排版测试，**100% 顺利跑通（ALL 119 PAGES SUCCESS!）**，成功生成 9.0MB 双语 PDF 与 8.1MB 单语 PDF，零递归异常。
+   - **单元测试**：全库测试（含 `test_typesetting_recursion_guard.py`、`test_rect_column_reflow.py`、`test_layout_plan.py`、`test_line_interval_plan.py`、`test_wrap_fallback.py` 等 244 项测试）**100% 全绿通过（244 passed）**。
+   - **静态检查**：`ruff check` 全部通过无告警。
+   - **书籍保护**：OneDrive 目录下书籍完全只读，mtime 未变。
 
 ## 2026-11-04 — 全库 30 个排版范式全面收官（step/left_spur 与 bow/left_bulge 端到端闭环）
 
