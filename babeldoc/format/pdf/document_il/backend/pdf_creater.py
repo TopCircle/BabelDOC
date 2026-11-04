@@ -13,7 +13,11 @@ from pathlib import Path
 
 import freetype
 import pymupdf
-from bitstring import BitStream
+
+try:
+    from bitstring import BitStream
+except ImportError:
+    from bitstring import BitArray as BitStream  # type: ignore[assignment]
 
 from babeldoc.format.pdf.document_il import PdfOriginalPath
 from babeldoc.format.pdf.document_il import il_version_1
