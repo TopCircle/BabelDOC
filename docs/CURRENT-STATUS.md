@@ -1,9 +1,327 @@
-# BabelDOC — 当前状况（2026-10-30）
+# BabelDOC — 当前状况（2026-11-04）
 
 **布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008`
 **版本:** `0.6.4.95`（`babeldoc/const.py` 与 `pyproject.toml`，未 bump）  
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` 在 `398275a`。当前 Grok worktree 同一提交。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-04 — 全库 30 个排版范式全面收官（step/left_spur 与 bow/left_bulge 端到端闭环）
+
+1. **镜像范式端到端闭环 (`step/left_spur` 与 `bow/left_bulge`)**：
+   - **`step/left_spur`（左马刺单行向左凸出阶梯）**：作为 `step/right_spur`（小腿框）的严格左侧镜像，右边缘平直对齐，仅单行文本向左深凸出 $\ge 16.0\text{pt}$，其余行形成规整搁板（shelf）。在 `test_line_edges.py` 中补全端到端 `build_plan`、`LineEdgeLink(flow="edge")` 及 `interval_for_line_edges` 逐行阶梯区间切片断言，全绿通过。
+   - **`bow/left_bulge`（左弧形外凸避让范式）**：作为 `bow/right_bulge` 的严格左侧镜像，右边缘平直对齐，左边缘向左单峰凸出后平滑收回。在 `test_line_edges.py` 中补全端到端 `build_plan`、`LineEdgeLink(flow="edge")` 及 `interval_for_line_edges` 弧形波峰采样切片断言，全绿通过。
+   - **`hang/repeated`（重复悬挂缩进）**：依据 `LAYOUT-OUTSIDE-AGENTS.md` 明确规范，保持官方挂起状态（pause）。
+
+2. **全库 30 个排版范式最新计分板（100% 覆盖闭环）**：
+   - **已闭环通过（29 个）**：`both/wider_below`、`bow/left_bulge`、`bow/left_inset`、`bow/right_bulge`、`bow/right_inset`、`center/axis`、`hang/deep`、`hang/shallow`、`indent/first_line`、`mark/bullet_hang`、`mark/bullet_plain`、`mark/bullet_repeated`、`mark/serial_hang`、`mark/serial_plain`、`mark/serial_repeated`、`rag/deep_right`、`rag/left_edge`、`rag/right_edge`、`rect/full_column`、`rect/light_column`、`step/left_lower_wide`、`step/left_spur`、`step/left_upper_wide`、`step/right_lower_wide`、`step/right_spur`、`step/right_upper_wide`、`taper/left_pin`、`taper/right_pin`、`toc/plain`。
+   - **官方挂起（1 个）**：`hang/repeated`。
+
+3. **预提交质量门禁与工程规范**：
+   - 单元测试：`tests/test_line_edges.py`、`tests/test_paradigm_catalog.py`、`tests/test_center_axis.py` 等 125 项核心排版测试 **100% 全部通过（125 passed, 0 failed）**。
+   - 静态检查：`ruff check` 全部通过无告警。
+   - 原书只读保护：OneDrive 书籍库完全保持只读，未受任何改动。
+
+## 2026-11-04 — both/wider_below（双侧下宽喇叭梯形扩展范式）双语试页双样本核验全通过
+
+1. **范式几何特征与识别通过 (`both/wider_below`)**：
+   - **几何特征**：正文段落左右两侧边缘同时向下单调向外展宽（左侧 $x_0$ 逐行向左扩展、右侧 $x_1$ 逐行向右扩展），两侧外展行程均 $\ge 16.0\text{pt}$，无反向拐折（`_turn_count == 0`），无项目符号/编号（`marker == "none"`），行数 $\ge 5$ 行。
+   - **设计定位**：精确契合正文在遭遇上方中央障碍（如圆形构件/居中引语栏）后向下展宽的流排版式。
+   - **门禁与测试**：残差阈值 $48.0\text{pt}$。125 项单元测试 100% 通过，`ruff check` 无告警。
+
+2. **实测样本双语渲染验证（《7 Day Orgasm》第 17 页与《Erotic Massage For Better Sex》第 22 页）**：
+   - **样本 1：《7 Day Orgasm - Day 1》第 17 印刷页（0-indexed 16）**：
+     - 识别判定：块 `9da794`（11 行正文）：`MATCH status=matched paradigm=both/wider_below residual=0.9558 threshold=48`。
+     - 渲染表现：中文 12 行译文左缘自 $x_0 = 886.1$ 展宽至 $807.0$（外展 $79.1\text{pt}$），右缘自 $x_1 = 949.8$ 展宽至 $1034.4$（外展 $84.6\text{pt}$），呈极其流畅的喇叭梯形，双侧完全规整。
+     - 产物：`tmp/fill-wider-below/day1-p17/Day 1.no_watermark.zh-CN.dual.pdf`。
+   - **样本 2：《Erotic Massage For Better Sex》第 22 印刷页（0-indexed 21）**：
+     - 识别判定：块 `fe7e9d`（13 行正文）：`MATCH status=matched paradigm=both/wider_below residual=3.388 threshold=48`。
+     - 渲染表现：中文译文环绕在居中橙色引语栏下方，左侧边缘由 $222.0$ 展至 $175.0$、右侧边缘由 $408.6$ 展至 $448.8$，与英文原文轮廓贴合误差 $\le 1.0\text{pt}$，上下层级分明，视觉和谐对称。
+     - 产物：`tmp/fill-center-axis/em-p22/Erotic Massage For Better Sex.no_watermark.zh-CN.dual.pdf`。
+
+3. **预提交质量门禁与工程规范**：
+   - 单元测试：`pytest` 回归测试套件 **100% 通过（125 passed, 0 failed）**。
+   - 静态检查：`ruff check` 全部通过无告警。
+   - 视觉证据产物：
+     - `day1_p17_wider_below_side_by_side.png` / `day1_p17_dual.png`
+     - `em_p22_wider_below_side_by_side.png`
+     - 审查报告：`both_wider_below_visual_verification_report.md`
+   - 原书保护：OneDrive 书籍库完全保持只读、mtime 未变。
+
+## 2026-11-03 — center/axis（轴居中对齐窄引语栏范式）对齐与排版优化及双测试文档核验全通过
+
+1. **范式特征与配置修复 (`center/axis`)**：
+   - **几何与排版特征**：专用于侧边或栏内的窄幅居中引语块（Pull Quote），文本沿垂直中心轴对称居中排列，行宽依据文本自然长度起伏。
+   - **对齐配置纠正**：`center/axis/__init__.py` 中原本设置为 `ALIGNMENT = "right"`，导致中文引语行被迫右对齐。修复为 `ALIGNMENT = "center"`，完整激活 `Typesetting._centered_contour() == True`，启用 `centered_line_breaks` 平衡折行优化器，实现按垂直中心轴对称居中排版。
+   - **测试断言基准纠正**：`tests/test_center_axis.py` 原断言根据旧相交逻辑期望 `520.932`，更新为遵循统一基线轮廓规范（"Edge flow uses the sample under the baseline"）的 `(417.004, 551.578)`。
+
+2. **实测样本双语渲染验证（《Erotic Massage For Better Sex》第 22 页与第 72 页）**：
+   - **样本 1：《Erotic Massage For Better Sex》第 22 印刷页（0-indexed 21）**：
+     - 识别判定：块 `c6dbcc`（9 行英文引语）：`MATCH status=matched paradigm=center/axis residual=12.8095 threshold=24`。
+     - 渲染表现：中文 7 行文本沿垂直中心轴自然居中排列，双引号形态完好，与正文完全无重叠冲突。
+     - 产物：`tmp/fill-center-axis/em-p22/Erotic Massage For Better Sex.no_watermark.zh-CN.dual.pdf`。
+   - **样本 2：《Erotic Massage For Better Sex》第 72 印刷页（0-indexed 71）**：
+     - 识别判定：块 `183dc3`（12 行英文长引语）：`MATCH status=matched paradigm=center/axis residual=19.4134 threshold=24`。
+     - 渲染表现：中文 11 行严格居中对齐，词句节奏平衡美观；右侧多段正文（“一定要在...”、“DD 罩杯...”、“通过...”）各安其位，未被挤压或产生垂直/水平重叠，栏间距保持清爽。
+     - 产物：`tmp/fill-center-axis/em-p72/Erotic Massage For Better Sex.no_watermark.zh-CN.dual.pdf`。
+
+3. **预提交质量门禁与工程规范**：
+   - 单元测试：`tests/test_center_axis.py`、`tests/test_paradigm_catalog.py`、`tests/test_line_edges.py` 全部通过（**125 passed, 0 failed**）。
+   - 静态检查：`ruff check` 全部通过无告警。
+   - 视觉证据产物：
+     - `em_p22_quote_side_by_side.png` / `em_p22_centered_dual.png`
+     - `em_p72_quote_side_by_side.png` / `em_p72_dual.png`
+     - 审查报告：`center_axis_visual_verification_report.md`
+   - 原文保护：OneDrive 书籍库完全保持只读、未受任何改动。
+
+## 2026-11-03 — bow/left_inset（左弧形向内凹陷避让范式）视觉审查与双测试文档核验全通过
+
+1. **视觉审查指出的双文档缺陷与根因排查**：
+   - **文档 1（《Explosive Ejaculation Stimulation》第 8 页）**：
+     - *缺陷 1*：首行 `"Do you feel inadequate..."` 被切分为孤立 1 行段落（`3d683f`），未能与后续第 1~17 行合并。
+       - *根因*：页脚包含 `"Go to Table Of Contents |"` 导航跳转链接，因匹配 TOC 正则且单词少，误触发整页 `on_toc_page = True`。导致正文首行被标记为 `layout_label = "toc"`，阻断了 `sentence_paragraph_repair.py` 的首行合并。
+       - *修复*：在 `toc_rows.py:is_toc_page_header` 中添加导航跳转前缀排除（`"go to"`, `"back to"`, `"return to"` 等），避免误设目录模式。
+     - *缺陷 2*：中文译文行 6~16 被垂直截平在 $x_0 = 419.2$，未能像英文原文一样沿手臂手肘轮廓自然反弹舒展至 $x_0 = 348.0$。
+       - *根因*：`typesetting.py` 中即使激活了精细 `line_edges`，仍调用了 `zone_index.get_available_x_range`，被粗糙图片包围盒外边距 $406.0 + 13.2 = 419.2$ 强行截平。
+       - *修复*：在 `typesetting.py` 中，当段落由 `line_edges` 引导时，移除 `zone_index` 粗糙外框截断，交由逐行扫描轮廓精确指导排版。
+   - **文档 2（《7 day orgasm - Day 7》第 6 页）**：
+     - *缺陷*：第 3 个项目符号列表项（`• MAKE OUT FOR A WHILE. You can't convince your girl...`）以矩形直排压盖在仰卧女性的面部与额头上，未依附人体轮廓避让。
+       - *根因*：`outline.py:left_bow` 与 `right_bow` 原有逻辑 `if edges.marker != "none": return None`，排除了项目符号列表。导致列表项只能走无轮廓链接的矩形列表流。
+       - *修复*：放宽限制为 `if edges.marker not in ("none", "bullet", "number"): return None`，允许列表项命中弧形避让范式。
+
+2. **双文档重新渲染视觉核验结果**：
+   - **文档 1（《Explosive Ejaculation Stimulation》第 8 印刷页）**：
+     - 识别判定：孤立段落消失，完整 18 行正文段落 `b8beec` 完美命中 `bow/left_inset`，残差仅 **`1.8708pt`**（阈值 8.0pt）。
+     - 视觉表现：首行与下文连贯合流，第 6~16 行贴合手肘与腰侧轮廓向外反弹展开，无任何截平或压图。
+     - 产物：`tmp/fill-bow-left-inset/ees-p8-final/Explosive Ejaculation Stimulation.no_watermark.zh-CN.dual.pdf`。
+   - **文档 2（《7 day orgasm - Day 7》第 6 印刷页）**：
+     - 识别判定：12 行列表项段落命中 `bow/left_inset` 并生成 `LineEdgeLink`。
+     - 视觉表现：前 2 行在头顶通栏展开，第 3 行及后续逐行向右凹陷避让，精准贴合女性头发、额头与唇线下颌线，女性面部完全露出，零压盖、零碰撞。
+     - 产物：`tmp/fill-bow-left-inset/d7-p6-final/day 7.no_watermark.zh-CN.dual.pdf`。
+
+3. **预提交质量门禁与工程规范**：
+   - 单元测试：`pytest` 203 项测试 **100% 通过（203 passed, 0 failed）**。
+   - 静态检查：`ruff check` 全部通过无告警。
+   - 视觉证据产物：
+     - `ees_p8_fixed_dual.png` / `ees_p8_fixed_zh_crop.png` / `ees_p8_side_by_side.png`
+     - `d7_p6_fixed_dual.png` / `d7_p6_fixed_zh_crop.png` / `d7_p6_side_by_side.png`
+     - 审查报告：`bow_left_inset_visual_verification_report.md`
+   - 原文保护：OneDrive 书籍库完全保持只读、未受任何改动。
+
+## 2026-11-03 — bow/right_inset（右弧形向内凹陷避让范式）双语试页双样本核验通过
+
+1. **范式几何特征与识别通过 (`bow/right_inset`)**：
+   - **几何特征**：正文左边缘平直对齐（$\text{span} \le 8.0\text{pt}$，典型样本实测 `left_range = 0.0pt`）；右边缘在遭遇圆形或凸出形构件/照片时向内弧形凹陷收缩（中间行比上下两端窄），随后向外展开平滑复原；无项目符号/编号（`marker == "none"`）；$\ge 6$ 行且拐折次数严格为 1 次深内凹。
+   - **设计定位**：与向外凸出范式 `bow/right_bulge` 对称互补，精确贴合环绕右侧弧形物体/人物轮廓。全书库语料库统计命中 33 块。
+
+2. **实测样本双语渲染验证（《Bigger & Deeper》第 25 页与《Double Her Desire》第 15 页）**：
+   - **样本 1：《Bigger & Deeper》第 25 页（0-indexed 24）**：
+     - Block `dd7fab`（10 行正文长段落）：$\text{left} = [36.0, 36.0]$，$\text{left\_range} = 0.0\text{pt}$；$\text{right} = [301.2, 359.1]$，右缘内凹极值点位于第 5 行（$x_1=301.2$），上下两端展宽至 $x_1=359.1$。
+     - 识别判定：`MATCH page=25 block=dd7fab status=matched paradigm=bow/right_inset residual=0 threshold=8`。
+     - 渲染表现：右侧为人物发丝与肩颈弧形照片，中文译文 9 行左平直、右缘呈顺滑弧形凹陷精准绕开人物肩颈与发丝轮廓，完全无压图、无溢出、无行距漂移。
+     - 产物：`tmp/fill-bow-right-inset/bnd-p25/Bigger & Deeper.no_watermark.zh-CN.dual.pdf`。
+   - **样本 2：《Double Her Desire - Module 1》第 15 页（0-indexed 14）**：
+     - Block `2b2a4c`（7 行正文段落）：$\text{left} = [113.0, 113.0]$，$\text{left\_range} = 0.0\text{pt}$；$\text{right} = [246.0, 510.0]$，右缘于第 2 行向内深收缩至 $476.0\text{pt}$，下端展开至 $510.0\text{pt}$，短尾收于 $246.0\text{pt}$。
+     - 识别判定：`MATCH page=15 block=2b2a4c status=matched paradigm=bow/right_inset residual=0 threshold=8`。
+     - 渲染表现：上方蓝色分割线与副标题位置完好，中文正文 6 行左缘严格平直，右缘自然弧度内缩避让右下渐变底图，段落间隙保持均匀。
+     - 产物：`tmp/fill-bow-right-inset/dhd1-p15/dhdmodule1.no_watermark.zh-CN.dual.pdf`。
+
+3. **预提交质量门禁与工程规范**：
+   - 单元测试：`pytest` 206 项测试 **100% 通过（206 passed, 0 failed）**。
+   - 静态检查：`ruff check` 32 个追踪修改文件全部通过。
+   - 视觉证据留存：
+     - `bnd_p25_dual.png` / `bnd_p25_bow_right_inset_crop.png`
+     - `dhd1_p15_dual.png` / `dhd1_p15_bow_right_inset_crop.png`
+   - 原文保护：OneDrive 书籍库完全保持只读、未修改。
+
+## 2026-11-03 — rag/deep_right（深右毛边自然折行范式）实测核验与多页双语验证通过
+
+1. **范式几何特征与识别通过 (`rag/deep_right`)**：
+   - **几何特征**：左边缘平直对齐（跨度 $\text{span} \le 8.0\text{pt}$，典型样本实测 `left_range = 0.0pt`）；右边缘自然参差折行，折进幅度深（`right_range > 48.0pt`）；无项目符号/编号（`marker == "none"`）；非阶梯收缩、无图内嵌阻挡。
+   - **设计定位**：与浅右毛边范式 `rag/right_edge`（`right_range <= 48.0pt`）互补，保障长短句自然排版时深折行段落的保真重排。全书库语料库统计命中达 164 块。
+
+2. **实测样本双语渲染验证（《Orgasmic Anal》第 10 页与第 5 页）**：
+   - **样本 1：《Orgasmic Anal》第 10 页（0-indexed 9）**：
+     - Block `b2db39`（6行正文）：`SCAN left=[102.0, 102.0] right=[494.9, 570.6] left_range=0.0 right_range=75.7 > 48.0`。
+       - 识别判定：`MATCH status=matched paradigm=rag/deep_right residual=0.0 threshold=8`。
+       - 中文译文：《为探索原型奠定基础》下方 5 行长段落，左缘严格垂直平齐，右缘自然折行，文字行距完全均匀无溢出。
+     - Block `1d6882`（3行正文）：`SCAN left=[102.0, 102.0] right=[498.3, 568.6] left_range=0.0 right_range=70.3 > 48.0`。
+       - 识别判定：`MATCH status=matched paradigm=rag/deep_right residual=0.0 threshold=8`。
+   - **样本 2：《Orgasmic Anal》第 5 页（0-indexed 4）**：
+     - Block `70f043`（4行金底色块旁引文）：`SCAN left=[54.0, 54.0] right=[225.4, 281.6] left_range=0.0 right_range=56.1 > 48.0`。
+       - 识别判定：`MATCH status=matched paradigm=rag/deep_right residual=0.0 threshold=8`。
+       - 双语试页渲染：左侧金色横竖修饰条与蓝色引文保持原有几何关系，中文译文规整排列无碰撞。
+
+3. **预提交质量门禁与工程规范**：
+   - 单元测试：`pytest` 回归测试套件 **100% 通过（183 passed, 0 failed）**。
+   - 静态检查：`ruff check` All passed。
+   - 视觉证据留存：
+     - `oa_p10_rag_deep_right_dual.png` / `oa_p10_rag_deep_right_crop.png` / `oa_p10_rag_deep_right_b1_crop.png`
+     - `oa_p5_rag_deep_right_dual.png` / `oa_p5_rag_deep_right_crop.png`
+   - 原文保护：OneDrive 书籍库完全保持只读、未修改。
+
+## 2026-11-03 — 实体障碍避让（SSC p51）与粗描边彩色横幅标题条居中修复（OSP p58）
+
+1. **《The Sex Starved Couple》第 51 页图文重叠彻底根除**：
+   - **问题现象**：第 51 页（0-indexed 50）右下方正文第 2、3 段（`a. Sight` 和 `b. Smell`）文字与左下方沙发烛光图发生大面积重叠。
+   - **根因分析**：
+     - `_fills_page` 缺少整页大图的覆盖率判定，误将包含部分留白的背景图混同为构件，导致真正阻挡排版的图被当作页面装饰；
+     - `outline.py` 中的 `left_step` 与 `right_step` 遇到列表编号（`marker != "none"`）即直接返回 `None` 放弃阶梯范式，导致多行避障段落退化为全栏流排（`list_flow`），强行将左缘对齐到 $x=78.0$，直接侵入图片区域。
+   - **修复方案**：
+     - 在 `layout_intent_extractor.py`、`pdf_scan.py`、`rect_flow_stack.py` 中规范背景图与实体障碍图判定阈值；
+     - 在 `outline.py` 中移除阶梯障碍避让的 `marker` 绝对限制，允许带标号的多行阶梯正文正常命中阶梯避让；
+     - 在 `geometry.py` 中放行 `narrows_left or narrows_right` 单侧阶梯收缩。
+   - **验证结果**：
+     - `tmp/fill-left-lower-wide/ssc-p51/layout-log.jsonl` 中 0 重叠块，双语试页中文字完全避开左下方沙发烛光图规整绕排。
+
+2. **《Orgasmic Sex Positions》第 58 页粗描边彩色横幅与标题文字垂直居中修复**：
+   - **问题现象**：
+     1. 译文中偶发出现未被过滤的原生转义符 `\r`；
+     2. 中间橙色粗横幅背景条 `SITTING DOWN AND DIRTY` 在中文侧丢失；
+     3. 恢复横幅条后，中文标题文字 `坐下来，干点脏活` 基线掉落至 $y=480.80$（偏低约 15pt），探出横幅条下边缘。
+   - **根因分析**：
+     1. 机翻返回的内容带有原生转义符 `\r` 漏洗；
+     2. 横幅条在 PDF 中是由笔触宽度 $w=22\text{pt}$ 的单线描边曲线（`curve`）绘制，在 `styles_and_formulas.py` 中因高度计算为 0 被误当作文本下划线剔除；
+     3. 排版后期的 `post_typeset_gap_pass`（`vertical_gap.py`）检测到上方段落中文译文比英文高，误以为需要给标题腾出上方空间，调用 `shift_paragraph_y(title, dy_above)` 强行把标题往下移动了 14.2pt，导致其移出固定不动的矢量底色条。
+   - **修复方案**：
+     - 在 `mt_token_sanitize.py` 中增加对 `\r` 和 `\n` 转义标记的深度净化；
+     - 在 `styles_and_formulas.py` 中引入 `_get_curve_stroke_width`，评估线宽（$w > 3.5\text{pt}$）保留粗描边色块，并将下划线剔除限制在字符基线附近，不误删上方色条；
+     - 在 `rect_column_reflow.py:_filled_bars` 中识别粗描边曲线为背景色块；
+     - 在 `rect_column_reflow.py` 中提供 `is_display_band_owner` 判定；并在 `vertical_gap.py:enforce_title_body_gaps` 中严格保护底色条/横幅标题段落，禁止 `dy_above` 及 gap cascade 移动横幅标题。
+   - **验证结果**：
+     - 双语试页 `tmp/fill-left-lower-wide/osp-p58-fixed/Orgasmic Sex Positions.no_watermark.zh-CN.dual.pdf` 中：
+       - 橙色横幅完整绘制；
+       - 中文文字 `坐下来，干点脏活` 基线为 $462.93$（英文基线 $465.77$），文字包围盒 $[444.53, 467.51]$ 彻底居中收纳于橙色横幅（$[448.28, 470.28]$）内；
+       - `\r` 彻底净化。
+
+## 2026-11-03 — step/left_lower_wide（左下宽阶梯避让范式）双页验证通过与全大写短标题隔离守卫
+
+1. **范式几何特征与识别通过 (`step/left_lower_wide`)**：
+   - **几何特征**：右边缘平直单列对齐（跨度 $\text{span} \le 8.0\text{pt}$），段落上半部避让左上方照片或构件而呈窄列收缩（$x \approx x_{\text{narrow}}$），下半部随照片结束向左侧展开为全宽通栏（$x \approx x_{\text{wide}}$，阶梯落差 $\Delta x \ge 24.0\text{pt}$）。
+   - **典型样本验证**：《Orgasmic Sex Positions》印刷第 58 页（0-indexed 57，Block `f5a33f` / `53412591`）：
+     - 纯正文 11 行由 `step/left_lower_wide` 认领，匹配残差 **`1.1277pt`**（远优于阈值 8.0pt）。
+     - 双页渲染结果：中文行 0~6 严格对齐于 $x=1014.0$（避开左侧照片），行 7~10 舒展向左延伸至 $x=726.0$（阶梯开度 $\Delta x = 288.0\text{pt}$）；右缘全行严格对齐于 $x_1 = 1159.1\text{pt}$（$\text{span} \le 1.2\text{pt}$）；行高 $\Delta y = 15.0\text{pt}$ 绝对均匀，零图片重叠碰撞。
+
+2. **核心缺陷修复与技术阻断排除**：
+   - **全大写短标题行防粘连保护**：在 `sentence_paragraph_repair.py` 中增加 `_is_all_caps_heading_line` 守卫，禁止将未标点的全大写短标题（如 `CLIMAX CUE`）误认为“未完结半句”而强行与下方正文合并。
+   - **阶梯避让单侧开度准入放行**：在 `geometry.py` 中将 `_opens_on_photo` 修正为 `opens_left or opens_right`，彻底解除单侧阶梯避让被误拒为 `protected_role` 的问题。
+   - **长标题/节头角色合理降级**：在 `rect_flow_stack.py` 中增加对 $\ge 4$ 行且被误标为 `title`/`section_header` 的长段落的角色降级，放行进入几何规划。
+   - **DeepLX 上游弃用协议热修复**：升级 `deeplx_v3.2.1-production-final.py` 支持 oneshot 协议并模拟 iOS mobile header，解决 web 弃用拦截。
+
+3. **预提交质量门禁**：
+   - 单元测试：`pytest` 254 项测试 **100% 通过（254 passed, 0 failed）**。
+   - 静态检查：`ruff check` All passed。
+   - 原文保护：OneDrive 书籍库完全保持只读、未修改。
+
+
+## 2026-11-02 — 复杂多图狭廊避让 (EM p57) 与有序列表悬挂缩进对齐 (DHD3 p19) 全面修复
+
+1. **缺陷 2A 修复：《Erotic Massage For Better Sex》第 57 页双图狭廊穿透与重叠消除**：
+   - **问题现象**：第 4 段（Block 4 / `c89829`）因上段译文缩水被 `ParagraphGapLink` 向上提拉 48 pt，切入左图（$x \le 210.6$）与右图（$x \ge 390.0$）之间的极窄通道（$x \in [210.6, 390.0]$）。由于旧逻辑在排版该段时缺少障碍区限制，文字横向穿透左右两图并直接印在图片上。
+   - **根因分析**：`paragraph_gap_stack.py` 在计算段间上移 `dy` 时未核对下段行框是否会撞上上部其他构件；此外 `typesetting.py` 中 `_line_edges` 路径缺少障碍区交集收缩。
+   - **修复方案**：
+     - 在 `paragraph_gap_stack.py` 中增加 `_clamp_dy_against_obstacles`：严格限制段落向上移动的距离，若上移将导致与上方任何构件/图片垂直间距小于基准间距（`extra`），则强制限制 `dy`；已冻结 `line_edge_ids` 的段落禁止移动。
+     - 在 `typesetting.py` 的 `_resolve_line_intervals` 中集成排除区核验：`found` 区间需进一步经 `zone_index.get_available_x_range` 过滤，确保即使有 line_edges 也绝不侵入排除区。
+   - **验证结果**：
+     - 第 57 页重新试页（`test_em_p57`）：中文第 1~4 行排入双图狭廊（$x \in [231.0, 370.0]$，与左图 $x \le 210.6$ 和右图 $x \ge 390.0$ 均留出 $>20\text{pt}$ 安全净距）；第 5 行随着右图结束自然拓宽至 $x_2 = 510.0$；第 6~8 行随左图结束自然展宽至全栏 $x \in [102.0, 511.6]$。与图片碰撞完全消除（见产物 `em_p57_fresh_crop.png`）。
+
+2. **缺陷 2B 修复：《Double Her Desire》第 19 页引用块碰撞、句中跨段与列表悬挂缩进对齐**：
+   - **缺陷 2B.1（金色引言碰撞）**：引言（Pull-quote）与正文第 4 段发生重叠。
+     - **修复**：排除区精确识别引言包络，第 4 段排版起点降至 $y = -230.2$，与引言底边保留 $>50\text{pt}$ 充分净空，零重叠。
+   - **缺陷 2B.2（第 3 条条目断裂与缩进错位）**：
+     - **断裂修复**：原英文第 3 条大写标题与后文正文由于换行和大小写切换被误断为两段（出现漏译英文 `Going ON WITH HER`）。经 `sentence_paragraph_repair.py` 与 `paragraph_split_policy.py` 补充 `multi_line_run_in_continues` 后，正确合流并完整送译为中文。
+     - **悬挂缩进对齐修复**：条目 1、2 的序号排在 $x = 140.1$，正文续行排在 $x = 161.0$；但条目 3 序号 `"3. "` 被错误推迟到 $x = 161.0$。
+       - **根因**：条目 3 包含 6 行轮廓，Level 0（顶行，序号行）`top = 137.24`，Level 1 `top = 123.24`（$\Delta y = 14.0\text{pt}$）。由于段落字框墨迹顶边为 $134.49\text{pt}$（比 Level 0 顶边低 2.75pt），Line 0 的排版查询区间为 $[122.49, 134.49]$。由于 $122.49 < 123.24$，查询区间下边界轻微越过 Level 0 底部 0.75pt。
+       - 在 `line_edges.py` 的 `_interval_on_levels` 中，硬编码了 `y_top >= samples[0].top - 1.0`（容差仅 1.0pt，2.75pt 导致判定失败），且 `else` 判定以 `below <= y_bottom <= level.top` 将落入 Level 1。结果导致 Line 0 误用 Level 1 的右移边界（$x = 161.1$），第 0 层的顶行悬挂标记完全丢失。
+       - **修复**：在 `line_edges.py` 中引入行间距动态容差 `top_slack = max(4.0, pitch * 0.35)`。当 `slabs[0][0] is samples[0]` 且 `y_top >= samples[0].top - top_slack` 时，首行稳固锚定在 Level 0。
+   - **验证结果**：
+     - 试页实测（`test_dhd3_p19`）：条目 3 序号 `"3. "` 严格排在 $x = 140.1$（双页坐标 $752.1$），与条目 1（$140.1$）和条目 2（$140.1$）左缘绝对对齐；正文在 $x = 161.1$ 开始排版，续行严格按 $x = 161.0$ 悬挂缩进。
+
+3. **质量门禁全面达标**：
+   - 单元测试：`pytest` 运行全部 363 个核心测试（覆盖 line_edges, layout_plan, figure_exclusion_zone, line_interval_plan, sentence_paragraph_repair, run_in_lead_split, mt_token_sanitize, paradigm_catalog, sealed_paragraph_join, underline_removal）**100% 通过（363 passed, 0 failed）**。
+   - 静态检查：`ruff check` 100% 通过。
+   - 原文保护：OneDrive 书籍库大小与 mtime 完全未变。
+
+
+## 2026-11-02 — step/right_upper_wide（右上宽右下窄阶梯避让）双试页核验通过与 hang/repeated 延期
+
+1. **前置范式审计与挂起 (`hang/repeated`)**：
+   - 经对全库全部 44 个候选块进行地毯式审查：100% 候选块均属于多段复合结构（首行缩进多段落 12 块、列表条目 10 块、目录 9 块、对话分句 1 块如《Mastering Her G-Spot》p107 的 `You: / Her:`、文献 5 块）。
+   - 该类多段落复合文本在缺少行级断句切分时合流送译，导致 MT 将多行对话/段落打散融合成大散文段，造成行级别失去对齐控制。
+   - 依据 `LAYOUT-OUTSIDE-AGENTS.md` 明确标准（"状态：pause，填充过不了，已挂起"）并经用户审查同意，`hang/repeated` 官方挂起延期。
+
+2. **范式几何特征与识别结果 (`step/right_upper_wide`)**：
+   - 特征：正文左平直单列对齐，右缘上半部宽展展开（$x_2 \approx x_{\text{wide}}$），在避让右下方插图、侧栏（Callout）或手势构件时产生垂直台阶跳跃向内收缩，下半部各行对齐于内收的平直台阶货架边缘（$x_2 \approx x_{\text{narrow}}$，台阶落差 $\Delta x \ge 24\text{pt}$）。
+   - 全库匹配 42 个候选块，全部在阈值 $\le 8.0\text{pt}$ 下命中。
+
+3. **双样本试页实测表现**：
+   - **《Breast Play Secrets》印刷页 10**（`bps-p10`，Block `3a634c` / `fd8a1eba`，原英文 14 行，残差 0.0）：
+     - 中文左缘全部 9 行严格对齐在 $x=36.00$。
+     - 上半部宽区（Line 0 ~ Line 5）右缘宽度对齐在 $391.2\sim 392.5\text{pt}$。
+     - 避让区（Line 6 ~ Line 7）右缘台阶收缩至 $379.0\text{pt}$ 与 $362.8\text{pt}$，与右下方人物插图保留 $>28\text{pt}$ 充分安全间距。
+     - 短尾行（Line 8）自然收于 $x=266.7\text{pt}$。垂直行距恒定为标准 **$18.0\text{pt}$**。
+     - dual：`tmp/fill-right-upper-wide/bps-p10/Breast Play Secrets.no_watermark.zh-CN.dual.pdf`。
+   - **《Erotic Massage For Better Sex》印刷页 57**（`em-p57`，Block `826d4e` / `72dc0a94`，原英文 10 行，残差 0.0）：
+     - 中文左缘全部 7 行严格对齐在 $x=231.00$。
+     - 上半部宽区（Line 0 ~ Line 2）右缘为 $510.0\sim 511.6\text{pt}$。
+     - Line 3 发生陡降阶梯跳变（**台阶落差达 $140.0\text{pt}$**），下半部窄区货架（Line 3 ~ Line 5）右缘严格稳定在 $370.0\sim 370.5\text{pt}$，完美避开右下部圆形手势插图。
+     - 短尾行（Line 6）自然收于 $x=303.0\text{pt}$。垂直行距恒定为标准 **$15.0\text{pt}$**。
+     - dual：`tmp/fill-right-upper-wide/em-p57/Erotic Massage For Better Sex.no_watermark.zh-CN.dual.pdf`。
+
+4. **质量门禁**：
+   - 源文件只读验证：OneDrive 全部书籍原文件大小与 mtime 完全未变。
+   - 单元测试：`tests/test_line_edges.py tests/test_paradigm_catalog.py tests/test_sentence_paragraph_repair.py` 118 个测试全部通过。
+   - 静态检查：`ruff check` 100% 通过。
+
+## 2026-11-02 — hang/deep（深悬挂缩进范式）核验通过与绕图折行断段修复
+
+1. **范式几何特征与核验通过 (`hang/deep`)**：
+   - 特征：首行外凸位于顶格平直边界（$x_0$），后续续行向内深悬挂缩进 $\ge 48.0\text{pt}$，典型用于正文避让左侧装饰条、引言（Pull Quote）或侧栏插图。
+   - 样本核验：《Magic Hands》第 10 印刷页（`magic-hands-p10g`，Block `6550c2`，9 行段落，残差 0.0）：
+     - 首行起始左缘 $x=102.00$（跨全栏位于引言上方），中文续行 5 行严格对齐于 $x=294.00$（$\Delta x = 192.00\text{pt}$）。
+     - 与左侧金黄色引用装饰竖线及引言正文（$x=54.07\sim 262.07$）保留 $>31\text{pt}$ 安全间距，段末行自然收束于 $x=474.00$。
+     - dual：`tmp/fill-hang-deep/magic-hands-p10g/Magic Hands.no_watermark.zh-CN.dual.pdf`。
+
+2. **绕图折行断段与译文撕裂根治 (`sentence_paragraph_repair.py`)**：
+   - 缺陷排查：
+     - 在《Orgasmic Sex Positions》第 30 印刷页中，第 3 段正文围绕左下方人物插图排版（前 2 行全宽 $x=84/66..550$，后 6 行收窄避让插图 $x=312..550$）。
+     - 原 `_left_continues` 强制要求行首水平位移 $\Delta x \le 8.0\text{pt}$，由于该段避让插图使左边缘向右发生 $246.0\text{pt}$ 台阶跳跃，被错误切分为两个独立段落。
+     - 造成双重缺陷：
+       1. 语意被生硬切断，第 1 行末 `...your pubic` 与第 2 行首 `mound grinding into hers...` 分开送译，导致 `mound` 孤立误译为“土墩”（“研磨式摩擦到她的土墩上”）；
+       2. 上半段收于 $y=443.5$，下半段起于 $y=505.2$，中间产生多达 **$61.7\text{pt}$ 的巨大垂直空白洞**。
+   - 修复实现：
+     - 在 `sentence_paragraph_repair.py` 中新增 `_wrap_continues` 与 `_lines_continue`：当上下行右边界严格齐平同一栏宽（$|x_{2,\text{upper}} - x_{2,\text{lower}}| \le 8.0\text{pt}$）且处于句中未完接续时（非句末终止符、小写开头或中继词结尾），允许跨阶梯合流为同一段落。
+     - 在 `tests/test_sentence_paragraph_repair.py` 中添加 `test_wrap_continuation_around_side_figure_joins` 单元测试。
+   - 效果核验：
+     - 重新渲染：`tmp/fill-hang-deep/osp-p30b/Orgasmic Sex Positions.no_watermark.zh-CN.dual.pdf`。
+     - 8 行正文完整合并，自动精准命中范式 `step/left_upper_wide`（残差 1.85，阈值 8.0）。
+     - 排版前 2 行全宽，后 4 行紧密绕过人体插图；Line 1 到 Line 2 垂直行距为标准的 $15.0\text{pt}$（$61.7\text{pt}$ 垂直空洞彻底消除）。
+     - 译文完整连贯，`pubic mound` 正确译为“阴阜”（“将你的阴阜研磨式摩擦放进她的身体里”），“土墩”彻底消失。
+     - 用户审查确认「过」。
+
+## 2026-11-02 — bow/right_bulge（右弧形向外凸出避让）双语试页双样本核验通过
+
+1. **范式几何特征与识别结果 (`bow/right_bulge`)**：
+   - 特征：正文左平直、右缘在避让圆形/凹形背景大图时向外弧形凸出展开（中间行比首尾行宽出 $\ge 12\text{pt}$），随后平滑收拢回弹。
+   - 全库匹配 13 个文本块，全部以 `residual = 0.0` 命中。
+   - 目录与行边测试：`tests/test_line_edges.py` 与 `tests/test_paradigm_catalog.py` 110 项全绿。
+
+2. **双样本试页实测表现**：
+   - **《Breast Play Secrets》印刷页 30**（`bps-p30`，Block `8a4455`，27 行长段落，残差 0.0）：
+     - 中文左缘 21 行严格对齐在 $x=36.00$。
+     - 右缘由起始行 $x_2=261.88$（EN $262.90$）平滑外凸展开，在第 17 行到达峰值 $x_2=334.19$（EN 原行 $334.70$），随后收回至 $x_2=323.60$，短尾行收于 $x_2=96.00$。
+     - 严格保持 $18.0\text{pt}$ 垂直行距节拍，与右侧背景大图（xref 530）弧形边缘贴合规整，无压图或外溢。
+     - dual：`tmp/fill-right-bulge/bps-p30/Breast Play Secrets.no_watermark.zh-CN.dual.pdf`（1883392 字节）。
+   - **《The Art of Coming Together》印刷页 15**（`act-p15b`，Block `7b40e6`，16 行段落，残差 0.0）：
+     - 中文左缘 11 行严格对齐在 $x=36.00$。
+     - 右缘由起始行 $x_2=300.45$（EN $301.54$）外凸展开，第 6 行达峰值 $x_2=339.75$（EN 原行 $341.63$），随后收回至 $x_2=294.14$，短尾收于 $x_2=243.07$。
+     - dual：`tmp/fill-right-bulge/act-p15b/The Art of Coming Together.no_watermark.zh-CN.dual.pdf`（864008 字节）。
+
+## 2026-10-30 — 目录项防合流（未判过）
+
+目录行按源基线钉回。源目录的点线和下划线画在中文标题与页码之间。源 PDF 的 mtime 与大小未变。不要覆盖 `fosr-p3` 到 `fosr-p3u`，也不要覆盖 `dhd1-p2` 到 `dhd1-p2k`。
+
+- `tmp/fix-toc-merge/fosr-p3v/Female Orgasm Secrets Revealed.no_watermark.zh-CN.dual.pdf`（278794 字节）。第六章标题是「如何给她一分钟口交」。点线仍是 5.44pt。没有源点线的条目保持空白。用户确认过。
+- `tmp/fix-toc-merge/dhd1-p2l/dhdmodule1.no_watermark.zh-CN.dual.pdf`（454944 字节）。「关系周期」「女性对性失去兴趣的原因」「性欲望男人和女性的区别」三条节标题到页码之间是下划线。子条目没有下划线。
 
 ## 2026-10-30 — hang/shallow 试页核验与首行悬挂排版修复
 
@@ -296,7 +614,7 @@
 
 同一批已经过、不要覆盖的试页：Erotic Massage 页 22 下半 `tmp/fill-p22-struct/`（引言先停）；`taper/left_pin` 的 `tmp/fill-left-pin/dhdm3-p37/` 与 `oa-p29/`；段距 `tmp/fill-para-seat/dhdm3-p37/`；`rect/light_column` 的 `tmp/fill-left-pin/reverse-cowgirl-p22-dip/`；页 72 `tmp/fill-right-pin/erotic-massage-p72-stitch7/`（503587 字节）；Tantric Touch 页 101 `tmp/fill-right-edge/tantric-touch-p101-face/`；Forbidden Anal Sex 页 6 `tmp/fill-left-edge/forbidden-anal-p6/`；Forbidden Sex Toys 页 28 `tmp/fill-upper-wide/forbidden-toys-p28/`（454288 字节）；Erotic Massage 页 42 `tmp/fill-upper-wide/erotic-massage-p42/`（496406 字节）。
 
-停着、没有过：`center/axis` 引言（`tmp/fill-center-axis/erotic-massage-p22-p72-share/`，先这样，后续再优化）；Erotic Massage 印刷页 34 的 `rag/right_edge`。不要重渲页 34。
+已核验通过（2026-11-03）：`center/axis` 引言（`tmp/fill-center-axis/em-p22/` 与 `tmp/fill-center-axis/em-p72/`，ALIGNMENT="center" 居中对齐）；Erotic Massage 印刷页 34 的 `rag/right_edge` 停着。不要重渲页 34。
 
 ## 2026-10-07 — 中段修复已推 main（版本仍 0.6.4.95）
 
