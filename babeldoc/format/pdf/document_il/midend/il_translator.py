@@ -2383,6 +2383,18 @@ class ILTranslator:
                         translated_text
                     )
 
+                # Guard against known MT error/deprecation banners (e.g. DeepL anti-scraping banner)
+                if (
+                    "older version of DeepL" in translated_text
+                    or "请更新至最新版本。DeepL" in translated_text
+                ):
+                    logger.warning(
+                        "Translation returned DeepL deprecation/error banner "
+                        "(paragraph id=%s); falling back to source text.",
+                        paragraph.debug_id,
+                    )
+                    translated_text = text
+
                 # Acceptance V4 gate (output): if MT/LLM duplicated a sentence
                 # back-to-back in the target, fall back to the source so a
                 # "same-sentence xN wall" is never shipped.
