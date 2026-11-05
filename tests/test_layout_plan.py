@@ -1715,6 +1715,94 @@ def test_punctuation_meets_the_frame_and_does_not_pass_it():
     assert overflowing[-1].box.x2 == 42
 
 
+def test_align_frame_line_preserves_intra_latin_words_and_urls():
+    """Adjacent Latin letters within a word or URL must not receive justification tracking."""
+    class _TextGlyph(_FrameGlyph):
+        def __init__(self, x: float, x2: float, text: str, space: bool = False):
+            super().__init__(x, x2, space)
+            self.unicode = text
+
+    # "www.test.com" as adjacent Latin units without spaces
+    url_chars = list("www.test.com")
+    units = []
+    x = 10.0
+    for ch in url_chars:
+        units.append(_TextGlyph(x, x + 6.0, ch))
+        x += 6.0
+    # Line ends at 10 + 12 * 6 = 82. Frame is at 120.
+    # Because all boundaries are intra-Latin, total expandable weight is 0.
+    align_frame_line(units, 120.0)
+    # The URL must remain untouched and not stretched
+    assert units[0].box.x == 10.0
+    assert units[-1].box.x2 == 82.0
+    # Every internal character spacing remains exactly 0 (x[i+1] == x2[i])
+    for i in range(len(units) - 1):
+        assert abs(units[i + 1].box.x - units[i].box.x2) < 1e-4
+
+
+def test_align_frame_line_mixed_cjk_and_latin_expands_cjk_only():
+    """In mixed text, CJK slots expand while Latin word units stay glued."""
+    class _TextGlyph(_FrameGlyph):
+        def __init__(self, x: float, x2: float, text: str, space: bool = False):
+            super().__init__(x, x2, space)
+            self.unicode = text
+
+    # "中文" + "abc"
+    units = [
+        _TextGlyph(0.0, 10.0, "中"),
+        _TextGlyph(10.0, 20.0, "文"),
+        _TextGlyph(20.0, 25.0, "a"),
+        _TextGlyph(25.0, 30.0, "b"),
+        _TextGlyph(30.0, 35.0, "c"),
+    ]
+    # Total width is 35.0. Frame is 45.0. Slack is 10.0.
+    # Slots: (中, 文) = 1.0, (文, a) = 1.0, (a, b) = 0.0, (b, c) = 0.0. Total weight = 2.0.
+    # Step = 5.0.
+    align_frame_line(units, 45.0)
+    assert units[0].box.x == 0.0
+    assert units[1].box.x == 15.0  # shifted by 5.0
+    # "abc" shifted by 10.0 as a cohesive block:
+    assert units[2].box.x == 30.0  # 20 + 10
+    assert units[3].box.x == 35.0  # 25 + 10 (spacing between a and b remains 0)
+    assert units[4].box.x2 == 45.0  # 35 + 10 = 45
+
+
+def test_align_frame_line_respects_max_step():
+    """If step exceeds max_step, align_frame_line stands down."""
+    units = [_FrameGlyph(0, 10), _FrameGlyph(10, 20)]
+    # Slack is 30.0. Step would be 30.0.
+    align_frame_line(units, 50.0, max_step=1.5)
+    assert units[-1].box.x2 == 20.0  # stood down!
+
+
+def test_pull_quote_and_callout_excluded_from_body_packing():
+    """Pull quotes and callouts must not be linked as body paragraphs nor shifted."""
+    from babeldoc.format.pdf.document_il.utils.layout_plan.model import Region
+    from babeldoc.format.pdf.document_il.utils.layout_plan.model import RegionDecision
+    from babeldoc.format.pdf.document_il.utils.layout_plan.paragraph_gap import _is_body
+
+    pq = Region(
+        region_id="quote1",
+        page_index=0,
+        source_order=1,
+        role="pull_quote",
+        lines=(),
+    )
+    dec = {"quote1": RegionDecision("quote1", "preserve", (), 1.0, None, None, (), None, ())}
+    # Even if strategy is preserve/flow, pull_quote role is NOT body
+    assert not _is_body(pq, dec)
+
+    co = Region(
+        region_id="callout1",
+        page_index=0,
+        source_order=2,
+        role="callout",
+        lines=(),
+    )
+    dec["callout1"] = RegionDecision("callout1", "preserve", (), 1.0, None, None, (), None, ())
+    assert not _is_body(co, dec)
+
+
 def test_a_line_above_the_body_uses_the_curve_just_below():
     """No edge at the line, so the rising curve below sets the width.
 

@@ -6044,7 +6044,7 @@ class Typesetting:
                 align_frame_line,
             )
 
-            align_frame_line(typeset_units[start:end], available_x2)
+            align_frame_line(typeset_units[start:end], available_x2, max_step=1.5)
             return
         if alignment not in ("center", "right") or start >= end:
             return

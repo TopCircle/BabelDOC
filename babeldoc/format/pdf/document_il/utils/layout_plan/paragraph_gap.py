@@ -120,6 +120,16 @@ def scanned_paragraph_gap(upper_lines, lower_lines) -> float:
 def _is_body(region: Region, by_decision: dict[str, RegionDecision]) -> bool:
     if not geometry_eligible(region):
         return False
+    if region.role in (
+        "pull_quote",
+        "callout",
+        "title",
+        "section_header",
+        "chrome",
+        "figure_caption",
+        "dropcap",
+    ):
+        return False
     return by_decision[region.region_id].base_strategy != "list"
 
 

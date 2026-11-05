@@ -47,6 +47,29 @@ class TestIsQuoteBlock:
         para = self._make_para(56, 300, 302, 480)
         assert is_quote_block(para, page_width=612) is False
 
+    def test_banner_callout_with_quotes_detected_at_normal_margin(self):
+        """带有引号且占宽较窄的横幅/侧栏引文（如 Anal Ecstasy p.6）即使左缘对齐页边也应被判定为 Quote。"""
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfLine
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraphComposition
+
+        para = self._make_para(57.37, 406.72, 256.81, 475.48)
+        # Without quote text, indent 57.37/612 = 0.0937 < 0.15 is rejected as body/wrap
+        assert is_quote_block(para, page_width=612) is False
+
+        # With quotation marks:
+        char_q = PdfCharacter(char_unicode="“", box=il_version_1.Box(x=57.37, y=406.72, x2=65.0, y2=416.0))
+        char_end = PdfCharacter(char_unicode="”", box=il_version_1.Box(x=250.0, y=465.0, x2=256.81, y2=475.48))
+        para.pdf_paragraph_composition = [
+            PdfParagraphComposition(
+                pdf_line=PdfLine(
+                    box=il_version_1.Box(x=57.37, y=406.72, x2=256.81, y2=475.48),
+                    pdf_character=[char_q, char_end],
+                )
+            )
+        ]
+        assert is_quote_block(para, page_width=612) is True
+
     def test_oa_p59_left_fixed_wrap_not_quote(self):
         """OA p59 wrap beside the right photo is WRAP_COLUMN, not a pull-quote.
 

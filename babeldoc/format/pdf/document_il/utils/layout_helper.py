@@ -84,7 +84,7 @@ def is_bullet_point(char: PdfCharacter) -> bool:
     the marker as a letter (Webdings ``Q``). One glyph from those faces
     counts even when ToUnicode is empty. A capital on a text face does not.
     """
-    text = char.char_unicode or ""
+    text = getattr(char, "char_unicode", None) or ""
     if text and BULLET_POINT_PATTERN.match(text):
         return True
     style = getattr(char, "pdf_style", None)
@@ -2216,39 +2216,43 @@ def is_quote_block(
     if _pinned_body_column(para):
         return False
 
-    # 规则 2: 左侧有明显缩进（须显著大于正文页边距）
-    left_indent = box.x
-    indent_ratio = left_indent / page_width
-    if indent_ratio < indent_threshold:
-        return False
-
-    # 规则 3: 右侧有明显留白
-    right_margin = page_width - box.x2
-    margin_ratio = right_margin / page_width
-    if margin_ratio < right_margin_threshold:
-        return False
-
-    # 辅助规则: 检查文本内容是否包含引号标记
-    # 这不是硬性要求，但可以增加置信度
+    # 规则 2: 左侧缩进与引文标记
+    # 检查文本内容是否包含引号标记（如 “...” 或 "..."）
     has_quote_marks = False
     try:
         text = get_paragraph_unicode(para)
         if text:
-            # 检查中英文引号
             quote_chars = {'"', '“', '”', "'", '‘', '’',
                            '「', '」', '『', '』',
                            '《', '》'}
-            first_char = text.strip()[:1] if text.strip() else ''
-            last_char = text.strip()[-1:] if text.strip() else ''
+            stripped = text.strip()
+            first_char = stripped[:1] if stripped else ''
+            last_char = stripped[-1:] if stripped else ''
             has_quote_marks = (
                 first_char in quote_chars or last_char in quote_chars
             )
     except (UnicodeDecodeError, AttributeError, IndexError):
         pass
 
-    # 如果满足几何规则（窄 + 深缩进 + 留白），认为是 Quote 块。
-    # indent_threshold 默认 0.15 已过滤「贴正文页边的左栏绕排」假阳性。
-    # 引号标记只是辅助，不作为必要条件
+    # 右侧留白
+    right_margin = page_width - box.x2
+    margin_ratio = right_margin / page_width
+    if margin_ratio < right_margin_threshold:
+        return False
+
+    # 对于带有明显引文标记（引号）且占据页面半边以下的引文框（如横幅/侧边 callout），
+    # 允许其左侧与正文左页边对齐（indent 降至 0.05）。
+    # 普通无引号块依然要求深缩进（indent_threshold 默认 0.15），以避免误判左栏绕排正文。
+    effective_indent = indent_threshold
+    if has_quote_marks and margin_ratio >= 0.30:
+        effective_indent = min(indent_threshold, 0.05)
+
+    left_indent = box.x
+    indent_ratio = left_indent / page_width
+    if indent_ratio < effective_indent:
+        return False
+
+    # 如果满足几何规则（窄 + 缩进 + 留白），认为是 Quote 块。
     return True
 
 

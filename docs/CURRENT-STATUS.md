@@ -1,9 +1,43 @@
-# BabelDOC — 当前状况（2026-11-04）
+# BabelDOC — 当前状况（2026-11-05）
 
 **布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008`
-**版本:** `0.6.4.97`（`babeldoc/const.py` 与 `pyproject.toml` 已 bump）  
+**版本:** `0.6.4.98`（`babeldoc/const.py` 与 `pyproject.toml` 已 bump）  
 **main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC`。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-05 — DeepLX 上游废弃熔断、红底横幅引文对齐与连续拉丁/URL两端对齐保护（0.6.4.98）
+
+1. **DeepLX 官方废弃通知熔断与备用链路保障 (`deeplx.py` / `config.v3.toml`)**：
+   - **根因**：`deeplx.topcircle.workers.dev/deepl` 沿用 DeepL 官方废弃的 JSON-RPC 接口（`LMT_handle_texts`），返回 HTTP 200 包含多语言升级提示（`"You're using an older version of DeepL..."` / `"最新バージョンのDeepLにアップデートしてください"` / `"为了继续使用本程序，请升级到最新版DeepL"`）。旧版脚本误将其当做正常译文写入缓存，导致整本 PDF 译文被警告文本覆盖。
+   - **修复**：
+     - 在 Nextcloud 与 VPS 配置 `clitranslator_urls = "https://oneshot-free.www.deepl.com/v1/translate,https://deeplx.topcircle.workers.dev/deepl"`，优先采用稳定 oneshot-free 接口；
+     - 在 `deeplx_v3.2.1-production-final.py` 增加多语言废弃警告文本的检测熔断与自动降级，严防污染缓存；
+     - 清查 SQLite 缓存，确保 0 残留。
+
+2. **第 6 页红底横幅引文框上浮脱离修复 (`layout_helper.py` / `rect_flow_stack.py` / `paragraph_gap.py` / `paragraph_gap_stack.py`)**：
+   - **根因**：
+     - `layout_helper.py` 中 `is_quote_block` 默认要求 `indent_threshold >= 0.15`，而第 6 页红底引文框左缘位于 `x ≈ 57.37`（页边距对齐，比例 ~0.094 < 0.15），被误判为普通正文；
+     - `rect_flow_stack.py` 中 `_role_of` 将 `pull_quote` / `callout` 行数上限限制为 `< 4`（`len(lines) >= 4: return None`），而原书引文为 4 行，导致 role 被剥除回落为正文 `body`；
+     - `paragraph_gap.py` 为上方正文 Body 2 与该引文建立了 `ParagraphGapLink`，在排版中被 `paragraph_gap_stack.py` 的 `_seat` 强行拉升 28–30 pt（至 `y0 = 376.7`），脱离了 `[0, 395, 306, 513.8]` 的红色横幅。
+   - **修复**：
+     - `layout_helper.py`: 优化 `is_quote_block`，当检测到首尾引文引号标记且右侧留白充分（`margin_ratio >= 0.30`）时，放宽左缩进阈值至 `0.05`；
+     - `rect_flow_stack.py`: 修正 `_role_of`，将引文行数上限放宽为 `len(lines) > 6`（与 `is_quote_block` 的 `max_quote_lines = 6` 对齐）；
+     - `paragraph_gap.py`: `_is_body` 显式排除 `pull_quote`、`callout` 等展示角色；
+     - `paragraph_gap_stack.py`: `_seat` 增加非正文角色及 `is_quote_block` 双重守卫，杜绝强行拉升引文；
+     - **实测验证**：第 6 页译文引文纵坐标自 `y0 = 376.7` 纠正回 `y0 = 404.7`（与英文原书 `406.7` 一致，完美嵌入红底横幅）。
+
+3. **第 12 页页脚 URL 极端两端对齐字符散开修复 (`shaped_pocket_stack.py` / `typesetting.py`)**：
+   - **根因**：`typesetting.py` 调用 `align_frame_line` 两端对齐时，将行尾 slack 平均分配给所有字符间隙。对于无空格的连续拉丁单词或 URL（如 `www.GabrielleMoore.com`），字母之间被强行插入大间距，造成严重破相。
+   - **修复**：
+     - `shaped_pocket_stack.py`: 新增 `_is_latin_word_unit(unit)`，识别拉丁字母、数字及 URL 常用标点符号（`.-_/:?&=#%+@~`）；
+     - 在 `align_frame_line` 中计算权重槽位时，相邻连续拉丁/URL 字符且中间无空格时权重置为 `0.0`，剩余空隙仅分配给 CJK 字符或显式空格；
+     - `typesetting.py`: 调用 `align_frame_line` 时传入 `max_step = 1.5` pt 封顶上限；
+     - **实测验证**：单测与实书核验均表明 URL 保持凝聚整体，不再字母散裂。
+
+4. **测试验证与质量门禁**：
+   - 核心排版测试（`test_layout_plan.py`、`test_exclusion_zone_integration.py`、`test_rect_column_reflow.py`、`test_typesetting_recursion_guard.py` 等）：**100% 全绿通过**。
+   - 静态检查：`ruff check` 全部通过无告警。
+   - 远端 VPS 同步：最新补丁已热部署至 `pdfmt-next-app` 容器，服务健康运行。
 
 ## 2026-11-04 — 排版递归死循环彻底根除与高分辨率图片墨迹矢量化提速（0.6.4.97）
 

@@ -117,6 +117,17 @@ def _width_for(
     return widths[idx]
 
 
+def _is_latin_word_unit(unit) -> bool:
+    """Return True if unit is a Latin alphanumeric or URL punctuation character."""
+    getter = getattr(unit, "try_get_unicode", None)
+    text = getter() if callable(getter) else getattr(unit, "unicode", None)
+    if not text:
+        text = getattr(unit, "char_unicode", None) or getattr(unit, "char", None)
+    if not text or not isinstance(text, str):
+        return False
+    return all(ord(c) < 128 and (c.isalnum() or c in ".-_/:?&=#%+@~") for c in text)
+
+
 def align_frame_line(
     units, frame_right: float, max_step: float | None = None
 ) -> None:
@@ -126,6 +137,7 @@ def align_frame_line(
     This is the align step: the pin stays, the last glyph meets the frame.
     One glyph cannot span the frame. A line already on the edge stays.
     Punctuation is a glyph, so it meets the frame and does not hang past it.
+    Intra-Latin word/URL slots are kept glued together without tracking expansion.
     """
     glyphs = [
         unit
@@ -141,9 +153,9 @@ def align_frame_line(
     slack = float(frame_right) - float(glyphs[-1].box.x2)
     if slack <= 0.5:
         return
-    step = slack / (len(glyphs) - 1)
-    if max_step is not None and step > max_step:
-        return
+
+    # Map each glyph to its index in the ordered units list to check
+    # whether a space unit sits between glyph[i] and glyph[i+1].
     ordered = sorted(
         (
             unit
@@ -152,13 +164,46 @@ def align_frame_line(
         ),
         key=lambda unit: float(unit.box.x),
     )
-    running = 0.0
-    glyph_index = 0
+    unit_to_idx = {u: idx for idx, u in enumerate(ordered)}
+
+    slot_weights: list[float] = []
+    for i in range(len(glyphs) - 1):
+        g1 = glyphs[i]
+        g2 = glyphs[i + 1]
+        idx1 = unit_to_idx.get(g1, -1)
+        idx2 = unit_to_idx.get(g2, -1)
+        has_space = False
+        if idx1 >= 0 and idx2 > idx1 + 1:
+            has_space = any(
+                getattr(ordered[k], "is_space", False) for k in range(idx1 + 1, idx2)
+            )
+
+        if not has_space and _is_latin_word_unit(g1) and _is_latin_word_unit(g2):
+            # Intra-Latin word/URL boundary: do not stretch letters apart
+            slot_weights.append(0.0)
+        else:
+            slot_weights.append(1.0)
+
+    total_weight = sum(slot_weights)
+    if total_weight <= 0.0:
+        return
+
+    step = slack / total_weight
+    if max_step is not None and step > max_step:
+        return
+
+    shifts: list[float] = [0.0]
+    cum = 0.0
+    for w in slot_weights:
+        cum += w
+        shifts.append(cum * step)
+
+    glyph_to_shift = dict(zip(glyphs, shifts, strict=True))
+    current_shift = 0.0
     for unit in ordered:
-        if glyph_index < len(glyphs) and unit is glyphs[glyph_index]:
-            running = glyph_index * step
-            glyph_index += 1
-        unit.shift_x(running)
+        if unit in glyph_to_shift:
+            current_shift = glyph_to_shift[unit]
+        unit.shift_x(current_shift)
 
 
 def assign_shaped_boxes(page) -> None:

@@ -907,7 +907,7 @@ def _role_of(paragraph) -> str | None:
     # never a standalone math equation or short decorative pull-quote / callout.
     if role == "formula" and len(lines) >= 2:
         return None
-    if role in ("pull_quote", "callout") and len(lines) >= 4:
+    if role in ("pull_quote", "callout") and len(lines) > 6:
         return None
     if role in ("title", "section_header") and len(lines) >= 4:
         return None

@@ -123,6 +123,37 @@ def _seat(link: ParagraphGapLink, by_region, rects) -> None:
     lower = by_region.get(link.region_id)
     if upper is None or lower is None:
         return
+    # Display elements (pull quotes, callouts, titles, headers, chrome)
+    # keep their own visual positions/frames and must not be shifted by body packing.
+    from babeldoc.format.pdf.document_il.utils.layout_helper import is_quote_block
+    from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
+
+    non_body_roles = (
+        LayoutIntentRole.PULL_QUOTE,
+        LayoutIntentRole.CALLOUT,
+        LayoutIntentRole.TITLE,
+        LayoutIntentRole.SECTION_HEADER,
+        LayoutIntentRole.CHROME,
+    )
+    for item in (upper, lower):
+        intent = getattr(item, "layout_intent", None)
+        if intent is not None and getattr(intent, "role", None) in non_body_roles:
+            return
+        label = getattr(item, "layout_label", None)
+        if label in ("pull_quote", "callout", "title", "section_header", "chrome", "header", "footer"):
+            return
+        page = getattr(item, "page", None)
+        page_w = (
+            float(page.rect.width)
+            if page is not None and getattr(page, "rect", None) is not None
+            else 612.0
+        )
+        try:
+            if is_quote_block(item, page_w):
+                return
+        except Exception:
+            pass
+
     # A contents row keeps the source gap. Seating it under the previous
     # body line pulls it up through the entries in between.
     from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
