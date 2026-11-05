@@ -1,8 +1,9 @@
 # BabelDOC — 当前状况（2026-11-05）
 
-**布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `plan/layout-paradigms-20261008`
+**工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `main`  
+**父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
+**历史布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms`（已归档/废弃，工作流与开发已全面迁入 Nextcloud）  
 **版本:** `0.6.4.98`（`babeldoc/const.py` 与 `pyproject.toml` 已 bump）  
-**main:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC`。产品改动只进布局树。`/Users/yun/workspace/BabelDOC` 已不在。  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
 ## 2026-11-05 — DeepLX 上游废弃熔断、红底横幅引文对齐与连续拉丁/URL两端对齐保护（0.6.4.98）
