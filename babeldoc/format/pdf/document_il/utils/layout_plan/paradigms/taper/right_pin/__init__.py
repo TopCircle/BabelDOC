@@ -49,7 +49,9 @@ def claim(edges: BlockEdges, lines: Sequence[Sequence[float]]) -> float | None:
 def _candidate(edges: BlockEdges, lines: Sequence[Sequence[float]]) -> bool:
     if edges.marker != "none" or edges.full_count < 4:
         return False
-    if not _runs_one_way([float(line[0]) for line in lines]):
+    body = _strip_short_tail(lines)
+    check_lines = body if len(body) >= 4 else lines
+    if not _runs_one_way([float(line[0]) for line in check_lines]):
         return False
     if _first_line_indent(lines) is not None:
         return False
@@ -65,6 +67,8 @@ def _runs_one_way(values: Sequence[float]) -> bool:
     pos_sum = sum(delta for delta in deltas if delta > 0.0)
     neg_sum = sum(-delta for delta in deltas if delta < 0.0)
     if pos_sum >= _FREE_EDGE and neg_sum <= 12.0 and deltas[-1] <= 0.0:
+        return True
+    if neg_sum >= _FREE_EDGE and pos_sum <= 12.0 and deltas[-1] >= 0.0:
         return True
     return False
 
@@ -90,9 +94,23 @@ def _pinned_after_tail(lines: Sequence[Sequence[float]]) -> float:
     return max(rights) - min(rights)
 
 
-def fill(lines: Sequence[Sequence[float]]) -> tuple[tuple[float, float], ...]:
+def fill(lines: Sequence[Sequence[float]]) -> tuple[tuple[float, ...], ...]:
     """Each sealed line's own left and right.
 
     There is no figure frame on this block. The edge is the line itself.
+    A short tail keeps the lower shelf's left edge and outer right wall.
     """
-    return tuple((float(line[0]), float(line[1])) for line in lines)
+    if not lines:
+        return ()
+    body = _strip_short_tail(lines)
+    shelf = float(body[-1][0])
+    outer_right = max(float(line[1]) for line in body)
+    edges = []
+    for index, line in enumerate(lines):
+        left = float(line[0]) if index < len(body) else shelf
+        right = float(line[1]) if index < len(body) else outer_right
+        edge = [left, right]
+        if len(line) >= 3:
+            edge.append(float(line[2]))
+        edges.append(tuple(edge))
+    return tuple(edges)

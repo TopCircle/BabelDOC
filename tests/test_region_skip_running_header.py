@@ -87,6 +87,47 @@ class TestChapterNameNotSkipped:
             is None
         )
 
+    def test_step_and_part_opener_in_header_band_goes_to_mt(self):
+        # DFD p22 "Step 2: Making Out" (18pt, y~700, 18 chars) sits in the top band
+        # and must not be dropped as header chrome.
+        page = _page()
+        step_para = _para(
+            "Step 2: Making Out",
+            label="text",
+            y=680.0,
+            y2=703.0,
+            font_size=18.0,
+        )
+        assert (
+            classify_header_footer_skip(
+                page,
+                step_para,
+                skip_header=True,
+                skip_footer=True,
+                header_height=120.0,
+                footer_height=70.0,
+            )
+            is None
+        )
+        part_para = _para(
+            "Part 1: The Basics",
+            label="text",
+            y=680.0,
+            y2=703.0,
+            font_size=20.0,
+        )
+        assert (
+            classify_header_footer_skip(
+                page,
+                part_para,
+                skip_header=True,
+                skip_footer=True,
+                header_height=120.0,
+                footer_height=70.0,
+            )
+            is None
+        )
+
     def test_body_chapter_heading_out_of_band_goes_to_mt(self):
         page = _page()
         para = _para("Chapter 3", y=420.0, y2=440.0, font_size=32.0)

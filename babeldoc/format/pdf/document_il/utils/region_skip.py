@@ -45,8 +45,8 @@ HEADER_BODY_MIN_CHARS = 48
 HEADER_BODY_MIN_HEIGHT_PT = 28.0
 HEADER_BODY_MIN_CHARS_TALL = 24
 
-# Real chapter OPENERS (Trajan 32pt / display 56pt), not 13pt running headers.
-_CHAPTER_OPENER_RE = re.compile(r"(?i)\bchapter\s*\d{1,3}\b")
+# Real chapter/step/part OPENERS (Trajan 32pt / display 56pt), not 13pt running headers.
+_CHAPTER_OPENER_RE = re.compile(r"(?i)\b(?:chapter|step|part)\s*\d{1,3}\b")
 _CHAPTER_OPENER_MIN_PT = 18.0
 _CHAPTER_OPENER_MIN_HEIGHT_PT = 22.0
 

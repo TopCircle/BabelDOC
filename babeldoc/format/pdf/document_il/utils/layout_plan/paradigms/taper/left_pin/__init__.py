@@ -13,6 +13,9 @@ from collections.abc import Sequence
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.contract import (
     BlockEdges,
 )
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import (
+    _strip_short_tail,
+)
 
 THRESHOLD: float = 8.0
 _FREE_EDGE = 18.0
@@ -25,7 +28,9 @@ def claim(edges: BlockEdges, lines: Sequence[Sequence[float]]) -> float | None:
         return None
     if edges.full_count < 4:
         return None
-    if not _one_way([float(line[1]) for line in lines]):
+    body = _strip_short_tail(lines)
+    check_lines = body if len(body) >= 4 else lines
+    if not _one_way([float(line[1]) for line in check_lines]):
         return None
     if edges.right_range < _FREE_EDGE:
         return None
@@ -36,8 +41,8 @@ def _one_way(values: Sequence[float]) -> bool:
     """True when steps past 4pt share a direction.
 
     A smaller step may oppose them only when the counted steps are a
-    run: two or more, none larger than the free-edge floor, and two
-    lines more than that floor inside the outer edge.
+    run: two or more, and two lines sit more than the free-edge floor
+    inside the outer edge.
     """
     if len(values) < 2:
         return False
@@ -49,11 +54,14 @@ def _one_way(values: Sequence[float]) -> bool:
         return True
     outer = max(values)
     inside = sum(1 for value in values if outer - value > _FREE_EDGE)
-    return (
-        len(counted) >= 2
-        and all(abs(delta) <= _FREE_EDGE for delta in counted)
-        and inside >= 2
-    )
+    pos_sum = sum(delta for delta in deltas if delta > 0.0)
+    neg_sum = sum(-delta for delta in deltas if delta < 0.0)
+    if len(counted) >= 2 and inside >= 2:
+        if pos_sum >= _FREE_EDGE and neg_sum <= 12.0:
+            return True
+        if neg_sum >= _FREE_EDGE and pos_sum <= 12.0:
+            return True
+    return False
 
 
 def _reversed(deltas: Sequence[float]) -> bool:
@@ -61,9 +69,24 @@ def _reversed(deltas: Sequence[float]) -> bool:
     return any(delta > 0.0 for delta in deltas) and any(delta < 0.0 for delta in deltas)
 
 
-def fill(lines: Sequence[Sequence[float]]) -> tuple[tuple[float, float], ...]:
+def fill(lines: Sequence[Sequence[float]]) -> tuple[tuple[float, ...], ...]:
     """Each sealed line's own left and right.
 
     There is no figure frame on this block. The edge is the line itself.
+    A short tail keeps the lower shelf's right edge so it does not choke
+    Chinese line widths.
     """
-    return tuple((float(line[0]), float(line[1])) for line in lines)
+    if not lines:
+        return ()
+    body = _strip_short_tail(lines)
+    shelf = float(body[-1][1])
+    outer_left = min(float(line[0]) for line in body)
+    edges = []
+    for index, line in enumerate(lines):
+        left = float(line[0]) if index < len(body) else outer_left
+        right = float(line[1]) if index < len(body) else shelf
+        edge = [left, right]
+        if len(line) >= 3:
+            edge.append(float(line[2]))
+        edges.append(tuple(edge))
+    return tuple(edges)

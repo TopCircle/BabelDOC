@@ -3,8 +3,36 @@
 **工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
 **历史布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms`（已归档/废弃，工作流与开发已全面迁入 Nextcloud）  
-**版本:** `0.6.4.98`（`babeldoc/const.py` 与 `pyproject.toml` 已 bump）  
+**版本:** `0.6.4.99`（`babeldoc/const.py` 与 `pyproject.toml` 已 bump）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-05 — 锥形（taper）体态绕排判定与尾行延展、章节/步骤大标题页眉豁免（0.6.4.99）
+
+1. **锥形贴体绕排判定容差与尾行短句延展 (`paradigms/taper/left_pin` / `paradigms/taper/right_pin`)**：
+   - **根因**：
+     - 在《Double Fingering Delight》第 12 页上段正文（`Region 329c14`，19 行）中，虽然 `select_paradigm` 选出 `taper`，但在 `taper/left_pin` 模块中由于字体排版微抖动（0.4pt 反向 step）和腰臀曲线过渡（55pt step）超过了硬编码的单步 18pt 限制，导致 `claim` 判定失败返回 `None`，降级为无 contour 的矩形重排；
+     - 尾行短句（`G-spot orgasm.`，宽仅 81pt）被误当成整段宽度参考，导致中文译文被强行压缩进 81pt 的细窄列（约 40 行），向下压入下方段落 2，造成严重重叠；
+     - 在 `fill()` 填充时，未剥离末尾天然短行，直接使用原始行宽封顶。
+   - **修复**：
+     - `claim()` 中使用 `_strip_short_tail(lines)` 剥离末尾天然短句，对主体行评估单向走势；
+     - `_one_way()` 判定改进：在单向总位移 $\ge 18\text{ pt}$ 时，允许容忍 $\le 12\text{ pt}$ 的反向微抖动与自然曲线大步进，不再一刀切限制单步 $\le 18\text{ pt}$；
+     - `fill()` 中引入末行延展逻辑：末尾短行按底台（shelf）右边界 `body[-1][1]` 延展可用行宽，防止译文被人工掐窄；
+     - `taper/right_pin` 对应对齐与镜像修复。
+   - **实测验证**：第 12 页上方文字块顺利匹配 `taper/left_pin`，译文优雅贴合人体曲线（$x \in [676, 1047]$）并在 $y=336.5$ 自然收尾，与下方段落 2 保持 117.6pt 的清爽安全间距，叠字冲突彻底消失。
+
+2. **分步手册大标题（Step N: / Part N:）页眉清洗豁免 (`region_skip.py`)**：
+   - **根因**：
+     - 第 22 页 `Step 2: Making Out`、第 38 页 `Step 9: Sweet Spot Vibrations` 位于页面顶端（$y \approx 95 \sim 118\text{ pt}$）；
+     - `_CHAPTER_OPENER_RE` 仅匹配 `Chapter \d+`，且标题长度不足 48 字符，被当成普通页眉（running header chrome）清洗删除，导致黑底横幅内容空置丢失。
+   - **修复**：
+     - `_CHAPTER_OPENER_RE = re.compile(r"(?i)\b(?:chapter|step|part)\s*\d{1,3}\b")`，将技术手册与教程常见的 `Step \d+`、`Part \d+` 纳入真实章节大标题保护范畴；
+     - 凡字号 $\ge 18\text{ pt}$ 或高度 $\ge 22\text{ pt}$ 者均受 `is_real_chapter_title` 保护，严禁当作页眉删除。
+   - **实测验证**：第 22 页「步骤 2：亲热」与第 38 页「第 9 步：敏感点震动」完整保留并清晰居中呈现在黑色横幅中。
+
+3. **测试门禁与质量验收**：
+   - 范式测试套件（`test_placement_paradigm.py`、`test_paradigm_catalog.py`、`test_paradigm_samples.py`、`test_region_skip_running_header.py`）：**89 passed**；
+   - 排版测试（`test_same_baseline_and_hyphen.py`、`test_typesetting_*.py`）：**全部通过**；
+   - 代码风格门禁：`ruff check` 全部通过无告警。
 
 ## 2026-11-05 — DeepLX 上游废弃熔断、红底横幅引文对齐与连续拉丁/URL两端对齐保护（0.6.4.98）
 

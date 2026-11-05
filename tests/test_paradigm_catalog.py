@@ -342,6 +342,26 @@ def test_a_fold_in_the_free_edge_is_not_a_pin():
     assert status == "matched"
     assert paradigm == "rag/deep_right"
     assert residual == 0.0
+
+
+def test_curved_body_contour_with_waist_step_matches_left_pin():
+    rights = [
+        434.0, 420.9, 411.9, 407.0, 402.2, 397.0, 396.8, 397.2, 397.1,
+        342.0, 325.0, 310.9, 299.0, 295.1, 290.9, 287.0, 284.0, 281.1,
+        145.0,
+    ]
+    lines = [[64.0, r, 500.0 - i * 18.0] for i, r in enumerate(rights)]
+    edges = _edges(len(lines), 0.0, 434.0 - 145.0)
+    status, paradigm, residual = pick(_results(edges, lines))
+    assert status == "matched"
+    assert paradigm == "taper/left_pin"
+    assert residual == 0.0
+
+    modules = dict(load_modules())
+    filled = modules["taper/left_pin"].fill(lines)
+    assert len(filled) == len(lines)
+    assert filled[-1][0] == 64.0
+    assert filled[-1][1] == 281.1
     right_lines = [
         [300.0, 500.0, 200.0],
         [250.0, 500.0, 184.0],
