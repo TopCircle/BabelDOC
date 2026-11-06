@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pymupdf
+from babeldoc.babeldoc_exception.LayoutIncompleteError import LayoutIncompleteError
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
@@ -45,6 +46,30 @@ class TestTypesettingRecursionGuard(unittest.TestCase):
         )
         self.assertEqual(scale, 1.0)
         self.assertIsNone(units)
+
+    def test_depth_guard_apply_raises_layout_incomplete(self):
+        """apply=True must not swallow the depth limit as an empty layout."""
+        para = PdfParagraph(
+            box=Box(x=10.0, y=10.0, x2=200.0, y2=100.0),
+            debug_id="depth-apply",
+            pdf_paragraph_composition=[],
+        )
+        page = Page(page_number=3)
+        with self.assertRaises(LayoutIncompleteError) as caught:
+            self.typesetting._find_optimal_scale_and_layout(
+                para,
+                page,
+                [],
+                initial_scale=1.0,
+                apply_layout=True,
+                _depth=5,
+            )
+        self.assertEqual(caught.exception.reason, "layout_depth_exhausted")
+        self.assertEqual(caught.exception.requested_units, 0)
+        self.assertEqual(caught.exception.placed_units, 0)
+        self.assertEqual(caught.exception.page_index, 3)
+        self.assertEqual(caught.exception.paragraph_id, "depth-apply")
+        self.assertEqual(para.pdf_paragraph_composition, [])
 
     def test_full_measure_attempt_does_not_cycle(self):
         """Calling with layout_attempt=LayoutAttempt.FULL_MEASURE must not cycle."""

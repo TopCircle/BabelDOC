@@ -7,6 +7,7 @@ import logging
 import pathlib
 import re
 import shutil
+import tempfile
 import threading
 import time
 from asyncio import CancelledError
@@ -22,6 +23,7 @@ from babeldoc.babeldoc_exception.BabelDOCException import ExtractTextError
 from babeldoc.babeldoc_exception.BabelDOCException import (
     InputFileGeneratedByBabelDOCError,
 )
+from babeldoc.babeldoc_exception.LayoutIncompleteError import LayoutIncompleteError
 from babeldoc.const import CACHE_FOLDER
 from babeldoc.const import WATERMARK_VERSION
 from babeldoc.const import close_process_pool
@@ -1188,6 +1190,8 @@ def _do_translate_single(
                     doc_pdf2zh, translation_config, docs, mediabox_data
                 )
             )
+    except LayoutIncompleteError:
+        raise
     except Exception:
         logger.warning(
             "Failed to generate watermark for first page, using no watermark"
@@ -1277,7 +1281,11 @@ def generate_first_page_with_watermark(
 
     watermarked_config = copy.copy(translation_config)
     watermarked_config.watermark_output_mode = WatermarkOutputMode.Watermarked
+    # Both may prewrite a finished first page, but not into the delivery
+    # directory and not under the final file name.
+    watermark_output = tempfile.TemporaryDirectory(prefix="babeldoc-watermark-")
     try:
+        watermarked_config.output_dir = Path(watermark_output.name)
         watermarked_config.progress_monitor.disable = True
         watermarked_temp_pdf_path = watermarked_config.get_working_file_path(
             "watermarked_temp_input.pdf"
@@ -1298,19 +1306,18 @@ def generate_first_page_with_watermark(
             mono_pdf_bytes = io.BytesIO()
             with Path(result.mono_pdf_path).open("rb") as f:
                 mono_pdf_bytes.write(f.read())
-            result.mono_pdf_path.unlink()
             mono_pdf_bytes.seek(0)
 
         if result.dual_pdf_path:
             dual_pdf_bytes = io.BytesIO()
             with Path(result.dual_pdf_path).open("rb") as f:
                 dual_pdf_bytes.write(f.read())
-            result.dual_pdf_path.unlink()
             dual_pdf_bytes.seek(0)
 
         return mono_pdf_bytes, dual_pdf_bytes
     finally:
         watermarked_config.progress_monitor.disable = False
+        watermark_output.cleanup()
 
 
 def merge_watermark_doc(

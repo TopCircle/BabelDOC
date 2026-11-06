@@ -12,6 +12,7 @@ import pymupdf
 import regex
 from rtree import index
 
+from babeldoc.babeldoc_exception.LayoutIncompleteError import LayoutIncompleteError
 from babeldoc.const import WATERMARK_VERSION
 from babeldoc.format.pdf.document_il import Box
 from babeldoc.format.pdf.document_il import PdfCharacter
@@ -1736,6 +1737,14 @@ class Typesetting:
                 "Recursion limit reached in _find_optimal_scale_and_layout (debug_id=%s)",
                 getattr(paragraph, "debug_id", None),
             )
+            if apply_layout:
+                raise self._layout_incomplete_error(
+                    paragraph,
+                    page,
+                    typesetting_units,
+                    reason="layout_depth_exhausted",
+                    placed_units=0,
+                )
             return initial_scale, None
 
         from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
@@ -1903,6 +1912,84 @@ class Typesetting:
             self._pocket_link = prev_pocket
             self._line_edges = prev_edges
 
+    def _layout_incomplete_error(
+        self,
+        paragraph: il_version_1.PdfParagraph,
+        page: il_version_1.Page,
+        typesetting_units: list[TypesettingUnit] | None,
+        *,
+        reason: str,
+        placed_units: int,
+    ) -> LayoutIncompleteError:
+        page_number = getattr(page, "page_number", None) if page is not None else None
+        return LayoutIncompleteError(
+            page_index=int(page_number) if page_number is not None else 0,
+            paragraph_id=str(getattr(paragraph, "debug_id", None) or ""),
+            reason=reason,
+            requested_units=len(typesetting_units) if typesetting_units is not None else 0,
+            placed_units=placed_units,
+        )
+
+    def _commit_layout_or_restore(
+        self,
+        paragraph: il_version_1.PdfParagraph,
+        page: il_version_1.Page,
+        typesetting_units: list[TypesettingUnit],
+        initial_scale: float,
+        use_english_line_break: bool,
+        line_skip: float | None,
+        *,
+        wrap_enabled: bool,
+        drop_figure_zones: bool,
+        _depth: int,
+    ):
+        """One paragraph transaction for a final apply.
+
+        Scale search may widen the box before the candidate is known.
+        A capacity failure puts that geometry and the old composition
+        back. Curves and forms appended for a commit that then fails
+        are dropped. The fitting candidate is left in place.
+        """
+        saved_composition = paragraph.pdf_paragraph_composition
+        saved_scale = getattr(paragraph, "scale", None)
+        box = getattr(paragraph, "box", None)
+        saved_box = None
+        if box is not None:
+            saved_box = (box.x, box.y, box.x2, box.y2)
+        curve_len = len(page.pdf_curve) if page is not None and page.pdf_curve is not None else 0
+        form_len = len(page.pdf_form) if page is not None and page.pdf_form is not None else 0
+        self._layout_commit_open = True
+        try:
+            return self._find_optimal_scale_and_layout_inner(
+                paragraph,
+                page,
+                typesetting_units,
+                initial_scale,
+                use_english_line_break,
+                True,
+                line_skip,
+                wrap_enabled=wrap_enabled,
+                drop_figure_zones=drop_figure_zones,
+                _depth=_depth,
+            )
+        except LayoutIncompleteError:
+            paragraph.pdf_paragraph_composition = saved_composition
+            paragraph.scale = saved_scale
+            if saved_box is not None and paragraph.box is not None:
+                (
+                    paragraph.box.x,
+                    paragraph.box.y,
+                    paragraph.box.x2,
+                    paragraph.box.y2,
+                ) = saved_box
+            if page is not None and page.pdf_curve is not None:
+                del page.pdf_curve[curve_len:]
+            if page is not None and page.pdf_form is not None:
+                del page.pdf_form[form_len:]
+            raise
+        finally:
+            self._layout_commit_open = False
+
     def _find_optimal_scale_and_layout_inner(
         self,
         paragraph: il_version_1.PdfParagraph,
@@ -1918,6 +2005,32 @@ class Typesetting:
         _depth: int = 0,
     ) -> tuple[float, list[TypesettingUnit] | None]:
         """Core scale search + layout (zone index already filtered)."""
+        if _depth > 4:
+            logger.warning(
+                "Recursion limit reached in _find_optimal_scale_and_layout (debug_id=%s)",
+                getattr(paragraph, "debug_id", None),
+            )
+            if apply_layout:
+                raise self._layout_incomplete_error(
+                    paragraph,
+                    page,
+                    typesetting_units,
+                    reason="layout_depth_exhausted",
+                    placed_units=0,
+                )
+            return initial_scale, None
+        if apply_layout and not getattr(self, "_layout_commit_open", False):
+            return self._commit_layout_or_restore(
+                paragraph,
+                page,
+                typesetting_units,
+                initial_scale,
+                use_english_line_break,
+                line_skip,
+                wrap_enabled=wrap_enabled,
+                drop_figure_zones=drop_figure_zones,
+                _depth=_depth,
+            )
         self._ocr_normalize_paragraph_geometry(paragraph)
         box = paragraph.box
         scale = initial_scale
@@ -2001,6 +2114,9 @@ class Typesetting:
         contour_tightens = 0
         final_typeset_units = None
         last_typeset_units = None  # last layout attempt (may overflow box)
+        # Fit belongs to that attempt. A later call clears _unplaceable_lines.
+        last_units_fit = False
+        last_unplaceable: list = []
 
         # Pre-expand narrow boxes before scale search when translated content is
         # clearly wider than the original tight box (e.g. EN "Edging" → ZH
@@ -2040,8 +2156,16 @@ class Typesetting:
                     use_english_line_break,
                     reference_widths=reference_widths,
                 )
+                attempt_unplaceable = list(
+                    getattr(self, "_unplaceable_lines", None) or []
+                )
                 if typeset_units:
                     last_typeset_units = typeset_units
+                    last_units_fit = all_units_fit
+                    last_unplaceable = attempt_unplaceable
+                elif last_typeset_units is None:
+                    last_units_fit = all_units_fit
+                    last_unplaceable = attempt_unplaceable
 
                 # 如果所有单元都放得下
                 if all_units_fit:
@@ -2430,9 +2554,15 @@ class Typesetting:
             )
 
         # Force-layout candidate (apply path only) — also feeds wrap fallback.
+        # Keep this candidate's fit with its units. _unplaceable_lines is
+        # cleared by the next layout call and belongs to that call only.
         force_units = None
+        force_fit = False
+        force_unplaceable: list = []
         if apply_layout and final_typeset_units is None:
             force_units = last_typeset_units
+            force_fit = last_units_fit
+            force_unplaceable = last_unplaceable
             if not force_units:
                 # OCR dual-layer: never reintroduce EN reference_widths here —
                 # same reason as the main search path (noisy short OCR lines).
@@ -2445,7 +2575,7 @@ class Typesetting:
                     force_ref = None
                 elif self.is_cjk and force_ref:
                     force_ref = Typesetting._uniform_cjk_reference_widths(force_ref)
-                force_units, _ = self._layout_typesetting_units(
+                force_units, force_fit = self._layout_typesetting_units(
                     typesetting_units,
                     box,
                     min_scale,
@@ -2453,6 +2583,9 @@ class Typesetting:
                     paragraph,
                     use_english_line_break=False,
                     reference_widths=force_ref,
+                )
+                force_unplaceable = list(
+                    getattr(self, "_unplaceable_lines", None) or []
                 )
 
         # CJK layout-align LA-1: pin and/or figure residual strip → full width.
@@ -2492,8 +2625,31 @@ class Typesetting:
                 _depth=_depth + 1,
             )
 
+        # A contour that did not fit must not paint a short line. Count
+        # is not fitness: a glyph wider than its interval is still placed.
+        if (
+            apply_layout
+            and final_typeset_units is None
+            and getattr(self, "_line_edges", None) is not None
+            and not force_fit
+        ):
+            placed = len(force_units) if force_units else 0
+            requested = len(typesetting_units)
+            reason = (
+                "contour_exhausted"
+                if force_unplaceable or placed < requested
+                else "contour_glyph_too_wide"
+            )
+            raise self._layout_incomplete_error(
+                paragraph,
+                page,
+                typesetting_units,
+                reason=reason,
+                placed_units=placed,
+            )
+
         # Force-apply at readable floor even if text overflows the box.
-        # Never leave composition empty after apply_layout cleared it.
+        # Contour misses already raised. Never leave a cleared composition.
         if apply_layout and final_typeset_units is None and force_units:
             paragraph.scale = min_scale
             paragraph.pdf_paragraph_composition = []
@@ -3396,8 +3552,10 @@ class Typesetting:
             )
             self._update_paragraph_render_order(paragraph)
             return True
-        except Exception:
+        except Exception as exc:
             paragraph.pdf_paragraph_composition = old_compositions
+            if isinstance(exc, LayoutIncompleteError):
+                raise
             logger.warning(
                 "Failed to retypeset paragraph, rolled back."
             )
@@ -3490,10 +3648,12 @@ class Typesetting:
             self._update_paragraph_render_order(paragraph)
             return RetypesetResult(success=True, best_scale=best_scale)
 
-        except Exception:
+        except Exception as exc:
             paragraph.pdf_paragraph_composition = old_compositions
             paragraph.scale = old_scale
             paragraph.box = old_box
+            if isinstance(exc, LayoutIncompleteError):
+                raise
             logger.warning(
                 "Failed to retypeset paragraph with scale range, rolled back."
             )
@@ -3698,6 +3858,8 @@ class Typesetting:
             # Post order (plan §4): fix_overlapping → enforce_title_body_gaps.
             try:
                 self.fix_overlapping_paragraphs_post_typesetting(page)
+            except LayoutIncompleteError:
+                raise
             except Exception as e:
                 logger.warning(
                     f"Failed to fix post-typesetting paragraph overlaps on page "
@@ -3771,8 +3933,10 @@ class Typesetting:
                     layout_attempt=LayoutAttempt.PRIMARY,
                 )
                 self._update_paragraph_render_order(paragraph)
-            except Exception:
+            except Exception as exc:
                 paragraph.pdf_paragraph_composition = saved
+                if isinstance(exc, LayoutIncompleteError):
+                    raise
                 logger.exception(
                     "Failed to retypeset a moved figure-gap column, rolled back."
                 )
@@ -4036,8 +4200,10 @@ class Typesetting:
                         new_box = self._recompute_rendered_box(move)
                         if new_box is not None:
                             rendered_boxes[id(move)] = new_box
-                    except Exception:
+                    except Exception as exc:
                         move.pdf_paragraph_composition = old_compositions
+                        if isinstance(exc, LayoutIncompleteError):
+                            raise
                         retypeset_fail_count += 1
                         logger.debug(
                             "Page %s: 段落重新排版失败，已恢复原始 composition。",
@@ -4140,8 +4306,16 @@ class Typesetting:
         ocr_mode = bool(
             getattr(self.translation_config, "ocr_workaround", False)
         )
+        from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+            line_edges_for,
+        )
+
+        # A contour has to pass the fit check. Passthrough would paint
+        # every glyph without asking whether the samples can hold them.
+        on_contour = line_edges_for(page, paragraph) is not None
         if (
             not ocr_mode
+            and not on_contour
             and typesetting_units
             and all(unit.can_passthrough for unit in typesetting_units)
         ):
@@ -4156,10 +4330,15 @@ class Typesetting:
             )
 
             # 如果有单元无法直接传递，则进行重排版
+            saved_composition = paragraph.pdf_paragraph_composition
             paragraph.pdf_paragraph_composition = []
-            self.retypeset_with_precomputed_scale(
-                paragraph, page, typesetting_units, precomputed_scale
-            )
+            try:
+                self.retypeset_with_precomputed_scale(
+                    paragraph, page, typesetting_units, precomputed_scale
+                )
+            except LayoutIncompleteError:
+                paragraph.pdf_paragraph_composition = saved_composition
+                raise
 
             # 重排版后，重新设置段落各字符的 render order
             self._update_paragraph_render_order(paragraph)
