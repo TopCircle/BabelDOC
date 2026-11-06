@@ -72,6 +72,20 @@ class TestInferWrapMode:
         lines = [(100, 200), (110, 210)]
         assert infer_wrap_mode_from_line_boxes(lines) is WrapMode.NONE
 
+    def test_hanging_indent_not_right_fixed(self):
+        # Line 0 outdented (x=51), lines 1..N aligned (x=66): list item hanging indent
+        lines = [(51.0, 578.0), (66.0, 578.0), (66.0, 578.0)]
+        assert infer_wrap_mode_from_line_boxes(lines) is WrapMode.NONE
+
+    def test_two_line_hanging_indent_not_right_fixed(self):
+        lines = [(51.0, 578.0), (66.0, 578.0)]
+        assert infer_wrap_mode_from_line_boxes(lines) is WrapMode.NONE
+
+    def test_first_line_indent_not_right_fixed(self):
+        # Line 0 indented (x=70), lines 1..N aligned (x=50)
+        lines = [(70.0, 578.0), (50.0, 578.0), (50.0, 578.0), (50.0, 578.0)]
+        assert infer_wrap_mode_from_line_boxes(lines) is WrapMode.NONE
+
     def test_photo_on_right_is_left_fixed(self):
         design = Box(x=102, y=400, x2=400, y2=700)
         photo = Box(x=380, y=200, x2=580, y2=720)

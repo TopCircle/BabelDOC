@@ -3,10 +3,47 @@
 **工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
 **历史布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms`（已归档/废弃，工作流与开发已全面迁入 Nextcloud）  
-**版本:** `0.6.4.100`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.101`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
-## 2026-11-06 — 目录页底部重叠级联下推、A点术语清洗白名单、微窄出血图绕排误判右对齐修复（0.6.4.100）
+## 2026-11-06 — 列表项悬挂缩进右甩消除、小标题垂向间距防叠、多行大标题缝合与术语纠偏（0.6.4.101）
+
+1. **列表项悬挂缩进误判为侧图绕排（`RIGHT_FIXED`）与续行右甩消除 (`line_interval_plan.py` / `figure_wrap.py` / `layout_helper.py` / `list_marker_repair.py`)**：
+   - **根因**：
+     - Gabrielle Moore 系列图书（《Fingering Fetish》、《Toys for Tits》等）普遍使用字符 `\x12`（DC2, Webdings/Ubuntu-Bold）作为列表项目符号；旧版 `BULLET_POINT_PATTERN` 与 `LIST_MARKER_RE` 遗漏该码位，导致 `is_bullet` 判定为 `False`；
+     - 在 `line_interval_plan.py` 与 `figure_wrap.py` 中，`infer_wrap_mode_from_line_boxes` 判断 `left_spread >= 12.0 and right_spread <= 4.0`。悬挂缩进列表第 0 行位于 $x \approx 51$，续行 1..N 缩进位于 $x \approx 66$，首行与续行差 $15\text{ pt} \ge 12$，被错误推断为 `WrapMode.RIGHT_FIXED` 且角色标为 `WRAP_COLUMN`；
+     - 排版阶段 `apply_wrap_flush` 见此模式，强制将后续折行的短续行推至版心最右侧边缘，导致正文阅读破碎。
+   - **修复**：
+     - `layout_helper.py` 的 `BULLET_POINT_PATTERN` 与 `list_marker_repair.py` 的 `LIST_MARKER_RE` 补充 `\x12` 码位；
+     - `line_interval_plan.py` 与 `figure_wrap.py` 增加悬挂缩进（Hanging Indent）与首行缩进（First-line Indent）几何保护：凡第 0 行缩进差 $\ge 4\text{ pt}$ 且后续行 1..N 保持齐平（极差 $\le 3\text{ pt}$）者，一律返回 `WrapMode.NONE`，禁止定性为侧图绕排；
+     - `sentence_paragraph_repair.py` 的 `_lines_continue` 增加列表首行悬挂台阶放宽判定（允许 $x_{\text{cont}} - x_{\text{bullet}} \le 28\text{ pt}$ 连续性），避免列表首行断成孤立行导致残留英文。
+   - **实测验证**：第 28 页与第 39 页列表续行全部稳固左对齐在 $x=66.0$，无任何右甩漂移；第 28 页顶端首行 `\x12 Continue to apply...` 顺畅与下文缝合并完整翻译，0 残留英文。
+
+2. **小节标题与下方正文首行重叠/紧贴消除 (`vertical_gap.py` / `layout_intent_extractor.py`)**：
+   - **根因**：DocLayout-YOLO 经常将 14~18pt 的单行体位小节标题标注为普通正文 `text`，旧版 `is_display_title` 仅对标注为 `title` / `section_header` 或字号 $\ge 28\text{ pt}$ 的标题生效，导致体位小标题跳过了 `enforce_title_body_gaps`，正文基线向上排版直接与标题笔画相撞（间距仅 3~4.9pt 甚至重叠）。
+   - **修复**：
+     - `vertical_gap.py` 中增强 `is_display_title`：凡字号 $\ge 14.0\text{ pt}$、不超过 2 行且未以终止标点（`.`, `。`, `”`）结尾的独立行，自动识别为展示标题；
+     - `layout_intent_extractor.py` 次级分类中增加规则 8.5，将未归类的展示标题归入 `LayoutIntentRole.SECTION_HEADER`；
+     - `find_content_above` 过滤掉完全包围内层副标题的外层横幅，防止虚假下推。
+   - **实测验证**：第 9 页「握紧拳头」、「握力训练器」、「转动手腕」、「手腕抖动」，第 21 页「莲花坐姿」、「掌控姿势」，第 35 页「乌龟」下方均稳定产生 $20 \sim 27\text{ pt}$ 的清晰空隙，重叠叠字彻底归零。
+
+3. **大字号折行标题跨行缝合与断句修复 (`sentence_paragraph_repair.py`)**：
+   - **根因**：第 35 页 21pt 大标题 `Fingering Techniques 2: Deep Spot Doggie Boogie: Doggie` 与次行 `Style with Deep Spot Fingering` 两行间由于字号较大，包围盒纵向间隔达 10.95pt，超过了旧版硬编码的 `_MAX_JOIN_GAP = 6.0\text{ pt}`，导致被拆分为两个独立段落送翻，次行被 DeepL 误将单独的 Style 识别为“时尚单品”。
+   - **修复**：在 `sentence_paragraph_repair.py` 中将合并间距与行内主导字号动态挂钩：`max_gap = max(_MAX_JOIN_GAP, dominant_size * 0.65)`，大字号标题跨行顺利缝合为完整句。
+
+4. **术语清洗与机翻严重歧义纠正 (`sextips.csv` / `sextips_v3.1_cleaned.csv`)**：
+   - 纠正体位名称「The Mastery Position」被直译为“精通职位”的严重歧义，权威锁定为「掌控姿势」；
+   - 增加「Deep Spot / 深点」、「Deep Spot Fingering / 深点手指刺激」、「Deep Spot Doggie Boogie / 深点狗爬式摇摆」，杜绝“Deep Spot 手指刺激时尚单品”；
+   - 修正目录项「The A-spots」为「A 点」（去除多余冠词），修正「Variations of Doggie Style」为「狗爬式体位的变体」（补齐缺失主语）。
+   - VPS 与本地术语表已双向同步部署生效。
+
+5. **目录页（P04）与异形口袋范式隔离保护 (`figure_wrap.py` / `layout_intent_extractor.py`)**：
+   - 为 `layout_label == "toc"` 段落赋予 `LayoutIntentRole.LIST` 保护，禁止其在 `is_figure_wrap_paragraph` 中被折行参差诱导误判定为 `SHAPED_POCKET`（taper 贴体口袋）。
+
+6. **全套自动化测试验证**：
+   - 扩展新测试：`test_hanging_indent_not_right_fixed`、`test_two_line_hanging_indent_not_right_fixed`、`test_first_line_indent_not_right_fixed`、`test_hanging_indent_not_figure_wrap`、`test_first_line_indent_not_figure_wrap`、`test_is_display_title_unlabeled_subheading`、`test_multiline_heading_merges_with_large_font_gap`、`test_bullet_hanging_indent_continuation_merges`；
+   - 核心套件：**214 passed (100%)**；代码风格：`ruff check` **0 errors**。
+
 
 1. **页面边缘微窄条/出血图误判导致单行标题右对齐 (`layout_intent_extractor.py` / `line_interval_plan.py`)**：
    - **根因**：

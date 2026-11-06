@@ -400,6 +400,12 @@ def _lines_continue(upper_line: PdfLine | None, lower_line: PdfLine | None) -> b
 
     if multi_line_run_in_continues(upper_line, lower_line):
         return True
+    if line_starts_with_list_marker(upper_line) and not line_starts_with_list_marker(
+        lower_line
+    ):
+        delta = float(lower_line.box.x) - float(upper_line.box.x)
+        if -4.0 <= delta <= 28.0:
+            return True
     if _left_continues(float(upper_line.box.x), float(lower_line.box.x)):
         return True
     return _wrap_continues(upper_line, lower_line)
@@ -532,7 +538,12 @@ def _nearest_below(paragraphs: list[PdfParagraph], upper: PdfParagraph):
             gap = 0.0
         else:
             gap = float(upper.box.y) - float(other.box.y2)
-        if gap < _MIN_JOIN_GAP or gap > _MAX_JOIN_GAP:
+        upper_size = line_dominant_font_size(upper_line) or 12.0
+        lower_size = line_dominant_font_size(lower_line) or 12.0
+        dominant_size = max(upper_size, lower_size)
+        max_gap = max(_MAX_JOIN_GAP, dominant_size * 0.65)
+        min_gap = min(_MIN_JOIN_GAP, -dominant_size * 0.7)
+        if gap < min_gap or gap > max_gap:
             continue
         if not _lines_continue(upper_line, lower_line):
             continue

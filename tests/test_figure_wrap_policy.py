@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
-from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_paragraph
 from babeldoc.format.pdf.document_il.utils.figure_wrap import body_line_widths
-from babeldoc.format.pdf.document_il.utils.figure_wrap import taper_prefix_widths
+from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_paragraph
 from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_taper
+from babeldoc.format.pdf.document_il.utils.figure_wrap import taper_prefix_widths
 from babeldoc.format.pdf.document_il.utils.region_skip import is_layout_debug_stub
 
 
@@ -258,6 +258,15 @@ class TestFigureWrapParagraph:
         # Flat body column (both edges pinned) is not a wrap.
         flat = [(102.0, 340.0), (102.0, 340.0), (102.0, 338.0)]
         assert is_figure_wrap_paragraph(self._para(lines=flat)) is False
+
+    def test_hanging_indent_not_figure_wrap(self):
+        # Bullet list with hanging indent (line 0 at 51, lines 1..N at 66)
+        bullet_lines = [(51.0, 578.0), (66.0, 578.0), (66.0, 578.0)]
+        assert is_figure_wrap_paragraph(self._para(lines=bullet_lines)) is False
+
+    def test_first_line_indent_not_figure_wrap(self):
+        para_lines = [(70.0, 578.0), (50.0, 578.0), (50.0, 578.0)]
+        assert is_figure_wrap_paragraph(self._para(lines=para_lines)) is False
 
 
 class TestUniformCjkReferenceWidths:
@@ -719,6 +728,8 @@ class TestSanitizeCjkWrapShape:
         from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
         from babeldoc.format.pdf.document_il.utils.wrap_shape import (
             CJK_WRAP_DEEPEN_HEAD_FLOOR,
+        )
+        from babeldoc.format.pdf.document_il.utils.wrap_shape import (
             sanitize_wrap_shape_for_cjk,
         )
 

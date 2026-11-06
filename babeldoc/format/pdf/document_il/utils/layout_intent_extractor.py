@@ -269,10 +269,13 @@ class LayoutIntentExtractor:
         for comp in para.pdf_paragraph_composition or []:
             if comp.pdf_formula is not None:
                 return LayoutIntentRole.FORMULA
+        label = (getattr(para, "layout_label", None) or "").strip().lower()
+        if label == "toc":
+            return LayoutIntentRole.LIST
+
         # Rule 3 — figure-wrap (taper) column; single source of truth.
         if is_figure_wrap_paragraph(para):
             return LayoutIntentRole.WRAP_COLUMN
-        label = (getattr(para, "layout_label", None) or "").strip().lower()
         # Rule 4 — figure caption / title / text.
         if label in _FIGURE_CAPTION_LABELS:
             return LayoutIntentRole.FIGURE_CAPTION
@@ -284,6 +287,7 @@ class LayoutIntentExtractor:
             return LayoutIntentRole.SECTION_HEADER
         if label in _SECTION_HEADER_LABELS:
             return LayoutIntentRole.SECTION_HEADER
+        return None
         t = (getattr(para, "unicode", None) or "").strip()
         if not t:
             chars = []
@@ -534,6 +538,9 @@ class LayoutIntentExtractor:
             and not continues
         ):
             return LayoutIntentRole.CALLOUT, None
+        # Rule 8.5 — unclassified section heading / display title
+        if is_heading or is_display_title(para):
+            return LayoutIntentRole.SECTION_HEADER, None
         # Rule 9 — everything else.
         return LayoutIntentRole.BODY, None
 

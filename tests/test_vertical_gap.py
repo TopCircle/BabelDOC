@@ -97,6 +97,27 @@ def test_is_display_title_section_header_at_16pt():
     assert not is_display_title(p3)
 
 
+def test_is_display_title_unlabeled_subheading():
+    # Subheading like "Lotus Position" or "Making a Fist" labeled "plain text"
+    # Single-line, size >= 14.0, no sentence period
+    chars = [_ch(c, 50 + i * 8, 600, size=16.0) for i, c in enumerate("Lotus Position")]
+    p = _para(chars, label="plain text")
+    assert is_display_title(p)
+
+    # Bullet point with size 16.0 must NOT be treated as display title
+    bullet_chars = [_ch("\x12", 50, 600, size=16.0), _ch("A", 60, 600, size=16.0)]
+    bp = _para(bullet_chars, label="plain text")
+    assert not is_display_title(bp)
+
+    # Body sentence ending with period must NOT be treated as display title
+    body_chars = [
+        _ch(c, 50 + i * 8, 600, size=16.0)
+        for i, c in enumerate("This is a sentence.")
+    ]
+    body_p = _para(body_chars, label="plain text")
+    assert not is_display_title(body_p)
+
+
 def test_shift_paragraph_y():
     p = _para([_ch("a", 100, 400, size=12.0)])
     y0 = p.pdf_paragraph_composition[0].pdf_character.box.y

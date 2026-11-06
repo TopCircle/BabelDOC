@@ -122,10 +122,10 @@ def _taper_envelope_from_peak(usable: list[float]) -> list[float]:
     if len(seq) < 3:
         return []
     # Look-ahead max band (i..i+2): free-edge upper hull, then cummin.
-    _LOOKAHEAD = 2
+    lookahead = 2
     n = len(seq)
     softened = [
-        max(float(w) for w in seq[i : min(i + 1 + _LOOKAHEAD, n)])
+        max(float(w) for w in seq[i : min(i + 1 + lookahead, n)])
         for i in range(n)
     ]
     out = [softened[0]]
@@ -257,6 +257,16 @@ def is_figure_wrap_paragraph(para: il_version_1.PdfParagraph) -> bool:
     ``the work plans...`` → [52, 100, 63]) — the geometry still shows the
     wrap shape, and aligned body lines never match it.
     """
+    from babeldoc.format.pdf.document_il.utils.sealed_paragraph_join import (
+        _has_list_marker,
+    )
+
+    if _has_list_marker(para):
+        return False
+    label = (getattr(para, "layout_label", None) or "").strip().lower()
+    if label == "toc":
+        return False
+
     rm = getattr(para, "reference_metrics", None)
     if rm is not None:
         widths = getattr(rm, "per_line_widths", None) or []
@@ -278,6 +288,18 @@ def is_figure_wrap_paragraph(para: il_version_1.PdfParagraph) -> bool:
         return False
     xs = [float(l[0]) for l in lines]
     x2s = [float(l[1]) for l in lines]
+
+    # Single-line indent / hanging indent protection:
+    # A bullet list item or hanging indent has only line 0 outdented/indented,
+    # with continuation lines 1..N all aligned with each other. This is never
+    # a contour wrap around a photo.
+    if len(lines) >= 2 and abs(xs[0] - xs[1]) >= 4.0:
+        if len(lines) == 2 or (max(xs[1:]) - min(xs[1:]) <= 3.0):
+            return False
+    if len(lines) >= 2 and abs(x2s[0] - x2s[1]) >= 4.0:
+        if len(lines) == 2 or (max(x2s[1:]) - min(x2s[1:]) <= 3.0):
+            return False
+
     left_spread = max(xs) - min(xs)
     right_spread = max(x2s) - min(x2s)
     right_fixed = left_spread >= 12.0 and right_spread <= 4.0

@@ -473,7 +473,7 @@ def paragraph_starts_with_list_marker(paragraph: PdfParagraph) -> bool:
     """True when the topmost line opens with a list marker."""
     lines = [
         comp.pdf_line
-        for comp in paragraph.pdf_paragraph_composition or []
+        for comp in getattr(paragraph, "pdf_paragraph_composition", None) or []
         if comp.pdf_line is not None and comp.pdf_line.pdf_character
     ]
     if lines:

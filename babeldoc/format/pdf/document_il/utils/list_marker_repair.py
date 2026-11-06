@@ -35,7 +35,7 @@ _BULLET_GUTTER_TOLERANCE = 6.0
 # Ideographic ``。`` — DeepLX often rewrites ``2.`` → ``2。`` or ``B.`` → ``B.。``.
 LIST_MARKER_RE = re.compile(
     r"^(?:"
-    r"[\u2022\u2023\u25E6\u2043\u2219\u25CB\u25CF\uf643•·■⚫⬤◆◇○●◦‣⁃▪▫]\s*"
+    r"[\u2022\u2023\u25E6\u2043\u2219\u25CB\u25CF\uf643\x12•·■⚫⬤◆◇○●◦‣⁃▪▫]\s*"
     r"|(?:\d{1,3}|[a-z]|[A-D])\s*(?:[\.．]\s*[\)）]|[\.．。、])\s*"  # 1. 1． 1。 1、 a. b. A. D.
     r"|(?:\d{1,3}|[a-zA-Z])\s*[\)）]\s*"  # 1) a) e) f) g) a） e）
     r"|[\(（]\s*(?:\d{1,3}|[a-zA-Z])\s*[\)）]\s*"  # (1) (a) (e) （a）

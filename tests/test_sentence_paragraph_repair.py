@@ -403,5 +403,57 @@ def test_sentence_gap_cut_with_moderate_body_leading():
     assert _text(paragraphs[1]).startswith("In conclusion,")
 
 
+def test_multiline_heading_merges_with_large_font_gap():
+    # Heading in 21pt with ~11pt gap between line bounding boxes
+    upper = _para(
+        _line(
+            "Fingering Techniques 2: Deep Spot Doggie Boogie: Doggie",
+            x=36.0,
+            y=400.0,
+            x2=580.0,
+            size=21.0,
+        )
+    )
+    lower = _para(
+        _line(
+            "Style with Deep Spot Fingering",
+            x=36.0,
+            y=376.0,  # line box y2 = 376 + 12 = 388, upper y = 400 => gap = 12pt
+            x2=340.0,
+            size=21.0,
+        )
+    )
+    paragraphs = [upper, lower]
+    repair_broken_sentences(paragraphs)
+    assert len(paragraphs) == 1
+    assert "Doggie|Style with Deep Spot Fingering" in _text(paragraphs[0])
+
+
+def test_bullet_hanging_indent_continuation_merges():
+    # Bullet at x=51.0, continuation at x=66.0 (delta = 15pt), broken mid-sentence with "and"
+    upper = _para(
+        _line(
+            "\x12 Continue to apply more pressure as she becomes more and",
+            x=51.0,
+            y=400.0,
+            x2=390.0,
+        )
+    )
+    lower = _para(
+        _line(
+            "more aroused. Get her feedback for what feels the best.",
+            x=66.0,
+            y=384.0,
+            x2=375.0,
+        )
+    )
+    paragraphs = [upper, lower]
+    repair_broken_sentences(paragraphs)
+    assert len(paragraphs) == 1
+    assert "becomes more and|more aroused." in _text(paragraphs[0])
+
+
+
+
 
 

@@ -135,6 +135,18 @@ def infer_wrap_mode_from_line_boxes(
         return WrapMode.NONE
     xs = [float(x) for x, _ in lines]
     x2s = [float(x2) for _, x2 in lines]
+
+    # Single-line indent / hanging indent protection:
+    # A bullet list item or hanging indent has only line 0 outdented/indented,
+    # with continuation lines 1..N all aligned with each other. This is never
+    # a contour wrap around a photo.
+    if len(lines) >= 2 and abs(xs[0] - xs[1]) >= 4.0:
+        if len(lines) == 2 or (max(xs[1:]) - min(xs[1:]) <= 3.0):
+            return WrapMode.NONE
+    if len(lines) >= 2 and abs(x2s[0] - x2s[1]) >= 4.0:
+        if len(lines) == 2 or (max(x2s[1:]) - min(x2s[1:]) <= 3.0):
+            return WrapMode.NONE
+
     left_spread = max(xs) - min(xs)
     right_spread = max(x2s) - min(x2s)
     if right_spread <= 4.0 and left_spread >= 12.0:
