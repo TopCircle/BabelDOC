@@ -67,3 +67,7 @@
 - 取代 plan §7 规则 4"左缘步进 ±2pt"（**删除**，改为 V3 右缘+无孤行）；
 - 保留 V2（= coding-plan §3.1 相对 EN gap，P1 已有）；
 - V4/V5 是"内容轨"验收，Layout-First 排版轨必须与内容轨（段落组装/skip）共同达标才可交付。
+
+## 5. 合成交付门
+
+`tests/golden/pipeline_delivery/expected.json` 只记录合成页的目标文本、段落数、页数、质量状态和几何边界。它不重新验收任何真实样例页，也不替换既有书页基线。

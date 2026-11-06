@@ -60,5 +60,8 @@ temp.jpg
 !tests/golden/layout_plan/*.json
 !tools/layout_corpus/manifest.lock.json
 
+# Synthetic delivery gate. Not a real-page baseline.
+!tests/golden/pipeline_delivery/expected.json
+
 # Local OA dual / agent scratch (never commit)
 tmp/

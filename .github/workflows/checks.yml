@@ -21,7 +21,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/babeldoc
-          key: babeldoc-assets-${{ hashFiles('babeldoc/assets/embedding_assets_metadata.py') }}
+          key: babeldoc-assets-${{ hashFiles('babeldoc/assets/embedding_assets_metadata.py', 'uv.lock') }}
 
       - name: Setup uv with Python 3.12
         uses: astral-sh/setup-uv@85856786d1ce8acfbcc2f13a5f3fbd6b938f9f41 # v7.1.2
@@ -33,6 +33,12 @@ jobs:
 
       - name: Install dependencies
         run: uv sync
+
+      - name: Prepare delivery assets
+        run: uv run python tests/pipeline_assets.py --prepare
+
+      - name: Check delivery assets
+        run: uv run python tests/pipeline_assets.py --check
 
       - name: Lint
         run: uv run ruff check .
@@ -47,7 +53,8 @@ jobs:
           uv run python -m babeldoc.tools.dual_quality_check --self-check
 
       # Unit tests only — large dual PDFs under tests/ are data, not test modules.
-      # Fonts may be absent on fresh runners; tests that need them skip via skipif.
+      # Delivery tests require the fonts, CMaps, and tokenizer prepared above.
+      # A missing asset fails the job. Those tests do not skip.
       - name: Unit tests
         run: uv run pytest tests/ -q --tb=short
 
@@ -61,9 +68,10 @@ jobs:
             --skip-scanned-detection
 
   # Optional layout regression gate (Layout-First P0, design doc §2):
-  # workflow_dispatch or a PR carrying the `layout` label only. Reuses the
-  # same assets cache as `checks`; runs the synthetic-page digest against the
-  # committed golden and fails on Δ≠0. Not part of the default CI path.
+  # workflow_dispatch or a PR carrying the `layout` label only. Keeps the
+  # metadata-only cache key so an existing ONNX cache still hits. Runs the
+  # synthetic-page digest against the committed golden and fails on Δ≠0.
+  # Not part of the default CI path. doc_layout_model=None still loads ONNX.
   layout-repro:
     if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'layout') }}
     runs-on: ubuntu-latest

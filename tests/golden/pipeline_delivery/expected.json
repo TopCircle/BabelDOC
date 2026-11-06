@@ -1,0 +1,60 @@
+{
+  "body": {
+    "target_text": "这是第一段。这里保留 API 与 BDSM。",
+    "paragraph_count": 1,
+    "page_count": 1,
+    "quality_status": "success",
+    "page_box": [0, 0, 420, 320],
+    "obstacles": []
+  },
+  "photo_wrap": {
+    "target_text": "留在照片左侧。",
+    "paragraph_count": 1,
+    "page_count": 1,
+    "quality_status": "success",
+    "page_box": [0, 0, 420, 320],
+    "obstacles": [
+      {"page": 0, "rect": [300, 40, 400, 200]}
+    ]
+  },
+  "toc": {
+    "target_text": "这是第一段。这里保留 API 与 BDSM。 第一段在第二段之上。",
+    "paragraph_count": 2,
+    "page_count": 2,
+    "quality_status": "success",
+    "page_box": [0, 0, 420, 320],
+    "obstacles": []
+  },
+  "heading_formula": {
+    "target_text": "第一章 找到A点 与G点 能量是E= mc2，计数为12。 第一段在第二段之上。",
+    "paragraph_count": 4,
+    "page_count": 1,
+    "quality_status": "success",
+    "page_box": [0, 0, 720, 360],
+    "obstacles": []
+  },
+  "contour_exhausted": {
+    "target_text": "",
+    "paragraph_count": 0,
+    "page_count": 0,
+    "quality_status": "failed",
+    "page_box": [0, 0, 420, 320],
+    "obstacles": []
+  },
+  "translator_error": {
+    "target_text": "This sentence stays in English on purpose.",
+    "paragraph_count": 1,
+    "page_count": 1,
+    "quality_status": "degraded",
+    "page_box": [0, 0, 420, 320],
+    "obstacles": []
+  },
+  "split_two_parts": {
+    "target_text": "这是第一段。这里保留 API 与 BDSM。 This sentence stays in English on purpose.",
+    "paragraph_count": 2,
+    "page_count": 2,
+    "quality_status": "degraded",
+    "page_box": [0, 0, 420, 320],
+    "obstacles": []
+  }
+}
