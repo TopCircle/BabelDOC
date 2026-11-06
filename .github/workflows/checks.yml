@@ -21,6 +21,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/babeldoc
+          # uv.lock is committed, so this hash is known at checkout,
+          # before setup-uv and uv sync.
           key: babeldoc-assets-${{ hashFiles('babeldoc/assets/embedding_assets_metadata.py', 'uv.lock') }}
 
       - name: Setup uv with Python 3.12

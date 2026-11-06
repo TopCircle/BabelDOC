@@ -41,8 +41,7 @@ babeldoc/format/txt
 /profile.svg
 
 
-# uv
-uv.lock
+# uv.lock is tracked so the checks asset-cache key can hash it at checkout.
 
 /.claude
 babeldoc/format/playground
