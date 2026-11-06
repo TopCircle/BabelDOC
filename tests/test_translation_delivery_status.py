@@ -33,6 +33,7 @@ from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.progress_monitor import ProgressMonitor
 from babeldoc.quality import QualityIssue
 from babeldoc.quality import QualityReport
+from babeldoc.quality import record_layout_incomplete
 from babeldoc.translator.fixed_map_translator import FixedMapTranslator
 
 SOURCE_SECRET = "Keep this source sentence intact."
@@ -67,6 +68,15 @@ class _Short(FixedMapTranslator):
         if text.count(".") >= 2 or "Beta" in (text or ""):
             return "短。"
         raise RuntimeError("sentence retry failed")
+
+
+class _Banner(FixedMapTranslator):
+    def __init__(self, banner: str):
+        super().__init__()
+        self.banner = banner
+
+    def translate(self, text, ignore_cache=False, rate_limit_params=None):  # noqa: ARG002
+        return self.banner
 
 
 class _Mapped(FixedMapTranslator):
@@ -246,6 +256,75 @@ def test_service_error_keeps_composition_and_records_translation_error(tmp_path:
     assert SOURCE_SECRET not in blob
     assert ERROR_SECRET not in blob
     assert "RuntimeError" not in blob
+
+
+@pytest.mark.parametrize(
+    "banner",
+    [
+        "You're using an older version of DeepL.",
+        "请更新至最新版本。DeepL",
+    ],
+)
+def test_deepl_deprecation_banner_keeps_source_and_records_translation_error(
+    tmp_path: Path, banner: str
+):
+    config = _config(tmp_path, _Banner(banner), name=f"banner-{abs(hash(banner))}.pdf")
+    report = _attach(config)
+    engine = _translator(config)
+    paragraph = _paragraph(SOURCE_SECRET, debug_id="deepl-banner")
+    page = _page([paragraph])
+    composition_ids = [id(comp) for comp in paragraph.pdf_paragraph_composition]
+
+    _run_paragraph(engine, paragraph, page)
+
+    assert _glyph_text(paragraph) == SOURCE_SECRET
+    assert paragraph.unicode == SOURCE_SECRET
+    assert [id(comp) for comp in paragraph.pdf_paragraph_composition] == composition_ids
+    payload = report.to_dict()
+    assert payload["status"] == "degraded"
+    assert len(payload["issues"]) == 1
+    issue = payload["issues"][0]
+    assert issue["code"] == "translation_error"
+    assert issue["severity"] == "warning"
+    assert issue["details"] == {}
+    blob = _issue_blob(report)
+    assert banner not in blob
+    assert SOURCE_SECRET not in blob
+
+
+def test_unmapped_paragraph_page_is_not_recorded_as_original(tmp_path: Path):
+    config = _config(tmp_path, _Raising(RuntimeError(ERROR_SECRET)))
+    config.source_page_indices = (5,)
+    report = _attach(config)
+    engine = _translator(config)
+    paragraph = _paragraph(SOURCE_SECRET, debug_id="unmapped-para")
+    local_page = 3
+
+    with pytest.raises(IndexError):
+        _run_paragraph(engine, paragraph, _page([paragraph], number=local_page))
+
+    assert all(issue["page_index"] != local_page for issue in report.to_dict()["issues"])
+    assert _glyph_text(paragraph) == SOURCE_SECRET
+
+
+def test_unmapped_layout_page_is_not_recorded_as_original(tmp_path: Path):
+    config = _config(tmp_path, FixedMapTranslator(), name="layout-unmapped.pdf")
+    config.source_page_indices = (5,)
+    report = _attach(config)
+    local_page = 3
+    exc = LayoutIncompleteError(
+        page_index=local_page,
+        paragraph_id="layout-para",
+        reason="contour_exhausted",
+        requested_units=4,
+        placed_units=1,
+    )
+
+    with pytest.raises(IndexError):
+        record_layout_incomplete(config, exc)
+
+    assert report.to_dict()["issues"] == []
+    assert getattr(exc, "_quality_recorded", False) is False
 
 
 def test_still_missing_sentences_keep_source_and_warn(tmp_path: Path):

@@ -142,10 +142,7 @@ def record_layout_incomplete(translation_config, exc) -> None:
         return
     payload = exc.to_dict()
     local_page = int(payload["page_index"])
-    try:
-        page_index = int(translation_config.original_page_index(local_page))
-    except Exception:
-        page_index = local_page
+    page_index = int(translation_config.original_page_index(local_page))
     report.record(
         QualityIssue(
             "typesetting",

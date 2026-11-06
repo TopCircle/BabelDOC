@@ -2186,10 +2186,7 @@ class ILTranslator:
             local = 0
             if page is not None and getattr(page, "page_number", None) is not None:
                 local = int(page.page_number)
-            try:
-                page_index = int(self.translation_config.original_page_index(local))
-            except Exception:
-                page_index = local
+            page_index = int(self.translation_config.original_page_index(local))
         if paragraph_id:
             return int(page_index), str(paragraph_id)
         debug_id = getattr(paragraph, "debug_id", None)
@@ -2495,7 +2492,16 @@ class ILTranslator:
                         "(paragraph id=%s); falling back to source text.",
                         paragraph.debug_id,
                     )
-                    translated_text = text
+                    self._record_quality(
+                        stage="translation",
+                        code="translation_error",
+                        page_index=quality_page,
+                        paragraph_id=quality_pid,
+                        severity="warning",
+                        details={},
+                    )
+                    restore_source()
+                    return
 
                 # Acceptance V4 gate (output): if MT/LLM duplicated a sentence
                 # back-to-back in the target, fall back to the source so a
@@ -2544,6 +2550,8 @@ class ILTranslator:
                 )
                 self.add_content_filter_hint(page, paragraph)
                 return
+            except IndexError:
+                raise
             except Exception as e:
                 logger.exception(
                     f"Error translating paragraph. Paragraph: {paragraph.debug_id} ({paragraph.unicode}). Error: {e}. ",
