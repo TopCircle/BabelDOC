@@ -6,6 +6,15 @@
 **版本:** `0.6.4.101`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
+## 2026-11-06 — 生产填充执行门禁（识别 30 / 已验收 29 / 已启用 29）
+
+这是执行门禁，不是新的样页验收。没有新的 dual，也没有用户重新验收记录。数量沿用既有闭环名单，本条不把任何样页标成重新通过。
+
+- **识别 30**：目录里的范式仍全部 claim，包括挂起的 `hang/repeated`。
+- **已验收 29**：2026-11-04 已闭环的 29 项。本条不新增验收，不重开样页。
+- **已启用 29**：`ENABLED_SYSTEM_FILLS` 只给这 29 项装生产 fill。`hang/repeated` 命中后记为 `recorded`，不写 `line_edge_links`，也不进入 `shared_contours`。
+- 白名单是固定名单，不是“扫到 `fill` 就启用”。未列入的名字默认不进生产填充。
+
 ## 2026-11-06 — 列表项悬挂缩进右甩消除、小标题垂向间距防叠、多行大标题缝合与术语纠偏（0.6.4.101）
 
 1. **列表项悬挂缩进误判为侧图绕排（`RIGHT_FIXED`）与续行右甩消除 (`line_interval_plan.py` / `figure_wrap.py` / `layout_helper.py` / `list_marker_repair.py`)**：

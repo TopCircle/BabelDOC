@@ -9,10 +9,14 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Sequence
+from dataclasses import replace
 from functools import cache
 from pathlib import Path
 from types import ModuleType
 
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.activation import (
+    ENABLED_SYSTEM_FILLS,
+)
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.contract import (
     Paradigm,
 )
@@ -42,17 +46,25 @@ def load_modules() -> tuple[tuple[str, ModuleType], ...]:
     return tuple(found)
 
 
-def load_catalog(extra: Sequence[Paradigm] = ()) -> tuple[Paradigm, ...]:
+def load_catalog(
+    extra: Sequence[Paradigm] = (),
+    *,
+    enabled_fills: frozenset[str] | None = None,
+) -> tuple[Paradigm, ...]:
     """System paradigms plus any that were passed in.
 
     ``extra`` is the inlet for a later file or UI. This function does not
     read a directory and does not replace a system name. Two claims that
     both match still conflict inside ``pick``.
+
+    A fill is attached only when its name is enabled. ``None`` uses the
+    production allowlist. A name that is not in the catalog is refused.
     """
+    allowed = ENABLED_SYSTEM_FILLS if enabled_fills is None else enabled_fills
     found: dict[str, Paradigm] = {}
     for name, module in load_modules():
         fill = getattr(module, "fill", None)
-        if not callable(fill):
+        if not callable(fill) or name not in allowed:
             fill = None
         alignment = getattr(module, "ALIGNMENT", "left")
         flow = getattr(module, "FLOW", "edge")
@@ -62,5 +74,10 @@ def load_catalog(extra: Sequence[Paradigm] = ()) -> tuple[Paradigm, ...]:
     for item in extra:
         if item.name in found:
             raise ValueError(f"{item.name} is already registered")
+        if item.name not in allowed:
+            item = replace(item, fill=None)
         found[item.name] = item
+    unknown = sorted(allowed - found.keys())
+    if unknown:
+        raise ValueError("unknown enabled fill: " + ", ".join(unknown))
     return tuple(found[name] for name in sorted(found))

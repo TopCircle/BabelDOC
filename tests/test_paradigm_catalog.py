@@ -154,12 +154,40 @@ def test_a_passed_in_paradigm_joins_the_system_catalog():
     assert untouched["residual"] is None
 
 
+def _kept_fill(lines):
+    return tuple((float(line[0]), float(line[1])) for line in lines)
+
+
 def test_a_paradigm_name_is_a_path_and_cannot_replace_a_system_one():
     with pytest.raises(ValueError):
         Paradigm("rag", 8.0, _one_line_claim)
     system = next(item for item in load_catalog() if item.name == "rect/full_column")
     with pytest.raises(ValueError):
         load_catalog((system,))
+
+
+def test_default_catalog_keeps_the_paused_claim_and_drops_its_fill():
+    modules = dict(load_modules())
+    catalog = {item.name: item for item in load_catalog()}
+    assert set(catalog) == set(modules)
+    assert callable(modules["hang/repeated"].fill)
+    assert catalog["hang/repeated"].fill is None
+    assert callable(catalog["toc/plain"].fill)
+
+
+def test_an_extra_fill_stays_off_unless_its_name_is_enabled():
+    added = Paradigm("custom/kept", 8.0, _one_line_claim, _kept_fill)
+    stored = next(item for item in load_catalog((added,)) if item.name == "custom/kept")
+    assert stored.fill is None
+    enabled = load_catalog((added,), enabled_fills=frozenset({"custom/kept"}))
+    stored = next(item for item in enabled if item.name == "custom/kept")
+    assert stored.fill is _kept_fill
+    assert next(item for item in enabled if item.name == "hang/repeated").fill is None
+
+
+def test_an_unknown_enabled_fill_is_rejected():
+    with pytest.raises(ValueError, match="no/such"):
+        load_catalog(enabled_fills=frozenset({"rect/full_column", "no/such"}))
 
 
 def test_each_sample_matches_only_its_own_paradigm():

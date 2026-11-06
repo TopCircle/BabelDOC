@@ -17,12 +17,18 @@ from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
 from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
     interval_for_line_edges,
 )
+from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
+    with_line_edge_links,
+)
 from babeldoc.format.pdf.document_il.utils.layout_plan.list_chain import with_list_links
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import ContourLevel
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import LineBox
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import LineEdgeLink
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import MarkerEvidence
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms import load_catalog
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.activation import (
+    ENABLED_SYSTEM_FILLS,
+)
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.both.wider_below import (
     fill,
 )
@@ -190,7 +196,6 @@ def test_only_wired_modules_carry_a_fill():
         "bow/right_inset",
         "center/axis",
         "hang/deep",
-        "hang/repeated",
         "hang/shallow",
         "indent/first_line",
         "mark/bullet_hang",
@@ -427,7 +432,9 @@ def test_repeated_hang_fill_keeps_each_line_and_its_top():
     assert edges[0] == (100.0, 360.0, 200.0)
     assert edges[1] == (118.0, 400.0, 184.0)
     assert edges[3] == (100.0, 380.0, 152.0)
-    plan = build_plan(_facts(lines))
+    facts = _facts(lines)
+    catalog = load_catalog(enabled_fills=ENABLED_SYSTEM_FILLS | {"hang/repeated"})
+    plan = with_line_edge_links(facts, build_plan(facts), catalog=catalog)
     assert len(plan.line_edge_links) == 1
     link = plan.line_edge_links[0]
     assert plan.decisions[0].contour_plugin == "hang/repeated"
