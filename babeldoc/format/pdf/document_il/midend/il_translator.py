@@ -13,6 +13,7 @@ from tqdm import tqdm
 
 import babeldoc.format.pdf.document_il.il_version_1 as il_version_1
 from babeldoc.babeldoc_exception.BabelDOCException import ContentFilterError
+from babeldoc.quality import QualityIssue
 from babeldoc.format.pdf.document_il import Document
 from babeldoc.format.pdf.document_il import GraphicState
 from babeldoc.format.pdf.document_il import Page
@@ -895,7 +896,7 @@ class ILTranslator:
         # Decide near-full on pre-MT EN. Hosts submit first (longer →
         # lower priority number) and would make a later rematch miss.
         self._classify_near_full_pullquotes(page)
-        for paragraph in page.pdf_paragraph:
+        for ordinal, paragraph in enumerate(page.pdf_paragraph):
             region_reason = self.region_skip_reason(page, paragraph)
             if region_reason is not None:
                 self.record_skip(page, paragraph, region_reason)
@@ -918,6 +919,9 @@ class ILTranslator:
                         paragraph
                     )
                 )
+            quality_page_index, quality_paragraph_id = self._paragraph_quality_ref(
+                page, paragraph, ordinal
+            )
             executor.submit(
                 self.translate_paragraph,
                 paragraph,
@@ -930,6 +934,8 @@ class ILTranslator:
                 paragraph_token_count=paragraph_token_count,
                 title_paragraph=self.translation_config.shared_context_cross_split_part.first_paragraph,
                 local_title_paragraph=self.translation_config.shared_context_cross_split_part.recent_title_paragraph,
+                quality_page_index=quality_page_index,
+                quality_paragraph_id=quality_paragraph_id,
             )
 
     def should_skip_figure_text_paragraph(
@@ -2159,6 +2165,62 @@ class ILTranslator:
             xobj_id=-1,
         )
 
+    def _quality_report(self):
+        shared = self.shared_context_cross_split_part
+        return getattr(shared, "quality_report", None)
+
+    def _paragraph_quality_ref(
+        self,
+        page: Page | None,
+        paragraph: PdfParagraph,
+        ordinal: int,
+        page_index: int | None = None,
+        paragraph_id: str | None = None,
+    ) -> tuple[int, str]:
+        """Stable ids captured when the paragraph is submitted.
+
+        Missing ``debug_id`` uses ``p{original_page}:r{ordinal}``. ``ordinal``
+        is the index in ``page.pdf_paragraph``, not ``id(paragraph)``.
+        """
+        if page_index is None:
+            local = 0
+            if page is not None and getattr(page, "page_number", None) is not None:
+                local = int(page.page_number)
+            try:
+                page_index = int(self.translation_config.original_page_index(local))
+            except Exception:
+                page_index = local
+        if paragraph_id:
+            return int(page_index), str(paragraph_id)
+        debug_id = getattr(paragraph, "debug_id", None)
+        if debug_id:
+            return int(page_index), str(debug_id)
+        return int(page_index), f"p{int(page_index)}:r{int(ordinal)}"
+
+    def _record_quality(
+        self,
+        *,
+        stage: str,
+        code: str,
+        page_index: int,
+        paragraph_id: str,
+        severity: str,
+        details: dict,
+    ) -> None:
+        report = self._quality_report()
+        if report is None:
+            return
+        report.record(
+            QualityIssue(
+                stage,
+                code,
+                int(page_index),
+                str(paragraph_id),
+                severity,  # type: ignore[arg-type]
+                details,
+            )
+        )
+
     def translate_paragraph(
         self,
         paragraph: PdfParagraph,
@@ -2170,6 +2232,8 @@ class ILTranslator:
         paragraph_token_count: int = 0,
         title_paragraph: TitleContextSnapshot | None = None,
         local_title_paragraph: TitleContextSnapshot | None = None,
+        quality_page_index: int | None = None,
+        quality_paragraph_id: str | None = None,
     ):
         """Translate a paragraph using pre and post processing functions."""
         self.translation_config.raise_if_cancelled()
@@ -2178,6 +2242,19 @@ class ILTranslator:
                 if self.use_as_fallback:
                     # il translator llm only modifies unicode in some situations
                     paragraph.unicode = get_paragraph_unicode(paragraph)
+                composition_snapshot = list(paragraph.pdf_paragraph_composition)
+                unicode_snapshot = paragraph.unicode
+                quality_page, quality_pid = self._paragraph_quality_ref(
+                    page,
+                    paragraph,
+                    0,
+                    page_index=quality_page_index,
+                    paragraph_id=quality_paragraph_id,
+                )
+
+                def restore_source() -> None:
+                    paragraph.pdf_paragraph_composition = composition_snapshot
+                    paragraph.unicode = unicode_snapshot
                 # Bibliography / references: preserve original citations without MT distortion
                 if self._is_bibliography_paragraph(paragraph):
                     text, translate_input = self.pre_translate_paragraph(
@@ -2256,7 +2333,16 @@ class ILTranslator:
                         paragraph.debug_id,
                         src_dups[0][0][:60],
                     )
+                    self._record_quality(
+                        stage="translation",
+                        code="repeated_sentences",
+                        page_index=quality_page,
+                        paragraph_id=quality_pid,
+                        severity="warning",
+                        details={"kind": "exact"},
+                    )
                     self.record_skip(page, paragraph, SkipReason.PULLQUOTE)
+                    restore_source()
                     return
                 if src_dups:
                     logger.warning(
@@ -2372,9 +2458,25 @@ class ILTranslator:
                         else:
                             logger.warning(
                                 "Translation still drops sentences after retry; "
-                                f"keeping result. paragraph id: {paragraph.debug_id} "
-                                f"output={translated_text[:80]!r}"
+                                f"keeping source. paragraph id: {paragraph.debug_id}"
                             )
+                            self._record_quality(
+                                stage="translation",
+                                code="missing_sentences",
+                                page_index=quality_page,
+                                paragraph_id=quality_pid,
+                                severity="warning",
+                                details={
+                                    "source_sentence_ends": int(
+                                        self.count_sentence_ends(text)
+                                    ),
+                                    "translated_sentence_ends": int(
+                                        self.count_sentence_ends(translated_text)
+                                    ),
+                                },
+                            )
+                            restore_source()
+                            return
 
                 # Chapter running titles: "Chapter N" and DeepLX-mangled
                 # 章b08 residue on every MT output (not only the retry path).
@@ -2407,7 +2509,16 @@ class ILTranslator:
                         paragraph.debug_id,
                         out_dups[0][0][:60],
                     )
-                    translated_text = text
+                    self._record_quality(
+                        stage="translation",
+                        code="repeated_sentences",
+                        page_index=quality_page,
+                        paragraph_id=quality_pid,
+                        severity="warning",
+                        details={"kind": "exact"},
+                    )
+                    restore_source()
+                    return
                 elif out_dups:
                     logger.warning(
                         "Translation has near-duplicate consecutive sentences "
@@ -2422,11 +2533,28 @@ class ILTranslator:
                 )
             except ContentFilterError as e:
                 logger.warning(f"ContentFilterError: {e.message}")
+                restore_source()
+                self._record_quality(
+                    stage="translation",
+                    code="content_filter",
+                    page_index=quality_page,
+                    paragraph_id=quality_pid,
+                    severity="warning",
+                    details={},
+                )
                 self.add_content_filter_hint(page, paragraph)
                 return
             except Exception as e:
                 logger.exception(
                     f"Error translating paragraph. Paragraph: {paragraph.debug_id} ({paragraph.unicode}). Error: {e}. ",
                 )
-                # ignore error and continue
+                restore_source()
+                self._record_quality(
+                    stage="translation",
+                    code="translation_error",
+                    page_index=quality_page,
+                    paragraph_id=quality_pid,
+                    severity="warning",
+                    details={},
+                )
                 return

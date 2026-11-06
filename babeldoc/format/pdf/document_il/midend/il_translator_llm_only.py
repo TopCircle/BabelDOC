@@ -102,10 +102,15 @@ class BatchParagraph:
         paragraphs: list[PdfParagraph],
         pages: list[Page],
         page_tracker: PageTranslateTracker,
+        quality_ids: list[tuple[int, str]] | None = None,
     ):
         self.paragraphs = paragraphs
         self.pages = pages
         self.trackers = [page_tracker.new_paragraph() for _ in paragraphs]
+        if quality_ids is None:
+            self.quality_ids = [(None, None) for _ in paragraphs]
+        else:
+            self.quality_ids = list(quality_ids)
 
 
 class ILTranslatorLLMOnly:
@@ -367,6 +372,21 @@ class ILTranslatorLLMOnly:
 
         return page_font_map, page_xobj_font_map
 
+    def _quality_ids_for(
+        self, pages: list[Page], paragraphs: list[PdfParagraph]
+    ) -> list[tuple[int, str]]:
+        refs: list[tuple[int, str]] = []
+        for page, paragraph in zip(pages, paragraphs, strict=False):
+            ordinal = 0
+            for index, item in enumerate(getattr(page, "pdf_paragraph", None) or []):
+                if item is paragraph:
+                    ordinal = index
+                    break
+            refs.append(
+                self.il_translator._paragraph_quality_ref(page, paragraph, ordinal)
+            )
+        return refs
+
     def process_cross_page_paragraph(
         self,
         docs: Document,
@@ -441,7 +461,10 @@ class ILTranslatorLLMOnly:
             cross_page_paragraphs = [last_curr_paragraph, first_next_paragraph]
             cross_page_pages = [page_curr, page_next]
             batch_paragraph = BatchParagraph(
-                cross_page_paragraphs, cross_page_pages, tracker.new_cross_page()
+                cross_page_paragraphs,
+                cross_page_pages,
+                tracker.new_cross_page(),
+                self._quality_ids_for(cross_page_pages, cross_page_paragraphs),
             )
 
             self.mid += 1
@@ -517,7 +540,12 @@ class ILTranslatorLLMOnly:
                 p1.unicode
             ) + self.calc_token_count(p2.unicode)
 
-            batch = BatchParagraph([p1, p2], [page, page], tracker.new_cross_column())
+            batch = BatchParagraph(
+                [p1, p2],
+                [page, page],
+                tracker.new_cross_column(),
+                self._quality_ids_for([page, page], [p1, p2]),
+            )
             self.mid += 1
             executor.submit(
                 self.translate_paragraph,
@@ -556,9 +584,10 @@ class ILTranslatorLLMOnly:
                 page_xobj_font_map[xobj.xobj_id][font.font_id] = font
 
         paragraphs = []
+        quality_ids: list[tuple[int, str]] = []
 
         total_token_count = 0
-        for paragraph in page.pdf_paragraph:
+        for ordinal, paragraph in enumerate(page.pdf_paragraph):
             # Check if already translated
             if id(paragraph) in translated_ids:
                 continue
@@ -608,6 +637,9 @@ class ILTranslatorLLMOnly:
             # self.translate_paragraph(paragraph, pbar,tracker.new_paragraph(), page_font_map, page_xobj_font_map)
             total_token_count += self.calc_token_count(paragraph.unicode)
             paragraphs.append(paragraph)
+            quality_ids.append(
+                self.il_translator._paragraph_quality_ref(page, paragraph, ordinal)
+            )
             translated_ids.add(id(paragraph))
             if paragraph.layout_label == "title":
                 self.shared_context_cross_split_part.recent_title_paragraph = (
@@ -620,7 +652,12 @@ class ILTranslatorLLMOnly:
                 self.mid += 1
                 executor.submit(
                     self.translate_paragraph,
-                    BatchParagraph(paragraphs, [page] * len(paragraphs), tracker),
+                    BatchParagraph(
+                        paragraphs,
+                        [page] * len(paragraphs),
+                        tracker,
+                        quality_ids,
+                    ),
                     pbar,
                     page_font_map,
                     page_xobj_font_map,
@@ -632,13 +669,16 @@ class ILTranslatorLLMOnly:
                     mp_id=self.mid,
                 )
                 paragraphs = []
+                quality_ids = []
                 total_token_count = 0
 
         if paragraphs:
             self.mid += 1
             executor.submit(
                 self.translate_paragraph,
-                BatchParagraph(paragraphs, [page] * len(paragraphs), tracker),
+                BatchParagraph(
+                    paragraphs, [page] * len(paragraphs), tracker, quality_ids
+                ),
                 pbar,
                 page_font_map,
                 page_xobj_font_map,
@@ -882,10 +922,13 @@ class ILTranslatorLLMOnly:
                         )
                         paragraph_unicodes = inputs[id_][5]
                         inputs[id_][2].unicode = paragraph_unicodes[id_]
+                        quality_page, quality_pid = batch_paragraph.quality_ids[
+                            should_translate_paragraph[id_]
+                        ]
                         executor.submit(
                             self.il_translator.translate_paragraph,
                             inputs[id_][2],
-                            batch_paragraph.pages[id_],
+                            batch_paragraph.pages[should_translate_paragraph[id_]],
                             pbar,
                             inputs[id_][3],
                             page_font_map,
@@ -894,6 +937,8 @@ class ILTranslatorLLMOnly:
                             paragraph_token_count=paragraph_token_count,
                             title_paragraph=title_paragraph,
                             local_title_paragraph=local_title_paragraph,
+                            quality_page_index=quality_page,
+                            quality_paragraph_id=quality_pid,
                         )
                     else:
                         self.ok_count += 1
@@ -918,6 +963,7 @@ class ILTranslatorLLMOnly:
                 if paragraph.debug_id is None:
                     continue
                 paragraph_token_count = self.calc_token_count(paragraph.unicode)
+                quality_page, quality_pid = batch_paragraph.quality_ids[i]
                 executor.submit(
                     self.il_translator.translate_paragraph,
                     paragraph,
@@ -930,6 +976,8 @@ class ILTranslatorLLMOnly:
                     paragraph_token_count=paragraph_token_count,
                     title_paragraph=title_paragraph,
                     local_title_paragraph=local_title_paragraph,
+                    quality_page_index=quality_page,
+                    quality_paragraph_id=quality_pid,
                 )
 
     def _build_llm_prompt(

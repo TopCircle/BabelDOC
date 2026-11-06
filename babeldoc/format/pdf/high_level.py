@@ -56,6 +56,10 @@ from babeldoc.format.pdf.translation_config import TranslateResult
 from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.format.pdf.translation_config import WatermarkOutputMode
 from babeldoc.progress_monitor import ProgressMonitor
+from babeldoc.quality import ensure_document_failure
+from babeldoc.quality import ensure_document_quality_report
+from babeldoc.quality import publish_quality_report
+from babeldoc.quality import record_layout_incomplete
 from babeldoc.utils import memory
 
 logger = logging.getLogger(__name__)
@@ -548,6 +552,7 @@ def do_translate(
 ) -> TranslateResult:
     try:
         translation_config.progress_monitor = pm
+        ensure_document_quality_report(translation_config)
         original_pdf_path = translation_config.input_file
         logger.info(f"start to translate: {original_pdf_path}")
         try:
@@ -594,6 +599,9 @@ def do_translate(
                             try:
                                 # Create a copy of config for this part
                                 part_config = copy.copy(translation_config)
+                                part_config.set_part_source_page_range(
+                                    split_point.start_page, split_point.end_page
+                                )
                                 part_config.skip_clean = True
                                 should_translate_pages = []
                                 for page in range(
@@ -681,6 +689,11 @@ def do_translate(
                                 )
                                 results[i] = result
 
+                            except LayoutIncompleteError as e:
+                                record_layout_incomplete(part_config, e)
+                                logger.error(f"Error in part {i}: {e}")
+                                pm.translate_error(e)
+                                raise
                             except Exception as e:
                                 logger.error(f"Error in part {i}: {e}")
                                 pm.translate_error(e)
@@ -735,10 +748,22 @@ def do_translate(
             logger.error(
                 f"Failed to migrate TOC from {translation_config.input_file}: {e}"
             )
+        publish_quality_report(translation_config, result)
         pm.translate_done(result)
         return result
 
+    except LayoutIncompleteError as e:
+        record_layout_incomplete(translation_config, e)
+        publish_quality_report(translation_config, None)
+        logger.exception(f"translate error: {e}")
+        pm.disable = False
+        pm.translate_error(e)
+        raise
+    except CancelledError:
+        raise
     except Exception as e:
+        ensure_document_failure(translation_config)
+        publish_quality_report(translation_config, None)
         logger.exception(f"translate error: {e}")
         pm.disable = False
         pm.translate_error(e)
@@ -1201,7 +1226,11 @@ def _do_translate_single(
         dual_watermark_first_page_doc_bytes = None
 
     typesetter = Typesetting(translation_config)
-    typesetter.typesetting_document(docs)
+    try:
+        typesetter.typesetting_document(docs)
+    except LayoutIncompleteError as exc:
+        record_layout_incomplete(translation_config, exc)
+        raise
     logger.debug(f"finish typsetting from {temp_pdf_path}")
     if translation_config.debug:
         xml_converter.write_json(

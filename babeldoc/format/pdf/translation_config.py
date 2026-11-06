@@ -40,6 +40,8 @@ class SharedContextCrossSplitPart:
         self.auto_extracted_glossary: Glossary | None = None
         self.raw_extracted_terms: list[tuple[str, str]] = []
         self.auto_enabled_ocr_workaround = False
+        # One collector per original file. Parts share this object via copy.copy.
+        self.quality_report = None
         # Statistics for valid characters/text across the whole file
         self.valid_char_count_total: int = 0
         self.total_valid_text_token_count: int = 0
@@ -430,9 +432,30 @@ class TranslationConfig:
         self.narrow_callout_mode = normalize_narrow_callout_mode(
             narrow_callout_mode
         )
+        # Original zero-based pages contained in the current split part.
+        self.source_page_indices: tuple[int, ...] | None = None
 
         if self.ocr_workaround:
             self.remove_non_formula_lines = False
+
+    def original_page_index(self, local_page_index: int) -> int:
+        """Map a part-local page index back to the original file.
+
+        ``None`` means this config is the whole file, so the index is already
+        original. A mapped part indexes ``source_page_indices`` strictly:
+        negative indexes do not wrap.
+        """
+        indices = self.source_page_indices
+        local = int(local_page_index)
+        if indices is None:
+            return local
+        if local < 0 or local >= len(indices):
+            raise IndexError(local)
+        return int(indices[local])
+
+    def set_part_source_page_range(self, start_page: int, end_page: int) -> None:
+        """Record the original inclusive page range inserted into this part."""
+        self.source_page_indices = tuple(range(int(start_page), int(end_page) + 1))
 
     def parse_pages(self, pages_str: str | None) -> list[tuple[int, int]] | None:
         """解析页码字符串，返回页码范围列表
@@ -571,6 +594,9 @@ class TranslateResult:
     auto_extracted_glossary_path: Path | None
     total_valid_character_count: int | None
     total_valid_text_token_count: int | None
+    quality_status: str | None
+    quality_warning_count: int | None
+    quality_report_path: Path | None
 
     def __init__(
         self,
@@ -580,6 +606,11 @@ class TranslateResult:
     ):
         self.mono_pdf_path = mono_pdf_path
         self.dual_pdf_path = dual_pdf_path
+        # None keeps old BabelDOC packages compatible. A current run sets one
+        # of success / degraded / failed.
+        self.quality_status = None
+        self.quality_warning_count = None
+        self.quality_report_path = None
 
         # For compatibility considerations, if only a non-watermarked PDF is generated,
         # the values of mono_pdf_path and no_watermark_mono_pdf_path are the same.
