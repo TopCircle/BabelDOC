@@ -116,12 +116,33 @@ def is_display_title(paragraph: PdfParagraph) -> bool:
 
     t = (getattr(paragraph, "unicode", None) or "").strip()
     if not t:
-        chars = []
-        for ch in _iter_chars(paragraph):
-            chars.append(ch.char_unicode or "")
+        chars = [ch.char_unicode or "" for ch in _iter_chars(paragraph)]
         t = "".join(chars).strip()
     if t and _DISPLAY_TITLE_HEAD_RE.match(t) and size >= 12.0:
         return True
+
+    # Section subheading heuristic when DocLayout mislabeled as text:
+    # Visual line count <= 2 with size >= 14.0, not a bullet item,
+    # and does not end with sentence terminal punctuation.
+    if size >= 14.0:
+        from babeldoc.format.pdf.document_il.utils.layout_helper import is_bullet_point
+
+        first_char = next(_iter_chars(paragraph), None)
+        if first_char is None or not is_bullet_point(first_char):
+            ys = {
+                round(float(ch.box.y), 1)
+                for ch in _iter_chars(paragraph)
+                if ch.box and ch.box.y is not None
+            }
+            if len(ys) <= 2:
+                if t and not (
+                    t.endswith(".")
+                    or t.endswith("。")
+                    or t.endswith("”")
+                    or t.endswith("\"")
+                ):
+                    return True
+
     return False
 
 
@@ -361,18 +382,20 @@ def find_content_above(
         cbox = (ink.get(id(cand)) if ink else None) or layout_box(cand)
         if cbox is None or cbox.y is None or cbox.y2 is None:
             continue
+        if float(cbox.y) <= lower_top - 1.0:
+            continue
+        if body_fully_inside_title_band(cbox, lbox) or body_fully_inside_title_band(lbox, cbox):
+            continue
         cand_layout = layout_box(cand)
         lower_layout = layout_box(lower)
         if (
             cand_layout
             and lower_layout
-            and cand_layout.y2 is not None
+            and cand_layout.y is not None
             and lower_layout.y2 is not None
         ):
-            if float(cand_layout.y2) <= float(lower_layout.y2) + 0.5:
+            if float(cand_layout.y) <= float(lower_layout.y2) - 1.0:
                 continue
-        elif float(cbox.y) <= lower_top - 1.0:
-            continue
         if not boxes_x_overlap(lbox, cbox):
             continue
         if best is None or float(cbox.y) < best[0]:

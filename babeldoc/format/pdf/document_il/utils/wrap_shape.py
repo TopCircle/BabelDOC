@@ -463,8 +463,8 @@ def sanitize_wrap_shape_for_cjk(
 
     # LEFT_FIXED only: hoist needle tip to penultimate (OA p59 tip underfill).
     # Keep RIGHT_FIXED cone tips (OA p19 ~64pt) intact.
-    _TIP_ABS = 90.0
-    _TIP_RATIO = 0.55
+    tip_abs = 90.0
+    tip_ratio = 0.55
     if (
         wrap_mode is WrapMode.LEFT_FIXED
         and len(result) >= 2
@@ -472,7 +472,7 @@ def sanitize_wrap_shape_for_cjk(
         last_off, last_w = result[-1]
         prev_w = float(result[-2][1])
         last_w_f = float(last_w)
-        if last_w_f < _TIP_ABS and last_w_f < prev_w * _TIP_RATIO:
+        if last_w_f < tip_abs and last_w_f < prev_w * tip_ratio:
             if unchanged:
                 result = list(wrap_shape)
                 unchanged = False
@@ -546,8 +546,8 @@ def sanitize_wrap_shape_for_cjk(
                 last_off, last_w = result[-1]
                 prev_w = float(result[-2][1])
                 last_w_f = float(last_w)
-                _SAFE_TIP = max(min_width * 1.75, 42.0)
-                if last_w_f <= min_width + 0.5 or last_w_f < _SAFE_TIP:
+                safe_tip = max(min_width * 1.75, 42.0)
+                if last_w_f <= min_width + 0.5 or last_w_f < safe_tip:
                     result[-1] = (last_off, prev_w)
 
     if unchanged:

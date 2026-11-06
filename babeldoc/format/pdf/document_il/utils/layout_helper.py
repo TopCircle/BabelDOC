@@ -69,8 +69,10 @@ RIGHT_BRACKET = ("(cid:9)", ")", "(cid:17)", "}", "]", "(cid:105)", "(cid:3)")
 # ``\uf643`` is the private-use glyph used by the Gabrielle Moore source
 # PDFs for the red hollow-circle list marker.  pdfminer preserves that code
 # point instead of mapping it to the usual ``•`` character.
+# ``\x12`` (DC2) is the bullet glyph used in Gabrielle Moore titles like
+# "Fingering Fetish" and "Toys for Tits" (Webdings / Ubuntu-Bold parallelogram).
 BULLET_POINT_PATTERN = re.compile(
-    r"[■•⚫⬤◆◇○●◦‣⁃▪▫∗†‡¹²³⁴⁵⁶⁷⁸⁹⁰₁₂₃₄₅₆₇₈₉₀ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻ¶※⁑⁂⁕⁎⁜❧☙⁋‖‽·\uf643]"
+    r"[■•⚫⬤◆◇○●◦‣⁃▪▫∗†‡¹²³⁴⁵⁶⁷⁸⁹⁰₁₂₃₄₅₆₇₈₉₀ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻ¶※⁑⁂⁕⁎⁜❧☙⁋‖‽·\uf643\x12]"
 )
 
 # Webdings ``Q`` is a list marker. The Symbol face is math Greek, not a bullet.
