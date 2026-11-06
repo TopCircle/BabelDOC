@@ -99,11 +99,8 @@ _ISOLATED_YOU_RE = re.compile(
     r"(?<=[\u4e00-\u9fff])\s*you\s*(?=[\u4e00-\u9fff])",
     re.IGNORECASE,
 )
-# Single Latin letter between CJK (foreplay → 介绍e艺术).
-# G点/A点 keeps its letter. That letter is the glossary term, not a hyphen crumb.
-_ISOLATED_LATIN_LETTER_RE = re.compile(
-    r"(?<=[\u4e00-\u9fff])\s*(?![GgAa](?=\s*点))[A-Za-z]\s*(?=[\u4e00-\u9fff])"
-)
+# Single Latin letters between CJK (维生素c, 变量 x) are kept.
+# 介绍e艺术 is an explicit repair inside _scrub_cjk_embedded_english.
 
 # Formula-glued leftovers: "抚摸 {v1}her 阴蒂" (placeholders kept for parse)
 _FORMULA_GLUED = {
@@ -218,7 +215,6 @@ def _scrub_cjk_embedded_english(text: str) -> str:
     )
     out = _YOU_HAVE_NOUN_RE.sub("有", out)
     out = _ISOLATED_YOU_RE.sub("", out)
-    out = _ISOLATED_LATIN_LETTER_RE.sub("", out)
 
     def _formula_glued_repl(m: re.Match[str]) -> str:
         return m.group(1) + _FORMULA_GLUED.get(m.group(2).lower(), "")
@@ -240,12 +236,6 @@ def _scrub_cjk_embedded_english(text: str) -> str:
     out = re.sub(r"(?m)^her\s*(?=[\u4e00-\u9fff])", "", out, flags=re.I)
     out = re.sub(r"(?m)^enemas\s*(?=[\u4e00-\u9fff])", "灌肠", out, flags=re.I)
     out = re.sub(r"(?m)^vag\s*(?=[\u4e00-\u9fff])", "阴道", out, flags=re.I)
-    # Generic leftover Latin word (2–12 letters) between CJK
-    out = re.sub(
-        r"(?<=[\u4e00-\u9fff])[\s\xa0\u3000]+[A-Za-z]{2,12}[\s\xa0\u3000]+(?=[\u4e00-\u9fff])",
-        "",
-        out,
-    )
     out = re.sub(r"[^\S\n]{2,}", " ", out)
     return out
 

@@ -141,6 +141,22 @@ class TestNormalizeTranslatedText:
         assert "b08" not in (normalize_translated_text("第八章〖b08〗直接推送") or "")
 
 
+def test_post_clean_preserves_legitimate_latin_content():
+    """Same legitimate Latin cases as DeepLX post_clean_zh. No shared package."""
+    samples = (
+        "请使用 API 调用服务。",
+        "这里保留 BDSM 缩写。",
+        "维生素c有作用。",
+        "变量 x 取正值。",
+        "代码 QGID999Q 示例",
+        "她的G点与A点仍保留。",
+    )
+    for text in samples:
+        assert normalize_translated_text(text) == text
+        again = normalize_translated_text(normalize_translated_text(text))
+        assert again == text
+
+
 def test_strip_title_first_trailing_chapter_running_header():
     """OA title-first running header must not repeat 第N章 beside the opener."""
     assert normalize_translated_text("成为行动派第三章") == "成为行动派"
