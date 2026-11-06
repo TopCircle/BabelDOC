@@ -2235,12 +2235,19 @@ class ILTranslator:
         """Translate a paragraph using pre and post processing functions."""
         self.translation_config.raise_if_cancelled()
         with PbarContext(pbar):
+            if self.use_as_fallback:
+                # il translator llm only modifies unicode in some situations
+                paragraph.unicode = get_paragraph_unicode(paragraph)
+            composition_snapshot = list(paragraph.pdf_paragraph_composition)
+            unicode_snapshot = paragraph.unicode
+
+            def restore_source() -> None:
+                paragraph.pdf_paragraph_composition = composition_snapshot
+                paragraph.unicode = unicode_snapshot
+
+            # Only an unmapped page leaves this function. A later IndexError
+            # is a translation failure and must restore the source.
             try:
-                if self.use_as_fallback:
-                    # il translator llm only modifies unicode in some situations
-                    paragraph.unicode = get_paragraph_unicode(paragraph)
-                composition_snapshot = list(paragraph.pdf_paragraph_composition)
-                unicode_snapshot = paragraph.unicode
                 quality_page, quality_pid = self._paragraph_quality_ref(
                     page,
                     paragraph,
@@ -2248,10 +2255,10 @@ class ILTranslator:
                     page_index=quality_page_index,
                     paragraph_id=quality_paragraph_id,
                 )
-
-                def restore_source() -> None:
-                    paragraph.pdf_paragraph_composition = composition_snapshot
-                    paragraph.unicode = unicode_snapshot
+            except IndexError:
+                restore_source()
+                raise
+            try:
                 # Bibliography / references: preserve original citations without MT distortion
                 if self._is_bibliography_paragraph(paragraph):
                     text, translate_input = self.pre_translate_paragraph(
@@ -2550,8 +2557,6 @@ class ILTranslator:
                 )
                 self.add_content_filter_hint(page, paragraph)
                 return
-            except IndexError:
-                raise
             except Exception as e:
                 logger.exception(
                     f"Error translating paragraph. Paragraph: {paragraph.debug_id} ({paragraph.unicode}). Error: {e}. ",

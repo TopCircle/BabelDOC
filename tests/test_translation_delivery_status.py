@@ -79,6 +79,11 @@ class _Banner(FixedMapTranslator):
         return self.banner
 
 
+class _PlainTranslation(FixedMapTranslator):
+    def translate(self, text, ignore_cache=False, rate_limit_params=None):  # noqa: ARG002
+        return "完整的中文译文。"
+
+
 class _Mapped(FixedMapTranslator):
     def __init__(self, mapping: dict[str, str]):
         super().__init__(mapping)
@@ -325,6 +330,49 @@ def test_unmapped_layout_page_is_not_recorded_as_original(tmp_path: Path):
 
     assert report.to_dict()["issues"] == []
     assert getattr(exc, "_quality_recorded", False) is False
+
+
+def test_non_page_index_error_restores_source_and_records_translation_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    config = _config(
+        tmp_path, _PlainTranslation(), name="later-index.pdf"
+    )
+    config.source_page_indices = (6, 7, 8, 9)
+    report = _attach(config)
+    engine = _translator(config)
+    paragraph = _paragraph(SOURCE_SECRET, debug_id="later-index")
+    page = _page([paragraph], number=3)
+    composition_ids = [id(comp) for comp in paragraph.pdf_paragraph_composition]
+    laid = "完整的中文译文。"
+
+    def replace_then_fail(paragraph, tracker, translate_input, translated_text):  # noqa: ARG001
+        replacement = _paragraph(laid, debug_id="laid-out")
+        paragraph.pdf_paragraph_composition = replacement.pdf_paragraph_composition
+        paragraph.unicode = replacement.unicode
+        raise IndexError("layout slot")
+
+    monkeypatch.setattr(engine, "post_translate_paragraph", replace_then_fail)
+
+    _run_paragraph(engine, paragraph, page)
+
+    assert _glyph_text(paragraph) == SOURCE_SECRET
+    assert paragraph.unicode == SOURCE_SECRET
+    assert [id(comp) for comp in paragraph.pdf_paragraph_composition] == composition_ids
+    payload = report.to_dict()
+    assert payload["status"] == "degraded"
+    assert len(payload["issues"]) == 1
+    issue = payload["issues"][0]
+    assert issue["code"] == "translation_error"
+    assert issue["severity"] == "warning"
+    assert issue["page_index"] == 9
+    assert issue["paragraph_id"] == "later-index"
+    assert issue["details"] == {}
+    blob = _issue_blob(report)
+    assert "layout slot" not in blob
+    assert "IndexError" not in blob
+    assert SOURCE_SECRET not in blob
+    assert laid not in blob
 
 
 def test_still_missing_sentences_keep_source_and_warn(tmp_path: Path):
