@@ -704,6 +704,13 @@ def test_a_hanging_bullet_is_not_a_plain_marker():
 
 
 def test_a_full_last_line_that_stops_short_stays_a_right_pin():
+    from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.taper.right_pin import (
+        _pinned_after_tail,
+    )
+    from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.taper.right_pin import (
+        fill,
+    )
+
     steps = (0.0, 4.0, 8.0, 12.0, 15.0, 17.0, 19.0, 21.0)
     lines = [
         [199.0 + step, 512.6, 400.0 - index * 15.0] for index, step in enumerate(steps)
@@ -714,6 +721,10 @@ def test_a_full_last_line_that_stops_short_stays_a_right_pin():
     assert paradigm == "taper/right_pin"
     assert residual is not None
     assert residual < 8
+    assert _pinned_after_tail(lines) == 0.0
+    filled = fill(lines)
+    assert filled[-1] == (218.0, 512.6, lines[-1][2])
+    assert filled[-2][:2] == (218.0, 512.6)
 
 
 def test_a_hang_with_a_short_tail_stays_a_hang():
@@ -785,6 +796,17 @@ def test_right_pin_matches_contour_with_slight_tail_recoil():
     assert status == "matched"
     assert paradigm == "taper/right_pin"
     assert residual == 0.0
+    from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.taper.right_pin import (
+        _pinned_after_tail,
+    )
+    from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.taper.right_pin import (
+        fill,
+    )
+
+    assert _pinned_after_tail(lines) == 0.0
+    filled = fill(lines)
+    assert filled[-1] == (345.0, 577.7, 327.0)
+    assert filled[-2] == (345.0, 577.7, 345.0)
 
 
 def test_right_pin_rejects_corridor_step_with_narrow_top_lines():
@@ -1121,4 +1143,36 @@ def test_strip_short_tail_keeps_minimum_three_lines_and_expands_capacity():
         [100.0, 350.0, 220.0],
     ]
     assert len(_strip_short_tail(six_lines)) == 4
+
+
+def test_short_tail_strip_follows_the_free_side_only():
+    from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import (
+        _strip_short_tail,
+    )
+
+    right_tail = [
+        [100.0, 400.0, 200.0],
+        [100.0, 400.0, 184.0],
+        [100.0, 400.0, 168.0],
+        [100.0, 250.0, 152.0],
+    ]
+    assert _strip_short_tail(right_tail) == right_tail[:3]
+    assert _strip_short_tail(right_tail, free_side="right") == right_tail[:3]
+    assert _strip_short_tail(right_tail, free_side="left") == right_tail
+    left_tail = [
+        [200.0, 500.0, 200.0],
+        [200.0, 500.0, 184.0],
+        [200.0, 500.0, 168.0],
+        [350.0, 500.0, 152.0],
+    ]
+    assert _strip_short_tail(left_tail) == left_tail
+    assert _strip_short_tail(left_tail, free_side="right") == left_tail
+    assert _strip_short_tail(left_tail, free_side="left") == left_tail[:3]
+    both = [
+        [200.0, 500.0, 200.0],
+        [200.0, 500.0, 184.0],
+        [200.0, 500.0, 168.0],
+        [224.0, 509.0, 152.0],
+    ]
+    assert _strip_short_tail(both, free_side="left") == both
 

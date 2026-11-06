@@ -7,6 +7,7 @@ Steps under 4pt do not count as a turn. ``one_direction`` is unchanged.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Literal
 
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.contract import (
     BlockEdges,
@@ -66,7 +67,7 @@ def right_step(
     The first line may sit to the right of a straight shelf. A first
     line to the left of that shelf is a hang, not this walk.
     """
-    body = _strip_short_tail(lines)
+    body = _strip_short_tail(lines, free_side="right")
     if len(body) < 4:
         return None
     lefts = _coord(body, 0)
@@ -101,7 +102,7 @@ def left_step(
     """Right-edge span when the left edge is the named two-width walk."""
     if _hang_indent(lines) is not None or _first_line_indent(lines) is not None:
         return None
-    body = _strip_short_tail(lines)
+    body = _strip_short_tail(lines, free_side="left")
     if len(body) < 4:
         return None
     lefts = _coord(body, 0)
@@ -280,16 +281,27 @@ def _off_wall(values: Sequence[float], *, off_is_low: bool) -> int:
 
 def _strip_short_tail(
     lines: Sequence[Sequence[float]],
+    *,
+    free_side: Literal["left", "right"] = "right",
 ) -> list[Sequence[float]]:
+    """Drop a short tail on ``free_side`` only.
+
+    Right is the old rule. Left is its mirror and does not drop a
+    right-only short line. At least three lines stay.
+    """
     kept = list(lines)
     dropped = 0
     max_drop = 3 if len(lines) >= 8 else 2
     while len(kept) >= 4 and dropped < max_drop:
         last = kept[-1]
         previous = kept[-2]
-        right_inset = float(previous[1]) - float(last[1])
-        left_out = float(previous[0]) - float(last[0])
-        if right_inset >= _SHORT and left_out <= _WALL:
+        if free_side == "left":
+            inset = float(last[0]) - float(previous[0])
+            pinned = float(last[1]) - float(previous[1])
+        else:
+            inset = float(previous[1]) - float(last[1])
+            pinned = float(previous[0]) - float(last[0])
+        if inset >= _SHORT and pinned <= _WALL:
             kept.pop()
             dropped += 1
             continue

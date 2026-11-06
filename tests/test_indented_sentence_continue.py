@@ -205,11 +205,15 @@ def test_two_halves_of_one_step_fill_that_frame():
     assert set(links) == {"top", "other"}
     assert links["other"].edges == ((10.0, 30.0), (10.0, 30.0))
     edges = links["top"].edges
-    assert edges[0] == (102.0, 512.65)
-    assert edges[1] == (102.0, 512.65)
-    assert edges[2][0] == 231.0
-    assert abs(edges[-1][0] - 231.0) < 0.01
-    assert abs(edges[-1][1] - 384.42) < 0.01
+    # observed is source ink. available is the placeable shelf. The
+    # third number is the sample top. It does not turn the short ink
+    # 384.42 into the shelf the matched pin actually opens.
+    assert edges[0] == (102.0, 512.65, 1000.0)
+    assert edges[1] == (102.0, 512.65, 985.0)
+    assert edges[2] == (231.0, 512.66, 970.0)
+    assert edges[-1] == (231.0, 512.66, 925.0)
+    assert links["top"].levels[0].kind == "observed"
+    assert links["top"].levels[-1].kind == "available"
     assert len(edges) == 6
 
 
@@ -321,9 +325,12 @@ def test_two_fills_without_ids_keep_two_frames():
     links = {link.region_id: link for link in page.layout_plan.line_edge_links}
     assert upper_a.layout_region_id != upper_b.layout_region_id
     assert set(links) == {upper_a.layout_region_id, upper_b.layout_region_id}
-    assert links[upper_a.layout_region_id].edges[0] == (102.0, 512.65)
-    assert links[upper_b.layout_region_id].edges[0] == (40.0, 300.0)
-    assert links[upper_b.layout_region_id].edges[-1] == (120.0, 180.0)
+    assert links[upper_a.layout_region_id].edges[0] == (102.0, 512.65, 1000.0)
+    assert links[upper_b.layout_region_id].edges[0] == (40.0, 300.0, 1000.0)
+    # The short last line's ink is 180. The matched pin's shelf is available space.
+    assert links[upper_b.layout_region_id].edges[-1] == (120.0, 300.1, 925.0)
+    assert links[upper_a.layout_region_id].levels[0].kind == "observed"
+    assert links[upper_b.layout_region_id].levels[-1].kind == "available"
 
 
 def _calf_halves():

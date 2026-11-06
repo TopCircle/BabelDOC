@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 
+import pytest
 from babeldoc.format.pdf.document_il.utils.layout_plan.column_chain import (
     with_column_links,
 )
@@ -799,10 +800,53 @@ def test_spur_fill_keeps_the_wide_line_and_the_narrow_tail():
     plan = build_plan(_facts(lines))
     assert len(plan.line_edge_links) == 1
     link = plan.line_edge_links[0]
+    assert plan.decisions[0].contour_plugin == "step/right_spur", link.edges[-1]
+    assert link.edges[4] == (102.0, 512.7, 440.0)
+    assert link.edges[-1] == (102.0, 371.7, 425.0)
+    assert interval_for_line_edges(link, 0, 428.0, 438.0)[1] == 512.7
     assert link.edges == pairs
     assert link.flow == "edge"
     assert interval_for_line_edges(link, 0, 462.0, 472.0)[1] == 371.6
-    assert interval_for_line_edges(link, 0, 428.0, 438.0)[1] == 512.7
+    assert interval_for_line_edges(link, 0, 428.0, 438.0)[:2] == link.edges[4][:2]
+    assert interval_for_line_edges(link, 99, 428.0, 438.0)[:2] == link.edges[4][:2]
+    # The band crosses the spur and the shelf. The shared x is the shelf,
+    # and the Chinese line index does not pick a different edge.
+    crossed = interval_for_line_edges(link, 0, 420.0, 445.0)
+    assert crossed == link.edges[-1][:2]
+    assert interval_for_line_edges(link, 99, 420.0, 445.0) == crossed
+    assert interval_for_line_edges(link, 0, 0.0, 10.0) is None
+    assert interval_for_line_edges(link, 99, 0.0, 10.0) is None
+
+
+def test_mirrored_spur_fill_keeps_the_wide_line_and_the_narrow_tail():
+    lines = [
+        [614.0 - right, 614.0 - left, top]
+        for left, right, top in (
+            (102.0, 371.6, 500.0),
+            (102.0, 371.6, 485.0),
+            (102.0, 371.6, 470.0),
+            (102.0, 371.7, 455.0),
+            (102.0, 512.7, 440.0),
+            (102.0, 200.0, 425.0),
+        )
+    ]
+    pairs = left_spur_fill(lines)
+    assert pairs[4] == pytest.approx((101.3, 512.0, 440.0))
+    assert pairs[-1] == pytest.approx((242.3, 512.0, 425.0))
+    plan = build_plan(_facts(lines))
+    assert len(plan.line_edge_links) == 1
+    link = plan.line_edge_links[0]
+    assert plan.decisions[0].contour_status == "matched"
+    assert plan.decisions[0].contour_plugin == "step/left_spur"
+    assert link.edges[4] == pytest.approx((101.3, 512.0, 440.0))
+    assert link.edges[-1] == pytest.approx((242.3, 512.0, 425.0))
+    assert interval_for_line_edges(link, 0, 428.0, 438.0) == pytest.approx(
+        link.edges[4][:2]
+    )
+    assert interval_for_line_edges(link, 99, 428.0, 438.0) == pytest.approx(
+        link.edges[4][:2]
+    )
+    assert interval_for_line_edges(link, 0, 0.0, 10.0) is None
 
 
 def test_left_pin_fill_is_each_lines_own_edge():
@@ -813,16 +857,21 @@ def test_left_pin_fill_is_each_lines_own_edge():
         for index in range(6)
     ]
     pairs = left_pin_fill(lines)
-    assert pairs == tuple((line[0], line[1]) for line in lines)
+    assert pairs == tuple((line[0], line[1], line[2]) for line in lines)
     plan = build_plan(_facts(lines))
     assert len(plan.line_edge_links) == 1
     link = plan.line_edge_links[0]
     assert link.edges == pairs
     assert link.flow == "edge"
-    # line_idx 1 repeated pairs[1] even when the Chinese line sat elsewhere.
+    # observed is that line's ink. available is placeable space the fill
+    # opened. A third edge number is the sample top, not a second kind.
     assert all(level.kind == "observed" for level in link.levels)
-    assert interval_for_line_edges(link, 0, 172.0, 180.0) == pairs[1]
-    assert interval_for_line_edges(link, 99, 172.0, 180.0) == pairs[1]
+    assert interval_for_line_edges(link, 0, 172.0, 180.0) == pairs[1][:2]
+    assert interval_for_line_edges(link, 99, 172.0, 180.0) == pairs[1][:2]
+    assert interval_for_line_edges(link, 0, 160.0, 190.0) == pairs[2][:2]
+    assert interval_for_line_edges(link, 99, 160.0, 190.0) == pairs[2][:2]
+    assert interval_for_line_edges(link, 0, 0.0, 10.0) is None
+    assert interval_for_line_edges(link, 99, 0.0, 10.0) is None
 
 
 def test_right_pin_fill_is_each_lines_own_edge():
@@ -830,10 +879,18 @@ def test_right_pin_fill_is_each_lines_own_edge():
     assert "scanned_edge_gap" not in source
     lines = [[300.0 - index * 4.0, 578.0, 400.0 - index * 16.0] for index in range(6)]
     pairs = right_pin_fill(lines)
-    assert pairs == tuple((line[0], line[1]) for line in lines)
+    assert pairs == tuple((line[0], line[1], line[2]) for line in lines)
     plan = build_plan(_facts(lines))
     assert len(plan.line_edge_links) == 1
-    assert plan.line_edge_links[0].edges == pairs
+    link = plan.line_edge_links[0]
+    assert link.edges == pairs
+    # observed is source ink. available is placeable space. Tuple length
+    # does not turn one into the other.
+    assert all(level.kind == "observed" for level in link.levels)
+    assert interval_for_line_edges(link, 0, 372.0, 380.0) == pairs[1][:2]
+    assert interval_for_line_edges(link, 99, 372.0, 380.0) == pairs[1][:2]
+    assert interval_for_line_edges(link, 0, 0.0, 10.0) is None
+    assert interval_for_line_edges(link, 99, 0.0, 10.0) is None
 
 
 def test_light_column_fill_uses_the_outer_edge_inside_the_wall():
@@ -982,8 +1039,10 @@ def test_a_height_query_does_not_reuse_an_unmeasured_edge():
     """Two samples that share no x are unplaceable across both.
 
     A line that sits on one sample keeps that sample. A line past the
-    last sample does not repeat it. Tuple length is not the switch:
-    these edges are pairs, and the height is on the levels.
+    last sample does not repeat it. ``observed`` is source ink.
+    ``available`` is placeable space. A two-number or three-number edge
+    does not make those the same evidence, and the Chinese line index
+    is not which sample is read.
     """
     levels = (
         ContourLevel(100.0, 180.0, 200.0, "observed"),
@@ -991,16 +1050,36 @@ def test_a_height_query_does_not_reuse_an_unmeasured_edge():
     )
     link = LineEdgeLink(
         "cross",
-        ((100.0, 180.0), (300.0, 400.0)),
+        ((100.0, 180.0, 200.0), (300.0, 400.0, 120.0)),
         "left",
         "edge",
         levels,
     )
     assert interval_for_line_edges(link, 0, 190.0, 199.0) == (100.0, 180.0)
     assert interval_for_line_edges(link, 4, 190.0, 199.0) == (100.0, 180.0)
+    assert interval_for_line_edges(link, 99, 190.0, 199.0) == link.edges[0][:2]
     assert interval_for_line_edges(link, 0, 50.0, 100.0) == (300.0, 400.0)
     assert interval_for_line_edges(link, 0, 50.0, 200.0) is None
+    assert interval_for_line_edges(link, 99, 50.0, 200.0) is None
     assert interval_for_line_edges(link, 99, 0.0, 10.0) is None
+    overlap = LineEdgeLink(
+        "overlap",
+        ((100.0, 400.0, 200.0), (120.0, 280.0, 160.0)),
+        "left",
+        "edge",
+        (
+            ContourLevel(100.0, 400.0, 200.0, "observed"),
+            ContourLevel(120.0, 280.0, 160.0, "available"),
+        ),
+    )
+    shared = (120.0, 280.0)
+    assert interval_for_line_edges(overlap, 0, 150.0, 190.0) == shared
+    assert interval_for_line_edges(overlap, 99, 150.0, 190.0) == shared
+    assert shared == (
+        max(overlap.edges[0][0], overlap.edges[1][0]),
+        min(overlap.edges[0][1], overlap.edges[1][1]),
+    )
+    assert interval_for_line_edges(overlap, 0, 0.0, 10.0) is None
 
 
 def test_an_unplaceable_contour_does_not_become_the_full_box():

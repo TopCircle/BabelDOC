@@ -30,7 +30,7 @@ def fill(lines: Sequence[Sequence[float]]) -> tuple[tuple[float, ...], ...]:
     """
     if not lines:
         return ()
-    body = _strip_short_tail(lines)
+    body = _strip_short_tail(lines, free_side="right")
     rights = [float(line[1]) for line in body]
     outer = max(rights) if rights else 0.0
     shelf_rights = [value for value in rights if value < outer - 4.0]

@@ -26,6 +26,9 @@ from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import 
     _repeated_indent,
 )
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import (
+    _spur_left,
+)
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import (
     _strip_short_tail,
 )
 
@@ -48,6 +51,10 @@ def claim(edges: BlockEdges, lines: Sequence[Sequence[float]]) -> float | None:
 
 def _candidate(edges: BlockEdges, lines: Sequence[Sequence[float]]) -> bool:
     if edges.marker != "none" or edges.full_count < 4:
+        return False
+    # The left spur check uses its own tail view. Continuity stays on the right.
+    left_body = _strip_short_tail(lines, free_side="left")
+    if _spur_left([float(line[0]) for line in left_body]):
         return False
     body = _strip_short_tail(lines)
     check_lines = body if len(body) >= 4 else lines

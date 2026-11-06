@@ -26,7 +26,7 @@ def fill(lines: Sequence[Sequence[float]]) -> tuple[tuple[float, ...], ...]:
     """The one wide line keeps its left. The shelf stays indented."""
     if not lines:
         return ()
-    body = _strip_short_tail(lines)
+    body = _strip_short_tail(lines, free_side="left")
     lefts = [float(line[0]) for line in body]
     outer = min(lefts) if lefts else 0.0
     shelf_lefts = [value for value in lefts if value > outer + 4.0]

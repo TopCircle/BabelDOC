@@ -10,6 +10,8 @@ from collections.abc import Callable
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+EdgeSample = tuple[float, float] | tuple[float, float, float]
+
 
 @dataclass(frozen=True, slots=True)
 class BlockEdges:
@@ -43,7 +45,7 @@ class Paradigm:
     fill: (
         Callable[
             [Sequence[Sequence[float]]],
-            tuple[tuple[float, float], ...],
+            tuple[EdgeSample, ...],
         ]
         | None
     ) = None

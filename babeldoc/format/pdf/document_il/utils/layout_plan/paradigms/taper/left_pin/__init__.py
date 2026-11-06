@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.contract import (
     BlockEdges,
 )
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import _spur
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import (
     _strip_short_tail,
 )
@@ -28,7 +29,10 @@ def claim(edges: BlockEdges, lines: Sequence[Sequence[float]]) -> float | None:
         return None
     if edges.full_count < 4:
         return None
-    body = _strip_short_tail(lines)
+    body = _strip_short_tail(lines, free_side="right")
+    # One line past the shelf is a spur. This taper does not own it.
+    if _spur([float(line[1]) for line in body]):
+        return None
     check_lines = body if len(body) >= 4 else lines
     if not _one_way([float(line[1]) for line in check_lines]):
         return None
@@ -78,7 +82,7 @@ def fill(lines: Sequence[Sequence[float]]) -> tuple[tuple[float, ...], ...]:
     """
     if not lines:
         return ()
-    body = _strip_short_tail(lines)
+    body = _strip_short_tail(lines, free_side="right")
     shelf = float(body[-1][1])
     outer_left = min(float(line[0]) for line in body)
     edges = []
