@@ -29,7 +29,6 @@ CapFn = Callable[
 ]
 
 
-
 def is_design_column_role(paragraph: PdfParagraph | None) -> bool:
     """True for CALLOUT / PULL_QUOTE — stay in design_box measure."""
     if paragraph is None:
@@ -63,9 +62,11 @@ def clamp_callout_measure_to_design(
         return layout_box
     from babeldoc.format.pdf.document_il.utils.box_expand import is_left_gutter_bar
 
-    if not is_design_column_role(paragraph) and not is_left_gutter_bar(
-        design
-    ) and not is_left_gutter_bar(layout_box):
+    if (
+        not is_design_column_role(paragraph)
+        and not is_left_gutter_bar(design)
+        and not is_left_gutter_bar(layout_box)
+    ):
         return layout_box
     design_x2 = float(design.x2)
     if float(layout_box.x2) <= design_x2 + 0.5:
@@ -162,6 +163,16 @@ def infer_wrap_mode_beside_photo(
     dy2 = float(design_box.y2) if design_box.y2 is not None else None
     for photo in photo_boxes:
         if photo is None or photo.x is None or photo.x2 is None:
+            continue
+        pw = float(photo.x2) - float(photo.x)
+        ph = (
+            float(photo.y2) - float(photo.y)
+            if (photo.y is not None and photo.y2 is not None)
+            else 0.0
+        )
+        # Decorative border rules, hairline slivers, or margin crop marks
+        # are not editorial photos that cause text wrapping.
+        if pw < 20.0 or ph < 20.0:
             continue
         if (
             dy1 is not None
@@ -349,11 +360,7 @@ class LineIntervalPlan:
             # RIGHT_FIXED cones to a ~137pt strip (OA p19). Wrap_shape already
             # encodes EN clearance around the photo.
             zone_index = self.zone_index
-            if (
-                zone_index
-                and getattr(zone_index, "zones", None)
-                and y_top > y_bottom
-            ):
+            if zone_index and getattr(zone_index, "zones", None) and y_top > y_bottom:
                 from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
                     ZONE_QUOTE,
                 )
@@ -480,6 +487,16 @@ def apply_wrap_flush(paragraph: PdfParagraph | None, alignment: str) -> str:
     flush is skipped. A missing mode on ``rect_reflow`` is ``NONE``, so there
     is neither a pin flush nor wrap intervals.
     """
+    if paragraph is not None:
+        label = (getattr(paragraph, "layout_label", None) or "").lower()
+        if label == "title":
+            return alignment
+        intent = getattr(paragraph, "layout_intent", None)
+        if intent is not None and getattr(intent, "role", None) in (
+            LayoutIntentRole.TITLE,
+            LayoutIntentRole.SECTION_HEADER,
+        ):
+            return alignment
     if effective_wrap_mode(paragraph, shape_present=True) is WrapMode.NONE:
         return alignment
     if _is_rect_reflow(paragraph):

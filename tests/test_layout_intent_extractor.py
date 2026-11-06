@@ -107,9 +107,7 @@ def _page(
     forms: list | None = None,
 ) -> il_version_1.Page:
     return il_version_1.Page(
-        cropbox=il_version_1.Cropbox(
-            box=Box(x=0, y=0, x2=PAGE_WIDTH, y2=PAGE_HEIGHT)
-        ),
+        cropbox=il_version_1.Cropbox(box=Box(x=0, y=0, x2=PAGE_WIDTH, y2=PAGE_HEIGHT)),
         mediabox=il_version_1.Mediabox(
             box=Box(x=0, y=0, x2=PAGE_WIDTH, y2=PAGE_HEIGHT)
         ),
@@ -129,7 +127,9 @@ def _config(workdir: Path | None = None, *, debug: bool = False) -> SimpleNamesp
     )
 
 
-def _extract(page: il_version_1.Page, workdir: Path | None = None, *, debug: bool = False):
+def _extract(
+    page: il_version_1.Page, workdir: Path | None = None, *, debug: bool = False
+):
     doc = il_version_1.Document(page=[page], total_pages=1)
     extractor = layout_intent_extractor.LayoutIntentExtractor(
         _config(workdir, debug=debug)
@@ -218,7 +218,12 @@ def test_a_wide_block_on_another_columns_wall_is_body():
     )
     quote = _para(
         Box(x=100, y=100, x2=400, y2=180),
-        lines=[_line(100, 400, 160, 180), _line(100, 400, 140, 160), _line(100, 400, 120, 140), _line(100, 400, 100, 120)],
+        lines=[
+            _line(100, 400, 160, 180),
+            _line(100, 400, 140, 160),
+            _line(100, 400, 120, 140),
+            _line(100, 400, 100, 120),
+        ],
     )
     _extract(_page([wall, beside, quote]))
     assert wall.layout_intent.role is not LayoutIntentRole.PULL_QUOTE
@@ -319,9 +324,7 @@ def test_role_debug_stub_is_body_not_callout(monkeypatch):
     )
     # Force both heuristics true — stub short-circuit must win first.
     monkeypatch.setattr(layout_intent_extractor, "is_quote_block", lambda _p, _w: True)
-    monkeypatch.setattr(
-        layout_intent_extractor, "is_callout_column", lambda _b: True
-    )
+    monkeypatch.setattr(layout_intent_extractor, "is_callout_column", lambda _b: True)
     _extract(_page([stub]))
     assert stub.layout_intent.role is LayoutIntentRole.BODY
     assert stub.layout_intent.is_chrome is False
@@ -511,9 +514,7 @@ def test_non_image_form_not_photo_zone():
         label="text",
         lines=[_line(300, 500, 300, 500)],
     )
-    _extract(
-        _page([on_image, on_other], forms=[image_form, other_form])
-    )
+    _extract(_page([on_image, on_other], forms=[image_form, other_form]))
     assert on_image.layout_intent.text_on_photo is True
     assert on_other.layout_intent.text_on_photo is False
 
@@ -549,8 +550,12 @@ def test_a_page_filling_image_is_the_sheet():
 
 
 def test_extract_failure_is_silent(monkeypatch):
-    p1 = _para(Box(x=0, y=0, x2=100, y2=20), debug_id="p1", lines=[_line(0, 100, 0, 20)])
-    p2 = _para(Box(x=0, y=0, x2=100, y2=20), debug_id="p2", lines=[_line(0, 100, 0, 20)])
+    p1 = _para(
+        Box(x=0, y=0, x2=100, y2=20), debug_id="p1", lines=[_line(0, 100, 0, 20)]
+    )
+    p2 = _para(
+        Box(x=0, y=0, x2=100, y2=20), debug_id="p2", lines=[_line(0, 100, 0, 20)]
+    )
     doc = il_version_1.Document(
         page=[_page([p1], page_number=1), _page([p2], page_number=2)]
     )
@@ -580,14 +585,14 @@ def test_dump_only_debug(tmp_path):
     doc = il_version_1.Document(page=[page])
     dump_path = tmp_path / "layout_intent.json"
 
-    layout_intent_extractor.LayoutIntentExtractor(_config(tmp_path, debug=False)).extract(
-        doc
-    )
+    layout_intent_extractor.LayoutIntentExtractor(
+        _config(tmp_path, debug=False)
+    ).extract(doc)
     assert not dump_path.exists()
 
-    layout_intent_extractor.LayoutIntentExtractor(_config(tmp_path, debug=True)).extract(
-        doc
-    )
+    layout_intent_extractor.LayoutIntentExtractor(
+        _config(tmp_path, debug=True)
+    ).extract(doc)
     assert dump_path.exists()
     data = json.loads(dump_path.read_text(encoding="utf-8"))
     assert data["version"] == 1
@@ -677,3 +682,44 @@ def test_gap_contract_unchanged_without_drop_cap():
     # gap = upper ink bottom (90) - below ink top (60) = 30.
     assert upper.layout_intent.gap_contract == pytest.approx(90.0 - 60.0)
     assert below.layout_intent.gap_contract is None
+
+
+def test_photo_boxes_ignores_hairline_sliver():
+    """Hairline sliver/bleed forms must not be collected as photo boxes."""
+    from babeldoc.format.pdf.document_il.utils.layout_intent_extractor import (
+        LayoutIntentExtractor,
+    )
+
+    sliver_form = il_version_1.PdfForm(
+        box=Box(x=-1.0, y=0.0, x2=1.0, y2=700.0),
+        form_type="image",
+    )
+    valid_figure = il_version_1.PdfFigure(
+        box=Box(x=50.0, y=50.0, x2=200.0, y2=200.0),
+    )
+    page = il_version_1.Page(
+        mediabox=Box(x=0.0, y=0.0, x2=612.0, y2=792.0),
+        pdf_form=[sliver_form],
+        pdf_figure=[valid_figure],
+    )
+    boxes = LayoutIntentExtractor._photo_boxes(page)
+    assert len(boxes) == 1
+    assert boxes[0].x == 50.0
+
+
+def test_title_role_does_not_infer_photo_wrap_mode():
+    """Titles are headings and must not be marked as wrap columns beside photos."""
+    photo = il_version_1.PdfFigure(box=Box(x=380, y=200, x2=580, y2=720))
+    title = _para(
+        Box(x=36, y=400, x2=226, y2=420),
+        label="title",
+        lines=[_line(36, 226, 400, 420)],
+    )
+    page = _page([title])
+    page.pdf_figure = [photo]
+    _extract(page)
+    assert title.layout_intent.role in (
+        LayoutIntentRole.TITLE,
+        LayoutIntentRole.SECTION_HEADER,
+    )
+    assert title.layout_intent.wrap_mode is WrapMode.NONE

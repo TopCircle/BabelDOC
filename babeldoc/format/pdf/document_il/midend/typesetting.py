@@ -3898,9 +3898,10 @@ class Typesetting:
                         is_toc_paragraph,
                     )
 
-                    # A directory row stays on its source line. Pushing a
-                    # chain walks the list off the page.
-                    if is_toc_paragraph(p1) or is_toc_paragraph(p2):
+                    # Two directory rows stay on their source lines. Pushing a
+                    # chain walks the list off the page. A non-TOC intruder
+                    # or colliding section header is still resolved.
+                    if is_toc_paragraph(p1) and is_toc_paragraph(p2):
                         continue
                     b1 = rendered_boxes.get(id(p1))
                     b2 = rendered_boxes.get(id(p2))

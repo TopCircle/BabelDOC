@@ -52,7 +52,7 @@ _BASELINE_SPLIT = 8.0
 _TOC_SHORT_LINE = 64
 # A contents row the detector called a title. A real chapter head stays a title.
 _CHAPTER_HEAD_RE = re.compile(
-    r"^(chapter\s+\d+\b|第\s*[0-9０-９一二三四五六七八九十]+\s*章)",
+    r"^(chapter\s+\d+\b|part\s+\d+\b|section\s+\d+\b|technique\s+\d+\b|(?:第\s*[0-9０-９一二三四五六七八九十]+\s*(?:章|部分|节|技巧)|技巧\s*[0-9０-９一二三四五六七八九十]+))\b",
     re.IGNORECASE,
 )
 _TOC_KEEP_LABELS = frozenset(
@@ -1236,6 +1236,85 @@ def paint_toc_leaders(paragraphs, glyph_for=None) -> None:
     paragraphs.extend(added)
 
 
+def _ink_bottom(paragraph) -> float | None:
+    from babeldoc.format.pdf.document_il.utils.rect_flow_stack import ink_lines
+
+    lines = ink_lines(paragraph)
+    if not lines:
+        return None
+    return float(lines[-1][1])
+
+
+def _prevent_contents_page_overlaps(
+    paragraphs: list[PdfParagraph],
+    *,
+    min_gap: float = 4.0,
+    floor_y: float = 25.0,
+) -> None:
+    """Cascade down any contents rows or entries that collide with upstream content.
+
+    On a contents page, if an upstream section title or body text was pushed down
+    by expanded translation, pinning lower rows back to their original source line
+    would cause them to overlap the upstream text. This pass ensures that every
+    lower paragraph stays at least ``min_gap`` below any overlapping upper paragraph.
+    Two adjacent TOC directory rows that both sit on their original source lines
+    are left on their source lines.
+    """
+    from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
+
+    candidates = []
+    for p in paragraphs or []:
+        if is_chrome_paragraph(p):
+            continue
+        top = _ink_top(p)
+        bottom = _ink_bottom(p)
+        if top is None or bottom is None or p.box is None:
+            continue
+        candidates.append(p)
+
+    if len(candidates) < 2:
+        return
+
+    sorted_p = sorted(
+        candidates,
+        key=lambda p: (_ink_top(p) or 0.0),
+        reverse=True,
+    )
+    placed: list[PdfParagraph] = []
+    pushed: set[int] = set()
+
+    for p in sorted_p:
+        top = _ink_top(p)
+        bottom = _ink_bottom(p)
+        if top is None or bottom is None or p.box is None:
+            continue
+
+        overlapping_bottoms: list[float] = []
+        for prev in placed:
+            prev_bottom = _ink_bottom(prev)
+            if prev_bottom is None or prev.box is None:
+                continue
+            x_overlap = min(float(p.box.x2), float(prev.box.x2)) - max(
+                float(p.box.x), float(prev.box.x)
+            )
+            if x_overlap > 5.0:
+                # Trigger condition:
+                # 1. prev is a non-TOC paragraph (e.g. section header or body paragraph)
+                # 2. OR prev was pushed down by an upstream collision
+                if not is_toc_paragraph(prev) or id(prev) in pushed:
+                    overlapping_bottoms.append(prev_bottom)
+
+        if overlapping_bottoms:
+            lowest_upper_bottom = min(overlapping_bottoms)
+            if top > lowest_upper_bottom - min_gap:
+                dy = (lowest_upper_bottom - min_gap) - top
+                if bottom + dy >= floor_y:
+                    _shift_y(p, dy)
+                    pushed.add(id(p))
+
+        placed.append(p)
+
+
 def pin_toc_row_baselines(paragraphs) -> None:
     """Put each contents row back on the source line recorded before typesetting."""
     on_contents = _on_contents_page(paragraphs)
@@ -1251,3 +1330,5 @@ def pin_toc_row_baselines(paragraphs) -> None:
         if abs(delta) <= _RESTORE_SLACK:
             continue
         _shift_y(paragraph, delta)
+    if on_contents:
+        _prevent_contents_page_overlaps(paragraphs)

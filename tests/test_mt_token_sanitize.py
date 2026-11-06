@@ -223,4 +223,10 @@ def test_scrub_formula_glued_latin():
     assert "她的 G点" in gspot or "她的G点" in gspot
     assert "G点刺激" in gspot
     assert "掌控她的G点" in gspot
+    aspot = normalize_translated_text(
+        "{v19} A点高潮：刺激她的 A点，体验A点高潮",
+        keep_formula_placeholders=True,
+    ) or ""
+    assert "A点高潮" in aspot
+    assert "她的 A点" in aspot or "她的A点" in aspot
     assert normalize_translated_text("介绍e艺术") == "介绍前戏艺术"

@@ -1,10 +1,37 @@
-# BabelDOC — 当前状况（2026-11-05）
+# BabelDOC — 当前状况（2026-11-06）
 
 **工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
 **历史布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms`（已归档/废弃，工作流与开发已全面迁入 Nextcloud）  
-**版本:** `0.6.4.99`（`babeldoc/const.py` 与 `pyproject.toml` 已 bump）  
+**版本:** `0.6.4.100`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-06 — 目录页底部重叠级联下推、A点术语清洗白名单、微窄出血图绕排误判右对齐修复（0.6.4.100）
+
+1. **页面边缘微窄条/出血图误判导致单行标题右对齐 (`layout_intent_extractor.py` / `line_interval_plan.py`)**：
+   - **根因**：
+     - 第 13 页边缘存在宽度仅 2pt 的出血/裁切图片 (`form box: [-1.04, -1.03, 1.01, 693.04]`)；
+     - `LayoutIntentExtractor._photo_boxes` 未对极小或微窄的装饰/出血条做尺寸过滤，`infer_wrap_mode_beside_photo` 将位于其右侧的段落判断为“绕排左侧图片”，赋予 `wrap_mode: RIGHT_FIXED`；
+     - 原本短标题 `How to Female Ejaculate?`（宽 189pt $\le 0.55 \times 612$）被赋予 `RIGHT_FIXED`，排版时 `apply_wrap_flush` 强行将短标题向右侧边界对齐（$x2 = 226.3$），导致「如何达到女性射精？」从 $x=37.3$ 偏移至 $x=82.3$，「情感要求：」从 $x=37.3$ 偏移至 $x=144.2$，视觉上呈现假居中/悬空缩进。
+   - **修复**：
+     - `LayoutIntentExtractor._photo_boxes` 增加尺寸门禁：过滤宽度或高度小于 15pt 的出血细条、装饰分隔线；
+     - `infer_wrap_mode_beside_photo` 增加保护：忽略宽度或高度小于 20pt 的图素；
+     - 限制侧图绕排模式推断：仅针对正文和引文角色（`LayoutIntentRole.BODY`, `LayoutIntentRole.PULL_QUOTE`），标题与章节头绝不参与侧图绕排推断；
+     - `apply_wrap_flush` 增加标题保护：凡 `layout_label == "title"` 或角色为 `TITLE` / `SECTION_HEADER` 者，严禁强制右侧对齐，始终保留原生左对齐。
+   - **实测验证**：第 13 页「如何达到女性射精？」、「女性射液反应的基本要求」、「情感要求：」三个标题均精确在 $x=37.3$（双页右半对应 $x=649.3$）严格左对齐，与正文基准线完全对齐。
+
+2. **目录页（Page 4）底部条目重叠级联下推 (`toc_rows.py` / `typesetting.py`)**：
+   - **根因**：第 4 页「第2 部分：引言...」因扩展翻译下压，侵入已锚定在原始 source line 上的「为G 点手指刺激做准备」和「技巧1：G 点三人行」；`typesetting.py` 中 `if is_toc_paragraph(p1) or is_toc_paragraph(p2): continue` 跳过了非 TOC 入侵段与 TOC 条目的重叠修正。
+   - **修复**：扩充 `_CHAPTER_HEAD_RE` 正则支持 `part \d+`, `第...部分`, `第...技巧`；新增 `_prevent_contents_page_overlaps` 级联推移下沉侵入的目录行；调整 `typesetting.py` 仅在双方均为目录行时跳过，解决非 TOC 入侵段重叠。
+   - **实测验证**：第 4 页底部三行垂直间距分别为 8.5pt 与 4.9pt，重叠完全消除。
+
+3. **术语表与后处理「A点高潮」保护 (`mt_token_sanitize.py` / `deeplx.py`)**：
+   - **根因**：`_ISOLATED_LATIN_LETTER_RE` 仅白名单保护了 `G点`（`(?![Gg](?=\s*点))`），未保护 `A点`，导致 `A点高潮` 被误当成孤立拉丁字母剥离为 `点高潮`。
+   - **修复**：更新正则为 `(?![GgAa](?=\s*点))`，并同步更新 VPS 上的 `deeplx.py`。
+
+4. **测试门禁与质量验收**：
+   - 核心套件（`test_line_interval_plan.py`、`test_layout_intent_extractor.py`、`test_wrap_shape_synth.py`、`test_toc_row_pin.py`、`test_mt_token_sanitize.py`）：**117 passed**；
+   - 代码风格门禁：`ruff check` 全部通过无告警。
 
 ## 2026-11-05 — 锥形（taper）体态绕排判定与尾行延展、章节/步骤大标题页眉豁免（0.6.4.99）
 

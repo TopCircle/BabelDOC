@@ -291,7 +291,9 @@ class LayoutIntentExtractor:
                 if comp.pdf_character is not None:
                     chars.append(comp.pdf_character.char_unicode or "")
                 elif comp.pdf_line and comp.pdf_line.pdf_character:
-                    chars.extend(c.char_unicode or "" for c in comp.pdf_line.pdf_character)
+                    chars.extend(
+                        c.char_unicode or "" for c in comp.pdf_line.pdf_character
+                    )
                 elif (
                     comp.pdf_same_style_characters
                     and comp.pdf_same_style_characters.pdf_character
@@ -347,14 +349,11 @@ class LayoutIntentExtractor:
         if role is LayoutIntentRole.WRAP_COLUMN:
             # Drop decorative midcap / page-number line boxes (OA p19 TAKING
             # CHARGE fragments) so wrap_shape is the body taper only.
-            raw_line_boxes = [
-                (float(line.x), float(line.x2)) for line in meta["lines"]
-            ]
+            raw_line_boxes = [(float(line.x), float(line.x2)) for line in meta["lines"]]
             line_boxes = body_line_spans(raw_line_boxes) or raw_line_boxes
             if len(line_boxes) >= 2:
                 wrap_shape = [
-                    (float(x - design_box.x), float(x2 - x))
-                    for x, x2 in line_boxes
+                    (float(x - design_box.x), float(x2 - x)) for x, x2 in line_boxes
                 ]
                 # Keep the longest contiguous taper window (drop p19 noisy
                 # tails and p59 rising heads). When clustering leaves only an
@@ -389,10 +388,9 @@ class LayoutIntentExtractor:
                 # Ambiguous spread: photo on the right is LEFT_FIXED (OA p33).
                 # Fall back to historical right-pin only when no photo signal.
                 if wrap_mode is WrapMode.NONE:
-                    wrap_mode = (
-                        infer_wrap_mode_beside_photo(design_box, photo_boxes)
-                        or infer_wrap_mode_from_design_side(design_box, page_width)
-                    )
+                    wrap_mode = infer_wrap_mode_beside_photo(
+                        design_box, photo_boxes
+                    ) or infer_wrap_mode_from_design_side(design_box, page_width)
             else:
                 # No multi-line boxes (noisy/post-cluster): synthesize from
                 # reference widths so P2 pin path still has a shape.
@@ -403,12 +401,14 @@ class LayoutIntentExtractor:
                 wrap_shape = shape_from_widths(widths)
                 # Width-only synth: photo side chooses pin; else right-pin.
                 if wrap_shape:
-                    wrap_mode = (
-                        infer_wrap_mode_beside_photo(design_box, photo_boxes)
-                        or infer_wrap_mode_from_design_side(design_box, page_width)
-                    )
+                    wrap_mode = infer_wrap_mode_beside_photo(
+                        design_box, photo_boxes
+                    ) or infer_wrap_mode_from_design_side(design_box, page_width)
 
-        if wrap_mode is WrapMode.NONE:
+        if wrap_mode is WrapMode.NONE and role in (
+            LayoutIntentRole.BODY,
+            LayoutIntentRole.PULL_QUOTE,
+        ):
             # BODY/PULL_QUOTE beside a side photo (OA p59): keep LEFT_FIXED so
             # attempt_chain stays PRIMARY and CJK is not right-pinned onto it.
             # Only for *narrow* wrap columns — a full body measure (OA p91)
@@ -817,14 +817,32 @@ class LayoutIntentExtractor:
             if box is not None and not LayoutIntentExtractor._fills_page(
                 box, width, height
             ):
-                boxes.append(box)
+                if (
+                    box.x is not None
+                    and box.x2 is not None
+                    and box.y is not None
+                    and box.y2 is not None
+                ):
+                    w = float(box.x2) - float(box.x)
+                    h = float(box.y2) - float(box.y)
+                    if w >= 15.0 and h >= 15.0:
+                        boxes.append(box)
         for form in page.pdf_form or []:
             box = form.box
             if getattr(form, "form_type", None) != "image" or box is None:
                 continue
             if LayoutIntentExtractor._fills_page(box, width, height):
                 continue
-            boxes.append(box)
+            if (
+                box.x is not None
+                and box.x2 is not None
+                and box.y is not None
+                and box.y2 is not None
+            ):
+                w = float(box.x2) - float(box.x)
+                h = float(box.y2) - float(box.y)
+                if w >= 15.0 and h >= 15.0:
+                    boxes.append(box)
         return boxes
 
     @staticmethod

@@ -361,9 +361,58 @@ def test_leader_title_drops_the_rule_and_the_page_number():
         "THE RELATIONSHIP CYCLE"
     )
     assert (
-        leader_title_text(
-            "SEXUAL DESIRE: THE DIFFERENCE BETWEEN MEN AND WOMEN ______"
-        )
+        leader_title_text("SEXUAL DESIRE: THE DIFFERENCE BETWEEN MEN AND WOMEN ______")
         == "SEXUAL DESIRE: THE DIFFERENCE BETWEEN MEN AND WOMEN"
     )
     assert leader_title_text("in 2014") is None
+
+
+def test_toc_row_cascades_down_when_section_header_overlaps():
+    """When a non-TOC section header intrudes into TOC source lines, TOC rows cascade down."""
+    header = _para("Part 2: Three Advanced Techniques", 150.0, label="section_header")
+    char_h = PdfCharacter(
+        box=Box(x=56.0, y=150.0, x2=200.0, y2=180.0), char_unicode="Part 2"
+    )
+    header.box.y2 = 180.0
+    header.pdf_paragraph_composition = [
+        PdfParagraphComposition(
+            pdf_line=PdfLine(
+                box=Box(x=56.0, y=150.0, x2=200.0, y2=180.0), pdf_character=[char_h]
+            )
+        )
+    ]
+
+    row1 = _para("Prepping for G-spot", 140.0, label="toc")
+    char_r1 = PdfCharacter(
+        box=Box(x=56.0, y=140.0, x2=150.0, y2=160.0), char_unicode="Prepping"
+    )
+    row1.box.y2 = 160.0
+    row1.pdf_paragraph_composition = [
+        PdfParagraphComposition(
+            pdf_line=PdfLine(
+                box=Box(x=56.0, y=140.0, x2=150.0, y2=160.0), pdf_character=[char_r1]
+            )
+        )
+    ]
+
+    row2 = _para("Technique 1", 120.0, label="toc")
+    char_r2 = PdfCharacter(
+        box=Box(x=56.0, y=120.0, x2=150.0, y2=135.0), char_unicode="Technique 1"
+    )
+    row2.box.y2 = 135.0
+    row2.pdf_paragraph_composition = [
+        PdfParagraphComposition(
+            pdf_line=PdfLine(
+                box=Box(x=56.0, y=120.0, x2=150.0, y2=135.0), pdf_character=[char_r2]
+            )
+        )
+    ]
+
+    rows = [header, row1, row2]
+    remember_toc_source(rows)
+    pin_toc_row_baselines(rows)
+
+    # row1 must sit below header bottom (150.0) with at least min_gap (4.0)
+    assert row1.box.y2 <= header.box.y - 4.0
+    # row2 must sit below row1 bottom with at least min_gap (4.0)
+    assert row2.box.y2 <= row1.box.y - 4.0

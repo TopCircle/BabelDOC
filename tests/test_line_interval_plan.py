@@ -8,9 +8,9 @@ import pytest
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
+from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
 from babeldoc.format.pdf.document_il.midend.typesetting import source_baseline
 from babeldoc.format.pdf.document_il.midend.typesetting import source_descent
-from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
@@ -86,6 +86,32 @@ class TestInferWrapMode:
         design = Box(x=102, y=400, x2=400, y2=700)
         assert infer_wrap_mode_beside_photo(design, []) is None
         assert infer_wrap_mode_beside_photo(design, None) is None
+
+    def test_hairline_sliver_ignored(self):
+        design = Box(x=36, y=400, x2=226, y2=450)
+        # 2pt wide bleed sliver at x=0
+        sliver = Box(x=-1, y=0, x2=1, y2=700)
+        assert infer_wrap_mode_beside_photo(design, [sliver]) is None
+
+    def test_apply_wrap_flush_preserves_title_alignment(self):
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
+        from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+            apply_wrap_flush,
+        )
+
+        para = PdfParagraph(
+            box=Box(x=36, y=400, x2=226, y2=420),
+            unicode="Heading",
+            layout_label="title",
+            layout_intent=LayoutIntent(
+                role=LayoutIntentRole.TITLE,
+                design_box=Box(x=36, y=400, x2=226, y2=420),
+                top_inset=0.0,
+                bottom_inset=0.0,
+                wrap_mode=WrapMode.RIGHT_FIXED,
+            ),
+        )
+        assert apply_wrap_flush(para, "left") == "left"
 
     def test_design_side_left_half_is_left_fixed(self):
         """OA p59 wrap column ~102-341 sits in the left half."""
@@ -327,14 +353,10 @@ class TestAttemptChainCallout:
         )
         wrap.layout_intent.wrap_shape = [(0.0, 325.0), (0.0, 180.0)]
         wrap.layout_intent.wrap_mode = WrapMode.LEFT_FIXED
-        assert attempt_chain_for_paragraph(wrap, is_cjk=True) == [
-            LayoutAttempt.PRIMARY
-        ]
+        assert attempt_chain_for_paragraph(wrap, is_cjk=True) == [LayoutAttempt.PRIMARY]
         assert allows_full_measure_escalation(wrap, is_cjk=True) is False
         wrap.layout_intent.wrap_mode = WrapMode.RIGHT_FIXED
-        assert attempt_chain_for_paragraph(wrap, is_cjk=True) == [
-            LayoutAttempt.PRIMARY
-        ]
+        assert attempt_chain_for_paragraph(wrap, is_cjk=True) == [LayoutAttempt.PRIMARY]
 
     def test_text_on_photo_stays_primary(self):
         """On-figure words must not widen off the photo."""
@@ -344,9 +366,7 @@ class TestAttemptChainCallout:
         )
         para.layout_intent.text_on_photo = True
         para.layout_intent.wrap_shape = [(0.0, 195.0), (0.0, 120.0)]
-        assert attempt_chain_for_paragraph(para, is_cjk=True) == [
-            LayoutAttempt.PRIMARY
-        ]
+        assert attempt_chain_for_paragraph(para, is_cjk=True) == [LayoutAttempt.PRIMARY]
         assert allows_full_measure_escalation(para, is_cjk=True) is False
 
     def test_cjk_pinned_body_stays_primary(self):
@@ -359,9 +379,7 @@ class TestAttemptChainCallout:
         )
         body.layout_intent.wrap_mode = WrapMode.LEFT_FIXED
         body.layout_intent.wrap_shape = [(0.0, 238.0), (0.0, 160.0)]
-        assert attempt_chain_for_paragraph(body, is_cjk=True) == [
-            LayoutAttempt.PRIMARY
-        ]
+        assert attempt_chain_for_paragraph(body, is_cjk=True) == [LayoutAttempt.PRIMARY]
         assert allows_full_measure_escalation(body, is_cjk=True) is False
 
     def test_cjk_callout_disallows_full_measure_escalation(self):
