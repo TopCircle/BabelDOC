@@ -252,6 +252,65 @@ def test_depth_limit_apply_raises_without_committing():
     assert paragraph.pdf_paragraph_composition == before
 
 
+def test_legal_depth_scale_search_propagates_nested_depth_abort():
+    """Depth 4 may enter the scale loop. The fitting sample's FULL_MEASURE is depth 5."""
+    ts = _typesetter()
+    ts._line_edges = None
+    ts._pocket_link = None
+    # Direct inner entry does not assign an attempt. None is not FULL_MEASURE.
+    ts._layout_attempt = None
+    paragraph = PdfParagraph(
+        box=Box(x=72, y=72, x2=500, y2=700),
+        pdf_style=PdfStyle(font_id="base", font_size=12, graphic_state=None),
+        unicode="中" * 4,
+        debug_id="depth-scale",
+        pdf_paragraph_composition=[
+            PdfParagraphComposition(pdf_character=_cjk_glyph(text="旧").char)
+        ],
+    )
+    page = Page(page_number=4)
+    units = [_cjk_glyph() for _ in range(4)]
+    before = deepcopy(paragraph.pdf_paragraph_composition)
+
+    def abandon(
+        paragraph,
+        box,
+        typeset_units,
+        *,
+        all_units_fit,
+        wrap_enabled,
+        drop_figure_zones,
+    ):
+        # The floor FULL_MEASURE is outside this try and passes fit=False.
+        # Only a fitting sample takes the in-loop return.
+        if paragraph is None or box is None or typeset_units is None:
+            return False
+        if wrap_enabled and drop_figure_zones:
+            return False
+        return bool(all_units_fit)
+
+    ts._cjk_should_abandon_narrow_column = abandon
+    with pytest.raises(LayoutIncompleteError) as caught:
+        ts._find_optimal_scale_and_layout_inner(
+            paragraph,
+            page,
+            units,
+            1.0,
+            use_english_line_break=False,
+            apply_layout=True,
+            wrap_enabled=False,
+            drop_figure_zones=False,
+            _depth=4,
+        )
+    assert caught.value.reason == "layout_depth_exhausted"
+    assert caught.value.requested_units == 4
+    assert caught.value.placed_units == 0
+    assert caught.value.page_index == 4
+    assert caught.value.paragraph_id == "depth-scale"
+    assert paragraph.pdf_paragraph_composition == before
+    assert paragraph.pdf_paragraph_composition[0].pdf_character.char_unicode == "旧"
+
+
 def test_layout_incomplete_error_pickles_without_document_payload():
     error = LayoutIncompleteError(
         page_index=2,

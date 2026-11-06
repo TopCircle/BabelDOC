@@ -2282,6 +2282,8 @@ class Typesetting:
                                         len(typesetting_units),
                                         scale,
                                     )
+                        except LayoutIncompleteError:
+                            raise
                         except Exception as e:
                             # DP 优化失败，使用贪心结果
                             logger.warning(
@@ -2328,6 +2330,8 @@ class Typesetting:
                                 paragraph.box.y = actual_bottom
 
                     return scale, final_typeset_units
+            except LayoutIncompleteError:
+                raise
             except Exception:
                 # 如果布局检查出错，继续尝试下一个缩放因子
                 pass
