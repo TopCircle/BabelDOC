@@ -49,6 +49,8 @@ from babeldoc.format.pdf.document_il.midend.styles_and_formulas import StylesAnd
 from babeldoc.format.pdf.document_il.midend.table_parser import TableParser
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
 from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
+from babeldoc.format.pdf.document_il.utils.toc_migration import OutputMode
+from babeldoc.format.pdf.document_il.utils.toc_migration import remap_toc
 from babeldoc.format.pdf.document_il.xml_converter import XMLConverter
 from babeldoc.format.pdf.result_merger import ResultMerger
 from babeldoc.format.pdf.split_manager import SplitManager
@@ -56,6 +58,7 @@ from babeldoc.format.pdf.translation_config import TranslateResult
 from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.format.pdf.translation_config import WatermarkOutputMode
 from babeldoc.progress_monitor import ProgressMonitor
+from babeldoc.quality import QualityIssue
 from babeldoc.quality import ensure_document_failure
 from babeldoc.quality import ensure_document_quality_report
 from babeldoc.quality import publish_quality_report
@@ -742,12 +745,7 @@ def do_translate(
 
         fix_cmap(result, translation_config)
         add_metadata(result, translation_config)
-        try:
-            migrate_toc(translation_config, result)
-        except Exception as e:
-            logger.error(
-                f"Failed to migrate TOC from {translation_config.input_file}: {e}"
-            )
+        migrate_document_toc(translation_config, result)
         publish_quality_report(translation_config, result)
         pm.translate_done(result)
         return result
@@ -774,62 +772,141 @@ def do_translate(
         translation_config.cleanup_temp_files()
 
 
-def migrate_toc(
-    translation_config: TranslationConfig, translate_result: TranslateResult
-):
+_TOC_OUTPUTS = (
+    ("mono_pdf_path", "mono"),
+    ("no_watermark_mono_pdf_path", "mono"),
+    ("dual_pdf_path", "dual"),
+    ("no_watermark_dual_pdf_path", "dual"),
+)
+
+
+def _kept_source_pages(
+    page_count: int, translation_config: TranslationConfig
+) -> list[int]:
+    """1-based source pages in the order pdf_creater writes them.
+
+    ``only_include_translated_page`` drops the rest and keeps document
+    order. Otherwise every source page is still in the output.
+    """
+    kept: list[int] = []
+    for page_number in range(1, page_count + 1):
+        if translation_config.only_include_translated_page and (
+            not translation_config.should_translate_page(page_number)
+        ):
+            continue
+        kept.append(page_number)
+    return kept
+
+
+def _toc_output_mode(kind: str, translation_config: TranslationConfig) -> OutputMode:
+    if kind == "mono":
+        return "mono"
     if translation_config.use_alternating_pages_dual:
-        logger.info('skipping TOC migration for "use_alternating_pages_dual" mode')
+        return "alternating"
+    return "side_by_side"
+
+
+def _record_toc_migration_error(translation_config: TranslationConfig) -> None:
+    """One document warning. No title, page text, or exception repr."""
+    report = getattr(
+        translation_config.shared_context_cross_split_part,
+        "quality_report",
+        None,
+    )
+    if report is None:
         return
-    old_doc = Document(translation_config.input_file)
-    if not old_doc:
-        return
-    try:
-        fix_filter(old_doc)
-        fix_null_xref(old_doc)
-    except Exception:
-        logger.exception("auto fix failed, please check the pdf file")
-
-    toc_data = old_doc.get_toc()
-
-    if not toc_data:
-        logger.info("No TOC found in the original PDF, skipping migration.")
-        return
-
-    if translation_config.only_include_translated_page:
-        total_page = set(range(0, len(old_doc)))
-
-        pages_to_translate = {
-            i for i in len(old_doc) if translation_config.should_translate_page(i + 1)
-        }
-
-        should_removed_page = list(total_page - pages_to_translate)
-
-    files = {
-        translate_result.dual_pdf_path,
-        # translate_result.mono_pdf_path,
-        translate_result.no_watermark_dual_pdf_path,
-        # translate_result.no_watermark_mono_pdf_path
-    }
-
-    for f in files:
-        if not f:
-            continue
-        mig_toc_temp_input = translation_config.get_working_file_path(
-            "mig_toc_temp.pdf"
+    report.record(
+        QualityIssue(
+            "document",
+            "toc_migration_error",
+            0,
+            "",
+            "warning",
+            {},
         )
-        shutil.copy(f, mig_toc_temp_input)
-        new_doc = Document(mig_toc_temp_input.as_posix())
-        if not new_doc:
-            continue
+    )
 
-        new_doc.set_toc(toc_data)
+
+def migrate_document_toc(
+    translation_config: TranslationConfig, translate_result: TranslateResult
+) -> None:
+    """Remap bookmarks. A failure degrades quality and still finishes."""
+    try:
+        migrate_toc(translation_config, translate_result)
+    except Exception as e:
+        logger.error(f"Failed to migrate TOC from {translation_config.input_file}: {e}")
+        _record_toc_migration_error(translation_config)
+
+
+def _write_remapped_toc(
+    translation_config: TranslationConfig,
+    path: Path,
+    entries: list,
+    kept_source_pages: list[int],
+    output_mode: OutputMode,
+) -> None:
+    remapped = remap_toc(
+        entries,
+        kept_source_pages=kept_source_pages,
+        output_mode=output_mode,
+        translate_first=bool(translation_config.dual_translate_first),
+    )
+    temp_input = translation_config.get_working_file_path("mig_toc_temp.pdf")
+    shutil.copy(path, temp_input)
+    new_doc = Document(temp_input.as_posix())
+    try:
+        if not new_doc:
+            return
+        new_doc.set_toc([list(row) for row in remapped])
         PDFCreater.save_pdf_with_timeout(
             new_doc,
-            f.as_posix(),
+            path.as_posix(),
             translation_config=translation_config,
             clean=not translation_config.skip_clean,
             tag="mig_toc",
         )
+    finally:
+        new_doc.close()
+
+
+def migrate_toc(
+    translation_config: TranslationConfig, translate_result: TranslateResult
+):
+    old_doc = Document(translation_config.input_file)
+    try:
+        if not old_doc:
+            return
+        try:
+            fix_filter(old_doc)
+            fix_null_xref(old_doc)
+        except Exception:
+            logger.exception("auto fix failed, please check the pdf file")
+
+        toc_data = old_doc.get_toc(simple=True)
+        if not toc_data:
+            logger.info("No TOC found in the original PDF, skipping migration.")
+            return
+
+        kept = _kept_source_pages(old_doc.page_count, translation_config)
+        seen: set[Path] = set()
+        for attr, kind in _TOC_OUTPUTS:
+            path = getattr(translate_result, attr, None)
+            if not path:
+                continue
+            path = Path(path)
+            resolved = path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            _write_remapped_toc(
+                translation_config,
+                path,
+                toc_data,
+                kept,
+                _toc_output_mode(kind, translation_config),
+            )
+    finally:
+        old_doc.close()
 
 
 # mediabox -> '[0 nul 792]'
