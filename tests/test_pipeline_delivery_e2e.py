@@ -107,10 +107,12 @@ def _assert_glyphs(delivery, spec: dict) -> None:
 def _assert_recorded(delivery, case_name: str, output_dir: Path) -> None:
     spec = _expected()[case_name]
     assert delivery.quality["status"] == spec["quality_status"]
-    assert delivery.extracted_target_text == spec["target_text"]
     if spec["quality_status"] == "failed":
-        assert delivery.result is None
+        assert delivery.result is not None
+        assert _mono_pdf(delivery) is not None
+        _assert_source_unchanged(output_dir)
         return
+    assert delivery.extracted_target_text == spec["target_text"]
     pdf_path = _mono_pdf(delivery)
     assert pdf_path is not None
     with pymupdf.open(pdf_path) as doc:
@@ -165,19 +167,24 @@ def test_heading_formula_keeps_digits_points_and_reading_order(tmp_path: Path):
     _assert_recorded(delivery, "heading_formula", tmp_path)
 
 
-def test_incomplete_contour_never_emits_successful_pdf(tmp_path: Path):
+def test_incomplete_contour_marks_the_paragraph_and_still_writes_pdf(tmp_path: Path):
     delivery = run_delivery_fixture("contour_exhausted", tmp_path)
     event_types = [event["type"] for event in delivery.events]
-    assert "error" in event_types
-    assert "finish" not in event_types
-    assert delivery.result is None
+    assert "error" not in event_types
+    assert "finish" in event_types
+    assert delivery.result is not None
     assert delivery.quality["status"] == "failed"
-    reasons = [
-        issue.get("details", {}).get("reason")
+    issues = [
+        issue
         for issue in delivery.quality.get("issues", [])
+        if issue.get("code") == "layout_incomplete"
     ]
-    assert "contour_exhausted" in reasons
-    assert list(tmp_path.glob("*.mono.pdf")) == []
+    assert len(issues) == 1
+    assert issues[0]["details"]["reason"] == "contour_exhausted"
+    assert issues[0]["severity"] == "error"
+    pdf_path = _mono_pdf(delivery)
+    assert pdf_path is not None
+    assert pdf_path.is_file()
     _assert_source_unchanged(tmp_path)
 
 

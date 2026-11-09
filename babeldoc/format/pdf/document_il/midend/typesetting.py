@@ -1930,6 +1930,13 @@ class Typesetting:
             placed_units=placed_units,
         )
 
+    def _mark_layout_incomplete(self, exc: LayoutIncompleteError) -> None:
+        """Record one paragraph and keep typesetting the rest of the document."""
+        from babeldoc.quality import record_layout_incomplete
+
+        record_layout_incomplete(self.translation_config, exc)
+        logger.warning("layout incomplete; continuing: %s", exc)
+
     def _commit_layout_or_restore(
         self,
         paragraph: il_version_1.PdfParagraph,
@@ -3559,10 +3566,11 @@ class Typesetting:
         except Exception as exc:
             paragraph.pdf_paragraph_composition = old_compositions
             if isinstance(exc, LayoutIncompleteError):
-                raise
-            logger.warning(
-                "Failed to retypeset paragraph, rolled back."
-            )
+                self._mark_layout_incomplete(exc)
+            else:
+                logger.warning(
+                    "Failed to retypeset paragraph, rolled back."
+                )
             return False
         finally:
             self._current_zone_index = old_zone_index
@@ -3657,7 +3665,8 @@ class Typesetting:
             paragraph.scale = old_scale
             paragraph.box = old_box
             if isinstance(exc, LayoutIncompleteError):
-                raise
+                self._mark_layout_incomplete(exc)
+                return RetypesetResult(success=False, reason=exc.reason)
             logger.warning(
                 "Failed to retypeset paragraph with scale range, rolled back."
             )
@@ -3862,8 +3871,8 @@ class Typesetting:
             # Post order (plan §4): fix_overlapping → enforce_title_body_gaps.
             try:
                 self.fix_overlapping_paragraphs_post_typesetting(page)
-            except LayoutIncompleteError:
-                raise
+            except LayoutIncompleteError as exc:
+                self._mark_layout_incomplete(exc)
             except Exception as e:
                 logger.warning(
                     f"Failed to fix post-typesetting paragraph overlaps on page "
@@ -3940,7 +3949,8 @@ class Typesetting:
             except Exception as exc:
                 paragraph.pdf_paragraph_composition = saved
                 if isinstance(exc, LayoutIncompleteError):
-                    raise
+                    self._mark_layout_incomplete(exc)
+                    continue
                 logger.exception(
                     "Failed to retypeset a moved figure-gap column, rolled back."
                 )
@@ -4207,7 +4217,7 @@ class Typesetting:
                     except Exception as exc:
                         move.pdf_paragraph_composition = old_compositions
                         if isinstance(exc, LayoutIncompleteError):
-                            raise
+                            self._mark_layout_incomplete(exc)
                         retypeset_fail_count += 1
                         logger.debug(
                             "Page %s: 段落重新排版失败，已恢复原始 composition。",
@@ -4340,9 +4350,10 @@ class Typesetting:
                 self.retypeset_with_precomputed_scale(
                     paragraph, page, typesetting_units, precomputed_scale
                 )
-            except LayoutIncompleteError:
+            except LayoutIncompleteError as exc:
                 paragraph.pdf_paragraph_composition = saved_composition
-                raise
+                self._mark_layout_incomplete(exc)
+                return
 
             # 重排版后，重新设置段落各字符的 render order
             self._update_paragraph_render_order(paragraph)

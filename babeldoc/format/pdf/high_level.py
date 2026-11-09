@@ -1292,8 +1292,16 @@ def _do_translate_single(
                     doc_pdf2zh, translation_config, docs, mediabox_data
                 )
             )
-    except LayoutIncompleteError:
-        raise
+    except LayoutIncompleteError as exc:
+        record_layout_incomplete(translation_config, exc)
+        logger.warning(
+            "layout incomplete while preparing the watermark page; "
+            "continuing without that watermark: %s",
+            exc,
+        )
+        translation_config.watermark_output_mode = WatermarkOutputMode.NoWatermark
+        mono_watermark_first_page_doc_bytes = None
+        dual_watermark_first_page_doc_bytes = None
     except Exception:
         logger.warning(
             "Failed to generate watermark for first page, using no watermark"
@@ -1307,7 +1315,10 @@ def _do_translate_single(
         typesetter.typesetting_document(docs)
     except LayoutIncompleteError as exc:
         record_layout_incomplete(translation_config, exc)
-        raise
+        logger.warning(
+            "layout incomplete escaped typesetting; writing the result: %s",
+            exc,
+        )
     logger.debug(f"finish typsetting from {temp_pdf_path}")
     if translation_config.debug:
         xml_converter.write_json(

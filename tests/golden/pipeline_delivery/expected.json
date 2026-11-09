@@ -36,7 +36,7 @@
   "contour_exhausted": {
     "target_text": "",
     "paragraph_count": 0,
-    "page_count": 0,
+    "page_count": 1,
     "quality_status": "failed",
     "page_box": [0, 0, 420, 320],
     "obstacles": []

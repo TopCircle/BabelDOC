@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import pickle
 from copy import deepcopy
 from pathlib import Path
@@ -13,6 +14,7 @@ from unittest.mock import patch
 import pymupdf
 import pytest
 from babeldoc.babeldoc_exception.LayoutIncompleteError import LayoutIncompleteError
+from babeldoc.quality import QualityReport
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import Cropbox
 from babeldoc.format.pdf.document_il.il_version_1 import Document
@@ -333,9 +335,11 @@ def test_layout_incomplete_error_pickles_without_document_payload():
     assert "中" not in error.args[0]
 
 
-def test_retypeset_helpers_roll_back_then_reraise():
+def test_retypeset_helpers_roll_back_and_mark_without_raising():
     for helper_name in ("retypeset_paragraph", "_retypeset_paragraphs_at_box"):
         ts, paragraph, page, units = _contour_case(400)
+        report = QualityReport(run_id=f"retypeset-{helper_name}")
+        ts.translation_config.shared_context_cross_split_part.quality_report = report
         paragraph.pdf_paragraph_composition = [
             PdfParagraphComposition(pdf_character=unit.char) for unit in units
         ]
@@ -348,13 +352,10 @@ def test_retypeset_helpers_roll_back_then_reraise():
         page.cropbox = Cropbox(box=Box(x=0, y=0, x2=612, y2=792))
         before = deepcopy(paragraph.pdf_paragraph_composition)
         box = (paragraph.box.x, paragraph.box.y, paragraph.box.x2, paragraph.box.y2)
-        with pytest.raises(LayoutIncompleteError) as caught:
-            if helper_name == "retypeset_paragraph":
-                ts.retypeset_paragraph(paragraph, page)
-            else:
-                ts._retypeset_paragraphs_at_box(page, {}, [paragraph])
-        assert caught.value.reason == "contour_exhausted", helper_name
-        assert caught.value.page_index == 5, helper_name
+        if helper_name == "retypeset_paragraph":
+            assert ts.retypeset_paragraph(paragraph, page) is False
+        else:
+            ts._retypeset_paragraphs_at_box(page, {}, [paragraph])
         assert paragraph.pdf_paragraph_composition == before, helper_name
         assert (
             paragraph.box.x,
@@ -362,6 +363,11 @@ def test_retypeset_helpers_roll_back_then_reraise():
             paragraph.box.x2,
             paragraph.box.y2,
         ) == box, helper_name
+        issue = report.to_dict()["issues"][0]
+        assert issue["code"] == "layout_incomplete", helper_name
+        assert issue["details"]["reason"] == "contour_exhausted", helper_name
+        assert issue["page_index"] == 5, helper_name
+        assert "中" not in json.dumps(report.to_dict(), ensure_ascii=False)
 
 
 def _page_with_text(page_number: int, unit_count: int, link: LineEdgeLink) -> Page:
@@ -390,6 +396,59 @@ def _pdf_names(directory: Path) -> list[str]:
     return sorted(path.name for path in directory.glob("*.pdf"))
 
 
+def test_render_paragraph_marks_one_failure_and_typesets_the_next():
+    link = _probe_link()
+    ts = _typesetter()
+    report = QualityReport(run_id="mark-para")
+    ts.translation_config.shared_context_cross_split_part.quality_report = report
+    bad_units = [_cjk_glyph() for _ in range(400)]
+    good_units = [_cjk_glyph() for _ in range(8)]
+    bad = PdfParagraph(
+        box=Box(x=100, y=0, x2=200, y2=400),
+        pdf_style=PdfStyle(font_id="base", font_size=12, graphic_state=None),
+        unicode="中" * 400,
+        debug_id="failed-part",
+        layout_region_id=link.region_id,
+        pdf_paragraph_composition=[
+            PdfParagraphComposition(pdf_character=unit.char) for unit in bad_units
+        ],
+    )
+    good = PdfParagraph(
+        box=Box(x=100, y=0, x2=200, y2=400),
+        pdf_style=PdfStyle(font_id="base", font_size=12, graphic_state=None),
+        unicode="中" * 8,
+        debug_id="kept-part",
+        layout_region_id=link.region_id,
+        pdf_paragraph_composition=[
+            PdfParagraphComposition(pdf_character=unit.char) for unit in good_units
+        ],
+    )
+    page = Page(
+        page_number=4,
+        cropbox=Cropbox(box=Box(x=0, y=0, x2=612, y2=792)),
+        pdf_paragraph=[bad, good],
+    )
+    page.layout_plan = SimpleNamespace(decisions=(), line_edge_links=(link,))
+    before_bad = deepcopy(bad.pdf_paragraph_composition)
+
+    ts.render_paragraph(bad, page, {})
+    ts.render_paragraph(good, page, {})
+
+    assert bad.pdf_paragraph_composition == before_bad
+    assert len(bad.pdf_paragraph_composition) == 400
+    assert _rendered_text(good) == "中" * 8
+    payload = report.to_dict()
+    assert payload["status"] == "failed"
+    assert len(payload["issues"]) == 1
+    issue = payload["issues"][0]
+    assert issue["paragraph_id"] == "failed-part"
+    assert issue["page_index"] == 4
+    assert issue["severity"] == "error"
+    assert issue["details"]["reason"] == "contour_exhausted"
+    assert issue["details"]["placed_units"] < issue["details"]["requested_units"]
+    assert "中" not in json.dumps(payload, ensure_ascii=False)
+
+
 @pytest.mark.parametrize(
     "mode",
     [
@@ -398,7 +457,7 @@ def _pdf_names(directory: Path) -> list[str]:
         WatermarkOutputMode.NoWatermark,
     ],
 )
-def test_both_watermark_later_page_failure_has_no_final_output(tmp_path, mode):
+def test_later_page_layout_failure_still_finishes_and_marks_that_page(tmp_path, mode):
     final_dir = tmp_path / "final"
     final_dir.mkdir()
     sentinel = final_dir / "already-delivered.pdf"
@@ -447,7 +506,10 @@ def test_both_watermark_later_page_failure_has_no_final_output(tmp_path, mode):
         output_dir = Path(translation_config.output_dir).resolve()
         recorded.append(output_dir)
         written = output_dir / "spy-prewrite.pdf"
-        written.write_bytes(b"%PDF-1.4 prewrite\n")
+        blank = pymupdf.open()
+        blank.new_page()
+        blank.save(written)
+        blank.close()
         return SimpleNamespace(
             mono_pdf_path=written,
             dual_pdf_path=None,
@@ -483,20 +545,31 @@ def test_both_watermark_later_page_failure_has_no_final_output(tmp_path, mode):
             return_value=False,
         ),
     ):
-        with pytest.raises(LayoutIncompleteError) as caught:
-            do_translate(monitor, config)
+        result = do_translate(monitor, config)
 
-    assert caught.value.reason == "contour_exhausted"
+    assert result is not None
     finish_events = [event for event in events if event.get("type") == "finish"]
-    assert finish_events == []
-    assert _pdf_names(final_dir) == before_pdfs
+    assert finish_events
+    assert not any(event.get("type") == "error" for event in events)
     assert hashlib.sha256(sentinel.read_bytes()).hexdigest() == sentinel_hash
     final_resolved = final_dir.resolve()
+    assert final_resolved in recorded
     for output_dir in recorded:
-        assert output_dir != final_resolved
-        assert final_resolved not in output_dir.parents
-        assert not output_dir.exists()
-    if mode is WatermarkOutputMode.Both:
-        assert recorded, "Both may prewrite only inside a temporary directory"
-    else:
-        assert recorded == []
+        if output_dir != final_resolved:
+            assert final_resolved not in output_dir.parents
+            assert not output_dir.exists()
+    reports = list(final_dir.glob("*.quality.json"))
+    assert len(reports) == 1
+    payload = json.loads(reports[0].read_text(encoding="utf-8"))
+    assert payload["status"] == "failed"
+    issue = payload["issues"][0]
+    assert issue["code"] == "layout_incomplete"
+    assert issue["paragraph_id"] == "page-1"
+    assert issue["page_index"] == 1
+    assert issue["details"]["reason"] == "contour_exhausted"
+    assert "中" not in json.dumps(payload, ensure_ascii=False)
+    failed = il_doc.page[1].pdf_paragraph[0]
+    assert len(failed.pdf_paragraph_composition) == 400
+    assert _rendered_text(il_doc.page[0].pdf_paragraph[0]) == "中" * 8
+    assert sentinel.name in _pdf_names(final_dir)
+    assert _pdf_names(final_dir) != before_pdfs
