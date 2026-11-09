@@ -1,10 +1,17 @@
-# BabelDOC — 当前状况（2026-11-06）
+# BabelDOC — 当前状况（2026-11-09）
 
-**工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `main`  
+**工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `impl/r1-2026-11-06`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
 **历史布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms`（已归档/废弃，工作流与开发已全面迁入 Nextcloud）  
-**版本:** `0.6.4.101`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.102`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-09 — 发布 0.6.4.102
+
+- 版本从 `0.6.4.101` 升到 `0.6.4.102`。提交 `cdace37c4197bef625376f5fdf6c4a2c3efe8c31`，分支 `impl/r1-2026-11-06`，未并入 `main`。
+- PyMuPDF 锁定在 1.x。镜像安装为 `pymupdf>=1.26.7,<2`，现网是 `1.28.2`。
+- VPS `pdfmt-next-app` 已按该提交重建。`http://127.0.0.1:7870/` 返回 200。重建前是 BabelDOC `0.6.4.101`、PyMuPDF `2.1`。
+- PDFMathTranslate-next 仍是 `2.9.0`，提交 `9668850e6bcc48ef7c32e3b5d8eb1c207f9d3159`。
 
 ## 2026-11-06 — 生产填充执行门禁（识别 30 / 已验收 29 / 已启用 29）
 
