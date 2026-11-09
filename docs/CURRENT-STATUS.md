@@ -3,8 +3,15 @@
 **工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `impl/r1-2026-11-06`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
 **历史布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms`（已归档/废弃，工作流与开发已全面迁入 Nextcloud）  
-**版本:** `0.6.4.102`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.103`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-09 — 发布 0.6.4.103
+
+- 排版门禁不再中断整本书。排不进的段落记为 `layout_incomplete`，其余继续排版，PDF 仍写出。
+- 版本从 `0.6.4.102` 升到 `0.6.4.103`。镜像安装提交 `021d0e7f3e4974efdd5e7f46feadbb5aafba130e`，分支 `impl/r1-2026-11-06`，未并入 `main`。
+- VPS `pdfmt-next-app` 已按该提交重建。`http://127.0.0.1:7870/` 返回 200。导入的是 BabelDOC `0.6.4.103`、PyMuPDF `1.28.2`。
+- PDFMathTranslate-next 仍是 `2.9.0`，提交 `afa7cdb77799450b23c9aa4f69fe5ffd89886f36`。质量状态为 failed 时界面仍提供 PDF，标题是「文件已生成，部分段落未排入」。
 
 ## 2026-11-09 — 发布 0.6.4.102
 
