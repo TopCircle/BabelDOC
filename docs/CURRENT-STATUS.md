@@ -6,6 +6,13 @@
 **版本:** `0.6.4.103`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
+## 2026-11-09 — DeepLX 多位术语编号（BabelDOC 未改）
+
+- 长段译文里 `Q G I D 1 0 Q` 被旧计数当成编号 1，编号 10 丢失，脚本退出，段落留英文。
+- 只换了 `config/deeplx/deeplx.py` 与 `deeplx_v3.2.1-production-final.py`。两份字节相同，不在 Git 里。SHA-256 `172063fa62487a2c35a88ddd47f12d47306e7d300c042daea79ea2ea7434b990`。闭合 `Q` 之后才把数字间空格并成一个编号。`QGID1 2 days` 仍是 1。
+- VPS 配置调用 `/root/.config/pdf2zh/deeplx/deeplx_v3.2.1-production-final.py`。服务已重启，`http://127.0.0.1:7870/` 返回 200。旧脚本在 `/tmp/deeplx-9d910f3f`。缓存和术语表没有删。
+- BabelDOC 仍是 `0.6.4.103`，镜像提交 `021d0e7f3e4974efdd5e7f46feadbb5aafba130e`，没有重建。消费端镜像仍是 `2.9.0` / `afa7cdb77799450b23c9aa4f69fe5ffd89886f36`。`63fc389` 只改测试指纹，没有进镜像。下次翻译会因脚本哈希对不上旧缓存行而重新请求 DeepL。
+
 ## 2026-11-09 — 发布 0.6.4.103
 
 - 排版门禁不再中断整本书。排不进的段落记为 `layout_incomplete`，其余继续排版，PDF 仍写出。
