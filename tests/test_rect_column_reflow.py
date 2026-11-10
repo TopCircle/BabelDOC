@@ -1,5 +1,7 @@
 """Rectangular columns share one left and right edge before typesetting."""
 
+import pytest
+
 from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
@@ -43,6 +45,20 @@ from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
 )
 from babeldoc.format.pdf.document_il.utils.rect_flow_stack import clear_held_spans
 from babeldoc.format.pdf.document_il.utils.rect_flow_stack import note_held_spans
+
+
+@pytest.fixture(autouse=True)
+def _isolated_column_geometry():
+    # Production stores source profiles across passes. Reused Python ids
+    # between independent tests must not import another test's geometry.
+    from babeldoc.format.pdf.document_il.utils import rect_column_reflow as columns
+
+    containers = (columns._PROFILES, columns._SIGS, columns._DISPLAY_IDS, columns._PAGE_BANDS)
+    for container in containers:
+        container.clear()
+    yield
+    for container in containers:
+        container.clear()
 
 
 def _para(x, x2, paradigm, role=LayoutIntentRole.BODY):

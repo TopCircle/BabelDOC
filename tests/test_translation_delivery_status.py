@@ -667,3 +667,94 @@ def test_success_publishes_distinct_reports_without_debug(
     assert json.loads(body)["status"] == "degraded"
     assert any(event.get("type") == "finish" for event in events)
     assert first.debug is False
+
+
+
+def test_fragment_recovered_translation_marks_the_original_paragraph_for_review(tmp_path):
+    from babeldoc.translator.translation_outcome import TranslationOutcome
+    def RecoveredText(text):
+        return TranslationOutcome(text, ("mask_fragment_recovery",))
+    class Engine(FixedMapTranslator):
+        def translate(self, text, **kwargs):
+            return RecoveredText("恢复后的完整中文译文。")
+    config = _config(tmp_path, Engine())
+    report = _attach(config)
+    paragraph = _paragraph(SOURCE_SECRET, debug_id="recovered-para")
+    page = _page([paragraph])
+    _run_paragraph(_translator(config), paragraph, page)
+    payload = report.to_dict()
+    assert payload["status"] == "degraded"
+    assert payload["issues"][0]["code"] == "mask_fragment_recovery"
+    assert payload["issues"][0]["paragraph_id"] == "recovered-para"
+    assert paragraph.unicode != SOURCE_SECRET
+
+
+
+def test_sentence_rebuild_retains_fragment_recovery_warning(tmp_path):
+    source = "Alpha sentence. Beta sentence. Gamma sentence."
+    from babeldoc.translator.translation_outcome import TranslationOutcome
+    def RecoveredText(text):
+        return TranslationOutcome(text, ("mask_fragment_recovery",))
+    class Engine(FixedMapTranslator):
+        def translate(self, text, **kwargs):
+            if text == source:
+                return "短。"
+            return RecoveredText({"Alpha sentence.": "第一句。", "Beta sentence.": "第二句。", "Gamma sentence.": "第三句。"}[text.strip()])
+    config = _config(tmp_path, Engine())
+    report = _attach(config)
+    paragraph = _paragraph(source, debug_id="rebuilt-para")
+    _run_paragraph(_translator(config), paragraph, _page([paragraph]))
+    payload = report.to_dict()
+    assert payload["status"] == "degraded"
+    assert any(i["code"] == "mask_fragment_recovery" for i in payload["issues"])
+    assert paragraph.unicode != source
+
+
+def test_clean_retry_discards_recovery_warning_from_rejected_candidate(tmp_path):
+    from babeldoc.translator.translation_outcome import TranslationOutcome
+    def RecoveredText(text):
+        return TranslationOutcome(text, ("mask_fragment_recovery",))
+    class Engine(FixedMapTranslator):
+        calls = 0
+        def translate(self, text, **kwargs):
+            self.calls += 1
+            return RecoveredText("短。") if self.calls == 1 else "第一句。第二句。第三句。"
+    config = _config(tmp_path, Engine())
+    report = _attach(config)
+    paragraph = _paragraph("Alpha sentence. Beta sentence. Gamma sentence.", debug_id="clean-retry")
+    _run_paragraph(_translator(config), paragraph, _page([paragraph]))
+    assert paragraph.unicode == "第一句。第二句。第三句。"
+    assert report.status == "success"
+
+
+def test_clean_sentence_rebuild_discards_rejected_paragraph_warnings(tmp_path):
+    from babeldoc.translator.translation_outcome import TranslationOutcome
+    source = "Alpha sentence. Beta sentence. Gamma sentence."
+    class Engine(FixedMapTranslator):
+        def translate(self, text, **kwargs):
+            if text == source:
+                return TranslationOutcome("短。", ("mask_fragment_recovery",))
+            return {"Alpha sentence.": "第一句。", "Beta sentence.": "第二句。", "Gamma sentence.": "第三句。"}[text.strip()]
+    config = _config(tmp_path, Engine())
+    report = _attach(config)
+    paragraph = _paragraph(source, debug_id="clean-rebuild")
+    _run_paragraph(_translator(config), paragraph, _page([paragraph]))
+    assert paragraph.unicode == "第一句。第二句。第三句。"
+    assert report.status == "success"
+
+
+def test_provider_owned_result_preserves_metadata_without_shared_class(tmp_path):
+    from dataclasses import dataclass
+    @dataclass(frozen=True)
+    class ProviderResult:
+        text: str
+        warnings: tuple[str, ...]
+    class Engine(FixedMapTranslator):
+        def translate(self, text, **kwargs):
+            return ProviderResult("完整的中文译文。", ("mask_fragment_recovery",))
+    config = _config(tmp_path, Engine())
+    report = _attach(config)
+    paragraph = _paragraph(SOURCE_SECRET, debug_id="provider-contract")
+    _run_paragraph(_translator(config), paragraph, _page([paragraph]))
+    assert paragraph.unicode == "完整的中文译文。"
+    assert report.status == "degraded"

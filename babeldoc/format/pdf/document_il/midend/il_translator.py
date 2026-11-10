@@ -14,6 +14,7 @@ from tqdm import tqdm
 import babeldoc.format.pdf.document_il.il_version_1 as il_version_1
 from babeldoc.babeldoc_exception.BabelDOCException import ContentFilterError
 from babeldoc.quality import QualityIssue
+from babeldoc.translator.translation_outcome import TranslationOutcome, translate_outcome
 from babeldoc.format.pdf.document_il import Document
 from babeldoc.format.pdf.document_il import GraphicState
 from babeldoc.format.pdf.document_il import Page
@@ -485,7 +486,7 @@ class ILTranslator:
         # Lost at least one full sentence (EN 3 → ZH 2, etc.)
         return dst_n <= src_n - 1
 
-    def _translate_each_sentence(self, text: str) -> str | None:
+    def _translate_each_sentence(self, text: str) -> TranslationOutcome | None:
         """Translate one sentence at a time when a paragraph comes back short.
 
         A fresh call of the whole paragraph often repeats the same omission.
@@ -495,9 +496,11 @@ class ILTranslator:
         if len(parts) < 2:
             return None
         rendered: list[str] = []
+        warnings: list[str] = []
         for part in parts:
             try:
-                piece = self.translate_engine.translate(part)
+                outcome = translate_outcome(self.translate_engine, part)
+                piece = outcome.text
             except Exception:
                 logger.warning(
                     "Sentence retry failed for %r", part[:80], exc_info=True
@@ -505,12 +508,13 @@ class ILTranslator:
                 return None
             if not isinstance(piece, str) or not piece.strip():
                 return None
+            warnings.extend(outcome.warnings)
             piece = piece.strip()
             # A sentence that comes back without a stop still counts as one.
             if part[-1:] in ".!?" and piece[-1:] not in "。！？.!?":
                 piece += "。"
             rendered.append(piece)
-        return "".join(rendered)
+        return TranslationOutcome("".join(rendered), tuple(dict.fromkeys(warnings)))
 
     #: Sentence terminator split for the same-sentence duplication gate.
     #: Splits after sentence-ending punctuation, consuming following spaces,
@@ -2369,12 +2373,13 @@ class ILTranslator:
                         translate_input,
                     )
                     llm_translate_tracker.set_input(llm_prompt)
-                    translated_text = self.translate_engine.llm_translate(
-                        llm_prompt,
+                    outcome = translate_outcome(self.translate_engine,
+                        llm_prompt, llm=True,
                         rate_limit_params={
                             "paragraph_token_count": paragraph_token_count
                         },
                     )
+                    translated_text = outcome.text
                     llm_translate_tracker.set_output(translated_text)
                 else:
                     # DeepLX/CLI: no LLM glossary table — protect terms with
@@ -2386,12 +2391,13 @@ class ILTranslator:
                             text_for_mt
                         )
                         term_maps.extend(part)
-                    translated_text = self.translate_engine.translate(
+                    outcome = translate_outcome(self.translate_engine,
                         text_for_mt,
                         rate_limit_params={
                             "paragraph_token_count": paragraph_token_count
                         },
                     )
+                    translated_text = outcome.text
                     if term_maps:
                         from babeldoc.glossary import Glossary as _Glossary
 
@@ -2416,13 +2422,14 @@ class ILTranslator:
                             local_title_paragraph,
                             translate_input,
                         )
-                        translated_text = self.translate_engine.llm_translate(
-                            llm_prompt,
+                        outcome = translate_outcome(self.translate_engine,
+                            llm_prompt, llm=True,
                             ignore_cache=True,
                             rate_limit_params={
                                 "paragraph_token_count": paragraph_token_count
                             },
                         )
+                        translated_text = outcome.text
                     else:
                         term_maps_r: list[tuple[str, str]] = []
                         text_retry = text
@@ -2431,13 +2438,14 @@ class ILTranslator:
                                 text_retry
                             )
                             term_maps_r.extend(part)
-                        translated_text = self.translate_engine.translate(
+                        outcome = translate_outcome(self.translate_engine,
                             text_retry,
                             ignore_cache=True,
                             rate_limit_params={
                                 "paragraph_token_count": paragraph_token_count
                             },
                         )
+                        translated_text = outcome.text
                         if term_maps_r:
                             from babeldoc.glossary import Glossary as _Glossary
 
@@ -2450,15 +2458,16 @@ class ILTranslator:
                     if self.translation_drops_sentences(text, translated_text):
                         rebuilt = self._translate_each_sentence(text)
                         if rebuilt and (
-                            not self.translation_drops_sentences(text, rebuilt)
-                            or self.count_sentence_ends(rebuilt)
+                            not self.translation_drops_sentences(text, rebuilt.text)
+                            or self.count_sentence_ends(rebuilt.text)
                             > self.count_sentence_ends(translated_text)
                         ):
                             logger.warning(
                                 "Rebuilt a short translation sentence by sentence. "
                                 f"paragraph id: {paragraph.debug_id}"
                             )
-                            translated_text = rebuilt
+                            outcome = rebuilt
+                            translated_text = rebuilt.text
                         else:
                             logger.warning(
                                 "Translation still drops sentences after retry; "
@@ -2544,6 +2553,12 @@ class ILTranslator:
                 self.post_translate_paragraph(
                     paragraph, tracker, translate_input, translated_text
                 )
+                for code in outcome.warnings:
+                    self._record_quality(
+                        stage="translation", code=code,
+                        page_index=quality_page, paragraph_id=quality_pid,
+                        severity="warning", details={},
+                    )
             except ContentFilterError as e:
                 logger.warning(f"ContentFilterError: {e.message}")
                 restore_source()

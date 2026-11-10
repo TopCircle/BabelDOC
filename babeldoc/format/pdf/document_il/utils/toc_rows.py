@@ -713,7 +713,22 @@ def clear_toc_source() -> None:
 
 def _on_contents_page(paragraphs) -> bool:
     for paragraph in paragraphs or []:
-        if is_toc_paragraph(paragraph) or is_toc_page_header(_text(paragraph)):
+        text = _text(paragraph).strip()
+        if is_toc_page_header(text):
+            return True
+        # A standalone heading supplies context for split title/number rows.
+        # A body paragraph merely saying "contents" must not open the page.
+        if (
+            getattr(paragraph, "layout_label", None) in {"title", "section_header"}
+            and _TOC_HEADER_RE.fullmatch(text)
+        ):
+            return True
+        # A running page number may be labelled "toc" by the detector.
+        # It can be pinned individually, but cannot turn the entire body
+        # page into contents and trigger directory-only overlap packing.
+        if _TOC_PAGE_ONLY_RE.fullmatch(text):
+            continue
+        if is_toc_paragraph(paragraph):
             return True
     return False
 

@@ -30,6 +30,12 @@ from babeldoc.format.pdf.document_il.il_version_1 import Document
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
+from babeldoc.format.pdf.document_il.utils.rendered_geometry import (
+    char_has_valid_box,
+    compute_rendered_box,
+    extract_rendered_chars,
+    rendered_line_boxes,
+)
 
 if TYPE_CHECKING:
     from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
@@ -45,53 +51,12 @@ _OVERLAP_EPSILON = 1e-9
 # ──────────────────────────────────────────────────────────────
 
 
-def extract_rendered_chars(para: PdfParagraph) -> list:
-    """从段落 composition 中提取所有可渲染字符。
-
-    覆盖全部 5 种 composition 类型：
-    pdf_character, pdf_line, pdf_formula, pdf_same_style_characters,
-    pdf_same_style_unicode_characters（无字符坐标，跳过）。
-    """
-    chars = []
-    for comp in para.pdf_paragraph_composition or []:
-        if comp.pdf_character:
-            chars.append(comp.pdf_character)
-        elif comp.pdf_line:
-            chars.extend(comp.pdf_line.pdf_character)
-        elif comp.pdf_formula:
-            chars.extend(comp.pdf_formula.pdf_character)
-        elif comp.pdf_same_style_characters:
-            chars.extend(comp.pdf_same_style_characters.pdf_character)
-        # pdf_same_style_unicode_characters 无 pdf_character 字段，跳过
-    return chars
-
-
-def char_has_valid_box(c) -> bool:
-    """检查字符的 box 字段是否完整可用。"""
-    return (
-        c.box is not None
-        and c.box.x is not None
-        and c.box.y is not None
-        and c.box.x2 is not None
-        and c.box.y2 is not None
+def rendered_ink_intersects(first: ParagraphGeometry, second: ParagraphGeometry) -> bool:
+    """Use cached line geometry derived from the same glyphs as each union."""
+    return any(
+        box_intersection(left, right) is not None
+        for left in first.line_boxes for right in second.line_boxes
     )
-
-
-def compute_rendered_box(para: PdfParagraph) -> tuple[Box | None, list]:
-    """从段落实际字符坐标计算紧密包围盒。
-
-    Returns (box, valid_chars) — the bounding box and the filtered chars used
-    to compute it, so callers can reuse the char list without re-extracting.
-    """
-    chars = [c for c in extract_rendered_chars(para) if char_has_valid_box(c)]
-    if not chars:
-        return None, []
-    return Box(
-        x=min(c.box.x for c in chars),
-        y=min(c.box.y for c in chars),
-        x2=max(c.box.x2 for c in chars),
-        y2=max(c.box.y2 for c in chars),
-    ), chars
 
 
 def box_intersection(b1: Box, b2: Box) -> tuple[float, float, float, float] | None:
@@ -142,6 +107,7 @@ class ParagraphGeometry:
     ink_box: Box | None  # 预留
     reference_metrics: ReferenceMetrics | None = None  # 原始英文布局指标
     layout_info: ParagraphLayoutInfo | None = None  # 译文布局指标
+    line_boxes: tuple[Box, ...] = ()
 
 
 @dataclass
@@ -243,6 +209,7 @@ class GeometryCache:
             ink_box=None,
             reference_metrics=getattr(para, 'reference_metrics', None),
             layout_info=layout_info,
+            line_boxes=rendered_line_boxes(valid_chars),
         )
 
     @staticmethod
@@ -444,6 +411,8 @@ class OverlapDetector:
                     # 跳过不同 XObject 的段落（坐标系独立）
                     if para_i.xobj_id != para_j.xobj_id:
                         continue
+                    if not rendered_ink_intersects(geom_i, geom_j):
+                        continue
 
                     label_i = para_i.layout_label or "unknown"
                     label_j = para_j.layout_label or "unknown"
@@ -590,6 +559,8 @@ class QuoteDetector:
 
                         # 跳过不同 XObject 的段落
                         if quote_para and text_para and quote_para.xobj_id != text_para.xobj_id:
+                            continue
+                        if quote_para and text_para and not rendered_ink_intersects(quote_geom, text_geom):
                             continue
 
                         issues.append(

@@ -103,6 +103,6 @@ class TestSentenceRebuild:
         helper = ILTranslator.__new__(ILTranslator)
         helper.translate_engine = Engine()
         source = "Well, vagina is the vulva. In fact, many people would not know."
-        assert helper._translate_each_sentence(source) == (
+        assert helper._translate_each_sentence(source).text == (
             "阴道这个词常被用来指外阴。事实上，很多人不知道。"
         )

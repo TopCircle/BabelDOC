@@ -33,6 +33,10 @@ from typing import TYPE_CHECKING
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.utils.box_expand import CALLOUT_COLUMN_MAX_WIDTH
 from babeldoc.format.pdf.document_il.utils.box_expand import is_callout_column
+from babeldoc.format.pdf.document_il.utils.callout_geometry import (
+    is_multiline_body_run,
+    is_right_side_callout,
+)
 from babeldoc.format.pdf.document_il.utils.figure_wrap import body_line_spans
 from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_paragraph
 from babeldoc.format.pdf.document_il.utils.figure_wrap import taper_prefix_widths
@@ -195,6 +199,12 @@ class LayoutIntentExtractor:
 
         # Pass 2 — complete the role (rules 6-9) and build the intent objects.
         walls = _right_walls(metas)
+        body_hosts = [
+            meta["para"] for meta in metas.values()
+            if meta["primary"] in (
+                None, LayoutIntentRole.BODY, LayoutIntentRole.LIST, LayoutIntentRole.WRAP_COLUMN
+            )
+        ]
         intents: dict[int, LayoutIntent] = {}
         for pid, meta in metas.items():
             para = meta["para"]
@@ -208,6 +218,7 @@ class LayoutIntentExtractor:
                     column_lefts,
                     walls,
                     pid,
+                    body_hosts,
                 )
             except Exception:
                 self.audit["extract_errors"] += 1
@@ -282,6 +293,8 @@ class LayoutIntentExtractor:
         # Rule 5 — section header / paragraph title; display TITLE only for
         # label=="title" AND is_display_title (vertical_gap).
         if label == "title":
+            if is_multiline_body_run(para):
+                return None
             if is_display_title(para):
                 return LayoutIntentRole.TITLE
             return LayoutIntentRole.SECTION_HEADER
@@ -325,6 +338,7 @@ class LayoutIntentExtractor:
         column_lefts: list[float],
         walls: dict[int, float],
         pid: int,
+        body_hosts: list[PdfParagraph],
     ) -> LayoutIntent:
         design_box: Box = meta["design_box"]
         ink: Box | None = meta["ink"]
@@ -340,6 +354,7 @@ class LayoutIntentExtractor:
                 column_lefts,
                 walls,
                 pid,
+                body_hosts,
             )
 
         top_inset = 0.0
@@ -493,6 +508,7 @@ class LayoutIntentExtractor:
         column_lefts: list[float],
         walls: dict[int, float],
         pid: int,
+        body_hosts: list[PdfParagraph],
     ) -> tuple[LayoutIntentRole, str | None]:
         """Rules 6-9; returns ``(role, overlays_band)``."""
         label = (getattr(para, "layout_label", None) or "").strip().lower()
@@ -504,6 +520,9 @@ class LayoutIntentExtractor:
         # Rule 6.5 — lists and TOCs are content lists, never quotes or callouts
         if paragraph_opens_as_list(para) or label == "list":
             return LayoutIntentRole.LIST, None
+        # Source body adjacency refines unclassified text, never explicit roles.
+        if is_right_side_callout(para, page_width, body_hosts):
+            return LayoutIntentRole.PULL_QUOTE, None
         # Rule 7 — pull quote (P0 single source: is_quote_block).
         # A flat column on the same left as a wrap, with the photo in its
         # margin, is that column. The quote test sees the margin and would

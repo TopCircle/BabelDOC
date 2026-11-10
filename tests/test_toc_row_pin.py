@@ -416,3 +416,46 @@ def test_toc_row_cascades_down_when_section_header_overlaps():
     assert row1.box.y2 <= header.box.y - 4.0
     # row2 must sit below row1 bottom with at least min_gap (4.0)
     assert row2.box.y2 <= row1.box.y - 4.0
+
+
+
+def test_body_page_number_does_not_trigger_contents_overlap_packing():
+    body = _para("普通正文", 200, label="plain text")
+    body.box = Box(x=56,y=200,x2=558,y2=440)
+    body.pdf_paragraph_composition = [
+        PdfParagraphComposition(pdf_character=PdfCharacter(char_unicode="正文",box=Box(x=56,y=420,x2=300,y2=438))),
+        PdfParagraphComposition(pdf_character=PdfCharacter(char_unicode="尾行",box=Box(x=56,y=200,x2=558,y2=218))),
+    ]
+    quote = _para("侧栏引文", 380, x=351, label="plain text")
+    quote.pdf_paragraph_composition = [PdfParagraphComposition(pdf_character=PdfCharacter(
+        char_unicode="引文",box=Box(x=351,y=380,x2=545,y2=398)))]
+    number = _para("4", 20, x=540, label="toc")
+    number.pdf_paragraph_composition = [PdfParagraphComposition(pdf_character=PdfCharacter(
+        char_unicode="4",box=Box(x=540,y=20,x2=546,y2=31)))]
+    rows=[body,quote,number]
+    try:
+        remember_toc_source(rows)
+        before=quote.pdf_paragraph_composition[0].pdf_character.box.y
+        pin_toc_row_baselines(rows)
+        assert quote.pdf_paragraph_composition[0].pdf_character.box.y == before
+    finally:
+        clear_toc_source()
+
+
+
+def test_heading_labelled_contents_keeps_split_chapter_row_pinning():
+    header = _para("Contents",700,label="title")
+    chapter = _para("Chapter 1",500,label="plain text")
+    chapter.pdf_paragraph_composition = [PdfParagraphComposition(pdf_character=PdfCharacter(
+        char_unicode="Chapter 1",box=Box(x=56,y=500,x2=150,y2=512)))]
+    number = _para("10",500,x=540)
+    rows=[header,chapter,number]
+    try:
+        remember_toc_source(rows)
+        char=chapter.pdf_paragraph_composition[0].pdf_character
+        chapter.box.y-=30; chapter.box.y2-=30
+        char.box.y-=30; char.box.y2-=30
+        pin_toc_row_baselines(rows)
+        assert char.box.y == 500
+    finally:
+        clear_toc_source()

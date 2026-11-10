@@ -762,3 +762,32 @@ class TestPostLayoutProcessorFixLoop:
 
         assert report.metrics.issues_fixed == 0
         assert report.metrics.iterations == 0
+
+
+
+def test_post_layout_detectors_ignore_a_side_quote_inside_only_the_body_union():
+    from babeldoc.format.pdf.document_il.midend.post_layout_processor import QuoteDetector
+    body = _make_paragraph([_make_char(56,420,300,438),_make_char(56,200,558,218)],
+        layout_box=Box(x=56,y=200,x2=558,y2=440))
+    quote = _make_paragraph([_make_char(351,380,545,398)],
+        layout_box=Box(x=351,y=340,x2=545,y2=418),render_order=1)
+    from babeldoc.format.pdf.document_il.il_version_1 import Cropbox
+    page = _make_page([body,quote])
+    page.cropbox = Cropbox(box=Box(x=0,y=0,x2=612,y2=792))
+    context=DocumentContext.from_document(_make_document([page]))
+    assert OverlapDetector().detect(context) == []
+    assert QuoteDetector().detect(context) == []
+    body.pdf_paragraph_composition.append(PdfParagraphComposition(pdf_character=_make_char(350,379,546,399)))
+    context=DocumentContext.from_document(_make_document([page]))
+    assert OverlapDetector().detect(context)
+    assert QuoteDetector().detect(context)
+
+
+def test_overlap_detection_keeps_valid_thin_characters_and_invalidates_geometry():
+    first = _make_paragraph([_make_char(0, 0, 10, 10), _make_char(50, 20, 60, 20.8)])
+    second = _make_paragraph([_make_char(50, 20, 60, 30)])
+    context = DocumentContext.from_document(_make_document([_make_page([first, second])]))
+    assert len(OverlapDetector().detect(context)) == 1
+    first.pdf_paragraph_composition.pop()
+    context.geometry_cache.invalidate(context.get_paragraph_id(first))
+    assert OverlapDetector().detect(context) == []

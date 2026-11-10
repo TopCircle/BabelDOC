@@ -1013,7 +1013,11 @@ def _lines_of(paragraph) -> tuple[LineBox, ...]:
     compositions = getattr(paragraph, "pdf_paragraph_composition", None) or []
     # A 30pt en-dash is the bullet, not a 15pt-wide first line. Counting
     # it makes the item a hang and the Chinese sentence does not fit.
-    body = [comp for comp in compositions if not _is_dash_bullet_line(comp)]
+    body = [
+        comp for comp in compositions
+        if not _is_dash_bullet_line(comp)
+        and not _is_decorative_quote(_line_chars(comp))
+    ]
     if body:
         compositions = body
     line_boxes: list[LineBox] = []
@@ -1063,7 +1067,9 @@ def _lines_from_characters(paragraph) -> tuple[LineBox, ...]:
             getattr(char, "char_unicode", None) or "" for char in group
         ).strip()
         # The bullet dash is its own glyph. It is not the item's first line.
-        if text in _DASH_BULLET_LINE and len(groups) > 1:
+        if len(groups) > 1 and (
+            text in _DASH_BULLET_LINE or _is_decorative_quote(group)
+        ):
             continue
         x0 = min(float(char.box.x) for char in group)
         x1 = max(float(char.box.x2) for char in group)
@@ -1090,6 +1096,17 @@ def _marker_of(paragraph):
 
 # En dash, em dash, figure dash, minus. A line of only these is a bullet.
 _DASH_BULLET_LINE = frozenset("\u2013\u2014\u2012\u2212")
+
+
+def _is_decorative_quote(chars) -> bool:
+    """A large quote-only row is page art, not a narrow body line."""
+    text = "".join(getattr(char, "char_unicode", "") or "" for char in chars).strip()
+    if not text or any(ch not in '\"“”‘’„«»' for ch in text):
+        return False
+    return any(
+        float(getattr(getattr(char, "pdf_style", None), "font_size", 0) or 0) >= 28.0
+        for char in chars
+    )
 
 
 def _is_dash_bullet_line(composition) -> bool:
