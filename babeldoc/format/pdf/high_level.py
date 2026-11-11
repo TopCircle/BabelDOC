@@ -1116,6 +1116,9 @@ def _do_translate_single(
         from babeldoc.format.pdf.document_il.utils.toc_rows import (
             detach_leader_page_numbers,
         )
+        from babeldoc.format.pdf.document_il.utils.toc_rows import (
+            drop_pure_leader_paragraphs,
+        )
         from babeldoc.format.pdf.document_il.utils.toc_rows import fit_directory_boxes
         from babeldoc.format.pdf.document_il.utils.toc_rows import remember_toc_source
         from babeldoc.format.pdf.document_il.utils.toc_rows import (
@@ -1129,6 +1132,7 @@ def _do_translate_single(
                 new_debug_id_factory=generate_base58_id,
             )
             capture_toc_leaders(page.pdf_paragraph)
+            drop_pure_leader_paragraphs(page.pdf_paragraph)
             detach_leader_page_numbers(
                 page.pdf_paragraph,
                 new_debug_id_factory=generate_base58_id,

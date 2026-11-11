@@ -214,8 +214,35 @@ class TestEmbeddedNumericMarkerRepair:
         second = _para("第一门动作是第二步 3。继续深入")
         third = _para("如果她准备好了再继续")
         normalize_embedded_numeric_markers_on_page([first, second, third])
-        assert first.unicode.startswith("1.")
+        assert first.unicode == "1. 基本动作说明"
         assert not first.unicode.rstrip().endswith("2.")
+        assert not first.unicode.startswith("1. 1.")
         assert second.unicode.startswith("2.")
         assert "3。" not in second.unicode
         assert third.unicode.startswith("3.")
+
+    def test_lettered_list_item_with_sentence_number_not_mangled(self):
+        """Page 28 item f) with sentence number '10。' must not crash or carry '10.' to item g)."""
+        f_para = _para(
+            "f) 那些难以控制自己射精反应的人，在随后的过程中会更难评估自己的性唤起。"
+            "患者会感觉自己的状态会毫无预兆地从 4 骤升至 10。虽然情况看似迅速恶化，但过程中其实存在各种感觉和征兆。"
+        )
+        g_para = _para(
+            "g) 随着你开始能够确定更多的兴奋度数值，例如将自己提升到 5，并尝试在不停下刺激的情况下保持这一状态。"
+        )
+        changed = normalize_embedded_numeric_markers_on_page([f_para, g_para])
+        assert changed == 0
+        assert f_para.unicode.startswith("f)")
+        assert "至 10。虽然" in f_para.unicode
+        assert g_para.unicode.startswith("g)")
+        assert not g_para.unicode.startswith("10.")
+
+    def test_sentence_numbers_with_prepositions_not_treated_as_markers(self):
+        """Numbers after prepositions/verbs ('达', '升至', '超过', etc.) followed by period are prose."""
+        p1 = _para("1. 数据指标增长显著，最终数值达到 100。但是仍需持续监控。")
+        p2 = _para("第二阶段的实施细节")
+        changed = normalize_embedded_numeric_markers_on_page([p1, p2])
+        assert changed == 0
+        assert p1.unicode.startswith("1.")
+        assert "达到 100。但是" in p1.unicode
+        assert not p2.unicode.startswith("100.")

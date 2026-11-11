@@ -1315,6 +1315,7 @@ class ParagraphFinder:
         from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
             split_paragraph_at,
         )
+        from babeldoc.format.pdf.document_il.utils.toc_rows import _TOC_PAGE_ONLY_RE
         from babeldoc.format.pdf.document_il.utils.toc_rows import all_toc_rows
         from babeldoc.format.pdf.document_il.utils.toc_rows import is_chapter_heading
         from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_entry_line
@@ -1358,7 +1359,8 @@ class ParagraphFinder:
             for comp in candidate.pdf_paragraph_composition or []:
                 line = getattr(comp, "pdf_line", None)
                 if line is not None and is_toc_entry_line(line):
-                    entry_count += 1
+                    if not _TOC_PAGE_ONLY_RE.fullmatch(line_text(line).strip()):
+                        entry_count += 1
             if entry_count >= 2:
                 on_toc_page = True
                 break
@@ -1378,6 +1380,10 @@ class ParagraphFinder:
             if len(rows) == 1:
                 text = line_text(rows[0]).strip()
                 if is_toc_page_header(text) or is_chapter_heading(text):
+                    return
+            elif len(rows) > 1:
+                full_t = "".join(line_text(r) for r in rows).strip()
+                if is_toc_page_header(full_t):
                     return
             elif toc_label_stays(getattr(paragraph, "layout_label", None)):
                 return
@@ -1399,6 +1405,8 @@ class ParagraphFinder:
             ]
             label = (getattr(paragraph, "layout_label", None) or "").strip().lower()
             kept = toc_label_stays(label)
+            if on_toc_page and len(lines) >= 3 and is_toc_stack(lines, on_toc_page=True):
+                kept = False
             nonempty = [line for line in lines if line_text(line).strip()]
             force = (not kept) and (
                 is_toc_stack(lines, on_toc_page=on_toc_page) or label == "toc"

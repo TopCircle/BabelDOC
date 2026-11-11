@@ -2133,7 +2133,7 @@ def is_quote_block(
     narrow_threshold: float = 0.70,
     indent_threshold: float = 0.15,
     right_margin_threshold: float = 0.05,
-    max_quote_lines: int = 6,
+    max_quote_lines: int = 10,
 ) -> bool:
     """启发式判断段落是否为 Quote（引文框 / pull-quote）块。
 

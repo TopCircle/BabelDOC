@@ -9,9 +9,11 @@ block in that column ends the chain.
 from __future__ import annotations
 
 import statistics
+from collections.abc import Sequence
 from dataclasses import replace
 
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import ColumnLink
+from babeldoc.format.pdf.document_il.utils.layout_plan.model import FigureBox
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import LayoutFacts
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import LayoutPlan
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import Region
@@ -63,6 +65,8 @@ def column_links(
     for region in rects:
         nearest = next_below(region, rects, left_edge)
         if nearest is None or blocked(region, nearest, obstacles, left_edge):
+            continue
+        if _figure_blocks(region, nearest, facts.figures):
             continue
         flow_next[region.region_id] = nearest.region_id
     chains = _chains(rects, flow_next)
@@ -261,3 +265,28 @@ def _is_side_display(region: Region) -> bool:
 
 def _right(region: Region) -> float:
     return max(line.x1 for line in region.lines)
+
+
+def _figure_blocks(
+    upper: Region, lower: Region, figures: Sequence[FigureBox]
+) -> bool:
+    """True when an image or figure sits between upper and lower with horizontal overlap."""
+    if not figures:
+        return False
+    high = bottom(upper)
+    low = top(lower)
+    if high <= low:
+        return False
+    ux0 = left_edge(upper)
+    ux1 = max(line.x1 for line in upper.lines)
+    lx0 = left_edge(lower)
+    lx1 = max(line.x1 for line in lower.lines)
+    col_x0 = min(ux0, lx0)
+    col_x1 = max(ux1, lx1)
+
+    for fig in figures:
+        if fig.y1 > low and fig.y0 < high:
+            overlap = min(col_x1, fig.x1) - max(col_x0, fig.x0)
+            if overlap >= 16.0:
+                return True
+    return False

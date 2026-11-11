@@ -284,6 +284,33 @@ def _can_continue(
     font_name_map: dict[str, str] | None = None,
 ) -> bool:
     if is_toc_paragraph(upper) or is_toc_paragraph(lower):
+        if is_toc_paragraph(upper) and is_toc_paragraph(lower):
+            upper_line = _bottom_line(upper)
+            lower_line = _top_line(lower)
+            if upper_line is not None and lower_line is not None:
+                vgap = 0.0
+                if (
+                    upper_line.box is not None
+                    and lower_line.box is not None
+                    and upper_line.box.y is not None
+                    and lower_line.box.y2 is not None
+                ):
+                    vgap = float(upper_line.box.y) - float(lower_line.box.y2)
+                prev_text = line_text(upper_line)
+                curr_text = line_text(lower_line)
+                from babeldoc.format.pdf.document_il.utils.toc_rows import (
+                    is_multi_line_continuation,
+                )
+                from babeldoc.format.pdf.document_il.utils.toc_rows import (
+                    is_toc_entry_line,
+                )
+
+                if (
+                    not is_toc_entry_line(upper_line)
+                    and not is_toc_entry_line(lower_line)
+                    and is_multi_line_continuation(prev_text, curr_text, vgap)
+                ):
+                    return True
         return False
     if getattr(upper, "xobj_id", None) != getattr(lower, "xobj_id", None):
         return False

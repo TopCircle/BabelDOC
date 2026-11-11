@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import GraphicState
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
@@ -26,6 +27,9 @@ from babeldoc.format.pdf.document_il.utils.layout_plan.model import LineEdgeLink
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import RegionDecision
 from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
     line_starts_with_list_marker,
+)
+from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import (
+    should_split_line_pair,
 )
 from babeldoc.format.pdf.document_il.utils.same_baseline import same_baseline_overlap
 from babeldoc.format.pdf.document_il.utils.same_baseline import (
@@ -315,6 +319,210 @@ def test_webdings_q_is_a_list_marker():
     assert is_bullet_point(empty)
     plain = _char("", 51, 160, font_id="Ubuntu-Light")
     assert is_bullet_point(plain) is False
+
+    # Alphabetical and numeric list marker assertions
+    for marker_sample in (
+        "a) First item",
+        "b)	 Remembering",
+        "c) When you",
+        "A) Option A",
+        "a. Start out",
+        "1. Take it slow",
+        "2. Step two",
+        "(a) Option",
+        "• Bullet item",
+    ):
+        chars = [_char(c, 59.0 + i * 8, 100) for i, c in enumerate(marker_sample)]
+        sample_line = PdfLine(box=Box(x=59, y=100, x2=200, y2=114), pdf_character=chars)
+        assert line_starts_with_list_marker(sample_line) is True
+
+    # False positive guards
+    for non_marker in (
+        "A sentence",
+        "In conclusion",
+        "i.e., for example",
+        "i. e., for example",
+        "e.g., such as",
+        "e. g., such as",
+        "a.m. rather than at night",
+        "a. m. rather than at night",
+        "a.m on the dot",
+        "a.m., after breakfast",
+        "a. m., after breakfast",
+        "p.m. before bedtime",
+        "p. m. before bedtime",
+        "p.m sharp",
+        "p.m, in the evening",
+        "p. m., in the evening",
+        "A.M. morning call",
+        "A. M. morning call",
+        "A.M standard time",
+        "P.M. afternoon session",
+        "P. M. afternoon session",
+        "P.M eastern time",
+        "p. 42 for instructions",
+        "c. 1920, during the war",
+    ):
+        chars = [_char(c, 59.0 + i * 8, 100) for i, c in enumerate(non_marker)]
+        sample_line = PdfLine(box=Box(x=59, y=100, x2=200, y2=114), pdf_character=chars)
+        assert line_starts_with_list_marker(sample_line) is False
+
+
+def test_time_abbreviation_am_pm_not_split_as_list_marker():
+    """Verify lines starting with a.m. or p.m. do not falsely trigger list marker split."""
+    prev = _line("Take your medicine in the ", x=59.0, y=120.0).pdf_line
+
+    for time_sample in (
+        "a.m. rather than at night.",
+        "a.m., after waking up.",
+        "A.M. in the early hours.",
+        "p.m. before bedtime.",
+        "p.m, when evening falls.",
+        "P.M. late at night.",
+        # Spaced time abbreviations
+        "a. m. rather than at night.",
+        "a. m., after breakfast.",
+        "p. m. before bedtime.",
+        "p. m., in the evening.",
+        "A. M. in the morning.",
+        "P. M. late at night.",
+        # Bare abbreviations without trailing dot
+        "a.m on the dot.",
+        "a.m sharp.",
+        "p.m on Sunday.",
+        "p.m sharp.",
+        "A.M standard time.",
+        "P.M eastern time.",
+    ):
+        curr = _line(time_sample, x=59.0, y=100.0).pdf_line
+        assert line_starts_with_list_marker(curr) is False
+        assert not should_split_line_pair(
+            prev,
+            curr,
+            median_width=200.0,
+            split_short_lines=True,
+            short_line_split_factor=0.5,
+        )
+
+
+def test_latin_and_citation_abbreviations_not_split_as_list_marker():
+    """Verify lines starting with Latin abbreviations or citations do not split."""
+    prev = _line(
+        "Refer to the clinical dosage guidelines in ", x=59.0, y=120.0
+    ).pdf_line
+
+    for sample in (
+        # Spaced Latin abbreviations
+        "i. e., when symptoms occur.",
+        "i. e., for example.",
+        "i. e. that is to say.",
+        "e. g., with food or milk.",
+        "e. g., such as fruits.",
+        "e. g. apples and oranges.",
+        # Unspaced Latin abbreviations
+        "i.e., when symptoms occur.",
+        "e.g., with food or milk.",
+        "a.k.a. also known as therapy.",
+        # Page citations
+        "p. 42 for instructions.",
+        "p. 15 for details.",
+        # Date citations
+        "c. 1920, during the war.",
+        "c. 1850, in rural areas.",
+        "b. 1950, in London.",
+        "d. 2010, peacefully.",
+    ):
+        curr = _line(sample, x=59.0, y=100.0).pdf_line
+        assert line_starts_with_list_marker(curr) is False
+        assert not should_split_line_pair(
+            prev,
+            curr,
+            median_width=200.0,
+            split_short_lines=True,
+            short_line_split_factor=0.5,
+        )
+
+
+def test_authentic_list_markers_trigger_line_split():
+    """Verify authentic list markers (a), b), c), A), 1., 2., •) trigger line split."""
+    prev = _line("The key steps are listed as follows:", x=59.0, y=120.0).pdf_line
+
+    for marker_sample in (
+        "a) Starting out slowly.",
+        "b) Remembering to breathe.",
+        "b)	 Remembering with tab.",
+        "c) When you are ready.",
+        "A) Primary focus item.",
+        "B) Secondary focus item.",
+        "1. Taking the second dose.",
+        "2. Follow up next morning.",
+        "1) First numbered clause.",
+        "(a) Parenthesized sub-option.",
+        "a. Standard letter list marker.",
+        "b. Second letter list marker.",
+        "• Drinking a glass of water.",
+    ):
+        curr = _line(marker_sample, x=59.0, y=100.0).pdf_line
+        assert line_starts_with_list_marker(curr) is True
+        assert should_split_line_pair(
+            prev,
+            curr,
+            median_width=200.0,
+            split_short_lines=True,
+            short_line_split_factor=0.5,
+        )
+
+
+@pytest.mark.parametrize(
+    ("line_text", "expected_is_marker", "expected_split"),
+    [
+        # Spaced time abbreviations
+        ("a. m. rather than at night.", False, False),
+        ("p. m. before bedtime.", False, False),
+        ("A. M. in the morning.", False, False),
+        ("P. M. late at night.", False, False),
+        # Bare time abbreviations
+        ("a.m on the dot.", False, False),
+        ("p.m sharp.", False, False),
+        ("A.M standard time.", False, False),
+        ("P.M eastern time.", False, False),
+        # Spaced Latin abbreviations
+        ("i. e., when symptoms occur.", False, False),
+        ("e. g., with food or milk.", False, False),
+        # Citations
+        ("p. 42 for instructions.", False, False),
+        ("c. 1920, during the war.", False, False),
+        # Authentic list markers
+        ("a) Starting out slowly.", True, True),
+        ("b) Remembering to breathe.", True, True),
+        ("c) When you are ready.", True, True),
+        ("A) Primary focus item.", True, True),
+        ("1. Taking the second dose.", True, True),
+        ("2. Follow up next morning.", True, True),
+        ("• Drinking a glass of water.", True, True),
+    ],
+)
+def test_paragraph_split_line_wrap_adversarial_matrix(
+    line_text: str, expected_is_marker: bool, expected_split: bool
+):
+    """Adversarial line wrap audit covering abbreviations, citations, and list markers."""
+    prev = _line(
+        "The patient was instructed to take the second pill at 8:00",
+        x=59.0,
+        y=120.0,
+    ).pdf_line
+    curr = _line(line_text, x=59.0, y=100.0).pdf_line
+    assert line_starts_with_list_marker(curr) is expected_is_marker
+    assert (
+        should_split_line_pair(
+            prev,
+            curr,
+            median_width=300.0,
+            split_short_lines=False,
+            short_line_split_factor=0.5,
+        )
+        is expected_split
+    )
 
 
 def _multi(lines, *, region_id: str, render_order: int = 0) -> PdfParagraph:

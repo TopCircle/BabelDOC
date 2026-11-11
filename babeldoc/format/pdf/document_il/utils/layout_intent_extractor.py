@@ -533,7 +533,7 @@ class LayoutIntentExtractor:
             label not in _TITLE_CLASS_LABELS
             and not is_heading
             and n_lines >= 2
-            and n_lines <= 6
+            and n_lines <= 10
             and is_callout_column(para.box)
             and not continues
         ):

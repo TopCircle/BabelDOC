@@ -57,6 +57,9 @@ from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
 from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
     is_pure_numeric_paragraph,
 )
+from babeldoc.format.pdf.document_il.utils.paragraph_helper import (
+    is_pure_punctuation_paragraph,
+)
 from babeldoc.format.pdf.document_il.utils.region_skip import (
     classify_header_footer_skip,
 )
@@ -1097,6 +1100,10 @@ class ILTranslator:
             self.record_skip(page, paragraph, SkipReason.PURE_NUMERIC)
             return None
 
+        if is_pure_punctuation_paragraph(paragraph):
+            self.record_skip(page, paragraph, SkipReason.TOO_SHORT)
+            return None
+
         # Underscore / dot leaders are not a formula in the middle of the title.
         leader_title = paragraph_leader_title(paragraph)
         if leader_title:
@@ -1106,6 +1113,14 @@ class ILTranslator:
                 paragraph.pdf_style,
             )
             return translate_input
+
+        from babeldoc.format.pdf.document_il.utils.toc_rows import (
+            is_pure_leader_paragraph,
+        )
+
+        if is_pure_leader_paragraph(paragraph):
+            self.record_skip(page, paragraph, SkipReason.PLACEHOLDER_ONLY)
+            return None
 
         # Skip paragraphs with only placeholders
         if is_placeholder_only_paragraph(paragraph):

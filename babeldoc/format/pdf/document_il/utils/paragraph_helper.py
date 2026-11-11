@@ -92,3 +92,16 @@ def is_placeholder_only_paragraph(paragraph: il_version_1.PdfParagraph) -> bool:
             return False
 
     return True
+
+
+def is_pure_punctuation_paragraph(paragraph: il_version_1.PdfParagraph) -> bool:
+    """True when a paragraph consists solely of punctuation or symbols (no alphanumeric text)."""
+    if not paragraph or not getattr(paragraph, "unicode", None):
+        return False
+    text = paragraph.unicode.strip()
+    if not text:
+        return False
+    import unicodedata
+
+    return all(unicodedata.category(ch).startswith(("P", "S")) for ch in text)
+

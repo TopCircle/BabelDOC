@@ -135,6 +135,10 @@ def drop_below_display_band(
     """
     if page is None or id(paragraph) in _DISPLAY_IDS:
         return y
+    intent = getattr(paragraph, "layout_intent", None)
+    role = getattr(intent, "role", None) if intent is not None else None
+    if role in (LayoutIntentRole.CALLOUT, LayoutIntentRole.PULL_QUOTE):
+        return y
     bands = _PAGE_BANDS.get(id(page), ())
     if not bands:
         return y
@@ -200,6 +204,24 @@ def uses_rect_column_fill(paragraph) -> bool:
         return False
     if is_gutter_display(paragraph):
         return False
+
+    # Right-margin side callout columns must not fill rect columns
+    intent = getattr(paragraph, "layout_intent", None)
+    role = getattr(intent, "role", None) if intent is not None else None
+    if role in (LayoutIntentRole.CALLOUT, LayoutIntentRole.PULL_QUOTE):
+        return False
+
+    design_box = getattr(intent, "design_box", None) if intent is not None else None
+    check_box = design_box or getattr(paragraph, "box", None)
+    if (
+        check_box is not None
+        and check_box.x is not None
+        and check_box.x2 is not None
+        and float(check_box.x) >= 250.0
+        and (float(check_box.x2) - float(check_box.x)) < 260.0
+    ):
+        return False
+
     intent = getattr(paragraph, "layout_intent", None)
     if (
         intent is None
@@ -216,6 +238,7 @@ def uses_rect_column_fill(paragraph) -> bool:
     if paradigm is PlacementParadigm.SHAPED_POCKET and role not in _FILL_ROLES:
         # No measured lines, and not body/list: leave the stored pin alone.
         return len(_line_widths(paragraph)) >= 2
+
     if paradigm is PlacementParadigm.RECT_REFLOW or role in _FILL_ROLES:
         return True
     return False
@@ -693,6 +716,19 @@ def _push_glyphs_below_bands(paragraphs, page) -> None:
         from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
 
         if id(paragraph) in _DISPLAY_IDS or is_toc_paragraph(paragraph):
+            continue
+        intent = getattr(paragraph, "layout_intent", None)
+        role = getattr(intent, "role", None) if intent is not None else None
+        if role in (LayoutIntentRole.CALLOUT, LayoutIntentRole.PULL_QUOTE):
+            continue
+        check_box = getattr(intent, "design_box", None) or getattr(paragraph, "box", None)
+        if (
+            check_box is not None
+            and check_box.x is not None
+            and check_box.x2 is not None
+            and float(check_box.x) >= 250.0
+            and (float(check_box.x2) - float(check_box.x)) < 260.0
+        ):
             continue
         _push_paragraph_below_bands(paragraph, bands)
 

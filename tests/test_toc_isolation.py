@@ -497,3 +497,79 @@ def test_directory_rows_are_not_pulled_into_a_column():
     flow_rect_columns(stacked)
     assert len(stacked) == 2
     assert _texts(lower) == "Gentle Touching"
+
+
+def test_llt_multiline_toc_entries_and_interrogatives():
+    """TOC entries ending with '?' or continuing tightly across lines remain intact."""
+    header = _para("Table Of Contents", 56, 700, width=150)
+    lines = [
+        _line("Have You Been Groomed to", 400.0, x0=74.0),
+        _line("Come Quickly?", 386.2, x0=74.0),
+        _line("Is It All in Your Head?", 366.4, x0=74.0),
+        _line("Other Options to Cool Things", 346.6, x0=74.0),
+        _line("Down", 332.8, x0=74.0),
+        _line("Technique 2: Establishing", 305.0, x0=56.0),
+        _line("Control of Your Ejaculation", 291.6, x0=56.0),
+        _line("Response", 278.2, x0=56.0),
+    ]
+    block = PdfParagraph(
+        box=Box(x=56, y=270, x2=280, y2=412),
+        pdf_style=PdfStyle(font_id="F", font_size=12.0, graphic_state=None),
+        pdf_paragraph_composition=lines,
+        unicode="titles",
+        layout_label="title",
+    )
+    paras = [header, block]
+    ParagraphFinder(_config()).process_independent_paragraphs(paras, 400.0)
+
+    extracted = [_texts(p) for p in paras]
+    assert extracted == [
+        "Table Of Contents",
+        "Have You Been Groomed toCome Quickly?",
+        "Is It All in Your Head?",
+        "Other Options to Cool ThingsDown",
+        "Technique 2: EstablishingControl of Your EjaculationResponse",
+    ]
+    assert all(p.layout_label == "toc" for p in paras[1:])
+
+
+def test_footer_url_never_captures_or_paints_toc_leaders():
+    """A URL in the footer with page number must never capture or paint dot leaders."""
+    from babeldoc.format.pdf.document_il.utils.toc_rows import capture_toc_leaders
+    from babeldoc.format.pdf.document_il.utils.toc_rows import clear_toc_source
+    from babeldoc.format.pdf.document_il.utils.toc_rows import paint_toc_leaders
+
+    clear_toc_source()
+    footer = _para("www.GabrielleMoore.com", 254.0, 765.0, width=150)
+    page_num = _para("2", 527.0, 765.0, width=10)
+    paras = [footer, page_num]
+    capture_toc_leaders(paras)
+    paint_toc_leaders(paras)
+    # Ensure no leader paragraphs were injected
+    assert len(paras) == 2
+    assert _texts(paras[0]) == "www.GabrielleMoore.com"
+    assert _texts(paras[1]) == "2"
+
+
+def test_is_multi_line_continuation_gaps_and_rules():
+    """Verify vgap thresholds and connector/particle/technique continuation rules."""
+    from babeldoc.format.pdf.document_il.utils.toc_rows import (
+        is_multi_line_continuation,
+    )
+
+    # Gap <= 6.0 pt allows continuation with connector word
+    assert is_multi_line_continuation("Have You Been Groomed to", "Come Quickly?", 4.0)
+    assert is_multi_line_continuation("Breathing Techniques for", "Lasting Longer", 4.0)
+    assert is_multi_line_continuation("Other Options to Cool Things", "Down", 4.0)
+    assert is_multi_line_continuation("Technique 2: Establishing", "Control of Your Ejaculation", 4.0)
+    assert is_multi_line_continuation("Control of Your Ejaculation", "Response", 4.0)
+
+    # Gap > 6.0 pt rejects continuation even if connector word matches
+    assert not is_multi_line_continuation("Have You Been Groomed to", "Come Quickly?", 7.0)
+    assert not is_multi_line_continuation("Have You Been Groomed to", "Come Quickly?", 10.0)
+
+    # Terminal punctuation rejects continuation
+    assert not is_multi_line_continuation("Come Quickly?", "Is It All in Your Head?", 4.0)
+    assert not is_multi_line_continuation("Is It All in Your Head?", "What is Premature Ejaculation,", 4.0)
+
+

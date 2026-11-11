@@ -40,6 +40,28 @@ def is_design_column_role(paragraph: PdfParagraph | None) -> bool:
     return role in (LayoutIntentRole.CALLOUT, LayoutIntentRole.PULL_QUOTE)
 
 
+def is_obstacle_constrained_column(
+    paragraph: PdfParagraph | None,
+    box: Box | None = None,
+) -> bool:
+    """Paragraph beside a figure obstacle with uniform narrow width (e.g. LLT Page 9).
+
+    Must not expand right into the obstacle.
+    """
+    if paragraph is None:
+        return False
+    rm = getattr(paragraph, "reference_metrics", None)
+    widths = getattr(rm, "per_line_widths", None) or []
+    if widths and max(widths) < 350.0:
+        b = box if box is not None else getattr(paragraph, "box", None)
+        if b is not None:
+            bx2 = float(getattr(b, "x2", 612.0) or 612.0)
+            eff_x2 = bx2 - 612.0 if bx2 > 612.0 else bx2
+            if eff_x2 < 450.0:
+                return True
+    return False
+
+
 def clamp_callout_measure_to_design(
     paragraph: PdfParagraph | None,
     layout_box: Box | None,
@@ -66,6 +88,7 @@ def clamp_callout_measure_to_design(
         not is_design_column_role(paragraph)
         and not is_left_gutter_bar(design)
         and not is_left_gutter_bar(layout_box)
+        and not is_obstacle_constrained_column(paragraph, design)
     ):
         return layout_box
     design_x2 = float(design.x2)
@@ -655,6 +678,17 @@ def attempt_chain_for_paragraph(
     widths = getattr(rm, "per_line_widths", None) or []
     if widths and (max(widths) - min(widths)) >= 24.0:
         return [LayoutAttempt.PRIMARY]
+    # Paragraph beside a figure obstacle with uniform narrow width:
+    # (e.g. LLT Page 9: 2 lines ~299pt next to photo [312..613]pt).
+    # Escalating to FULL_MEASURE drops figure zones and walks into the photo.
+    if widths and max(widths) < 350.0:
+        box = getattr(paragraph, "box", None)
+        if box is not None:
+            bx2 = float(getattr(box, "x2", 612.0))
+            eff_x2 = bx2 - 612.0 if bx2 > 612.0 else bx2
+            if eff_x2 < 450.0:
+                return [LayoutAttempt.PRIMARY]
+
     if not widths and paragraph is not None:
         lines = []
         for comp in getattr(paragraph, "pdf_paragraph_composition", None) or []:
@@ -666,6 +700,13 @@ def attempt_chain_for_paragraph(
                         lines.append(w)
         if lines and (max(lines) - min(lines)) >= 24.0:
             return [LayoutAttempt.PRIMARY]
+        if lines and max(lines) < 350.0:
+            box = getattr(paragraph, "box", None)
+            if box is not None:
+                bx2 = float(getattr(box, "x2", 612.0))
+                eff_x2 = bx2 - 612.0 if bx2 > 612.0 else bx2
+                if eff_x2 < 450.0:
+                    return [LayoutAttempt.PRIMARY]
 
     if shape or role is LayoutIntentRole.WRAP_COLUMN:
         return [LayoutAttempt.PRIMARY, LayoutAttempt.FULL_MEASURE]
@@ -769,6 +810,34 @@ def full_measure_layout_box(
         target_w = design_w
     else:
         target_w = max(design_w, min_body_width, min(460.0, page_w * 0.72))
+        # Cap right edge against any figure obstacle overlapping vertically on the right
+        if page is not None and layout_box is not None:
+            py0 = float(layout_box.y) if layout_box.y is not None else 0.0
+            py1 = float(layout_box.y2) if layout_box.y2 is not None else 792.0
+            obstacle_boxes = []
+            for form in getattr(page, "pdf_form", None) or []:
+                if (
+                    getattr(form, "form_type", None) == "image"
+                    and getattr(form, "box", None) is not None
+                ):
+                    obstacle_boxes.append(form.box)
+            for fig in getattr(page, "pdf_figure", None) or []:
+                if getattr(fig, "box", None) is not None:
+                    obstacle_boxes.append(fig.box)
+            shift = 612.0 if left > 600.0 else 0.0
+            for obox in obstacle_boxes:
+                if (
+                    obox.x is not None
+                    and obox.y is not None
+                    and obox.y2 is not None
+                ):
+                    ox = float(obox.x) + shift
+                    if float(obox.y) < py1 and float(obox.y2) > py0:
+                        if (
+                            ox > left
+                            and ox < left + target_w
+                        ):
+                            target_w = max(design_w, ox - left - 8.0)
     right = min(page_right - 16.0, left + target_w)
     if right <= left + 50.0:
         right = min(page_right - 16.0, left + min_body_width)

@@ -164,6 +164,30 @@ def pack_rect_flow(page, paragraph_gap: float | None = None) -> None:
                     paragraph,
                     _break_gap(link, paragraph_gap),
                 )
+                if dy > 0.0:
+                    from babeldoc.format.pdf.document_il.utils.paragraph_gap_stack import (
+                        _clamp_dy_against_obstacles,
+                    )
+
+                    dy = _clamp_dy_against_obstacles(
+                        paragraph,
+                        dy,
+                        by_region.values(),
+                        _break_gap(link, paragraph_gap),
+                        page=page,
+                    )
+                elif dy < 0.0:
+                    pbox = getattr(paragraph, "box", None)
+                    if pbox is not None and getattr(pbox, "y", None) is not None:
+                        crop = getattr(page, "cropbox", None) if page is not None else None
+                        footer_limit = 48.0
+                        if crop and getattr(crop, "box", None) and crop.box.y is not None:
+                            footer_limit = max(float(crop.box.y) + 48.0, 48.0)
+                        max_allowed_drop = float(pbox.y) - footer_limit
+                        if max_allowed_drop < 0:
+                            dy = 0.0
+                        elif -dy > max_allowed_drop:
+                            dy = -max_allowed_drop
             _shift(paragraph, dy)
             cursor_chain = link.column_chain_id
             cursor_paragraph = paragraph

@@ -10,10 +10,12 @@ stays on the figure, including a stair that has no figure link yet.
 from __future__ import annotations
 
 import statistics
+from collections.abc import Sequence
 from dataclasses import replace
 
 from babeldoc.format.pdf.document_il.utils.layout_plan.geometry import geometry_eligible
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import ColumnLink
+from babeldoc.format.pdf.document_il.utils.layout_plan.model import FigureBox
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import LayoutFacts
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import LayoutPlan
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import ParagraphGapLink
@@ -21,8 +23,10 @@ from babeldoc.format.pdf.document_il.utils.layout_plan.model import PocketLink
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import Region
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import RegionDecision
 from babeldoc.format.pdf.document_il.utils.layout_plan.neighbors import blocked
+from babeldoc.format.pdf.document_il.utils.layout_plan.neighbors import bottom
 from babeldoc.format.pdf.document_il.utils.layout_plan.neighbors import left_edge
 from babeldoc.format.pdf.document_il.utils.layout_plan.neighbors import next_below
+from babeldoc.format.pdf.document_il.utils.layout_plan.neighbors import top
 
 
 def with_paragraph_gap_links(facts: LayoutFacts, plan: LayoutPlan) -> LayoutPlan:
@@ -68,6 +72,8 @@ def paragraph_gap_links(
     for region in bodies:
         below = next_below(region, bodies, left_edge)
         if below is None or blocked(region, below, obstacles, left_edge):
+            continue
+        if _figure_blocks(region, below, facts.figures):
             continue
         if _already_seated(
             region.region_id,
@@ -178,3 +184,28 @@ def _line_pitch(lines) -> float:
     if not steps:
         return 0.0
     return float(statistics.median(steps))
+
+
+def _figure_blocks(
+    upper: Region, lower: Region, figures: Sequence[FigureBox]
+) -> bool:
+    """True when an image or figure sits between upper and lower with horizontal overlap."""
+    if not figures:
+        return False
+    high = bottom(upper)
+    low = top(lower)
+    if high <= low:
+        return False
+    ux0 = left_edge(upper)
+    ux1 = max(line.x1 for line in upper.lines)
+    lx0 = left_edge(lower)
+    lx1 = max(line.x1 for line in lower.lines)
+    col_x0 = min(ux0, lx0)
+    col_x1 = max(ux1, lx1)
+
+    for fig in figures:
+        if fig.y1 > low and fig.y0 < high:
+            overlap = min(col_x1, fig.x1) - max(col_x0, fig.x0)
+            if overlap >= 16.0:
+                return True
+    return False

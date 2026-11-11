@@ -453,6 +453,77 @@ def test_bullet_hanging_indent_continuation_merges():
     assert "becomes more and|more aroused." in _text(paragraphs[0])
 
 
+def test_alphabetical_list_marker_hanging_indent_merges():
+    """Page 15: marker 'b)' / 'c)' at x=128pt and indented body at x=146pt must merge."""
+    # List item b)
+    upper_b = _para(
+        _line(
+            "b)\t Remembering your deep breathing techniques, start to take",
+            x=128.0,
+            y=600.0,
+            x2=522.0,
+        )
+    )
+    lower_b = _para(
+        _line(
+            "things to the next level, but still steering clear of what’s below",
+            x=146.0,
+            y=584.0,
+            x2=556.0,
+        )
+    )
+    paras_b = [upper_b, lower_b]
+    repair_broken_sentences(paras_b)
+    assert len(paras_b) == 1
+    assert "start to take|things to the next level" in _text(paras_b[0])
+
+    # List item c)
+    upper_c = _para(
+        _line(
+            "c)\t When you finally get below the belt, spend some time pleasuring",
+            x=128.0,
+            y=500.0,
+            x2=552.0,
+        )
+    )
+    lower_c = _para(
+        _line(
+            "her before even allowing her to touch you back. If she questions",
+            x=146.0,
+            y=484.0,
+            x2=556.0,
+        )
+    )
+    paras_c = [upper_c, lower_c]
+    repair_broken_sentences(paras_c)
+    assert len(paras_c) == 1
+    assert "pleasuring|her before even allowing" in _text(paras_c[0])
+
+
+def test_consecutive_alphabetical_list_items_stay_split():
+    """Consecutive list items 'b)' and 'c)' must remain separate paragraphs."""
+    item_b = _para(
+        _line(
+            "b)\t Remembering your deep breathing techniques, as you do.",
+            x=128.0,
+            y=600.0,
+            x2=522.0,
+        )
+    )
+    item_c = _para(
+        _line(
+            "c)\t When you finally get below the belt, spend some time pleasuring",
+            x=128.0,
+            y=560.0,
+            x2=552.0,
+        )
+    )
+    paras = [item_b, item_c]
+    repair_broken_sentences(paras)
+    assert len(paras) == 2
+
+
+
 
 
 

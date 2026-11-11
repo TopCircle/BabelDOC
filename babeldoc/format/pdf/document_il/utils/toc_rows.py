@@ -178,6 +178,75 @@ def is_toc_page_header(text: str | None) -> bool:
     return bool(_TOC_PAGE_HEADER_RE.search(raw))
 
 
+_OPEN_CONNECTORS = frozenset(
+    {
+        "to",
+        "for",
+        "of",
+        "in",
+        "with",
+        "that",
+        "at",
+        "on",
+        "and",
+        "or",
+        "from",
+        "by",
+        "as",
+        "into",
+        "about",
+        "when",
+        "is",
+        "are",
+        "was",
+        "were",
+        "have",
+        "has",
+        "had",
+        "be",
+        "been",
+        "doesn’t",
+        "doesn't",
+        "can’t",
+        "can't",
+        "won’t",
+        "won't",
+        "shouldn’t",
+        "couldn’t",
+    }
+)
+_PARTICLES = frozenset(
+    {"down", "up", "out", "off", "in", "away", "response", "work", "again"}
+)
+_TECHNIQUE_RE = re.compile(
+    r"^(?:technique|chapter|part|section)\s+\d+[:\s]", re.IGNORECASE
+)
+
+
+def is_multi_line_continuation(
+    prev_text: str, curr_text: str, vgap: float
+) -> bool:
+    """True when curr_text continues prev_text as part of a multi-line TOC entry."""
+    if vgap > 6.0:
+        return False
+    prev_t = prev_text.strip()
+    curr_t = curr_text.strip()
+    if not prev_t or not curr_t:
+        return False
+    if prev_t[-1] in ".?!…:;" or prev_t.endswith("..."):
+        return False
+    words = prev_t.split()
+    if words and words[-1].lower() in _OPEN_CONNECTORS:
+        return True
+    if prev_t[-1] in ",-–—":
+        return True
+    if _TECHNIQUE_RE.match(prev_t) and not _TECHNIQUE_RE.match(curr_t):
+        return True
+    if curr_t.lower() in _PARTICLES:
+        return True
+    return False
+
+
 def is_toc_row(line: PdfLine | None) -> bool:
     """One directory row: a page number, a leader, or a short title with neither.
 
@@ -189,12 +258,13 @@ def is_toc_row(line: PdfLine | None) -> bool:
     if not text or len(text) > _TOC_SHORT_LINE:
         return False
     if text_ends_sentence(text):
-        return False
+        if not (text.endswith(("?", "!", "…")) or text.endswith("...")):
+            return False
     lowered = text.lower()
-    if lowered.startswith("www.") or "://" in lowered:
+    if lowered.startswith("www.") or "://" in lowered or ".com" in lowered:
         return False
     first = text[0]
-    return first.isupper() or first.isdigit()
+    return first.isupper() or first.isdigit() or first in "“\"'‘"
 
 
 def all_toc_rows(lines: list[PdfLine | None]) -> bool:
@@ -208,7 +278,7 @@ def _starts_like_label(line: PdfLine) -> bool:
     if not text:
         return False
     first = text[0]
-    return first.isupper() or first.isdigit()
+    return first.isupper() or first.isdigit() or first in "“\"'‘"
 
 
 def _short_label_stack(lines: list[PdfLine]) -> bool:
@@ -217,7 +287,12 @@ def _short_label_stack(lines: list[PdfLine]) -> bool:
         return False
     if any(len(line_text(line).strip()) > _TOC_SHORT_LINE for line in lines):
         return False
-    open_lines = [line for line in lines if not line_ends_sentence(line)]
+    open_lines = [
+        line
+        for line in lines
+        if not line_ends_sentence(line)
+        or line_text(line).strip().endswith(("?", "!", "…"))
+    ]
     if len(open_lines) < 0.8 * len(lines):
         return False
     labels = [line for line in lines if _starts_like_label(line)]
@@ -260,15 +335,30 @@ def toc_label_stays(label: str | None) -> bool:
 
 def is_toc_paragraph(paragraph: PdfParagraph) -> bool:
     """True when this paragraph is a directory row and must not be joined."""
+    from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
+    from babeldoc.format.pdf.document_il.utils.region_skip import is_url_site_chrome
+
+    if is_chrome_paragraph(paragraph) or is_url_site_chrome(paragraph):
+        return False
+    intent = getattr(paragraph, "layout_intent", None)
+    if intent is not None:
+        if getattr(intent, "is_chrome", False):
+            return False
+        role = getattr(intent, "role", None)
+        role_val = getattr(role, "value", role) if role is not None else None
+        if role_val in ("chrome", "running_head_footer"):
+            return False
+    text = (getattr(paragraph, "unicode", None) or "").strip()
+    lowered = text.lower()
+    if lowered.startswith("www.") or "://" in lowered or ".com" in lowered:
+        return False
     label = (getattr(paragraph, "layout_label", None) or "").strip().lower()
     if label == "toc":
         return True
-    intent = getattr(paragraph, "layout_intent", None)
     role = getattr(intent, "role", None) if intent is not None else None
     role_val = getattr(role, "value", role) if role is not None else None
     if role_val == "toc":
         return True
-    text = (getattr(paragraph, "unicode", None) or "").strip()
     if text and (
         _TOC_PAGE_ONLY_RE.fullmatch(text) or _TOC_ENTRY_TAIL_RE.search(text)
     ):
@@ -712,10 +802,19 @@ def clear_toc_source() -> None:
 
 
 def _on_contents_page(paragraphs) -> bool:
-    for paragraph in paragraphs or []:
-        if is_toc_paragraph(paragraph) or is_toc_page_header(_text(paragraph)):
-            return True
-    return False
+    if not paragraphs:
+        return False
+    has_header = False
+    toc_entry_count = 0
+    for paragraph in paragraphs:
+        text = _text(paragraph)
+        if is_toc_page_header(text):
+            has_header = True
+            break
+        if is_toc_paragraph(paragraph):
+            if not _TOC_PAGE_ONLY_RE.fullmatch(text.strip()):
+                toc_entry_count += 1
+    return has_header or toc_entry_count >= 2
 
 
 def _hold(paragraph, on_contents: bool) -> bool:
@@ -920,8 +1019,16 @@ def capture_toc_leaders(paragraphs) -> None:
     The glyph is not sent to translation. Dots stay dots, underscores stay
     a rule. A row with no leader is left empty.
     """
+    from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
+    from babeldoc.format.pdf.document_il.utils.region_skip import is_url_site_chrome
+
     for paragraph in paragraphs or []:
         if _DIGITS.match(_text(paragraph)):
+            continue
+        if is_chrome_paragraph(paragraph) or is_url_site_chrome(paragraph):
+            continue
+        lowered = _text(paragraph).lower()
+        if lowered.startswith("www.") or "://" in lowered or ".com" in lowered:
             continue
         leaders = [
             char for char in _composition_chars(paragraph) if _is_leader_glyph(char)
@@ -1005,6 +1112,28 @@ def _same_line(title, number) -> bool:
     if title_top is None or number_top is None:
         return False
     return abs(title_top - number_top) <= 6.0
+
+
+def is_pure_leader_paragraph(paragraph) -> bool:
+    """True when paragraph consists solely of leader glyphs (dots, underscores, dashes)."""
+    raw = (getattr(paragraph, "unicode", None) or "").strip()
+    if raw and len(raw) >= 2 and all(ch in "_.…·- " for ch in raw):
+        return True
+    visible = [
+        char
+        for char in _composition_chars(paragraph)
+        if _char_text(char).strip()
+    ]
+    if not visible:
+        return False
+    return len(visible) >= 2 and all(_is_leader_glyph(char) for char in visible)
+
+
+def drop_pure_leader_paragraphs(paragraphs: list) -> None:
+    """Remove standalone leader rows after capture_toc_leaders has recorded their stamp."""
+    if not paragraphs:
+        return
+    paragraphs[:] = [p for p in paragraphs if not is_pure_leader_paragraph(p)]
 
 
 def _leader_only(paragraph) -> bool:
@@ -1151,12 +1280,20 @@ def paint_toc_leaders(paragraphs, glyph_for=None) -> None:
     """
     if not paragraphs or not _LEADERS:
         return
+    from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
+    from babeldoc.format.pdf.document_il.utils.region_skip import is_url_site_chrome
+
     numbers = [p for p in paragraphs if _DIGITS.match(_text(p))]
     period_step = _period_step(_LEADERS.values())
     added = []
     used = set()
     for paragraph in list(paragraphs):
         if _DIGITS.match(_text(paragraph)) or _leader_only(paragraph):
+            continue
+        if is_chrome_paragraph(paragraph) or is_url_site_chrome(paragraph):
+            continue
+        lowered = _text(paragraph).lower()
+        if lowered.startswith("www.") or "://" in lowered or ".com" in lowered:
             continue
         stamp = _stamp_for(paragraph)
         if stamp is None:

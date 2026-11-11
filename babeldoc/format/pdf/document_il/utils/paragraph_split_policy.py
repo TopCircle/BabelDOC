@@ -24,6 +24,7 @@ from babeldoc.format.pdf.document_il.utils.layout_helper import is_bullet_point
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     iter_visual_known_split_pairs,
 )
+from babeldoc.format.pdf.document_il.utils.list_marker_repair import LIST_MARKER_RE
 from babeldoc.format.pdf.document_il.utils.text_recovery import should_join_hyphen_wrap
 
 # arXiv / journal date lines glued under affiliation
@@ -32,6 +33,23 @@ _DATE_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 _TOC_LEADER_RE = re.compile(r"\.{20,}")
+
+# Guard against abbreviations falsely matching LIST_MARKER_RE in line_starts_with_list_marker.
+# Ensures spaced, bare, and uppercase abbreviations (a. m., p. m., i. e., e. g., p. 42) are
+# blocked without false-positive blocking of genuine list items (b. 2 cups, c. 3 eggs,
+# a. M&A, i. E-commerce, b. 1939 was...).
+_ABBREVIATION_GUARD_RE = re.compile(
+    r"^(?:"
+    r"[ap]\s*\.\s*m(?:\.|\b|[,:])"
+    r"|[AP]\s*\.\s*M(?:\.(?!\s*[A-Z][a-z])|(?!\.)\b(?!\s*[A-Z][a-z])|[,:])"
+    r"|(?:i\s*\.\s*e|e\s*\.\s*g)\s*(?:[\.,:]|\b(?!\s*[-–—A-Za-z]))"
+    r"|(?:I\s*\.\s*E|E\s*\.\s*G)\s*(?:[\.,:]|\b(?!\s*[-–—A-Za-z]))"
+    r"|(?:a\s*\.\s*k\s*\.\s*a|A\s*\.\s*K\s*\.\s*A)\s*(?:[\.,:]|\b)"
+    r"|p\s*\.\s*\d+"
+    r"|c\s*\.\s*\d{3,4}(?:\s*(?:BC|AD|BCE|CE)\b|\s*[,;:\)\]]|\s*$)"
+    r"|[bd]\s*\.\s*(?:1[5-9]\d{2}|20\d{2})(?:\s*[,–—\)-]|\s+d\s*\.|\s*$)"
+    r")"
+)
 
 
 def line_text(line: PdfLine | None) -> str:
@@ -457,14 +475,21 @@ def line_fills_differ(prev_line: PdfLine | None, curr_line: PdfLine | None) -> b
 
 
 def line_starts_with_list_marker(line: PdfLine | None) -> bool:
-    """True when the leftmost glyph is a list marker. See ``is_bullet_point``."""
+    """True when the line opens with a list marker (bullet point, letter, or number marker)."""
     chars = line_chars_ltr(line)
-    return bool(chars) and is_bullet_point(chars[0])
+    if bool(chars) and is_bullet_point(chars[0]):
+        return True
+    text = line_text(line).lstrip()
+    if not text:
+        return False
+    if _ABBREVIATION_GUARD_RE.match(text):
+        return False
+    return bool(LIST_MARKER_RE.match(text))
 
 
 def _paragraph_chars(paragraph: PdfParagraph) -> list[PdfCharacter]:
     chars: list[PdfCharacter] = []
-    for comp in paragraph.pdf_paragraph_composition or []:
+    for comp in getattr(paragraph, "pdf_paragraph_composition", None) or []:
         chars.extend(composition_characters(comp))
     return chars
 
@@ -934,6 +959,29 @@ def should_split_line_pair(
     if curr_line is None:
         return False
     if toc_stack and line_text(curr_line).strip():
+        # Keep multi-line directory entry continuation together
+        if is_toc_leader_line(prev_line) or is_toc_entry_line(prev_line):
+            return True
+        if is_toc_entry_line(curr_line):
+            return True
+        vgap = 0.0
+        prev_box = getattr(prev_line, "box", None)
+        curr_box = getattr(curr_line, "box", None)
+        if (
+            prev_box is not None
+            and curr_box is not None
+            and prev_box.y is not None
+            and curr_box.y2 is not None
+        ):
+            vgap = float(prev_box.y) - float(curr_box.y2)
+        prev_t = line_text(prev_line)
+        curr_t = line_text(curr_line)
+        from babeldoc.format.pdf.document_il.utils.toc_rows import (
+            is_multi_line_continuation,
+        )
+
+        if is_multi_line_continuation(prev_t, curr_t, vgap):
+            return False
         return True
 
     if line_starts_with_list_marker(curr_line):

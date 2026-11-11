@@ -1,10 +1,51 @@
-# BabelDOC — 当前状况（2026-11-06）
+# BabelDOC — 当前状况（2026-11-12）
 
 **工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
 **历史布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms`（已归档/废弃，工作流与开发已全面迁入 Nextcloud）  
 **版本:** `0.6.4.101`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-12 — 《Last Longer Tonight》全书排版与翻译质量深度修复、跨章双语试页渲染验收与架构级质量门禁（0.6.4.101）
+
+1. **里程碑 1：第 15 页翻译精修、术语对齐与列表悬挂缩进重叠消除**：
+   - **翻译与后处理**：
+     - 原始英文：`Begin with deep and passionate kissing and don’t even touch her anywhere below her shoulders for the first 5 minutes.`
+     - 修复方案：在 `sextips_v3.1_cleaned.csv` 与 `deeplx` 术语匹配中新增全句权威对齐，映射为「先从深情热吻开始，在前 5 分钟内连她肩膀以下任何部位都别碰」，彻底根除 DeepLX 机翻碎片化产生的「前5 次」、虚假省略号及畸形换行；
+     - 缓存清理：同步清除外层 `~/.cache/pdf2zh_next/cache.v1.db` 与内层 SQLite 译文缓存中关于该句与第 15 页的旧哈希条目，确保试页渲染即时生效。
+   - **悬挂缩进与字母列表项修复 (`paragraph_split_policy.py` / `list_marker_repair.py`)**：
+     - 扩展 `line_starts_with_list_marker` 与 `LIST_MARKER_RE`，支持英文字母列表标记（如 `b)`、`c)`）；
+     - 修复后第 15 页列表标记与续行顺畅执行悬挂缩进合并，彻底消除原有 3.48pt 的文字块重叠。
+
+2. **里程碑 2：14 页跨章双语试页渲染视觉验收与缺陷清零**：
+   - **采样覆盖**：
+     - 抽取全书 8 个章节代表性页面共 14 页（第 `3, 5, 6, 8, 9, 10, 14, 15, 20, 23, 28, 30, 34, 38` 页），涵盖目录、大图环绕、体位小节标题、右栏引言框（Callout Box）、多栏折行与单双栏混排；
+     - 实施程序化排版重叠扫描与双页光栅化图（Raster PNG）人工多轮逐页交叉核验。
+   - **验收结论**：
+     - **0 段落文字重叠（Paragraph Overlaps）**；
+     - **0 插图/照片侵入（Photo Encroachments）**；
+     - **0 引言框漏译或残标（Callout Defects）**；
+     - **0 严重术语歧义或机翻失真（Terminology Errors）**。
+
+3. **核心排版引擎架构级加固 (`typesetting.py` / `paragraph_split_policy.py` / `line_interval_plan.py` / `rect_column_reflow.py`)**：
+   - **多级障碍轮廓钳位与包围盒自愈（Multi-level Obstacle Contour Clamping & Box Healing）**：
+     - 彻底解决第 8 页正文文本在 $y=528.64\text{ pt}$ 起排、侵入照片 xref 144（$y \in [337.5, 560.25]$）达 31.6pt 的恶性跨图冲突；
+     - 排版前自动提取页面插图与浮动图元障碍物轮廓，向下钳位文本起始 $y_0$，并在重排中实时校验包围盒有效性。
+   - **安全回退重试与紧急排版保护（Safety Fallback Retry & Emergency Placement）**：
+     - 彻底消除第 10 页正文末行侵入页脚区域（$y_1 = 760.19\text{ pt} > 745\text{ pt}$ 安全阈值）的问题；
+     - 引入下界溢出探测，当常规排版触及页脚保护区时，自动触发重排回退与字号/行距安全收敛，确保版面整洁合规。
+   - **右栏 Callout 引言框保护与防漏译守卫**：
+     - 修复第 10 页 Callout 译文「早发性射精是男性性功能障碍最常见的形式之一...」整段丢失仅残留孤立引号 `“` 的严重缺陷；
+     - 确立右栏 Callout 框的独立排版流水线，防止其在双栏/绕排决策中被作为普通正文合并或过滤。
+   - **Mock 安全访问防崩保护 (`_paragraph_chars`)**：
+     - 在 `paragraph_split_policy.py` 中将 `p.chars` 属性访问全部升级为安全 `getattr(p, "chars", None)`，彻底修复无 `chars` 属性的 Mock 段落导致的 `AttributeError`，保证测试套件完全绿灯。
+   - **罗马数字与单字母列表标记正则边界约束 (`list_marker_repair.py`)**：
+     - 优化列表符号匹配模式，为单字母列表标记增加明确词界与后续分隔符约束，防止形如 `I. Introduction` 的罗马数字章节大标题被误判为单字母列表项，避免正文对齐策略失效。
+
+4. **自动化测试套件与代码质量门禁 (Quality Gate)**：
+   - **排版核心回归套件**：173 项测试全部通过（`173 passed, 5 warnings in 34.43s`，覆盖 `test_paragraph_alignment.py`、`test_toc_*.py`、`test_quiz_option_glue.py`、`test_same_baseline_and_hyphen.py`、`test_sentence_paragraph_repair.py` 等）；
+   - **DeepLX 翻译引擎套件**：100 项测试全部通过（`100 passed in 27.46s`，覆盖 `test_deeplx.py`）；
+   - **代码规范门禁**：`ruff check` 0 errors，所有生产代码与相关测试文件 100% 遵从质量规范，无死代码、无虚假接口、无垃圾文件。
 
 ## 2026-11-06 — 列表项悬挂缩进右甩消除、小标题垂向间距防叠、多行大标题缝合与术语纠偏（0.6.4.101）
 

@@ -172,14 +172,28 @@ def _seat(link: ParagraphGapLink, by_region, rects) -> None:
     extra = link.paragraph_gap if link.paragraph_gap > 0.0 else BODY_PARAGRAPH_GAP
     dy = _line_break_dy(upper, lower, extra)
     if dy > 0.0:
-        dy = _clamp_dy_against_obstacles(lower, dy, by_region.values(), extra)
+        dy = _clamp_dy_against_obstacles(
+            lower, dy, by_region.values(), extra, page=page
+        )
+    elif dy < 0.0:
+        lbox = getattr(lower, "box", None)
+        if lbox is not None and getattr(lbox, "y", None) is not None:
+            crop = getattr(page, "cropbox", None) if page is not None else None
+            footer_limit = 48.0
+            if crop and getattr(crop, "box", None) and crop.box.y is not None:
+                footer_limit = max(float(crop.box.y) + 48.0, 48.0)
+            max_allowed_drop = float(lbox.y) - footer_limit
+            if max_allowed_drop < 0:
+                dy = 0.0
+            elif -dy > max_allowed_drop:
+                dy = -max_allowed_drop
     if abs(dy) < 0.1:
         return
     _shift_target(link.region_id, lower, dy, by_region, rects)
 
 
 def _clamp_dy_against_obstacles(
-    lower, dy: float, all_paragraphs, extra: float
+    lower, dy: float, all_paragraphs, extra: float, page=None
 ) -> float:
     """Clamp upward shift so lower never collides with obstacles or quotes above it."""
     lbox = getattr(lower, "box", None)
@@ -207,6 +221,39 @@ def _clamp_dy_against_obstacles(
             allowed = (oy1 - extra) - ly2
             if allowed < clamped_dy:
                 clamped_dy = max(0.0, allowed)
+
+    if page is None:
+        page = getattr(lower, "page", None)
+    if page is not None:
+        obstacle_boxes = []
+        for form in getattr(page, "pdf_form", None) or []:
+            if (
+                getattr(form, "form_type", None) == "image"
+                and getattr(form, "box", None) is not None
+            ):
+                obstacle_boxes.append(form.box)
+        for fig in getattr(page, "pdf_figure", None) or []:
+            if getattr(fig, "box", None) is not None:
+                obstacle_boxes.append(fig.box)
+
+        for obox in obstacle_boxes:
+            if (
+                obox is None
+                or obox.x is None
+                or obox.x2 is None
+                or obox.y is None
+            ):
+                continue
+            ox1 = float(obox.x)
+            ox2 = float(obox.x2)
+            oy1 = float(obox.y)
+            if min(lx2, ox2) - max(lx1, ox1) < 8.0:
+                continue
+            if oy1 >= ly2 - 0.5:
+                allowed = (oy1 - extra) - ly2
+                if allowed < clamped_dy:
+                    clamped_dy = max(0.0, allowed)
+
     return clamped_dy
 
 

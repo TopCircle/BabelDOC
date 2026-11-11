@@ -1880,8 +1880,10 @@ class Typesetting:
         self._layout_attempt = layout_attempt
         prev_pocket = getattr(self, "_pocket_link", None)
         prev_edges = getattr(self, "_line_edges", None)
+        prev_page = getattr(self, "_current_page", None)
         self._pocket_link = pocket
         self._line_edges = line_edges
+        self._current_page = page
         try:
             return self._find_optimal_scale_and_layout_inner(
                 paragraph,
@@ -1902,6 +1904,7 @@ class Typesetting:
             self._layout_attempt = prev_attempt
             self._pocket_link = prev_pocket
             self._line_edges = prev_edges
+            self._current_page = prev_page
 
     def _find_optimal_scale_and_layout_inner(
         self,
@@ -2225,13 +2228,6 @@ class Typesetting:
                 )
                 continue
 
-            # 添加与原 retypeset 一致的逻辑检查
-            if not hasattr(paragraph, "debug_id") or not paragraph.debug_id:
-                # 如果 apply_layout 且尚未成功布局，不要提前返回
-                # 否则调用者已清空 pdf_paragraph_composition 会导致空渲染
-                if not apply_layout or final_typeset_units is not None:
-                    return scale, final_typeset_units
-
             # Prefer expanding the box before crushing font size.
             # Axis order from box_expand.prefer_expand_down (OCR / narrow column).
             # Trigger as soon as scale drops below ~full size (not only < 0.7).
@@ -2256,8 +2252,13 @@ class Typesetting:
                 # OA p91: design-column roles AND left-gutter geometry deepen
                 # only — mid-loop must not right-expand into the wrap gutter
                 # even when layout_intent role is missing/BODY.
-                design_col = is_design_column_role(paragraph) or getattr(
-                    self, "_rect_fill_active", False
+                from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+                    is_obstacle_constrained_column,
+                )
+                design_col = (
+                    is_design_column_role(paragraph)
+                    or is_obstacle_constrained_column(paragraph, box)
+                    or getattr(self, "_rect_fill_active", False)
                 )
                 if design_col or is_left_gutter_bar(box):
                     axes = ("down",)
@@ -2305,9 +2306,13 @@ class Typesetting:
                 from babeldoc.format.pdf.document_il.utils.box_expand import (
                     is_left_gutter_bar,
                 )
+                from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+                    is_obstacle_constrained_column,
+                )
                 design_col = (
                     is_design_column_role(paragraph)
                     or is_left_gutter_bar(box)
+                    or is_obstacle_constrained_column(paragraph, box)
                     or getattr(self, "_rect_fill_active", False)
                 )
                 expand_down_first = ocr_mode or design_col
@@ -3053,6 +3058,13 @@ class Typesetting:
                 getattr(self, "translation_config", None)
             ),
         ):
+            return box
+
+        from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+            is_obstacle_constrained_column,
+        )
+
+        if is_obstacle_constrained_column(paragraph, box):
             return box
 
         content_w = 0.0
@@ -4112,7 +4124,15 @@ class Typesetting:
 
         # Pop the saved name face even when this paragraph is then cleared.
         apply_run_in_lead_style(paragraph)
+        from babeldoc.format.pdf.document_il.utils.toc_rows import (
+            is_pure_leader_paragraph,
+        )
         from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
+
+        if is_pure_leader_paragraph(paragraph):
+            paragraph.pdf_paragraph_composition = []
+            paragraph.unicode = ""
+            return
 
         if is_figure_wrap_tip_crumb(paragraph, page_width=pw) and not is_toc_paragraph(
             paragraph
@@ -4155,11 +4175,101 @@ class Typesetting:
                 paragraph.optimal_scale if paragraph.optimal_scale is not None else 1.0
             )
 
-            # 如果有单元无法直接传递，则进行重排版
+            intent = getattr(paragraph, "layout_intent", None)
+            design_box = getattr(intent, "design_box", None) if intent is not None else None
+
+            # 1. Box Healing: 检测 box 是否被 column flow 破坏到页面下方/负坐标区
+            cfg = getattr(self, "translation_config", None)
+            footer_h = float(getattr(cfg, "footer_height", 40.0) or 40.0)
+            footer_limit = max(footer_h + 15.0, 55.0)
+
+            if (
+                paragraph.box is not None
+                and design_box is not None
+                and design_box.y is not None
+                and float(design_box.y) >= footer_limit
+            ):
+                box_y = float(paragraph.box.y) if paragraph.box.y is not None else 0.0
+                box_y2 = float(paragraph.box.y2) if paragraph.box.y2 is not None else 0.0
+                # 若当前 box 已落入负 Y 空间或低于 footer_limit，而 design_box 完好，立即恢复
+                if box_y < 0.0 or box_y2 <= footer_limit or box_y2 < float(design_box.y):
+                    logger.warning(
+                        "Healing corrupted paragraph box [%.1f, %.1f, %.1f, %.1f] -> design_box [%.1f, %.1f, %.1f, %.1f] (debug_id=%s)",
+                        paragraph.box.x,
+                        paragraph.box.y,
+                        paragraph.box.x2,
+                        paragraph.box.y2,
+                        design_box.x,
+                        design_box.y,
+                        design_box.x2,
+                        design_box.y2,
+                        getattr(paragraph, "debug_id", None),
+                    )
+                    paragraph.box = copy.deepcopy(design_box)
+
+            # 保存现有 compositions 并在重排版前清空
+            old_compositions = list(paragraph.pdf_paragraph_composition or [])
             paragraph.pdf_paragraph_composition = []
             self.retypeset_with_precomputed_scale(
                 paragraph, page, typesetting_units, precomputed_scale
             )
+
+            # 2. Safety Fallback: 若排版后 compositions 为空但存在排版单元，使用 design_box 重试
+            if not paragraph.pdf_paragraph_composition and typesetting_units:
+                if design_box is not None and paragraph.box != design_box:
+                    logger.warning(
+                        "Retypeset produced empty composition; retrying at design_box [%.1f, %.1f, %.1f, %.1f] (debug_id=%s)",
+                        design_box.x,
+                        design_box.y,
+                        design_box.x2,
+                        design_box.y2,
+                        getattr(paragraph, "debug_id", None),
+                    )
+                    paragraph.box = copy.deepcopy(design_box)
+                    self.retypeset_with_precomputed_scale(
+                        paragraph, page, typesetting_units, precomputed_scale
+                    )
+
+            # 3. Emergency Placement: 确保绝不丢弃有译文内容的段落
+            if not paragraph.pdf_paragraph_composition and typesetting_units:
+                target_box = design_box or paragraph.box
+                if target_box is not None:
+                    logger.warning(
+                        "Emergency placement for dropped paragraph (debug_id=%s)",
+                        getattr(paragraph, "debug_id", None),
+                    )
+                    min_scale = getattr(self.translation_config, "min_readable_scale", 0.55)
+                    emergency_units, _ = self._layout_typesetting_units(
+                        typesetting_units,
+                        target_box,
+                        min_scale,
+                        1.3,
+                        paragraph,
+                        use_english_line_break=False,
+                    )
+                    if emergency_units:
+                        for u in emergency_units:
+                            chars, curves, forms = u.render()
+                            for c in chars:
+                                paragraph.pdf_paragraph_composition.append(
+                                    PdfParagraphComposition(pdf_character=c)
+                                )
+                            for cu in curves:
+                                if page.pdf_curve is None:
+                                    page.pdf_curve = []
+                                page.pdf_curve.append(cu)
+                            for f in forms:
+                                if page.pdf_form is None:
+                                    page.pdf_form = []
+                                page.pdf_form.append(f)
+                    elif old_compositions:
+                        printable = [
+                            c
+                            for c in old_compositions
+                            if getattr(c, "pdf_character", None) is not None
+                        ]
+                        if printable:
+                            paragraph.pdf_paragraph_composition = printable
 
             # 重排版后，重新设置段落各字符的 render order
             self._update_paragraph_render_order(paragraph)
@@ -4427,6 +4537,66 @@ class Typesetting:
                 anchor = box.x if box is not None and box.x is not None else 0.0
                 return [(float(anchor), float(anchor))]
 
+            levels = getattr(line_edges, "levels", ()) or ()
+            if levels and y_bottom is not None and y_top is not None:
+                y_min = min(float(y_bottom), float(y_top))
+                y_max = max(float(y_bottom), float(y_top))
+                pitch = 18.0
+                tops = [
+                    float(lvl.top)
+                    for lvl in levels
+                    if getattr(lvl, "top", None) is not None
+                ]
+                if len(tops) >= 2:
+                    diffs = [
+                        abs(tops[i] - tops[i + 1])
+                        for i in range(len(tops) - 1)
+                    ]
+                    if diffs:
+                        pitch = sum(diffs) / len(diffs)
+                overlapping = []
+                for idx, lvl in enumerate(levels):
+                    top = float(lvl.top)
+                    below = (
+                        float(levels[idx + 1].top)
+                        if idx + 1 < len(levels)
+                        else top - pitch
+                    )
+                    if top >= y_min and below <= y_max:
+                        overlapping.append(lvl)
+                if overlapping:
+                    min_right = min(float(lvl.right) for lvl in overlapping)
+                    max_left = max(float(lvl.left) for lvl in overlapping)
+                    if min_right < found[1]:
+                        found = (max(found[0], max_left), min_right)
+
+            zone_index = getattr(self, "_current_zone_index", None)
+            if (
+                zone_index
+                and getattr(zone_index, "zones", None)
+                and y_bottom is not None
+                and y_top is not None
+                and y_top > y_bottom
+            ):
+                from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
+                    ZONE_QUOTE,
+                )
+                from babeldoc.format.pdf.document_il.midend.exclusion_zone import (
+                    ExclusionZoneIndex,
+                )
+
+                quote_zones = [
+                    z
+                    for z in zone_index.zones
+                    if getattr(z, "kind", None) == ZONE_QUOTE
+                ]
+                if quote_zones:
+                    carved = ExclusionZoneIndex(quote_zones).get_intervals_at(
+                        float(y_bottom), float(y_top), found[0], found[1]
+                    )
+                    if carved:
+                        return list(carved)
+
             return [found]
         pocket = getattr(self, "_pocket_link", None)
         if pocket is not None:
@@ -4693,7 +4863,10 @@ class Typesetting:
                     shelf_drop,
                 )
 
-                drop_top = shelf_drop(
+                comps = getattr(paragraph, "pdf_paragraph_composition", ()) or ()
+                u_len = len(getattr(paragraph, "unicode", "") or "")
+                is_long_body = len(comps) >= 5 or len(typesetting_units) >= 60 or u_len >= 60
+                drop_top = None if is_long_body else shelf_drop(
                     getattr(edges, "levels", ()) or (),
                     [float(unit.width) * scale for unit in typesetting_units],
                 )
@@ -4976,19 +5149,13 @@ class Typesetting:
             line_start = box.x
 
         # Cap from the line start (after optional snap).
-        # When an obstacle (figure/exclusion zone) constrains available_x2,
-        # available_x2 is already the clearance boundary — allow text to wrap
-        # closely up to it so it does not stay artificially far from the figure.
-        has_obstacle = (
-            box.x2 is not None
-            and available_x2 < (box.x2 - 12.0)
-        )
-        if has_obstacle and line_start == available_x:
-            cap_x2 = available_x2
-        else:
-            cap_x2 = min(available_x2, line_start + ref_w)
-            if box.x is not None:
-                cap_x2 = min(cap_x2, box.x + max_ref * 1.15)
+        # Always enforce reference width ceiling and design box bound,
+        # preventing text from expanding into right-side graphic obstacles.
+        cap_x2 = min(available_x2, line_start + ref_w)
+        if box.x2 is not None:
+            cap_x2 = min(cap_x2, box.x2)
+        if box.x is not None:
+            cap_x2 = min(cap_x2, box.x + max_ref * 1.15)
 
         if cap_x2 >= line_start + 8:
             return line_start, cap_x2
@@ -5171,7 +5338,10 @@ class Typesetting:
                     shelf_drop,
                 )
 
-                drop_top = shelf_drop(
+                comps = getattr(paragraph, "pdf_paragraph_composition", ()) or ()
+                u_len = len(getattr(paragraph, "unicode", "") or "")
+                is_long_body = len(comps) >= 5 or len(typesetting_units) >= 60 or u_len >= 60
+                drop_top = None if is_long_body else shelf_drop(
                     getattr(edges, "levels", ()) or (),
                     [float(unit.width) * scale for unit in typesetting_units],
                 )
@@ -5179,13 +5349,35 @@ class Typesetting:
                     query_h = avg_height if avg_height > 0 else 1.0
                     dropped = float(drop_top) - query_h
                     if dropped < current_y:
-                        delta = float(current_y) - dropped
-                        drops = getattr(self, "_shelf_drops", None)
-                        if drops is None:
-                            drops = {}
-                            self._shelf_drops = drops
-                        drops[id(paragraph)] = delta
-                        current_y = dropped
+                        cur_p = (
+                            getattr(self, "_current_page", None)
+                            or getattr(paragraph, "page", None)
+                        )
+                        page_crop_y = (
+                            float(getattr(cur_p.cropbox.box, "y", 0.0) or 0.0)
+                            if cur_p
+                            and getattr(cur_p, "cropbox", None)
+                            and getattr(cur_p.cropbox, "box", None)
+                            else 0.0
+                        )
+                        footer_lim = max(page_crop_y + 48.0, 48.0)
+                        levels = getattr(edges, "levels", ()) or ()
+                        narrow_w = (
+                            min(max(50.0, float(l.right) - float(l.left)) for l in levels)
+                            if levels
+                            else 150.0
+                        )
+                        total_w = sum(float(unit.width) * scale for unit in typesetting_units)
+                        est_lines = max(1.0, total_w / narrow_w)
+                        est_bottom = dropped - est_lines * (avg_height * (line_skip or 1.5))
+                        if est_bottom >= footer_lim:
+                            delta = float(current_y) - dropped
+                            drops = getattr(self, "_shelf_drops", None)
+                            if drops is None:
+                                drops = {}
+                                self._shelf_drops = drops
+                            drops[id(paragraph)] = delta
+                            current_y = dropped
         box = copy.deepcopy(box)
 
         # Multi-interval pockets for this y-band (PR-06)
@@ -5539,9 +5731,13 @@ class Typesetting:
                     from babeldoc.format.pdf.document_il.utils.box_expand import (
                         is_left_gutter_bar,
                     )
+                    from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+                        is_obstacle_constrained_column,
+                    )
                     skip_orphan_suppress = (
                         is_design_column_role(paragraph)
                         or is_left_gutter_bar(box)
+                        or is_obstacle_constrained_column(paragraph, box)
                         or getattr(self, "_rect_fill_active", False)
                         or self._centered_contour()
                         or getattr(self, "_line_edges", None) is not None
@@ -5856,11 +6052,37 @@ class Typesetting:
                     # A contour keeps going on the samples below a box that
                     # only covers the first lines. Leaving the scan is the
                     # unplaceable check above.
+                    cfg = getattr(self, "translation_config", None)
+                    footer_h = float(getattr(cfg, "footer_height", 40.0) or 40.0)
+                    cur_p = (
+                        getattr(self, "_current_page", None)
+                        or getattr(paragraph, "page", None)
+                    )
+                    page_crop_y = 0.0
                     if (
-                        current_y < box.y
-                        and getattr(self, "_line_edges", None) is None
+                        cur_p
+                        and getattr(cur_p, "cropbox", None)
+                        and getattr(cur_p.cropbox, "box", None)
                     ):
-                        all_units_fit = False
+                        page_crop_y = float(
+                            getattr(cur_p.cropbox.box, "y", 0.0) or 0.0
+                        )
+                    footer_limit = max(page_crop_y + footer_h + 15.0, 55.0)
+
+                    line_edges_link = getattr(self, "_line_edges", None)
+                    if line_edges_link is not None:
+                        levels = getattr(line_edges_link, "levels", ()) or ()
+                        min_level_top = min(
+                            (l.top for l in levels), default=box.y
+                        )
+                        contour_bottom_limit = max(
+                            footer_limit, min_level_top - 20.0
+                        )
+                        if current_y - avg_height * 0.25 < contour_bottom_limit or current_y < footer_limit:
+                            all_units_fit = False
+                    else:
+                        if current_y - avg_height * 0.25 < max(box.y, footer_limit) or current_y < footer_limit:
+                            all_units_fit = False
                         # 这里不要 break，继续排版剩余内容
 
                     # Re-place units pulled off the previous line (e.g. 「（」 before 1989).
@@ -5982,6 +6204,48 @@ class Typesetting:
                 len(typeset_units),
             )
             return typeset_units, False
+
+        # 检查最终渲染的字符底部是否侵入页脚禁区 (footer zone)
+        cfg = getattr(self, "translation_config", None)
+        footer_h = float(getattr(cfg, "footer_height", 40.0) or 40.0)
+        cur_p = (
+            getattr(self, "_current_page", None)
+            or getattr(paragraph, "page", None)
+        )
+        page_crop_y = 0.0
+        if (
+            cur_p
+            and getattr(cur_p, "cropbox", None)
+            and getattr(cur_p.cropbox, "box", None)
+        ):
+            page_crop_y = float(getattr(cur_p.cropbox.box, "y", 0.0) or 0.0)
+        footer_limit = max(page_crop_y + footer_h + 15.0, 55.0)
+        if typeset_units:
+            unit_bottoms = []
+            for u in typeset_units:
+                if (
+                    getattr(u, "char", None) is not None
+                    and getattr(u.char, "box", None) is not None
+                    and u.char.box.y is not None
+                ):
+                    unit_bottoms.append(float(u.char.box.y))
+                elif (
+                    getattr(u, "formular", None) is not None
+                    and getattr(u.formular, "box", None) is not None
+                    and u.formular.box.y is not None
+                ):
+                    unit_bottoms.append(float(u.formular.box.y))
+                elif getattr(u, "y", None) is not None:
+                    fs = float(getattr(u, "font_size", 10.0) or 10.0)
+                    unit_bottoms.append(float(u.y) - fs * 1.45)
+            rendered_bottom = (
+                min(unit_bottoms) if unit_bottoms else float(current_y)
+            )
+            if rendered_bottom < footer_limit or any(
+                getattr(u, "y", None) is not None and float(u.y) < footer_limit + 12.0
+                for u in typeset_units
+            ):
+                all_units_fit = False
 
         return typeset_units, all_units_fit
 
@@ -6332,7 +6596,17 @@ class Typesetting:
             可以扩展到的最小 y 坐标
         """
         # 获取页面的裁剪框作为初始最小限制
-        min_y = page.cropbox.box.y * 1.1
+        cfg = getattr(self, "translation_config", None)
+        footer_h = float(getattr(cfg, "footer_height", 40.0) or 40.0)
+        page_crop_y = (
+            float(page.cropbox.box.y)
+            if page
+            and page.cropbox
+            and page.cropbox.box
+            and page.cropbox.box.y is not None
+            else 0.0
+        )
+        min_y = max(page_crop_y * 1.1, page_crop_y + footer_h + 15.0, 55.0)
         left, right = _downward_x_span(self, current_box)
         link = getattr(self, "_line_edges", None)
         edged = bool(getattr(link, "edges", None)) if link is not None else False

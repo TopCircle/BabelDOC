@@ -82,7 +82,7 @@ MID_LIST_IDEO_PERIOD_RE = re.compile(
 )
 
 _STEP_ORDINAL_PREFIX_RE = re.compile(
-    r"(?:步骤|第|Step|Stage|No\.?|章|节|课)$",
+    r"(?:步骤|第|Step|Stage|No\.?|章|节|课|至|到|从|达|为|是|约|超过|低于|升至|降至|共|有|比|在|等于)$",
     re.IGNORECASE,
 )
 
@@ -229,6 +229,15 @@ def normalize_embedded_numeric_markers_on_page(
         if not text.strip():
             continue
         leading = LIST_MARKER_RE.match(text.lstrip())
+        is_numeric_lead = bool(leading and marker_digit(leading.group(0)))
+        if leading and not is_numeric_lead:
+            # Paragraph already opens with a non-numeric list marker (e.g. 'f) ', '•').
+            # Non-numeric list items must not have mid-sentence numbers treated as embedded
+            # numeric list markers or carried over to the next item.
+            if pending:
+                pending.pop(0)
+            continue
+
         embedded = [
             m for m in EMBEDDED_NUMERIC_MARKER_RE.finditer(text)
             if not _is_step_or_ordinal(text, m)
@@ -244,11 +253,9 @@ def normalize_embedded_numeric_markers_on_page(
                 body = body[:m.start()] + " " + body[m.end():]
             body = re.sub(r"[ \t]{2,}", " ", body).strip()
             if leading:
-                marker_match = re.match(
-                    r"(?:\d{1,3}|[a-dA-D])\s*[\.．。、\)]", text.lstrip()
+                _set_paragraph_unicode(
+                    para, normalize_leading_list_marker_text(body)
                 )
-                marker = normalize_list_marker_token(marker_match.group(0))
-                _set_paragraph_unicode(para, join_list_marker_to_body(marker, body))
             elif pending:
                 _set_paragraph_unicode(para, join_list_marker_to_body(pending.pop(0), body))
             else:
@@ -311,7 +318,7 @@ def strip_trailing_marker_from_compositions(
                 (c.char_unicode or "") for c in formula.pdf_character
             ).strip()
             if marker_key(ftext) == want and re.fullmatch(
-                r"(?:\d{1,3}|[a-dA-D])\s*[\.．。、\)]?", ftext
+                r"(?:\d{1,3}|[a-zA-Z])\s*[\.．。、\)]?", ftext
             ):
                 del comps[i]
                 return True
