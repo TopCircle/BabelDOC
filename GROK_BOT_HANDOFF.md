@@ -3,10 +3,10 @@
 **工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
 **历史布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms`（已归档/废弃，工作流与开发已全面迁入 Nextcloud）  
-**版本:** `0.6.4.101`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.102`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
 
-## 2026-11-12 — 《Last Longer Tonight》全书排版与翻译质量深度修复、跨章双语试页渲染验收与架构级质量门禁（0.6.4.101）
+## 2026-11-12 — 《Last Longer Tonight》全书排版与翻译质量深度修复、跨章双语试页渲染验收与架构级质量门禁（0.6.4.102）
 
 1. **里程碑 1：第 15 页翻译精修、术语对齐与列表悬挂缩进重叠消除**：
    - **翻译与后处理**：

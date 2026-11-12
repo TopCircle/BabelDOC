@@ -46,7 +46,7 @@ export PYTHONPATH=/Users/yun/workspace/BabelDOC-layout-paradigms
 ### 渲染纪律：
 - 试页默认朝向为 **EN 左 | ZH 右**（Canonical 整本则为 ZH 左 | EN 右，切勿混淆）。
 - 绝不要传 `--ignore-cache`，不要 `cat` 大体量翻译日志，不要打印 settings。
-- 磁盘空间敏感：严禁整本跑样，输出目录定向到临时目录，验证完毕后清理不必要的过程文件。
+- 严禁整本跑样，所有双语渲染、光栅图与质检产物**必须保存在当前项目根目录下的 `tmp/` 目录**（已由 `.gitignore` 忽略，例如 `tmp/<task_name>/`），**严禁输出到系统根路径 `/tmp/`**。验证完毕后清理不必要的大体量过程文件。
 
 ---
 
