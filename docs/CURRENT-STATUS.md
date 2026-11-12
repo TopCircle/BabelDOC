@@ -3,8 +3,19 @@
 **工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
 **历史布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms`（已归档/废弃，工作流与开发已全面迁入 Nextcloud）  
-**版本:** `0.6.4.102`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.103`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-12 — 《Last Longer Tonight》全书排版缺陷、装饰引号/步数编号与 DeepLX 翻译质量闭环修复（0.6.4.103）
+
+1. **巨型装饰引号与左栏序号分离（`ornament_split.py` / `paragraph_finder.py` / `outline.py` / `vertical_gap.py` / `same_baseline.py` / `typesetting.py`）**：
+   - 修复第 5、10、23 页右栏 `100pt` 橙色引号 `“` 与 `18pt` 引言合流导致多行合并成单行与假悬挂缩进，保留左栏正文字号/环绕并在重叠检测中忽略装饰引号与纯边角行级无重叠的序号（`rendered_lines_overlap`、`is_decorative_quote_ornament`）。
+   - 独立分离第 9 页 `30pt` 边栏步骤序号 `1..6` 并配对标注 `list`；同时修复 `toc_rows.py` 中 `is_toc_paragraph` 将全书所有无 `toc` 标记的 1–4 位纯数字误判为目录页码的缺陷，使非目录纯数字重新按 `SkipReason.PURE_NUMERIC` 保留原始字体与字号，不再误缩排上浮（目录页第 3 页仍正常保持 `toc` 标注与对齐）。
+2. **DeepLX / 术语表 / 后处理修复（`config/deeplx/` & `config/glossaries/`）**：
+   - 修复第 4/6/10/20/37 页 DeepL 掩码碎片恢复插入多余 `……`、第 14 页标题失真及末尾幽灵省略号；
+   - 修复第 10 页 `post_clean_zh` 中 `_unwrap_quoted_bare_style`，剥离 DeepL 误加在 `〖B0〗` / `〖/B0〗` 外部的空引号 `“”`；
+   - 清理 `sextips_v3.1_cleaned.csv`（并同步 `sextips.csv`）中造成第 34 页 Position 7 未翻及代词丢失的 `the edge` / `fucked by` / `go down on` 词条。
+3. **试页与单测验证**：`pdf2zh_next` 对第 3、5、9、10、23、34 页重渲染光栅图与单元测试（`test_ornament_split.py`、`test_toc*.py`、`test_vertical_gap.py`、`test_deeplx.py`）均已核对通过。
 
 ## 2026-11-12 — 《Last Longer Tonight》全书排版与翻译质量深度修复、跨章双语试页渲染验收与架构级质量门禁（0.6.4.102）
 
