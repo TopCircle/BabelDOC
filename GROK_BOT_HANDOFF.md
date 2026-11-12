@@ -1,10 +1,22 @@
-# BabelDOC — 当前状况（2026-11-12）
+# BabelDOC — 当前状况（2026-11-13）
 
 **工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
 **历史布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms`（已归档/废弃，工作流与开发已全面迁入 Nextcloud）  
-**版本:** `0.6.4.103`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.104`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-13 — 绕排截断、边栏矢量图标锚定与渐变色/Pattern 状态流修复（0.6.4.104）
+
+1. **L 形绕排外包盒与侧边引文隔离（`paragraph_finder.py` / `post_layout_processor.py`）**：
+   - 修复第 5、10、23 页侧边引文旁 L 形正文绕排因外包盒相交被 `ParagraphFinder.fix_overlapping_paragraphs` 从 y 中点硬截断以及被 `OverlapDetector` / `QuoteDetector` 误报塌缩的问题；统一以行级 `rendered_lines_overlap` 判定实际冲突。
+2. **边栏/编号矢量图标随段落首行同步锚定（`icon_curve_anchor.py` / `typesetting.py` / `post_layout_processor.py`）**：
+   - 修复第 11 页 `X` 图标与第 25 页 `(1)`/`(2)` 橙色圆圈在翻译段落重排上移后仍停留在原源坐标的问题；翻译前组元已被替换为 `pdf_same_style_unicode_characters` 时通过 `paragraph.box` + 字号回退估算首行中心并在排版及 `PostLayoutProcessor` 后通过 `relocation_transform` 同步平移图标。
+3. **渐变/Pattern 色彩指令顺序与基础样式继承（`il_creater_active_support.py` / `il_creater.py` / `style_base.py`）**：
+   - 修复 `/P0 scn` 切换到 `/P1 scn` 时 `/GS0 gs` 插在 `/Pattern cs` 与 `/P1 scn` 之间导致部分查看器渲染中断（第 14/25 页）、切换 `rg`/`g`/`k` 残留 `/Pattern cs`，以及标题多 Pattern 交集为空未众数补全导致第 25 页 `"的控制"` 变黑的问题。
+4. **术语表与回归验证（`config/glossaries/` & `tests/`）**：
+   - 在 `sextips.csv` 与 `sextips_v3.1_cleaned.csv` 新增 `premature ejaculation,早泄`（修复第 17 页 `"早泄（射精）"`）。
+   - 新增/更新 `tests/test_style_base.py`、`tests/test_post_layout_processor.py`、`tests/test_icon_curve_anchor.py`，并完成第 `5,10,11,14,17,23,25` 页 `pdf2zh_next` 光栅图与内容流核对。
 
 ## 2026-11-12 — 《Last Longer Tonight》全书排版缺陷、装饰引号/步数编号与 DeepLX 翻译质量闭环修复（0.6.4.103）
 
