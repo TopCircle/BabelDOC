@@ -294,3 +294,20 @@ def separate_same_baseline_overlap(
         return False
     _shift_paragraph_down(move, dy)
     return True
+
+
+def rendered_lines_overlap(
+    p1: PdfParagraph, p2: PdfParagraph, *, min_x: float = 0.5
+) -> bool:
+    """Return True if any rendered line of *p1* overlaps a rendered line of *p2*.
+
+    Falls back to True when either paragraph has no rendered line boxes
+    (e.g. non-char compositions or test stubs), keeping union-bbox behavior.
+    """
+    lines1 = _rendered_line_boxes(p1)
+    lines2 = _rendered_line_boxes(p2)
+    if not lines1 or not lines2:
+        return True
+    return any(
+        _boxes_cross(l1, l2, min_x=min_x) for l1 in lines1 for l2 in lines2
+    )

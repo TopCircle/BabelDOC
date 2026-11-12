@@ -476,6 +476,10 @@ def _hang_indent(lines: Sequence[Sequence[float]]) -> float | None:
     indent = min(rest) - lefts[0]
     if indent < _HANG_MIN:
         return None
+    # A line 0 that ends at or before the indented body wall is a detached
+    # left-column ornament/counter rather than a hanging-indent lead line.
+    if body[0][1] <= min(rest):
+        return None
     return indent
 
 

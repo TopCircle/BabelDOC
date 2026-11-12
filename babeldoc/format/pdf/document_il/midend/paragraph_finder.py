@@ -567,6 +567,21 @@ class ParagraphFinder:
         #         PdfParagraphComposition(pdf_line=new_line)
         #     ]
 
+        # Detach oversized decorative quote glyphs (e.g. 100pt “ beside an 18pt
+        # pull-quote) BEFORE line grouping so tall quotes cannot vertically bridge
+        # multiple lines into one PdfLine.
+        from babeldoc.format.pdf.document_il.utils.ornament_split import (
+            detach_decorative_quotes_and_margin_counters,
+        )
+        from babeldoc.format.pdf.document_il.utils.ornament_split import (
+            detach_oversized_quote_chars,
+        )
+
+        detach_oversized_quote_chars(
+            paragraphs,
+            new_debug_id_factory=generate_base58_id,
+        )
+
         # 第二步：将段落内的字符拆分为行
         for paragraph in paragraphs:
             if (
@@ -591,6 +606,15 @@ class ParagraphFinder:
 
         # 第四步：计算所有行宽度的中位数
         median_width = self.calculate_median_line_width(paragraphs)
+
+        # Detach tall bare margin step counters (e.g. 30pt 1..6 beside 12pt
+        # step paragraphs) and label matching counter/step pairs as list items
+        # before line-split/TOC heuristics see them.
+        detach_decorative_quotes_and_margin_counters(
+            paragraphs,
+            new_debug_id_factory=generate_base58_id,
+            on_update=self.update_paragraph_data,
+        )
 
         # 第五步：处理独立段落
         self.process_independent_paragraphs(paragraphs, median_width)

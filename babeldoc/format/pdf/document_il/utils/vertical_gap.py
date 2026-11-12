@@ -48,6 +48,7 @@ _DISPLAY_TITLE_HEAD_RE = re.compile(
     r"第\s*\d+\s*[部分章节卷]|技巧\s*\d+)",
     re.IGNORECASE,
 )
+_BARE_COUNTER_RE = re.compile(r"\d{1,3}[.)]?")
 
 
 def _iter_chars(paragraph: PdfParagraph):
@@ -105,6 +106,18 @@ def is_display_title(paragraph: PdfParagraph) -> bool:
     intent = getattr(paragraph, "layout_intent", None)
     role = getattr(intent, "role", None) if intent is not None else None
 
+    t = (getattr(paragraph, "unicode", None) or "").strip()
+    if not t:
+        chars = [ch.char_unicode or "" for ch in _iter_chars(paragraph)]
+        t = "".join(chars).strip()
+    if t:
+        # Pure punctuation/ornament (e.g. 100pt pull-quote mark) or standalone
+        # margin step numerals must not act as display headings over adjacent text.
+        if not any(ch.isalnum() for ch in t):
+            return False
+        if _BARE_COUNTER_RE.fullmatch(t) and label != "title":
+            return False
+
     size = max_font_size(paragraph)
     if size >= DISPLAY_TITLE_SIZE_PT:
         return True
@@ -114,10 +127,6 @@ def is_display_title(paragraph: PdfParagraph) -> bool:
     ) and size >= 14.0:
         return True
 
-    t = (getattr(paragraph, "unicode", None) or "").strip()
-    if not t:
-        chars = [ch.char_unicode or "" for ch in _iter_chars(paragraph)]
-        t = "".join(chars).strip()
     if t and _DISPLAY_TITLE_HEAD_RE.match(t) and size >= 12.0:
         return True
 

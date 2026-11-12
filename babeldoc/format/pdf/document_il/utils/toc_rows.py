@@ -137,6 +137,18 @@ def _page_number_gap(line: PdfLine | None) -> bool:
     return _page_number_start(line.pdf_character) is not None
 
 
+def _is_toc_entry_content_line(line: PdfLine | None) -> bool:
+    """True when *line* has a directory leader/tail or right-margin page gap."""
+    if line is None:
+        return False
+    text = line_text(line).strip()
+    if not text:
+        return False
+    if _TOC_ENTRY_TAIL_RE.search(text):
+        return True
+    return _page_number_gap(line)
+
+
 def is_toc_entry_line(line: PdfLine | None) -> bool:
     """One directory row: leader, bare page number, or a number in the right margin."""
     text = line_text(line).strip()
@@ -144,9 +156,7 @@ def is_toc_entry_line(line: PdfLine | None) -> bool:
         return False
     if _TOC_PAGE_ONLY_RE.fullmatch(text):
         return True
-    if _TOC_ENTRY_TAIL_RE.search(text):
-        return True
-    return _page_number_gap(line)
+    return _is_toc_entry_content_line(line)
 
 
 def is_toc_header_text(text: str | None) -> bool:
@@ -359,13 +369,13 @@ def is_toc_paragraph(paragraph: PdfParagraph) -> bool:
     role_val = getattr(role, "value", role) if role is not None else None
     if role_val == "toc":
         return True
-    if text and (
-        _TOC_PAGE_ONLY_RE.fullmatch(text) or _TOC_ENTRY_TAIL_RE.search(text)
-    ):
+    # Only match structural TOC cues here; bare 1-4 digit numbers without
+    # layout/role=="toc" are often step counters or figure counts, not TOC rows.
+    if text and _TOC_ENTRY_TAIL_RE.search(text):
         return True
     for comp in getattr(paragraph, "pdf_paragraph_composition", None) or []:
         line = getattr(comp, "pdf_line", None)
-        if line is not None and is_toc_entry_line(line):
+        if line is not None and _is_toc_entry_content_line(line):
             return True
     return False
 

@@ -3945,6 +3945,16 @@ class Typesetting:
                         continue
                     if not self._bbox_overlap(b1, b2):
                         continue
+                    from babeldoc.format.pdf.document_il.utils.same_baseline import (
+                        rendered_lines_overlap,
+                    )
+                    if not rendered_lines_overlap(p1, p2):
+                        continue
+                    from babeldoc.format.pdf.document_il.utils.ornament_split import (
+                        is_decorative_quote_ornament,
+                    )
+                    if is_decorative_quote_ornament(p1) or is_decorative_quote_ornament(p2):
+                        continue
                     from babeldoc.format.pdf.document_il.utils.layout_intent import (
                         LayoutIntentRole,
                     )
