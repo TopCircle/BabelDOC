@@ -3607,6 +3607,15 @@ class Typesetting:
         try:
             # Column runs were joined before scale search. Measure again
             # after the gap pass moves boxes.
+            from babeldoc.format.pdf.document_il.utils.icon_curve_anchor import (
+                capture_icon_curve_anchors,
+            )
+            from babeldoc.format.pdf.document_il.utils.icon_curve_anchor import (
+                register_page_icon_anchors,
+            )
+            from babeldoc.format.pdf.document_il.utils.icon_curve_anchor import (
+                sync_icon_curve_anchors,
+            )
             from babeldoc.format.pdf.document_il.utils.layout_plan.line_edges import (
                 assign_line_edge_boxes,
             )
@@ -3658,6 +3667,8 @@ class Typesetting:
             from babeldoc.format.pdf.document_il.utils.shaped_pocket_stack import (
                 pack_shaped_pockets,
             )
+
+            icon_anchors = capture_icon_curve_anchors(page)
             mark_display_bands(page)
             yield_to_display_bands(page)
             assign_rect_flow_boxes(page)
@@ -3751,6 +3762,13 @@ class Typesetting:
                 page.pdf_paragraph,
                 glyph_for=self._toc_leader_glyph,
             )
+            sync_icon_curve_anchors(icon_anchors)
+            if getattr(
+                self.translation_config,
+                "enable_post_layout_optimization",
+                False,
+            ):
+                register_page_icon_anchors(page, icon_anchors)
         finally:
             self._page_layout_audit = None
             self._current_page = None

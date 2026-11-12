@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from babeldoc.format.pdf.document_il.il_version_1 import GraphicState
 from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
 from babeldoc.format.pdf.document_il.utils.style_base import calculate_base_style
 from babeldoc.format.pdf.document_il.utils.style_base import filter_styles_for_base
@@ -81,3 +82,28 @@ def test_intersection_then_mode_on_filtered():
     assert base is not None
     assert base.font_id == "Myriad"
     assert abs(base.font_size - 12.5) < 0.02
+
+
+def test_mode_fills_conflicting_pattern_passthrough_instruction():
+    """Conflicting /P0 vs /P1 passthrough strings should mode-fill rather than stay None."""
+    p0 = PdfStyle(
+        font_id="Title",
+        font_size=24.0,
+        graphic_state=GraphicState(
+            passthrough_per_char_instruction="/Pattern cs /P0 scn /GS0 gs "
+        ),
+    )
+    p1 = PdfStyle(
+        font_id="Title",
+        font_size=24.0,
+        graphic_state=GraphicState(
+            passthrough_per_char_instruction="/Pattern cs /P1 scn /GS0 gs "
+        ),
+    )
+    base = calculate_base_style([p0] * 18 + [p1] * 4)
+    assert base is not None
+    assert base.graphic_state is not None
+    assert (
+        base.graphic_state.passthrough_per_char_instruction
+        == "/Pattern cs /P0 scn /GS0 gs "
+    )

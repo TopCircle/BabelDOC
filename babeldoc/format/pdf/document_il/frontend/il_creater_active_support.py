@@ -152,11 +152,93 @@ class LazyPassthroughInstruction:
         return hash(self.materialize())
 
 
-def _latest_without_operator(
+_NON_STROKING_COLOR_OPS = frozenset({"cs", "sc", "scn", "g", "rg", "k"})
+_NON_STROKING_VALUE_OPS = frozenset({"sc", "scn", "g", "rg", "k"})
+_STROKING_COLOR_OPS = frozenset({"CS", "SC", "SCN", "G", "RG", "K"})
+_STROKING_VALUE_OPS = frozenset({"SC", "SCN", "G", "RG", "K"})
+
+
+def _latest_without_operators(
     latest_versions: tuple[tuple[str, int], ...],
-    operator: str,
+    operators: frozenset[str],
 ) -> tuple[tuple[str, int], ...]:
-    return tuple((op, version) for op, version in latest_versions if op != operator)
+    return tuple(
+        (op, version) for op, version in latest_versions if op not in operators
+    )
+
+
+def _superseded_passthrough_operators(operator: str) -> frozenset[str]:
+    if operator in ("g", "rg", "k", "cs"):
+        return _NON_STROKING_COLOR_OPS
+    if operator in ("sc", "scn"):
+        return _NON_STROKING_VALUE_OPS
+    if operator in ("G", "RG", "K", "CS"):
+        return _STROKING_COLOR_OPS
+    if operator in ("SC", "SCN"):
+        return _STROKING_VALUE_OPS
+    return frozenset((operator,))
+
+
+def _paired_colorspace_operator(operator: str) -> str | None:
+    if operator in ("sc", "scn"):
+        return "cs"
+    if operator in ("SC", "SCN"):
+        return "CS"
+    return None
+
+
+def _append_tracked_operator(
+    snapshot: PassthroughSnapshot,
+    operator: str,
+    instruction: PassthroughInstruction,
+    superseded: frozenset[str],
+) -> PassthroughSnapshot:
+    version = snapshot.next_version
+    tail = _PassthroughNode(
+        snapshot.tail,
+        instruction,
+        operator,
+        version,
+        snapshot.event_count + 1,
+    )
+    latest_versions = (
+        *_latest_without_operators(snapshot.latest_versions, superseded),
+        (operator, version),
+    )
+    return PassthroughSnapshot(tail, latest_versions, version + 1)
+
+
+def _rebuild_snapshot(
+    items: Iterable[PassthroughInstruction],
+    replaceable_operators: set[str],
+) -> PassthroughSnapshot:
+    rebuilt = EMPTY_PASSTHROUGH_SNAPSHOT
+    for op, arg in items:
+        if op in replaceable_operators:
+            rebuilt = _append_tracked_operator(
+                rebuilt, op, (op, arg), frozenset((op,))
+            )
+        else:
+            rebuilt = append_passthrough_instruction(rebuilt, (op, arg))
+    return rebuilt
+
+
+def _rebuild_snapshot_with_paired_color(
+    snapshot: PassthroughSnapshot,
+    instruction: PassthroughInstruction,
+    superseded: frozenset[str],
+    cs_op: str,
+) -> PassthroughSnapshot:
+    replaceable = {op for op, _version in snapshot.latest_versions}
+    replaceable.add(instruction[0])
+    filtered = [item for item in snapshot.to_tuple() if item[0] not in superseded]
+    insert_at = len(filtered)
+    for idx in range(len(filtered) - 1, -1, -1):
+        if filtered[idx][0] == cs_op:
+            insert_at = idx + 1
+            break
+    filtered.insert(insert_at, instruction)
+    return _rebuild_snapshot(filtered, replaceable)
 
 
 def _is_snapshot(value) -> bool:
@@ -200,24 +282,27 @@ def replace_first_passthrough_operator(
     operator: str,
     instruction: PassthroughInstruction,
 ) -> PassthroughSnapshot:
+    superseded = _superseded_passthrough_operators(operator)
+    cs_op = _paired_colorspace_operator(operator)
     if _is_snapshot(snapshot):
-        version = snapshot.next_version
-        tail = _PassthroughNode(
-            snapshot.tail,
-            instruction,
-            operator,
-            version,
-            snapshot.event_count + 1,
-        )
-        latest_versions = (
-            *_latest_without_operator(snapshot.latest_versions, operator),
-            (operator, version),
-        )
-        return PassthroughSnapshot(tail, latest_versions, version + 1)
-    for index, (op, _arg) in enumerate(snapshot):
-        if op == operator:
-            return (*snapshot[:index], *snapshot[index + 1 :], instruction)
-    return append_passthrough_instruction(snapshot, instruction)
+        if cs_op is not None and any(
+            op == cs_op for op, _version in snapshot.latest_versions
+        ):
+            return _rebuild_snapshot_with_paired_color(
+                snapshot,
+                instruction,
+                superseded,
+                cs_op,
+            )
+        return _append_tracked_operator(snapshot, operator, instruction, superseded)
+    filtered = [item for item in snapshot if item[0] not in superseded]
+    if cs_op is not None:
+        for idx in range(len(filtered) - 1, -1, -1):
+            if filtered[idx][0] == cs_op:
+                filtered.insert(idx + 1, instruction)
+                return tuple(filtered)
+    filtered.append(instruction)
+    return tuple(filtered)
 
 
 def remove_latest_passthrough_instruction(
@@ -228,13 +313,7 @@ def remove_latest_passthrough_instruction(
         if not instructions:
             return snapshot
         replaceable_operators = {op for op, _version in snapshot.latest_versions}
-        rebuilt = EMPTY_PASSTHROUGH_SNAPSHOT
-        for op, arg in instructions[:-1]:
-            if op in replaceable_operators:
-                rebuilt = replace_first_passthrough_operator(rebuilt, op, (op, arg))
-            else:
-                rebuilt = append_passthrough_instruction(rebuilt, (op, arg))
-        return rebuilt
+        return _rebuild_snapshot(instructions[:-1], replaceable_operators)
     if not snapshot:
         return snapshot
     return snapshot[:-1]

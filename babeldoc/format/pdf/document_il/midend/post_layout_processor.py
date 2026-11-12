@@ -30,6 +30,7 @@ from babeldoc.format.pdf.document_il.il_version_1 import Document
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
 from babeldoc.format.pdf.document_il.il_version_1 import ReferenceMetrics
+from babeldoc.format.pdf.document_il.utils.same_baseline import rendered_lines_overlap
 
 if TYPE_CHECKING:
     from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
@@ -108,6 +109,25 @@ def box_intersection(b1: Box, b2: Box) -> tuple[float, float, float, float] | No
     if ix >= ix2 or iy >= iy2:
         return None
     return ix, iy, ix2, iy2
+
+
+def _paragraphs_actually_overlap(
+    p1: PdfParagraph | None,
+    p2: PdfParagraph | None,
+) -> bool:
+    """Return True when two same-XObject paragraphs intersect per rendered line.
+
+    Shaped wrap paragraphs (e.g. text wrapping alongside a pull-quote or figure
+    with narrower upper lines and full-width lower lines) have an outer union
+    ``rendered_box`` that encloses the wrapped object even though no rendered
+    line collides with it. Checking per-line ink via ``rendered_lines_overlap``
+    prevents detectors from mistaking L-shaped wraps for collisions.
+    """
+    if p1 is None or p2 is None:
+        return True
+    if p1.xobj_id != p2.xobj_id:
+        return False
+    return rendered_lines_overlap(p1, p2)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -441,8 +461,8 @@ class OverlapDetector:
                     para_i = context.paragraphs[pid_i]
                     para_j = context.paragraphs[pid_j]
 
-                    # 跳过不同 XObject 的段落（坐标系独立）
-                    if para_i.xobj_id != para_j.xobj_id:
+                    # 跳过不同 XObject 的段落或仅外接包围盒相交的绕排段落
+                    if not _paragraphs_actually_overlap(para_i, para_j):
                         continue
 
                     label_i = para_i.layout_label or "unknown"
@@ -588,8 +608,8 @@ class QuoteDetector:
                         quote_para = context.get_paragraph(quote_pid)
                         text_para = context.get_paragraph(text_pid)
 
-                        # 跳过不同 XObject 的段落
-                        if quote_para and text_para and quote_para.xobj_id != text_para.xobj_id:
+                        # 跳过不同 XObject 的段落或仅外接包围盒相交的绕排段落
+                        if not _paragraphs_actually_overlap(quote_para, text_para):
                             continue
 
                         issues.append(
@@ -1241,6 +1261,14 @@ class PostLayoutProcessor:
                 )
             ]
             total_detected += len(all_issues)
+
+        if can_fix:
+            from babeldoc.format.pdf.document_il.utils.icon_curve_anchor import (
+                resync_page_icon_curves,
+            )
+
+            for page in self.context.pages:
+                resync_page_icon_curves(page, release=True)
 
         # 合并未修复的 Quote issues 到 all_issues 用于报告
         unfixed_quote_issues = [

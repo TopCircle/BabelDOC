@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
+from babeldoc.format.pdf.document_il.il_version_1 import Cropbox
 from babeldoc.format.pdf.document_il.il_version_1 import Document
+from babeldoc.format.pdf.document_il.il_version_1 import Mediabox
 from babeldoc.format.pdf.document_il.il_version_1 import Page
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
@@ -18,6 +20,7 @@ from babeldoc.format.pdf.document_il.midend.post_layout_processor import Overlap
 from babeldoc.format.pdf.document_il.midend.post_layout_processor import (
     PostLayoutProcessor,
 )
+from babeldoc.format.pdf.document_il.midend.post_layout_processor import QuoteDetector
 
 # ──────────────────────────────────────────────────────────────
 # Helpers
@@ -762,3 +765,75 @@ class TestPostLayoutProcessorFixLoop:
 
         assert report.metrics.issues_fixed == 0
         assert report.metrics.iterations == 0
+
+
+class TestShapedWrapNonCollision:
+    """L 形绕排段落外包盒覆盖侧边引文/插图但行盒未碰撞时不应误报或收缩。"""
+
+    @staticmethod
+    def _build_l_shaped_wrap_page(*, colliding_line: bool = False) -> tuple[Page, PdfParagraph]:
+        quote_para = _make_paragraph(
+            chars=[_make_char(352.0, 355.0, 556.0, 424.0)],
+            layout_box=Box(x=352.0, y=355.0, x2=556.0, y2=424.0),
+            render_order=0,
+        )
+        upper_x2 = 390.0 if colliding_line else 305.0
+        wrap_para = _make_paragraph(
+            chars=[
+                _make_char(56.0, 448.0, 305.0, 462.0),
+                _make_char(56.0, 390.0, upper_x2, 404.0),
+                _make_char(56.0, 360.0, 305.0, 374.0),
+                _make_char(56.0, 180.0, 557.0, 340.0),
+            ],
+            layout_box=Box(x=56.0, y=180.0, x2=557.0, y2=462.0),
+            render_order=1,
+        )
+        page = Page(
+            pdf_paragraph=[quote_para, wrap_para],
+            page_number=4,
+            cropbox=Cropbox(box=Box(x=0.0, y=0.0, x2=612.0, y2=792.0)),
+            mediabox=Mediabox(box=Box(x=0.0, y=0.0, x2=612.0, y2=792.0)),
+        )
+        return page, wrap_para
+
+    def test_shaped_wrap_beside_quote_triggers_zero_issues(self):
+        page, wrap_para = self._build_l_shaped_wrap_page(colliding_line=False)
+        doc = _make_document([page])
+        context = DocumentContext.from_document(doc)
+
+        assert OverlapDetector().detect(context) == []
+        assert QuoteDetector().detect(context) == []
+
+        mock_typesetter = _MockTypesetting()
+        processor = PostLayoutProcessor(context, typesetter=mock_typesetter)
+        processor.register_detector(OverlapDetector())
+        report = processor.run()
+
+        assert report.metrics.issues_detected == 0
+        assert report.metrics.issues_fixed == 0
+        assert mock_typesetter.retypeset_calls == []
+        assert wrap_para.box.y2 == 462.0
+
+    def test_actual_line_collision_inside_wrap_still_detected(self):
+        page, _ = self._build_l_shaped_wrap_page(colliding_line=True)
+        doc = _make_document([page])
+        context = DocumentContext.from_document(doc)
+
+        assert len(OverlapDetector().detect(context)) == 1
+        assert len(QuoteDetector().detect(context)) == 1
+
+    def test_paragraph_finder_keeps_non_colliding_l_shaped_wrap_and_quote(self):
+        """Page 23 regression: ParagraphFinder must not chop L-shaped wrap vs side pull-quote."""
+        from babeldoc.format.pdf.document_il.midend.paragraph_finder import (
+            ParagraphFinder,
+        )
+
+        page, wrap_para = self._build_l_shaped_wrap_page(colliding_line=False)
+        quote_para = page.pdf_paragraph[0]
+        finder = ParagraphFinder.__new__(ParagraphFinder)
+        finder.fix_overlapping_paragraphs(page)
+
+        assert quote_para.box.y == 355.0
+        assert quote_para.box.y2 == 424.0
+        assert wrap_para.box.y == 180.0
+        assert wrap_para.box.y2 == 462.0

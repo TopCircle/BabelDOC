@@ -520,11 +520,18 @@ class ILCreater:
         # logger.debug("xobj_id: %d, on_passthrough_per_char: %s ( %s )", self.xobj_id, operator, args)
         args = [self.parse_arg(arg) for arg in args]
         if self.can_remove_old_passthrough_per_char_instruction(operator):
-            for _i, value in enumerate(self.passthrough_per_char_instruction.copy()):
-                op, arg = value
-                if op == operator:
-                    self.passthrough_per_char_instruction.remove(value)
-                    break
+            from babeldoc.format.pdf.document_il.frontend.il_creater_active_support import (
+                replace_first_passthrough_operator,
+            )
+
+            self.passthrough_per_char_instruction = list(
+                replace_first_passthrough_operator(
+                    tuple(self.passthrough_per_char_instruction),
+                    operator,
+                    (operator, " ".join(args)),
+                )
+            )
+            return
         self.passthrough_per_char_instruction.append((operator, " ".join(args)))
         pass
 

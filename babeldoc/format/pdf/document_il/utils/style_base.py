@@ -175,4 +175,23 @@ def calculate_base_style(
         base.font_id = mode_value([s.font_id for s in work])  # type: ignore[assignment]
     if base.font_size is None:
         base.font_size = mode_value([s.font_size for s in work])  # type: ignore[assignment]
+    if (
+        base.graphic_state is None
+        or base.graphic_state.passthrough_per_char_instruction is None
+    ):
+        mode_passthrough = mode_value(
+            [
+                s.graphic_state.passthrough_per_char_instruction
+                for s in work
+                if s.graphic_state is not None
+                and s.graphic_state.passthrough_per_char_instruction
+            ]
+        )
+        if mode_passthrough is not None:
+            if base.graphic_state is None:
+                base.graphic_state = GraphicState(
+                    passthrough_per_char_instruction=mode_passthrough
+                )
+            else:
+                base.graphic_state.passthrough_per_char_instruction = mode_passthrough
     return base

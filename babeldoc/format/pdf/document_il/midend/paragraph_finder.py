@@ -1544,6 +1544,12 @@ class ParagraphFinder:
                     if self.bbox_overlap(para1.box, para2.box):
                         if self.is_bbox_contain_in_vertical(para1.box, para2.box):
                             continue
+                        from babeldoc.format.pdf.document_il.utils.same_baseline import (
+                            rendered_lines_overlap,
+                        )
+
+                        if not rendered_lines_overlap(para1, para2):
+                            continue
                         # Calculate vertical overlap details
                         overlap_y_start = max(para1.box.y, para2.box.y)
                         overlap_y_end = min(para1.box.y2, para2.box.y2)
