@@ -1,10 +1,21 @@
-# BabelDOC — 当前状况（2026-11-13）
+# BabelDOC — 当前状况（2026-11-16）
 
 **工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
 **历史布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms`（已归档/废弃，工作流与开发已全面迁入 Nextcloud）  
-**版本:** `0.6.4.104`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.105`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-16 — 组合对象纯文本支持、误判页眉正文保护与 CJK 标点间距清洗（0.6.4.105）
+
+1. **组合对象纯文本支持（`il_translator.py`）**：
+   - 修复在 `ILTranslator.get_translate_input()` 中未处理 `pdf_same_style_unicode_characters` 导致经列表修复、句段拆分或合并调试桩的段落落入 `else` 返回 `None` 从而整段漏翻的缺陷（修复 LLT 第 6、9、15、16、31 页等首段/列表项漏翻问题）。
+2. **误判页眉正文保护（`region_skip.py`）**：
+   - 修复 `classify_header_footer_skip()` 中将任意 `abandon` 且长度 ≤80 的段落无条件误杀为页眉的缺陷，增加顶部页眉带与列表项/句式保护（修复 VM 第 23 页首个列表条目漏翻问题）。
+3. **CJK 标点与空格清洗（`mt_token_sanitize.py`）**：
+   - 增加去除 CJK 汉字之间多余空格/`\xa0`、规范 CJK 句尾句号（`射精 . 该` → `射精。该`）、清理全角标点两侧空格及 MT 口吃词清洗规则。
+4. **单测验证（`tests/`）**：
+   - 新增 `tests/test_translation_completeness.py`、`tests/test_region_skip_running_header.py` 与 `tests/test_mt_token_sanitize.py` 覆盖上述场景，52 项测试全数通过。
 
 ## 2026-11-13 — 绕排截断、边栏矢量图标锚定与渐变色/Pattern 状态流修复（0.6.4.104）
 
