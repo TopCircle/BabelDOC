@@ -230,3 +230,15 @@ def test_scrub_formula_glued_latin():
     assert "A点高潮" in aspot
     assert "她的 A点" in aspot or "她的A点" in aspot
     assert normalize_translated_text("介绍e艺术") == "介绍前戏艺术"
+
+
+def test_scrub_cjk_spacing_and_punctuation_debris():
+    # Spacing between CJK characters
+    assert normalize_translated_text("用于 帮助患有早泄的男性 射精") == "用于帮助患有早泄的男性射精"
+    assert normalize_translated_text("该\xa0男子\xa0将开始") == "该男子将开始"
+    # Period after CJK to full stop
+    assert normalize_translated_text("射精 . 其思路是") == "射精。其思路是"
+    assert normalize_translated_text("方法， 用于 帮助 . 该 其思路是") == "方法，用于帮助。其思路是"
+    # Spaces around CJK punctuation
+    assert normalize_translated_text("测试 ， 成功 。") == "测试，成功。"
+

@@ -235,3 +235,47 @@ class TestRealChromeStillSkipped:
             is None
         )
 
+    def test_abandon_bullet_item_not_skipped_as_header(self):
+        """VM p23: Bullet item mislabeled as abandon must not be discarded as header."""
+        page = _page()
+        bullet = _para(
+            "\x12 The cardinal rule for the clit is gentle stimulation.",
+            label="abandon",
+            y=672.3,
+            y2=686.5,
+            font_size=10.0,
+        )
+        assert (
+            classify_header_footer_skip(
+                page,
+                bullet,
+                skip_header=True,
+                skip_footer=True,
+                header_height=40.0,
+                footer_height=40.0,
+            )
+            is None
+        )
+
+    def test_abandon_body_sentence_not_skipped_as_header(self):
+        """A full sentence ending in period mislabeled as abandon is not header chrome."""
+        page = _page()
+        sentence = _para(
+            "This is a body prose sentence that ends with period.",
+            label="abandon",
+            y=683.5,
+            y2=700.0,
+            font_size=11.0,
+        )
+        assert (
+            classify_header_footer_skip(
+                page,
+                sentence,
+                skip_header=True,
+                skip_footer=True,
+                header_height=40.0,
+                footer_height=40.0,
+            )
+            is None
+        )
+

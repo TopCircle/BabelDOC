@@ -339,6 +339,16 @@ def _scrub_mt_debris(text: str, *, keep_formula_placeholders: bool = False) -> s
     out = _MULTI_SPACE_RE.sub(" ", out)
     out = re.sub(r" +\n", "\n", out)
     out = re.sub(r"([^\s]) +([。．.!？?，,；;：:])", r"\1\2", out)
+    # Strip spaces and non-breaking spaces between CJK characters (e.g. "用于 帮助" -> "用于帮助")
+    out = re.sub(r"([\u4e00-\u9fff])[\s\xa0]+([\u4e00-\u9fff])", r"\1\2", out)
+    out = re.sub(r"([\u4e00-\u9fff])[\s\xa0]+([\u4e00-\u9fff])", r"\1\2", out)
+    # Convert ASCII period following CJK to Chinese full stop (e.g. "射精 . 该" -> "射精。该")
+    out = re.sub(r"([\u4e00-\u9fff])[\s\xa0]*\.[\s\xa0]*", r"\1。", out)
+    # Strip spaces between CJK char and fullwidth punctuation
+    out = re.sub(r"([\u4e00-\u9fff])[\s\xa0]+([。，！？；：])", r"\1\2", out)
+    out = re.sub(r"([。，！？；：])[\s\xa0]+([\u4e00-\u9fff])", r"\1\2", out)
+    # Fix common MT stutter
+    out = re.sub(r"该\s*其(思路|想法|方法|方案)", r"其\1", out)
     # Strip illegal punctuation directly after bullet markers ("• ，" -> "• ")
     out = re.sub(
         r"(?m)^([•·●▪◦►▸\x12■⚫⬤◆◇○●◦‣⁃▫\uf643]\s*)[，,。．、：:；;]+",

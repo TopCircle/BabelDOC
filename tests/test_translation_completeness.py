@@ -106,3 +106,124 @@ class TestSentenceRebuild:
         assert helper._translate_each_sentence(source) == (
             "阴道这个词常被用来指外阴。事实上，很多人不知道。"
         )
+
+
+class TestGetTranslateInputWithUnicodeCharacters:
+    def _create_translator(self):
+        import regex
+        from unittest.mock import MagicMock
+        translator = ILTranslator.__new__(ILTranslator)
+        translator.translation_config = MagicMock()
+        translator.translation_config.disable_rich_text_translate = True
+        translator.support_llm_translate = False
+        translator.TranslateInput = ILTranslator.TranslateInput
+        translator._formula_placeholder_pattern = regex.compile(r"\{\s*v\s*\d+\s*\}")
+        translator._style_left_placeholder_pattern = regex.compile(r"<\s*style\s*id\s*=\s*'\s*\d+\s*'\s*>")
+        translator._style_right_placeholder_pattern = regex.compile(r"</\s*style\s*>")
+        return translator
+
+    def test_single_real_unicode_characters_composition(self):
+        from babeldoc.format.pdf.document_il import (
+            PdfParagraph,
+            PdfParagraphComposition,
+            PdfSameStyleUnicodeCharacters,
+            PdfStyle,
+        )
+
+        translator = self._create_translator()
+        style = PdfStyle(font_id="base", font_size=12.0)
+        para = PdfParagraph(
+            unicode="Technique 1: Cooling down",
+            pdf_style=style,
+            pdf_paragraph_composition=[
+                PdfParagraphComposition(
+                    pdf_same_style_unicode_characters=PdfSameStyleUnicodeCharacters(
+                        unicode="Technique 1: Cooling down",
+                        pdf_style=style,
+                        debug_info=False,
+                    )
+                )
+            ],
+        )
+        res = translator.get_translate_input(para, {}, disable_rich_text_translate=True)
+        assert res is not None
+        assert res.unicode == "Technique 1: Cooling down"
+
+    def test_multi_composition_with_debug_stub_ignored(self):
+        from babeldoc.format.pdf.document_il import (
+            PdfParagraph,
+            PdfParagraphComposition,
+            PdfSameStyleCharacters,
+            PdfSameStyleUnicodeCharacters,
+            PdfCharacter,
+            PdfStyle,
+            Box,
+        )
+
+        translator = self._create_translator()
+        style = PdfStyle(font_id="base", font_size=12.0)
+        c1 = PdfCharacter(char_unicode="H", box=Box(x=0, y=0, x2=10, y2=12))
+        c2 = PdfCharacter(char_unicode="i", box=Box(x=10, y=0, x2=15, y2=12))
+        para = PdfParagraph(
+            unicode="Hi",
+            pdf_style=style,
+            pdf_paragraph_composition=[
+                PdfParagraphComposition(
+                    pdf_same_style_characters=PdfSameStyleCharacters(
+                        pdf_style=style,
+                        pdf_character=[c1, c2],
+                    )
+                ),
+                PdfParagraphComposition(
+                    pdf_same_style_unicode_characters=PdfSameStyleUnicodeCharacters(
+                        unicode="fallback_line",
+                        pdf_style=style,
+                        debug_info=True,
+                    )
+                ),
+            ],
+        )
+        res = translator.get_translate_input(para, {"base": style}, disable_rich_text_translate=True)
+        assert res is not None
+        assert res.unicode == "Hi"
+
+    def test_multi_composition_with_real_list_marker(self):
+        from babeldoc.format.pdf.document_il import (
+            PdfParagraph,
+            PdfParagraphComposition,
+            PdfSameStyleCharacters,
+            PdfSameStyleUnicodeCharacters,
+            PdfCharacter,
+            PdfStyle,
+            Box,
+        )
+
+        translator = self._create_translator()
+        style = PdfStyle(font_id="base", font_size=12.0)
+        c1 = PdfCharacter(char_unicode="T", box=Box(x=20, y=0, x2=30, y2=12))
+        c2 = PdfCharacter(char_unicode="e", box=Box(x=30, y=0, x2=40, y2=12))
+        c3 = PdfCharacter(char_unicode="x", box=Box(x=40, y=0, x2=50, y2=12))
+        c4 = PdfCharacter(char_unicode="t", box=Box(x=50, y=0, x2=60, y2=12))
+        para = PdfParagraph(
+            unicode="1. Text",
+            pdf_style=style,
+            pdf_paragraph_composition=[
+                PdfParagraphComposition(
+                    pdf_same_style_unicode_characters=PdfSameStyleUnicodeCharacters(
+                        unicode="1. ",
+                        pdf_style=style,
+                        debug_info=False,
+                    )
+                ),
+                PdfParagraphComposition(
+                    pdf_same_style_characters=PdfSameStyleCharacters(
+                        pdf_style=style,
+                        pdf_character=[c1, c2, c3, c4],
+                    )
+                ),
+            ],
+        )
+        res = translator.get_translate_input(para, {"base": style}, disable_rich_text_translate=True)
+        assert res is not None
+        assert "1. Text" in res.unicode
+

@@ -1183,8 +1183,24 @@ class ILTranslator:
                 # 不需要翻译纯公式
                 return None
             elif composition.pdf_same_style_unicode_characters:
-                # DEBUG INSERT CHAR, NOT TRANSLATE
-                return None
+                ssu = composition.pdf_same_style_unicode_characters
+                if getattr(ssu, "debug_info", False):
+                    # DEBUG INSERT CHAR, NOT TRANSLATE
+                    return None
+                mt_text = (
+                    ssu.unicode
+                    if ssu.unicode is not None
+                    else (paragraph.unicode or "")
+                )
+                translate_input = self.TranslateInput(
+                    mt_text,
+                    [],
+                    getattr(ssu, "pdf_style", None) or paragraph.pdf_style,
+                )
+                translate_input.set_original_placeholder_tokens(
+                    original_placeholder_tokens,
+                )
+                return translate_input
             else:
                 logger.error(
                     f"Unknown composition type. "
@@ -1339,6 +1355,30 @@ class ILTranslator:
                     )
                     chars.append(placeholder.right_placeholder)
                     i_comp += 1
+            elif composition.pdf_same_style_unicode_characters:
+                ssu = composition.pdf_same_style_unicode_characters
+                if getattr(ssu, "debug_info", False):
+                    i_comp += 1
+                    continue
+                comp_style = getattr(ssu, "pdf_style", None) or paragraph.pdf_style
+                base_style = paragraph.pdf_style
+                if (
+                    disable_rich_text_translate
+                    and not is_same_style(comp_style, base_style)
+                    and not is_same_style_except_size(comp_style, base_style)
+                ):
+                    span_id = len(style_spans)
+                    source_text = ssu.unicode or ""
+                    chars.append(f"〖B{span_id}〗")
+                    chars.append(source_text)
+                    chars.append(f"〖/B{span_id}〗")
+                    style_spans.append(
+                        StyleSpan(span_id, comp_style, source_text)
+                    )
+                else:
+                    if ssu.unicode:
+                        chars.append(ssu.unicode)
+                i_comp += 1
             else:
                 logger.error(
                     "Unexpected PdfParagraphComposition type "
@@ -1366,6 +1406,8 @@ class ILTranslator:
         text = assemble_midcap_title_unicode(
             paragraph, chars, para_width=para_w
         )
+        if not text.strip():
+            return None
         if style_spans:
             # Normalize decorative mid-caps and label casing inside style marker spans so MT sees clean words
             # (e.g. 〖B1〗TimE:〖/B1〗 → 〖B1〗Time:〖/B1〗, 〖B1〗aTTEnTion:〖/B1〗 → 〖B1〗Attention:〖/B1〗)

@@ -311,13 +311,25 @@ def classify_header_footer_skip(
     # OA S6: LayoutParser-abandon PART/LEARN bars sit at ~y=683, below the
     # default 40pt header band, so band skip misses them and DeepLX prints
     # reverse-paint soup (``neoart p`` / ``otWart p`` / ``hreetart p``).
-    # Short abandon chrome is not body; keep skip_header on as the switch.
+    # Short abandon chrome in an extended top header band is not body;
+    # do not skip real body sentences or list items mislabeled as abandon.
     if skip_header:
         label = (getattr(paragraph, "layout_label", None) or "").strip().lower()
         if label == "abandon":
             text = (getattr(paragraph, "unicode", None) or "").strip()
             if 0 < len(text) <= 80:
-                return "header"
+                if in_header_band(
+                    page, paragraph, header_height=max(header_height, 120.0)
+                ):
+                    is_bullet = bool(
+                        re.match(
+                            r"^[\x12•·●▪◦►▸■⚫⬤◆◇○●◦‣⁃▫\uf643\*\-]|^\d+[\.\)]|^[a-zA-Z][\.\)]",
+                            text,
+                        )
+                    )
+                    is_sentence = text.endswith((".", "!", "?", "。", "！", "？"))
+                    if not is_bullet and not is_sentence:
+                        return "header"
     return None
 
 
