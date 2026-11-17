@@ -1,10 +1,23 @@
-# BabelDOC — 当前状况（2026-11-16）
+# BabelDOC — 当前状况（2026-11-17）
 
 **工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
 **历史布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms`（已归档/废弃，工作流与开发已全面迁入 Nextcloud）  
-**版本:** `0.6.4.105`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.106`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-17 — 列表图绕排阶梯识别、透明图蒙版绕排保护与 LTR 列表左对齐强制（0.6.4.106）
+
+1. **列表符号图绕排精准识别（`figure_wrap.py` / `layout_intent_extractor.py`）**：
+   - 修复包含引导列表符号（如 `\x12`）且具备显著多行阶梯收缩（Taper）的图绕排段落被前置列表规则一票误否决的问题；增加续行斜率与左侧展开度校验（`cont_left_spread >= 12.0`），使 genuine 阶梯绕排列表项正确获得 `LayoutIntentRole.WRAP_COLUMN`。
+2. **透明度蒙版图（Alpha Mask）绕排形状保护（`layout_intent_extractor.py`）**：
+   - 修复下半版带有整页透明外包盒插图（`smask`）导致重叠段落被 `_is_on_photo` 命中并强制清空 `wrap_shape` 与 `wrap_mode` 的缺陷；对 `WRAP_COLUMN` 角色豁免 `text_on_photo` 清空，保持真实行级绕排轮廓与钉边通道。
+3. **LTR 列表与绕排对齐左锁定（`paragraph_alignment.py` / `typesetting.py`）**：
+   - 修复列表项因尾行跨页满行贴紧右边界被误判为 `right` 对齐导致排版向右大幅推偏形成巨大空白的缺陷；明确从左至右阅读环境下列表项与绕排段落绝对保持 `left` 对齐，中文起始横坐标完全贴合原书插图左轮廓（$x = 199.0 \dots 347.0\,\text{pt}$）。
+4. **单行破损句段合并与装饰引号隔离（`paragraph_finder.py` / `sentence_paragraph_repair.py` / `exclusion_zone.py` / `layout_helper.py`）**：
+   - 增强同基线破损续行以逗号、连字符等标点引导时的合并规则，并在排除区与引文检测中安全隔离独立装饰引号（如巨型装饰字）。
+5. **单测验证（`tests/`）**：
+   - 新增 `TestFigureWrapWithListMarker`、`test_same_line_horizontal_split_with_comma_joins`、`test_wrap_continuation_with_right_margin_fluctuation` 及 `test_decorative_quote_glyph_not_detected_as_quote`，相关套件 251 项测试全数通过。
 
 ## 2026-11-16 — 组合对象纯文本支持、误判页眉正文保护与 CJK 标点间距清洗（0.6.4.105）
 
