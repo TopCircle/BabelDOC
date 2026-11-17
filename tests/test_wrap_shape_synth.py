@@ -7,7 +7,9 @@ from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import LayoutAttempt
-from babeldoc.format.pdf.document_il.utils.line_interval_plan import attempt_chain_for_paragraph
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    attempt_chain_for_paragraph,
+)
 from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
 
 

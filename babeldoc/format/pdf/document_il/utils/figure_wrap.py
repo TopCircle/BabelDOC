@@ -261,8 +261,7 @@ def is_figure_wrap_paragraph(para: il_version_1.PdfParagraph) -> bool:
         _has_list_marker,
     )
 
-    if _has_list_marker(para):
-        return False
+    has_marker = _has_list_marker(para)
     label = (getattr(para, "layout_label", None) or "").strip().lower()
     if label == "toc":
         return False
@@ -270,7 +269,13 @@ def is_figure_wrap_paragraph(para: il_version_1.PdfParagraph) -> bool:
     rm = getattr(para, "reference_metrics", None)
     if rm is not None:
         widths = getattr(rm, "per_line_widths", None) or []
-        if is_figure_wrap_taper(widths):
+        if has_marker:
+            # For list items, line 0 may have hanging bullet indent. Require
+            # continuation lines (widths[1:]) to also exhibit a multi-step taper
+            # so that simple list-hang + short-tail does not trigger false taper.
+            if len(widths) >= 4 and is_figure_wrap_taper(widths[1:]):
+                return True
+        elif is_figure_wrap_taper(widths):
             return True
         # not a clear taper — fall through to line-box geometry (noisy
         # reference widths are possible for fallback-clustered tails)
@@ -299,6 +304,17 @@ def is_figure_wrap_paragraph(para: il_version_1.PdfParagraph) -> bool:
     if len(lines) >= 2 and abs(x2s[0] - x2s[1]) >= 4.0:
         if len(lines) == 2 or (max(x2s[1:]) - min(x2s[1:]) <= 3.0):
             return False
+
+    if has_marker and len(lines) >= 3:
+        cont_xs = xs[1:]
+        cont_x2s = x2s[1:]
+        cont_left_spread = max(cont_xs) - min(cont_xs)
+        cont_right_spread = max(cont_x2s) - min(cont_x2s)
+        right_fixed = cont_left_spread >= 12.0 and cont_right_spread <= 4.0
+        left_fixed = cont_right_spread >= 12.0 and cont_left_spread <= 4.0
+        return right_fixed or left_fixed
+    elif has_marker:
+        return False
 
     left_spread = max(xs) - min(xs)
     right_spread = max(x2s) - min(x2s)

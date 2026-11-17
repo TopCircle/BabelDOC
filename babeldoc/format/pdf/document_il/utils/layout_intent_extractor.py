@@ -260,6 +260,12 @@ class LayoutIntentExtractor:
         # Rule 1 — site chrome (header/footer/URL/page number/abandon).
         if is_chrome_paragraph(para, page):
             return LayoutIntentRole.CHROME
+        # Rule 1.4 — figure-wrap (taper) column; single source of truth.
+        # A list item that wraps around an illustration must be treated spatially
+        # as a WRAP_COLUMN so its wrap contour is preserved.
+        if is_figure_wrap_paragraph(para):
+            return LayoutIntentRole.WRAP_COLUMN
+
         # Rule 1.5 — list items (bullet / numbered). Must precede formula check so
         # symbol/dingbat bullet compositions are never hijacked as math formulas.
         label = (getattr(para, "layout_label", None) or "").strip().lower()
@@ -273,7 +279,7 @@ class LayoutIntentExtractor:
         if label == "toc":
             return LayoutIntentRole.LIST
 
-        # Rule 3 — figure-wrap (taper) column; single source of truth.
+        # Rule 3 — figure-wrap (taper) column (fallback if not matched earlier).
         if is_figure_wrap_paragraph(para):
             return LayoutIntentRole.WRAP_COLUMN
         # Rule 4 — figure caption / title / text.
@@ -447,9 +453,15 @@ class LayoutIntentExtractor:
                             wrap_shape = [(0.0, w)]
         expansion_policy, expansion_limits, overflow_policy = self._project_policy(role)
         is_chrome = role is LayoutIntentRole.CHROME
-        # Chrome + debug stubs never participate in text_on_photo (coding-plan §1.4).
+        # Chrome, debug stubs, and wrap columns never participate in text_on_photo.
+        # A WRAP_COLUMN wraps around an obstacle; treating it as text_on_photo
+        # would wipe out its wrap shape and pin geometry (e.g. transparent alpha images).
         text_on_photo = False
-        if not is_chrome and not is_layout_debug_stub(para):
+        if (
+            not is_chrome
+            and not is_layout_debug_stub(para)
+            and role is not LayoutIntentRole.WRAP_COLUMN
+        ):
             text_on_photo = self._is_on_photo(ink, photo_boxes)
         if text_on_photo:
             # Painted on the figure. Stay in that box: no pin, no widen.

@@ -229,6 +229,19 @@ def detect_paragraph_alignment(
         if left_ratio >= 0.65:
             return "left"
 
+        # List items in LTR languages are always left-aligned.
+        # A bullet/number marker sits at the left edge; continuation lines
+        # must never be right-aligned against the right margin.
+        from babeldoc.format.pdf.document_il.utils.list_marker_repair import (
+            paragraph_opens_as_list,
+        )
+        from babeldoc.format.pdf.document_il.utils.sealed_paragraph_join import (
+            _has_list_marker,
+        )
+
+        if _has_list_marker(para) or paragraph_opens_as_list(para):
+            return "left"
+
         # 2) Shared right edge → right-aligned, but only when the last
         # line is also flush-right. Full lines pinned on the right with a
         # short last line is wrap-around-a-left-obstacle (OA p91 body

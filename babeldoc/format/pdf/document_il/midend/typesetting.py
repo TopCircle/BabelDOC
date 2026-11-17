@@ -2760,10 +2760,31 @@ class Typesetting:
                 return getattr(paragraph, "alignment", None) or "left"
             return "left"
 
-        # Numbered list steps must stay flush-left with hang on wrap lines.
+        # List items (numbered steps or bullet points) must stay flush-left.
         # Short EN hanging items often detect as center → ZH block centers
         # (All Tied Up safety list items 2/5); hang only runs for left.
-        if Typesetting._looks_like_numbered_list_item(paragraph):
+        from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
+        from babeldoc.format.pdf.document_il.utils.list_marker_repair import (
+            paragraph_opens_as_list,
+        )
+        from babeldoc.format.pdf.document_il.utils.sealed_paragraph_join import (
+            _has_list_marker,
+        )
+
+        if (
+            Typesetting._looks_like_numbered_list_item(paragraph)
+            or paragraph_opens_as_list(paragraph)
+            or _has_list_marker(paragraph)
+        ):
+            return "left"
+
+        # Right-pinned or left-pinned wrap columns flow left-to-right within their pocket;
+        # they must not right-align against available_x2.
+        intent = getattr(paragraph, "layout_intent", None)
+        if intent is not None and getattr(intent, "wrap_mode", None) in (
+            WrapMode.RIGHT_FIXED,
+            WrapMode.LEFT_FIXED,
+        ):
             return "left"
 
         alignment = getattr(paragraph, "alignment", None) or "left"

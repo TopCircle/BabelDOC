@@ -1,19 +1,20 @@
 
 """OA p91: wrap pin must still carve left callout exclusion."""
 
-from types import SimpleNamespace
 
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
-from babeldoc.format.pdf.document_il.midend.exclusion_zone import ExclusionZone
-from babeldoc.format.pdf.document_il.midend.exclusion_zone import ExclusionZoneIndex
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import ZONE_FIGURE
 from babeldoc.format.pdf.document_il.midend.exclusion_zone import ZONE_QUOTE
+from babeldoc.format.pdf.document_il.midend.exclusion_zone import ExclusionZone
+from babeldoc.format.pdf.document_il.midend.exclusion_zone import ExclusionZoneIndex
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
 from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.utils.line_interval_plan import LayoutAttempt
-from babeldoc.format.pdf.document_il.utils.line_interval_plan import resolve_line_interval_plan
+from babeldoc.format.pdf.document_il.utils.line_interval_plan import (
+    resolve_line_interval_plan,
+)
 
 
 def test_wrap_pocket_carves_left_quote_zone():

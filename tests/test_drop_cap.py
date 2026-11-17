@@ -217,10 +217,7 @@ def test_oa_p33_todays_drop_cap():
 
 def test_step_heading_not_drop_cap():
     """Capitalized words like 'Step 4.' must not have 'S' treated as a drop cap."""
-    from babeldoc.format.pdf.document_il.utils.drop_cap import (
-        is_drop_cap_candidate,
-        place_drop_caps_before_continuations,
-    )
+    from babeldoc.format.pdf.document_il.utils.drop_cap import is_drop_cap_candidate
 
     chars: list[PdfCharacter | str] = ["〖B0〗"]
     x = 78.0

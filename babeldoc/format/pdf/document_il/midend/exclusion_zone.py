@@ -146,7 +146,13 @@ def _para_is_quote_for_zone(
     from babeldoc.format.pdf.document_il.utils.list_marker_repair import (
         paragraph_opens_as_list,
     )
+    from babeldoc.format.pdf.document_il.utils.ornament_split import (
+        is_decorative_quote_ornament,
+    )
     from babeldoc.format.pdf.document_il.utils.vertical_gap import is_display_title
+
+    if is_decorative_quote_ornament(para):
+        return False
 
     intent = getattr(para, "layout_intent", None)
     label = (getattr(para, "layout_label", None) or "").strip().lower()
@@ -228,6 +234,11 @@ def _collect_quote_zones(page: Page, config: QuoteZoneConfig) -> list[ExclusionZ
         # TAKING CHARGE). xobj_id is NOT the signal — page-level paragraphs
         # use -1 too.
         if is_layout_debug_stub(para):
+            continue
+        from babeldoc.format.pdf.document_il.utils.ornament_split import (
+            is_decorative_quote_ornament,
+        )
+        if is_decorative_quote_ornament(para):
             continue
 
         box = _quote_zone_source_box(para)

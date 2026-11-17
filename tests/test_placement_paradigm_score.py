@@ -49,7 +49,7 @@ def _write_pair(path: Path) -> None:
 
 
 def _run(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603
         [sys.executable, str(SCRIPT), *args],
         cwd=cwd,
         capture_output=True,

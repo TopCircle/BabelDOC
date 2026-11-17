@@ -365,7 +365,9 @@ def _same_line_continues(upper_line: PdfLine, lower_line: PdfLine) -> bool:
         return False
     if text_ends_sentence(upper_text):
         return False
-    stripped_lower = lower_text.lstrip("’'\"“”")
+    if lower_text[0] in ",;:-—.)]":
+        return True
+    stripped_lower = lower_text.lstrip("’'\"“”,;:-— ")
     if (stripped_lower and stripped_lower[0].islower()) or upper_text[-1] in ",;:-—":
         return True
     if lower_text[0] in "’'":
@@ -392,7 +394,7 @@ def _wrap_continues(upper_line: PdfLine, lower_line: PdfLine) -> bool:
         return False
     upper_x2 = float(upper_line.box.x2)
     lower_x2 = float(lower_line.box.x2)
-    if abs(upper_x2 - lower_x2) > _MAX_LEFT_DELTA:
+    if abs(upper_x2 - lower_x2) > 16.0:
         return False
     upper_text = line_text(upper_line).rstrip()
     lower_text = line_text(lower_line).lstrip()
@@ -400,7 +402,9 @@ def _wrap_continues(upper_line: PdfLine, lower_line: PdfLine) -> bool:
         return False
     if text_ends_sentence(upper_text):
         return False
-    stripped_lower = lower_text.lstrip("’'\"“”")
+    if lower_text[0] in ",;:-—.)]":
+        return True
+    stripped_lower = lower_text.lstrip("’'\"“”,;:-— ")
     if (stripped_lower and stripped_lower[0].islower()) or upper_text[-1] in ",;:-—":
         return True
     if lower_text[0] in "’'":

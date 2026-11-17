@@ -216,6 +216,24 @@ class TestIsQuoteBlock:
         # 使用更宽松的阈值
         assert is_quote_block(para, 612.0, narrow_threshold=0.9) is True
 
+    def test_decorative_quote_glyph_not_detected_as_quote(self):
+        """Standalone decorative quotation marks should never be detected as a quote block."""
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
+        from babeldoc.format.pdf.document_il.il_version_1 import PdfStyle
+
+        para = _make_paragraph(
+            chars=[
+                PdfCharacter(
+                    char_unicode="“",
+                    box=Box(x=47.3, y=519.8, x2=89.0, y2=553.4),
+                    pdf_style=PdfStyle(font_size=100.0),
+                )
+            ],
+            layout_box=Box(x=47.3, y=519.8, x2=89.0, y2=553.4),
+        )
+        para.unicode = "“"
+        assert is_quote_block(para, 612.0) is False
+
 
 # ──────────────────────────────────────────────────────────────
 # Test 2: QuoteDetector 检测

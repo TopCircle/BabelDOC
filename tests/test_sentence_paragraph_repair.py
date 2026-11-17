@@ -285,6 +285,47 @@ def test_same_line_horizontal_split_joins():
     assert paragraphs[0].pdf_paragraph_composition[1].pdf_line.box.x2 == 328.0
 
 
+def test_same_line_horizontal_split_with_comma_joins():
+    """A horizontal split where the continuation starts with a comma must merge."""
+    upper = _para(
+        _line("Finally, you can try your standard penetration", x=51, y=591),
+    )
+    upper.pdf_paragraph_composition[0].pdf_line.box.x2 = 327.5
+
+    lower = _para(
+        _line(", which will tap the cervix, but the most important thing", x=328.4, y=591),
+        _line("is to go slow and tap lightly.", x=51, y=573),
+    )
+    lower.pdf_paragraph_composition[0].pdf_line.box.x2 = 575.8
+
+    paragraphs = [upper, lower]
+    repair_broken_sentences(paragraphs)
+    assert len(paragraphs) == 1
+    joined = _text(paragraphs[0])
+    assert "Finally, you can try your standard penetration, which will tap" in joined
+
+
+def test_wrap_continuation_with_right_margin_fluctuation():
+    """Wrap continuation joins when right margins fluctuate within 16pt."""
+    upper = _para(
+        _line("Begin massaging the labia majora with your fingertips, slowly pulling", x=259, y=402),
+    )
+    upper.pdf_paragraph_composition[0].pdf_line.box.x2 = 575.0
+    upper.box.x2 = 575.0
+
+    lower = _para(
+        _line("them apart and massaging them back together.", x=271, y=384),
+    )
+    lower.pdf_paragraph_composition[0].pdf_line.box.x2 = 563.0  # 12pt delta from upper
+    lower.box.x2 = 563.0
+
+    paragraphs = [upper, lower]
+    repair_broken_sentences(paragraphs)
+    assert len(paragraphs) == 1
+    joined = _text(paragraphs[0])
+    assert "slowly pulling|them apart" in joined
+
+
 def test_multi_line_run_in_paragraph_merge():
     """A multi-line run-in title paragraph merges with the body paragraph below."""
 

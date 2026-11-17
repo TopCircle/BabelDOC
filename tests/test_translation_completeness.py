@@ -110,8 +110,9 @@ class TestSentenceRebuild:
 
 class TestGetTranslateInputWithUnicodeCharacters:
     def _create_translator(self):
-        import regex
         from unittest.mock import MagicMock
+
+        import regex
         translator = ILTranslator.__new__(ILTranslator)
         translator.translation_config = MagicMock()
         translator.translation_config.disable_rich_text_translate = True
@@ -123,12 +124,10 @@ class TestGetTranslateInputWithUnicodeCharacters:
         return translator
 
     def test_single_real_unicode_characters_composition(self):
-        from babeldoc.format.pdf.document_il import (
-            PdfParagraph,
-            PdfParagraphComposition,
-            PdfSameStyleUnicodeCharacters,
-            PdfStyle,
-        )
+        from babeldoc.format.pdf.document_il import PdfParagraph
+        from babeldoc.format.pdf.document_il import PdfParagraphComposition
+        from babeldoc.format.pdf.document_il import PdfSameStyleUnicodeCharacters
+        from babeldoc.format.pdf.document_il import PdfStyle
 
         translator = self._create_translator()
         style = PdfStyle(font_id="base", font_size=12.0)
@@ -150,15 +149,13 @@ class TestGetTranslateInputWithUnicodeCharacters:
         assert res.unicode == "Technique 1: Cooling down"
 
     def test_multi_composition_with_debug_stub_ignored(self):
-        from babeldoc.format.pdf.document_il import (
-            PdfParagraph,
-            PdfParagraphComposition,
-            PdfSameStyleCharacters,
-            PdfSameStyleUnicodeCharacters,
-            PdfCharacter,
-            PdfStyle,
-            Box,
-        )
+        from babeldoc.format.pdf.document_il import Box
+        from babeldoc.format.pdf.document_il import PdfCharacter
+        from babeldoc.format.pdf.document_il import PdfParagraph
+        from babeldoc.format.pdf.document_il import PdfParagraphComposition
+        from babeldoc.format.pdf.document_il import PdfSameStyleCharacters
+        from babeldoc.format.pdf.document_il import PdfSameStyleUnicodeCharacters
+        from babeldoc.format.pdf.document_il import PdfStyle
 
         translator = self._create_translator()
         style = PdfStyle(font_id="base", font_size=12.0)
@@ -188,15 +185,13 @@ class TestGetTranslateInputWithUnicodeCharacters:
         assert res.unicode == "Hi"
 
     def test_multi_composition_with_real_list_marker(self):
-        from babeldoc.format.pdf.document_il import (
-            PdfParagraph,
-            PdfParagraphComposition,
-            PdfSameStyleCharacters,
-            PdfSameStyleUnicodeCharacters,
-            PdfCharacter,
-            PdfStyle,
-            Box,
-        )
+        from babeldoc.format.pdf.document_il import Box
+        from babeldoc.format.pdf.document_il import PdfCharacter
+        from babeldoc.format.pdf.document_il import PdfParagraph
+        from babeldoc.format.pdf.document_il import PdfParagraphComposition
+        from babeldoc.format.pdf.document_il import PdfSameStyleCharacters
+        from babeldoc.format.pdf.document_il import PdfSameStyleUnicodeCharacters
+        from babeldoc.format.pdf.document_il import PdfStyle
 
         translator = self._create_translator()
         style = PdfStyle(font_id="base", font_size=12.0)

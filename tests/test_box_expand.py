@@ -5,8 +5,8 @@ from __future__ import annotations
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.utils.box_expand import NARROW_COLUMN_MAX_WIDTH
 from babeldoc.format.pdf.document_il.utils.box_expand import content_expand_ratio_need
-from babeldoc.format.pdf.document_il.utils.box_expand import expand_axis_order
 from babeldoc.format.pdf.document_il.utils.box_expand import expand_axes_for_box
+from babeldoc.format.pdf.document_il.utils.box_expand import expand_axis_order
 from babeldoc.format.pdf.document_il.utils.box_expand import is_left_gutter_bar
 from babeldoc.format.pdf.document_il.utils.box_expand import is_narrow_column
 from babeldoc.format.pdf.document_il.utils.box_expand import is_right_blocked

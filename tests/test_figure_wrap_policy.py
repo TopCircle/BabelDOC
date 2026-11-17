@@ -880,3 +880,22 @@ class TestResolveWrapShapeConeRecovery:
         assert widths[0] >= 250.0
         assert widths[-1] <= 70.0
         assert widths[0] - widths[-1] >= 150.0
+
+
+class TestFigureWrapWithListMarker:
+    def test_list_item_with_multi_line_taper_is_figure_wrap(self):
+        """A bullet list item wrapping around an illustration (e.g. VM p.33) is figure wrap."""
+        widths = [
+            376.7, 352.0, 336.5, 325.7, 315.5, 304.3, 274.0,
+            243.3, 226.9, 212.3, 198.0, 189.6, 181.2, 174.2,
+        ]
+        para = TestFigureWrapParagraph._para(widths=widths)
+        para.unicode = "• During manual stimulation, start with stimulating the labia..."
+        assert is_figure_wrap_paragraph(para) is True
+
+    def test_hanging_indent_list_not_figure_wrap(self):
+        """A regular hanging-indent bullet list item is not figure wrap."""
+        widths = [527.0, 512.0, 512.0, 300.0]
+        para = TestFigureWrapParagraph._para(widths=widths)
+        para.unicode = "• Normal bullet list with hanging indent and a short last line."
+        assert is_figure_wrap_paragraph(para) is False

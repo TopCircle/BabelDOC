@@ -2133,7 +2133,7 @@ def is_quote_block(
     narrow_threshold: float = 0.70,
     indent_threshold: float = 0.15,
     right_margin_threshold: float = 0.05,
-    max_quote_lines: int = 10,
+    max_quote_lines: int = 6,
 ) -> bool:
     """启发式判断段落是否为 Quote（引文框 / pull-quote）块。
 
@@ -2220,6 +2220,13 @@ def is_quote_block(
 
     # 规则 2: 左侧缩进与引文标记
     # 检查文本内容是否包含引号标记（如 “...” 或 "..."）
+    from babeldoc.format.pdf.document_il.utils.ornament_split import (
+        is_decorative_quote_ornament,
+    )
+
+    if is_decorative_quote_ornament(para):
+        return False
+
     has_quote_marks = False
     try:
         text = get_paragraph_unicode(para)
@@ -2228,6 +2235,8 @@ def is_quote_block(
                            '「', '」', '『', '』',
                            '《', '》'}
             stripped = text.strip()
+            if len(stripped) <= 1 and all(ch in quote_chars for ch in stripped):
+                return False
             first_char = stripped[:1] if stripped else ''
             last_char = stripped[-1:] if stripped else ''
             has_quote_marks = (

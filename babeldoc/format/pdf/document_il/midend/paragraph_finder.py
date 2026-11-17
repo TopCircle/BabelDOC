@@ -19,7 +19,6 @@ from babeldoc.format.pdf.document_il.utils.formular_helper import (
 from babeldoc.format.pdf.document_il.utils.layout_helper import (
     HEIGHT_NOT_USFUL_CHAR_IN_CHAR,
 )
-from babeldoc.format.pdf.document_il.utils.layout_helper import SPACE_REGEX
 from babeldoc.format.pdf.document_il.utils.layout_helper import Layout
 from babeldoc.format.pdf.document_il.utils.layout_helper import _cluster_chars_by_line
 from babeldoc.format.pdf.document_il.utils.layout_helper import add_space_dummy_chars
@@ -539,6 +538,11 @@ class ParagraphFinder:
 
     def process_page(self, page: Page):
         self._current_page = page
+        font_name_map = {}
+        if getattr(page, "pdf_font", None):
+            for pf in page.pdf_font:
+                if pf.font_id and pf.name:
+                    font_name_map[pf.font_id] = pf.name
         layout_index, layout_map = build_layout_index(page)
         # 预处理公式布局的标签
         self._preprocess_formula_layouts(page)
@@ -546,7 +550,7 @@ class ParagraphFinder:
         # 第一步：根据 layout 创建 paragraphs
         # 在这一步中，page.pdf_character 中的字符会被移除
         paragraphs = self._group_characters_into_paragraphs(
-            page, layout_index, layout_map
+            page, layout_index, layout_map, font_name_map=font_name_map
         )
         page.pdf_paragraph = paragraphs
 
@@ -838,7 +842,11 @@ class ParagraphFinder:
             i += 1
 
     def _group_characters_into_paragraphs(
-        self, page: Page, layout_index, layout_map
+        self,
+        page: Page,
+        layout_index,
+        layout_map,
+        font_name_map: dict[str, str] | None = None,
     ) -> list[PdfParagraph]:
         paragraphs: list[PdfParagraph] = []
         if page.pdf_paragraph:
@@ -893,39 +901,33 @@ class ParagraphFinder:
                 )
                 and char.char_unicode not in HEIGHT_NOT_USFUL_CHAR_IN_CHAR
             ):
+                prev_c = (
+                    current_paragraph.pdf_paragraph_composition[-1].pdf_character
+                    if current_paragraph.pdf_paragraph_composition
+                    else None
+                )
                 if (
-                    (
-                        char_layout.id != current_layout.id
-                        and not SPACE_REGEX.match(char.char_unicode)
-                        # Don't split if visually on the same line — headings
-                        # often span multiple layout regions but are one visual line.
-                        and not (
-                            current_paragraph.pdf_paragraph_composition
-                            and self._is_same_visual_line(
-                                current_paragraph.pdf_paragraph_composition[
-                                    -1
-                                ].pdf_character,
-                                char,
-                            )
-                        )
+                    prev_c
+                    and current_layout
+                    and self._is_fallback_line_continuation(
+                        prev_c, char, char_layout, current_layout, font_name_map
                     )
-                    or (  # not same xobject — but merge if visually same line
-                        current_paragraph.pdf_paragraph_composition
-                        and current_paragraph.pdf_paragraph_composition[
-                            -1
-                        ].pdf_character.xobj_id
-                        != char.xobj_id
-                        and not self._is_same_visual_line(
-                            current_paragraph.pdf_paragraph_composition[
-                                -1
-                            ].pdf_character,
-                            char,
-                        )
-                    )
-                    or (
-                        is_bullet_point(char)
-                        and not current_paragraph.pdf_paragraph_composition
-                    )
+                ):
+                    pass
+                elif char_layout.id != current_layout.id:
+                    if prev_c and self._is_same_visual_line(prev_c, char):
+                        pass
+                    else:
+                        is_new_paragraph = True
+                elif (
+                    prev_c
+                    and prev_c.xobj_id != char.xobj_id
+                    and not self._is_same_visual_line(prev_c, char)
+                ):
+                    is_new_paragraph = True
+                elif (
+                    is_bullet_point(char)
+                    and not current_paragraph.pdf_paragraph_composition
                 ):
                     is_new_paragraph = True
 
@@ -956,33 +958,98 @@ class ParagraphFinder:
         return paragraphs
 
     @staticmethod
-    def _is_same_visual_line(prev_char: PdfCharacter, curr_char: PdfCharacter) -> bool:
-        """Check if two characters from different XObjects belong to the same line.
+    def _is_fallback_line_continuation(
+        prev_char: PdfCharacter,
+        curr_char: PdfCharacter,
+        curr_layout,
+        prev_layout,
+        font_name_map: dict[str, str] | None = None,
+    ) -> bool:
+        if getattr(curr_layout, "name", None) != "fallback_line":
+            return False
+        if getattr(prev_layout, "name", None) not in (
+            "plain text",
+            "text",
+            "fallback_line",
+        ):
+            return False
+        if is_bullet_point(curr_char):
+            return False
+        prev_box = prev_char.visual_bbox.box
+        curr_box = curr_char.visual_bbox.box
+        # Character must be visually below prev_char
+        vgap = prev_box.y - curr_box.y2
+        if not (-2.0 <= vgap <= 9.5):
+            return False
+        if prev_char.xobj_id != curr_char.xobj_id:
+            return False
+        s1 = (
+            prev_char.pdf_style.font_size
+            if getattr(prev_char, "pdf_style", None)
+            else 12.0
+        )
+        s2 = (
+            curr_char.pdf_style.font_size
+            if getattr(curr_char, "pdf_style", None)
+            else 12.0
+        )
+        if abs((s1 or 12.0) - (s2 or 12.0)) > 1.5:
+            return False
+        f1 = (
+            prev_char.pdf_style.font_id
+            if getattr(prev_char, "pdf_style", None)
+            else None
+        )
+        f2 = (
+            curr_char.pdf_style.font_id
+            if getattr(curr_char, "pdf_style", None)
+            else None
+        )
+        if f1 != f2 and font_name_map:
+            from babeldoc.format.pdf.document_il.utils.face_traits import (
+                normalize_ps_font_name,
+            )
 
-        When a PDF creator emits a single visual line as multiple text objects
-        (e.g. a heading split across objects), the Paragraph Builder should
+            n1 = font_name_map.get(f1, f1)
+            n2 = font_name_map.get(f2, f2)
+            if normalize_ps_font_name(n1) != normalize_ps_font_name(n2):
+                return False
+        return True
+
+    @staticmethod
+    def _is_same_visual_line(prev_char: PdfCharacter, curr_char: PdfCharacter) -> bool:
+        """Check if two characters belong to the same visual line across layouts or XObjects.
+
+        When a single visual line is split across layout regions or text objects
+        (e.g. headings or horizontal splits), the Paragraph Builder should
         merge them rather than creating separate paragraphs.
         """
         prev_box = prev_char.visual_bbox.box
         curr_box = curr_char.visual_bbox.box
 
         # 1. Vertical overlap: characters must share the same visual line
-        y_overlap = min(prev_box.y2, curr_box.y2) - max(prev_box.y, curr_box.y)
-        if y_overlap <= 0:
-            return False
-        prev_h = prev_box.y2 - prev_box.y
-        curr_h = curr_box.y2 - curr_box.y
-        if prev_h <= 0 or curr_h <= 0:
-            return False
-        if y_overlap < min(prev_h, curr_h) * 0.5:
-            return False
+        # If either character is punctuation/symbol or small, check baseline proximity
+        if (
+            (curr_char.char_unicode and curr_char.char_unicode in ",.;:’'\"“”!?-_–—()[]")
+            or (prev_char.char_unicode and prev_char.char_unicode in ",.;:’'\"“”!?-_–—()[]")
+        ):
+            if abs(prev_box.y - curr_box.y) > 4.0:
+                return False
+        else:
+            y_overlap = min(prev_box.y2, curr_box.y2) - max(prev_box.y, curr_box.y)
+            if y_overlap <= 0:
+                return False
+            prev_h = prev_box.y2 - prev_box.y
+            curr_h = curr_box.y2 - curr_box.y
+            if prev_h <= 0 or curr_h <= 0:
+                return False
+            if y_overlap < min(prev_h, curr_h) * 0.4:
+                return False
 
         # 2. Horizontal proximity: must be close, not columns apart
         gap = curr_box.x - prev_box.x2
         char_w = prev_box.x2 - prev_box.x
-        if char_w <= 0:
-            return False
-        if gap > char_w * 5:  # more than 5 char widths → different column
+        if gap > max(char_w * 5, 25.0):
             return False
 
         # 3. Similar font size: same visual importance level
