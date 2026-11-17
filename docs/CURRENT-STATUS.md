@@ -18,6 +18,8 @@
    - 增强同基线破损续行以逗号、连字符等标点引导时的合并规则，并在排除区与引文检测中安全隔离独立装饰引号（如巨型装饰字）。
 5. **单测验证（`tests/`）**：
    - 新增 `TestFigureWrapWithListMarker`、`test_same_line_horizontal_split_with_comma_joins`、`test_wrap_continuation_with_right_margin_fluctuation` 及 `test_decorative_quote_glyph_not_detected_as_quote`，相关套件 251 项测试全数通过。
+6. **VPS 正式站部署（0.6.4.106）**：
+   - 远端 VPS 同步：最新镜像构建完成（`BABELDOC_REF=a5dca4b`），`pdfmt-next-app` 容器重建启动成功，端口 7870 健康检查返回 200 OK。
 
 ## 2026-11-16 — 组合对象纯文本支持、误判页眉正文保护与 CJK 标点间距清洗（0.6.4.105）
 
