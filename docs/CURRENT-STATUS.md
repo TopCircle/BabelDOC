@@ -1,10 +1,22 @@
-# BabelDOC — 当前状况（2026-11-17）
+# BabelDOC — 当前状况（2026-11-19）
 
 **工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
 **历史布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms`（已归档/废弃，工作流与开发已全面迁入 Nextcloud）  
-**版本:** `0.6.4.106`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.107`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-19 — 目录跨栏重叠修复、目录项最小字号保护与下沉阶梯全宽展开（0.6.4.107）
+
+1. **目录跨栏重排重叠与章标题保护（`toc_rows.py` / `rect_column_reflow.py`）**：
+   - 在目录页装配时将非页眉页脚标题统一标记为 `is_toc = True`，阻止 `rect_column_reflow` 将右栏无页码章标题（如 `Chapter 4`、`Chapter 5`）误拉回左栏，彻底解决目录跨栏遮挡碰撞。
+2. **目录项最小可读字号保护（`typesetting.py`）**：
+   - 为所有识别为目录项的段落设置 `min_scale = max(min_scale, 0.80)`，并在排版单元分配中解除参考宽度约束，彻底解决如 `即便是最美满的婚姻，也会变得平淡无奇 5` 及 `《浪漫她》 53` 字号塌缩至 4~7 pt 的严重缩水缺陷。
+3. **正文阶梯轮廓与下沉层全宽展开（`typesetting.py` / `taper`）**：
+   - 优化 `shelf_drop` 阶梯下沉层的判定条件与 L 型走廊绕排，使浮动色块旁段落首行精准避让右侧窄通道，后续行自然下沉至下方全宽展开，字号稳定在 10~12 pt 标准舒适区间。
+   - 增强 `taper/left_pin` 与 `right_pin` 避让 `spur` 尖刺块的机制，避免误抢。
+4. **单测验证（`tests/`）**：
+   - 新增 `tests/test_toc_row_pin.py` 测试套件，相关 238 + 85 项版面与目录测试全数通过。
 
 ## 2026-11-17 — 列表图绕排阶梯识别、透明图蒙版绕排保护与 LTR 列表左对齐强制（0.6.4.106）
 
