@@ -26,6 +26,9 @@ from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import 
     _repeated_indent,
 )
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import (
+    _spur_left,
+)
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import (
     _strip_short_tail,
 )
 
@@ -51,6 +54,8 @@ def _candidate(edges: BlockEdges, lines: Sequence[Sequence[float]]) -> bool:
         return False
     body = _strip_short_tail(lines)
     check_lines = body if len(body) >= 4 else lines
+    if _spur_left([float(line[0]) for line in check_lines]):
+        return False
     if not _runs_one_way([float(line[0]) for line in check_lines]):
         return False
     if _first_line_indent(lines) is not None:

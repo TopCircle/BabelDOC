@@ -1299,6 +1299,9 @@ class PdfParagraph:
     source_line_edges: tuple | None = field(
         default=None, metadata={"type": "Ignore"}
     )
+    is_toc: bool | None = field(
+        default=None, metadata={"type": "Ignore"}
+    )
 
 
 @dataclass(slots=True)

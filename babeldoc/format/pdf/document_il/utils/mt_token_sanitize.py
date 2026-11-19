@@ -100,9 +100,9 @@ _ISOLATED_YOU_RE = re.compile(
     re.IGNORECASE,
 )
 # Single Latin letter between CJK (foreplay → 介绍e艺术).
-# G点/A点 keeps its letter. That letter is the glossary term, not a hyphen crumb.
+# Any Latin letter/abbreviation before 点 (G点/A点/U点/P点/K点) is preserved.
 _ISOLATED_LATIN_LETTER_RE = re.compile(
-    r"(?<=[\u4e00-\u9fff])\s*(?![GgAa](?=\s*点))[A-Za-z]\s*(?=[\u4e00-\u9fff])"
+    r"(?<=[\u4e00-\u9fff])\s*(?![A-Za-z0-9]+(?=\s*点))[A-Za-z]\s*(?=[\u4e00-\u9fff])"
 )
 
 # Formula-glued leftovers: "抚摸 {v1}her 阴蒂" (placeholders kept for parse)
@@ -230,9 +230,9 @@ def _scrub_cjk_embedded_english(text: str) -> str:
         flags=re.I,
     )
     # A single leftover article ("{v1}A 最近") is the same crumb as a word.
-    # {v1}G点 and {v1}A点 keep the G/A.
+    # {v1}G点, {v1}A点, {v1}U点 etc. keep the letter before 点.
     out = re.sub(
-        r"(\{v\d+\})\s*(?![GgAa](?=[\s\xa0\u3000]*点))([A-Za-z]{1,12})(?=[\s\xa0\u3000]*[\u4e00-\u9fff])",
+        r"(\{v\d+\})\s*(?![A-Za-z0-9]+(?=[\s\xa0\u3000]*点))([A-Za-z]{1,12})(?=[\s\xa0\u3000]*[\u4e00-\u9fff])",
         r"\1",
         out,
     )

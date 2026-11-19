@@ -1960,6 +1960,7 @@ class Typesetting:
             ocr_mode
             or getattr(self, "_rect_fill_active", False)
             or getattr(self, "_line_edges", None) is not None
+            or is_toc_paragraph(paragraph)
         ):
             reference_widths = None
         else:
@@ -2000,6 +2001,8 @@ class Typesetting:
             pinned=pinned,
             on_contour=on_contour,
         )
+        if is_toc_paragraph(paragraph):
+            min_scale = max(min_scale, 0.80)
         expand_space_flag = 0
         contour_tightens = 0
         final_typeset_units = None
@@ -3973,13 +3976,6 @@ class Typesetting:
                                 rendered_boxes[id(moved)] = seated
                         overlap_found = True
                         continue
-                    # A failed retypeset puts the packed line back on top of
-                    # its neighbor. The plan already placed these.
-                    if (
-                        getattr(p1, "layout_region_id", None) in planned_ids
-                        or getattr(p2, "layout_region_id", None) in planned_ids
-                    ):
-                        continue
                     if b1 is None or b2 is None:
                         continue
                     if not self._bbox_overlap(b1, b2):
@@ -4036,6 +4032,29 @@ class Typesetting:
                             overlap_found = True
                             continue
                     if self._is_bbox_contain_in_vertical(keep_box, move_box):
+                        floor_y = None
+                        crop = getattr(page, "cropbox", None)
+                        crop_box = (
+                            getattr(crop, "box", None) if crop is not None else None
+                        )
+                        if crop_box is not None and crop_box.y is not None:
+                            floor_y = float(crop_box.y)
+                        if separate_same_baseline_overlap(
+                            move, keep_box, move_box, floor_y=floor_y
+                        ):
+                            new_box = self._recompute_rendered_box(move)
+                            if new_box is not None:
+                                rendered_boxes[id(move)] = new_box
+                            overlap_found = True
+                            continue
+                        continue
+
+                    # A failed retypeset puts the packed line back on top of
+                    # its neighbor. The plan already placed these.
+                    if (
+                        getattr(p1, "layout_region_id", None) in planned_ids
+                        or getattr(p2, "layout_region_id", None) in planned_ids
+                    ):
                         continue
 
                     overlap_found = True
@@ -4611,7 +4630,7 @@ class Typesetting:
                         if idx + 1 < len(levels)
                         else top - pitch
                     )
-                    if top >= y_min and below <= y_max:
+                    if top > y_min + 0.1 and below < y_max - 0.1:
                         overlapping.append(lvl)
                 if overlapping:
                     min_right = min(float(lvl.right) for lvl in overlapping)
@@ -4914,7 +4933,11 @@ class Typesetting:
 
                 comps = getattr(paragraph, "pdf_paragraph_composition", ()) or ()
                 u_len = len(getattr(paragraph, "unicode", "") or "")
-                is_long_body = len(comps) >= 5 or len(typesetting_units) >= 60 or u_len >= 60
+                is_long_body = (
+                    len(comps) >= 5
+                    or len(typesetting_units) >= 120
+                    or u_len >= 120
+                )
                 drop_top = None if is_long_body else shelf_drop(
                     getattr(edges, "levels", ()) or (),
                     [float(unit.width) * scale for unit in typesetting_units],
@@ -5299,6 +5322,7 @@ class Typesetting:
         from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
             uses_rect_column_fill,
         )
+        from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
 
         self._rect_fill_active = uses_rect_column_fill(paragraph)
         if (
@@ -5306,10 +5330,18 @@ class Typesetting:
             or getattr(self, "_line_edges", None) is not None
         ):
             self._rect_fill_active = False
-        if self._rect_fill_active or getattr(self, "_line_edges", None) is not None:
+        if (
+            self._rect_fill_active
+            or getattr(self, "_line_edges", None) is not None
+            or is_toc_paragraph(paragraph)
+        ):
             reference_widths = None
         elif reference_widths is None:
             reference_widths = self._extract_original_line_widths(paragraph)
+            if self.is_cjk and reference_widths:
+                reference_widths = Typesetting._uniform_cjk_reference_widths(
+                    reference_widths
+                )
         layout_line_idx = 0
 
         # 计算字号众数
@@ -5389,7 +5421,11 @@ class Typesetting:
 
                 comps = getattr(paragraph, "pdf_paragraph_composition", ()) or ()
                 u_len = len(getattr(paragraph, "unicode", "") or "")
-                is_long_body = len(comps) >= 5 or len(typesetting_units) >= 60 or u_len >= 60
+                is_long_body = (
+                    len(comps) >= 5
+                    or len(typesetting_units) >= 120
+                    or u_len >= 120
+                )
                 drop_top = None if is_long_body else shelf_drop(
                     getattr(edges, "levels", ()) or (),
                     [float(unit.width) * scale for unit in typesetting_units],

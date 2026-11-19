@@ -362,6 +362,8 @@ def is_toc_paragraph(paragraph: PdfParagraph) -> bool:
     lowered = text.lower()
     if lowered.startswith("www.") or "://" in lowered or ".com" in lowered:
         return False
+    if getattr(paragraph, "is_toc", False):
+        return True
     label = (getattr(paragraph, "layout_label", None) or "").strip().lower()
     if label == "toc":
         return True
@@ -831,7 +833,15 @@ def _hold(paragraph, on_contents: bool) -> bool:
     """A directory row, or a chapter line on a contents page."""
     if is_toc_paragraph(paragraph):
         return True
-    return bool(on_contents and is_chapter_heading(_text(paragraph)))
+    if on_contents:
+        from babeldoc.format.pdf.document_il.utils.region_skip import (
+            is_chrome_paragraph,
+        )
+
+        if is_chrome_paragraph(paragraph) or is_toc_page_header(_text(paragraph)):
+            return False
+        return True
+    return False
 
 
 def _ink_top(paragraph) -> float | None:
@@ -965,6 +975,7 @@ def fit_directory_boxes(paragraphs) -> None:
     for paragraph in paragraphs or []:
         if not _hold(paragraph, on_contents):
             continue
+        paragraph.is_toc = True
         paragraph.alignment = "left"
         box = getattr(paragraph, "box", None)
         if box is None or box.x is None or box.x2 is None:
@@ -972,9 +983,12 @@ def fit_directory_boxes(paragraphs) -> None:
         edges = _word_edges(paragraph)
         if edges is not None:
             box.x = edges[0]
-            box.x2 = edges[1]
-        text = _text(paragraph)
-        if text.isdigit() and float(box.x2) - float(box.x) < _DIGIT_BOX:
+            text = _text(paragraph)
+            if text.isdigit():
+                box.x2 = max(edges[1], float(box.x) + _DIGIT_BOX)
+            else:
+                box.x2 = edges[1]
+        elif _text(paragraph).isdigit() and float(box.x2) - float(box.x) < _DIGIT_BOX:
             box.x2 = float(box.x) + _DIGIT_BOX
 
 
@@ -1315,6 +1329,15 @@ def paint_toc_leaders(paragraphs, glyph_for=None) -> None:
         if gap is None:
             continue
         title_right, number_left = gap
+        for p in paragraphs:
+            if p is paragraph or _DIGITS.match(_text(p)) or _leader_only(p):
+                continue
+            if is_chrome_paragraph(p) or is_url_site_chrome(p):
+                continue
+            if _same_line(paragraph, p):
+                p_span = _ink_x_span(p)
+                if p_span is not None and p_span[0] < number_left and p_span[1] > title_right:
+                    title_right = max(title_right, p_span[1])
         glyph, width = _paint_glyph(stamp, period_step)
         start = title_right + width
         stop = number_left - width

@@ -416,3 +416,78 @@ def test_toc_row_cascades_down_when_section_header_overlaps():
     assert row1.box.y2 <= header.box.y - 4.0
     # row2 must sit below row1 bottom with at least min_gap (4.0)
     assert row2.box.y2 <= row1.box.y - 4.0
+
+
+def test_paint_toc_leaders_skips_over_sibling_title_parts():
+    """Leaders must not overwrite sibling title parts on the same line."""
+    from babeldoc.format.pdf.document_il.utils.toc_rows import _LEADERS
+
+    p1_char = PdfCharacter(
+        box=Box(x=50.0, y=100.0, x2=100.0, y2=112.0),
+        char_unicode="第 2 区",
+        pdf_style=PdfStyle(font_id="F", font_size=10.0, graphic_state=None),
+    )
+    p1 = PdfParagraph(
+        box=Box(x=50.0, y=100.0, x2=100.0, y2=112.0),
+        unicode="第 2 区",
+        layout_label="toc",
+        pdf_paragraph_composition=[
+            PdfParagraphComposition(
+                pdf_line=PdfLine(box=Box(x=50.0, y=100.0, x2=100.0, y2=112.0), pdf_character=[p1_char])
+            )
+        ],
+    )
+    p2_char = PdfCharacter(
+        box=Box(x=110.0, y=100.0, x2=180.0, y2=112.0),
+        char_unicode="- 查找 A 点",
+        pdf_style=PdfStyle(font_id="F", font_size=10.0, graphic_state=None),
+    )
+    p2 = PdfParagraph(
+        box=Box(x=110.0, y=100.0, x2=180.0, y2=112.0),
+        unicode="- 查找 A 点",
+        layout_label="toc",
+        pdf_paragraph_composition=[
+            PdfParagraphComposition(
+                pdf_line=PdfLine(box=Box(x=110.0, y=100.0, x2=180.0, y2=112.0), pdf_character=[p2_char])
+            )
+        ],
+    )
+    p_num_char = PdfCharacter(
+        box=Box(x=500.0, y=100.0, x2=520.0, y2=112.0),
+        char_unicode="24",
+        pdf_style=PdfStyle(font_id="F", font_size=10.0, graphic_state=None),
+    )
+    p_num = PdfParagraph(
+        box=Box(x=500.0, y=100.0, x2=520.0, y2=112.0),
+        unicode="24",
+        layout_label="toc",
+        pdf_paragraph_composition=[
+            PdfParagraphComposition(
+                pdf_line=PdfLine(box=Box(x=500.0, y=100.0, x2=520.0, y2=112.0), pdf_character=[p_num_char])
+            )
+        ],
+    )
+
+    # Seed _LEADERS with a stamp for y=100
+    _LEADERS.clear()
+    _LEADERS["dummy"] = {
+        "top": 112.0,
+        "y": 100.0,
+        "y2": 112.0,
+        "left": 200.0,
+        "leader_x": 200.0,
+        "unicode": ".",
+        "pitch": 4.0,
+        "width": 4.0,
+        "style": PdfStyle(font_id="F", font_size=10.0, graphic_state=None),
+        "character_id": "c1",
+    }
+
+    paras = [p1, p2, p_num]
+    paint_toc_leaders(paras)
+
+    # Check painted leader paragraph: start x must be >= p2.box.x2 (180.0)
+    leader_paras = [p for p in paras if p not in (p1, p2, p_num)]
+    assert len(leader_paras) == 1
+    assert leader_paras[0].box.x >= 180.0
+

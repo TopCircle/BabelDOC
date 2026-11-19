@@ -813,7 +813,7 @@ def test_left_pin_fill_is_each_lines_own_edge():
         for index in range(6)
     ]
     pairs = left_pin_fill(lines)
-    assert pairs == tuple((line[0], line[1]) for line in lines)
+    assert pairs == tuple(tuple(line) for line in lines)
     plan = build_plan(_facts(lines))
     assert len(plan.line_edge_links) == 1
     link = plan.line_edge_links[0]
@@ -821,8 +821,8 @@ def test_left_pin_fill_is_each_lines_own_edge():
     assert link.flow == "edge"
     # line_idx 1 repeated pairs[1] even when the Chinese line sat elsewhere.
     assert all(level.kind == "observed" for level in link.levels)
-    assert interval_for_line_edges(link, 0, 172.0, 180.0) == pairs[1]
-    assert interval_for_line_edges(link, 99, 172.0, 180.0) == pairs[1]
+    assert interval_for_line_edges(link, 0, 172.0, 180.0) == (pairs[1][0], pairs[1][1])
+    assert interval_for_line_edges(link, 99, 172.0, 180.0) == (pairs[1][0], pairs[1][1])
 
 
 def test_right_pin_fill_is_each_lines_own_edge():
@@ -830,7 +830,7 @@ def test_right_pin_fill_is_each_lines_own_edge():
     assert "scanned_edge_gap" not in source
     lines = [[300.0 - index * 4.0, 578.0, 400.0 - index * 16.0] for index in range(6)]
     pairs = right_pin_fill(lines)
-    assert pairs == tuple((line[0], line[1]) for line in lines)
+    assert pairs == tuple(tuple(line) for line in lines)
     plan = build_plan(_facts(lines))
     assert len(plan.line_edge_links) == 1
     assert plan.line_edge_links[0].edges == pairs

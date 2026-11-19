@@ -114,8 +114,6 @@ def scanned_edge_gap(lines, slices, side: str, pin: float) -> float:
     body = ordered[1:] if len(ordered) > 1 else ordered
     gaps = _positive_gaps(body, slices, side, pin)
     if not gaps:
-        gaps = _positive_gaps(ordered, slices, side, pin)
-    if not gaps:
         return 0.0
     return float(statistics.median(gaps))
 

@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.contract import (
     BlockEdges,
 )
+from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import _spur
 from babeldoc.format.pdf.document_il.utils.layout_plan.paradigms.outline import (
     _strip_short_tail,
 )
@@ -30,6 +31,8 @@ def claim(edges: BlockEdges, lines: Sequence[Sequence[float]]) -> float | None:
         return None
     body = _strip_short_tail(lines)
     check_lines = body if len(body) >= 4 else lines
+    if _spur([float(line[1]) for line in check_lines]):
+        return None
     if not _one_way([float(line[1]) for line in check_lines]):
         return None
     if edges.right_range < _FREE_EDGE:

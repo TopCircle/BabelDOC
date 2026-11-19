@@ -229,6 +229,12 @@ def test_scrub_formula_glued_latin():
     ) or ""
     assert "A点高潮" in aspot
     assert "她的 A点" in aspot or "她的A点" in aspot
+    uspot = normalize_translated_text("第1区——进一步了解U点")
+    assert uspot == "第1区——进一步了解U点"
+    uspot_stim = normalize_translated_text("第1区——刺激U点的技巧")
+    assert uspot_stim == "第1区——刺激U点的技巧"
+    pspot = normalize_translated_text("第3区——寻找P点与PS点")
+    assert "P点" in (pspot or "") and "PS点" in (pspot or "")
     assert normalize_translated_text("介绍e艺术") == "介绍前戏艺术"
 
 

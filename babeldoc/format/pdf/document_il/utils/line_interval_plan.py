@@ -174,7 +174,9 @@ def infer_wrap_mode_from_line_boxes(
     right_spread = max(x2s) - min(x2s)
     if right_spread <= 4.0 and left_spread >= 12.0:
         return WrapMode.RIGHT_FIXED
-    if left_spread <= 4.0 and right_spread >= 12.0:
+    from babeldoc.format.pdf.document_il.utils.figure_wrap import _is_stepping_contour
+
+    if left_spread <= 4.0 and _is_stepping_contour(x2s):
         return WrapMode.LEFT_FIXED
     return WrapMode.NONE
 

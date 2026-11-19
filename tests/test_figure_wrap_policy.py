@@ -27,6 +27,13 @@ class TestIsFigureWrapTaper:
     def test_flat_narrow_column_false(self):
         assert is_figure_wrap_taper([180, 180, 175, 100]) is False
 
+    def test_ragged_body_with_short_tail_not_taper(self):
+        # Ordinary unjustified paragraphs with natural line rag and short sentence end
+        p2_w = [305.9, 347.6, 329.1, 115.7]
+        p4_w = [293.9, 285.4, 290.9, 283.8, 296.8, 259.3, 272.0, 287.8, 119.7]
+        assert is_figure_wrap_taper(p2_w) is False
+        assert is_figure_wrap_taper(p4_w) is False
+
     def test_edge_cases_false(self):
         assert is_figure_wrap_taper(None) is False
         assert is_figure_wrap_taper([]) is False
@@ -267,6 +274,24 @@ class TestFigureWrapParagraph:
     def test_first_line_indent_not_figure_wrap(self):
         para_lines = [(70.0, 578.0), (50.0, 578.0), (50.0, 578.0)]
         assert is_figure_wrap_paragraph(self._para(lines=para_lines)) is False
+
+    def test_short_terminal_line_not_figure_wrap(self):
+        # 4-line paragraph where lines 0..2 are full width (56..298) and line 3 is short (56..82)
+        body_lines = [
+            (56.0, 298.4),
+            (56.0, 298.4),
+            (56.0, 298.4),
+            (56.0, 82.0),
+        ]
+        assert is_figure_wrap_paragraph(self._para(lines=body_lines)) is False
+        # Right-aligned paragraph with short terminal line
+        right_aligned = [
+            (100.0, 500.0),
+            (100.0, 500.0),
+            (100.0, 500.0),
+            (350.0, 500.0),
+        ]
+        assert is_figure_wrap_paragraph(self._para(lines=right_aligned)) is False
 
 
 class TestUniformCjkReferenceWidths:

@@ -93,6 +93,19 @@ def _is_strict_taper(usable: list[float]) -> bool:
         return False
     if sum(1 for d in drops if d >= _TAPER_MIN_STEP) < 2:
         return False
+    # Collapse plateaus from repeated widths to measure distinct downward steps.
+    compact = [usable[0]]
+    for w in usable[1:]:
+        if abs(w - compact[-1]) >= 1.0:
+            compact.append(w)
+    if len(compact) < 3:
+        return False
+    # If there are only 2 distinct downward steps (3 levels) and the last step is a
+    # steep sentence-ending tail, the first step cannot just be an ordinary line-rag wobble (< 20pt).
+    compact_drops = [a - b for a, b in zip(compact, compact[1:], strict=False)]
+    if len(compact) == 3 and (compact_drops[1] > compact_drops[0] * 3.0 or compact_drops[1] >= 60.0):
+        if compact_drops[0] < 20.0:
+            return False
     peak = max(usable)
     # Prefer a clearly short tip; also accept a solid absolute drop when the
     # clustered tip lines were dropped from reference_metrics (OA p59 often
@@ -160,7 +173,10 @@ def taper_prefix_widths(reference_widths) -> list[float]:
         return []
     best: list[float] = []
     n = len(usable)
-    for start in range(n - 2):
+    # A taper head should only skip a short rising/flat prefix (at most 2 lines, e.g. OA p59).
+    # Starting deep inside a paragraph causes ordinary ragged body lines to look like a taper.
+    max_head_skip = min(2, n - 3)
+    for start in range(max_head_skip + 1):
         for end in range(start + 3, n + 1):
             window = usable[start:end]
             if _is_strict_taper(window) and len(window) >= len(best):
@@ -238,6 +254,40 @@ def is_figure_wrap_taper(reference_widths) -> bool:
     return bool(taper_prefix_widths(reference_widths))
 
 
+def _is_stepping_contour(
+    coords: list[float],
+    *,
+    min_steps: int = 2,
+    min_total_step: float = 12.0,
+) -> bool:
+    """True when right-edge coords show at least min_steps of inward stepping (total >= min_total_step).
+
+    A single short terminal line (sentence ending) is excluded so ordinary
+    paragraph ends never register as contour stepping.
+    """
+    if len(coords) < 3:
+        return False
+    seq = coords
+    if coords[-1] < min(coords[:-1]) - 12.0:
+        seq = coords[:-1]
+    if len(seq) < 3:
+        return False
+    for start in range(len(seq) - 2):
+        run_step = 0.0
+        steps_count = 0
+        for i in range(start, len(seq) - 1):
+            diff = seq[i] - seq[i + 1]
+            if diff >= -0.5:
+                if diff >= 2.0:
+                    steps_count += 1
+                    run_step += diff
+            else:
+                break
+        if steps_count >= min_steps and run_step >= min_total_step:
+            return True
+    return False
+
+
 def is_figure_wrap_paragraph(para: il_version_1.PdfParagraph) -> bool:
     """Single entry point: is *para* a figure-wrap (taper) column?
 
@@ -305,13 +355,23 @@ def is_figure_wrap_paragraph(para: il_version_1.PdfParagraph) -> bool:
         if len(lines) == 2 or (max(x2s[1:]) - min(x2s[1:]) <= 3.0):
             return False
 
+    # Single short terminal line protection:
+    # An ordinary paragraph ending has only line N-1 short, while lines 0..N-2
+    # are aligned on the free edge. This is an ordinary sentence ending, never
+    # a contour wrap around a photo.
+    if len(lines) >= 2:
+        if (max(x2s[:-1]) - min(x2s[:-1]) <= 4.0) and (max(xs) - min(xs) <= 4.0):
+            return False
+        if (max(xs[:-1]) - min(xs[:-1]) <= 4.0) and (max(x2s) - min(x2s) <= 4.0):
+            return False
+
     if has_marker and len(lines) >= 3:
         cont_xs = xs[1:]
         cont_x2s = x2s[1:]
         cont_left_spread = max(cont_xs) - min(cont_xs)
         cont_right_spread = max(cont_x2s) - min(cont_x2s)
         right_fixed = cont_left_spread >= 12.0 and cont_right_spread <= 4.0
-        left_fixed = cont_right_spread >= 12.0 and cont_left_spread <= 4.0
+        left_fixed = cont_left_spread <= 4.0 and _is_stepping_contour(cont_x2s)
         return right_fixed or left_fixed
     elif has_marker:
         return False
@@ -319,5 +379,5 @@ def is_figure_wrap_paragraph(para: il_version_1.PdfParagraph) -> bool:
     left_spread = max(xs) - min(xs)
     right_spread = max(x2s) - min(x2s)
     right_fixed = left_spread >= 12.0 and right_spread <= 4.0
-    left_fixed = right_spread >= 12.0 and left_spread <= 4.0
+    left_fixed = left_spread <= 4.0 and _is_stepping_contour(x2s)
     return right_fixed or left_fixed
