@@ -540,7 +540,6 @@ def merge_stacked_narrow_callout_paragraphs(
       1. list-adjacent vertical stack (width ≤220, gap ≤22)
       2. ultra-narrow y-stack (width ≤120, no intervening)
       3. right-pinned wrap rows (width ≤280, x2 spread ≤8)
-      4. horizontal prefix pair (left short ⊆ right longer text)
     """
     _ = page
     if len(paragraphs) < 2:
@@ -549,7 +548,6 @@ def merge_stacked_narrow_callout_paragraphs(
     merges = _merge_list_adjacent(paragraphs, excluded)
     merges += _merge_y_sorted_ultra_narrow(paragraphs, excluded)
     merges += _merge_y_sorted_right_pinned_wrap(paragraphs, excluded)
-    merges += _merge_horizontal_prefix_pairs(paragraphs)
     if merges:
         logger.debug("callout_merge: merged %d units", merges)
     return merges

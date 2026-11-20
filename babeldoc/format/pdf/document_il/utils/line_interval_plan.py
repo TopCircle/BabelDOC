@@ -8,6 +8,7 @@ Intent fields that do not change intervals are not deliverables.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -18,6 +19,8 @@ from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
 from babeldoc.format.pdf.document_il.utils.layout_intent import WrapMode
 from babeldoc.format.pdf.document_il.utils.wrap_shape import get_active_wrap
 from babeldoc.format.pdf.document_il.utils.wrap_shape import resolve_wrap_shape
+
+logger = logging.getLogger(__name__)
 
 Box = il_version_1.Box
 PdfParagraph = il_version_1.PdfParagraph
@@ -657,6 +660,14 @@ def attempt_chain_for_paragraph(
     # widens a 157pt left gutter to ~440pt (OA p91 red bar → overlaps body).
     if role in (LayoutIntentRole.CALLOUT, LayoutIntentRole.PULL_QUOTE):
         return [LayoutAttempt.PRIMARY]
+    if role is None:
+        label = (getattr(paragraph, "layout_label", None) or "").strip().lower()
+        if label in ("callout", "pull_quote", "quote"):
+            return [LayoutAttempt.PRIMARY]
+        from babeldoc.format.pdf.document_il.utils.layout_helper import is_quote_block
+
+        if paragraph is not None and is_quote_block(paragraph, 612.0):
+            return [LayoutAttempt.PRIMARY]
     from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
         is_gutter_display,
     )

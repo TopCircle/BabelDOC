@@ -2093,7 +2093,11 @@ def _without_short_tail(
         previous = kept[-2]
         right_inset = previous[1] - last[1]
         left_out = previous[0] - last[0]
-        if right_inset >= 24.0 and left_out <= 8.0:
+        left_inset = last[0] - previous[0]
+        right_out = abs(previous[1] - last[1])
+        if (right_inset >= 24.0 and left_out <= 8.0) or (
+            left_inset >= 24.0 and right_out <= 8.0
+        ):
             kept.pop()
             dropped += 1
             continue

@@ -7,9 +7,13 @@ line again. Move the later paragraph down instead.
 
 from __future__ import annotations
 
+import logging
+
 from babeldoc.format.pdf.document_il.il_version_1 import Box
 from babeldoc.format.pdf.document_il.il_version_1 import PdfCharacter
 from babeldoc.format.pdf.document_il.il_version_1 import PdfParagraph
+
+logger = logging.getLogger(__name__)
 
 _SAME_BASELINE_OVERLAP = 0.55
 _SAME_BASELINE_HEIGHT_RATIO = 1.8

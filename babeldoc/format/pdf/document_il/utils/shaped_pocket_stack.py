@@ -7,6 +7,8 @@ widths, and it does not guess which side is free.
 
 from __future__ import annotations
 
+import logging
+
 from babeldoc.format.pdf.document_il.utils.layout_plan.consume import (
     consume_layout_plan,
 )
@@ -19,6 +21,8 @@ from babeldoc.format.pdf.document_il.utils.rect_flow_stack import _rect_links
 from babeldoc.format.pdf.document_il.utils.rect_flow_stack import ink_span
 from babeldoc.format.pdf.document_il.utils.rect_flow_stack import shift_paragraph
 from babeldoc.format.pdf.document_il.utils.region_skip import is_chrome_paragraph
+
+logger = logging.getLogger(__name__)
 
 # Same horizontal overlap the column neighbor already uses.
 _X_OVERLAP = 0.35
@@ -398,6 +402,35 @@ def _is_heading(paragraph) -> bool:
     return label in _HEADING_ROLES
 
 
+def _is_quote_or_callout(paragraph, page=None) -> bool:
+    intent = getattr(paragraph, "layout_intent", None)
+    role = getattr(intent, "role", None) if intent is not None else None
+    if role is not None and str(getattr(role, "value", role)) in (
+        "pull_quote",
+        "callout",
+        "quote",
+    ):
+        return True
+    label = (getattr(paragraph, "layout_label", None) or "").strip().lower()
+    if label in ("pull_quote", "callout", "quote"):
+        return True
+    if page is not None:
+        pw = 612.0
+        crop = getattr(page, "cropbox", None)
+        if (
+            crop
+            and getattr(crop, "box", None)
+            and crop.box.x is not None
+            and crop.box.x2 is not None
+        ):
+            pw = float(crop.box.x2 - crop.box.x)
+        from babeldoc.format.pdf.document_il.utils.layout_helper import is_quote_block
+
+        if is_quote_block(paragraph, pw):
+            return True
+    return False
+
+
 def _box_of(pocket_inks, pocket_bottom):
     for paragraph, _top, bottom in pocket_inks:
         if abs(bottom - pocket_bottom) <= 0.5:
@@ -434,8 +467,10 @@ def _push_overlaps_down(page, gap: float) -> None:
     floor = _crop_floor(page)
     links = _rect_links(page)
     for index, upper in enumerate(bodies):
+        if _is_quote_or_callout(upper, page):
+            continue
         for lower in bodies[index + 1 :]:
-            if _is_heading(lower):
+            if _is_heading(lower) or _is_quote_or_callout(lower, page):
                 continue
             if getattr(upper, "xobj_id", None) != getattr(lower, "xobj_id", None):
                 continue

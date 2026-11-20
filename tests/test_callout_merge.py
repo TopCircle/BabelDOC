@@ -110,7 +110,7 @@ def test_vertical_gap_22_does_not_merge_sparse_medium_stack():
 
 
 def test_merge_horizontal_prefix_callout_oa_p5():
-    """Left short clause + right fuller sentence → one unit."""
+    """Left short pullquote + right fuller sentence must stay separate columns."""
     left = _line_para(
         "This is the focus of a large portion of the book.",
         x=40,
@@ -130,11 +130,8 @@ def test_merge_horizontal_prefix_callout_oa_p5():
     left.box = Box(x=40, y=400, x2=160, y2=425)
     paras = [left, right]
     n = merge_stacked_narrow_callout_paragraphs(paras)
-    assert n >= 1
-    assert len(paras) == 1
-    u = paras[0].unicode or ""
-    assert "learning the seven" in u or "Before you focus" in u
-    assert paras[0].box.x2 - paras[0].box.x > 150
+    assert n == 0
+    assert len(paras) == 2
 
 
 def test_horizontal_prefix_does_not_merge_unrelated():

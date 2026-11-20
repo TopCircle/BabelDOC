@@ -3069,6 +3069,13 @@ class Typesetting:
 
         if stays_in_source_box(paragraph):
             return box
+        label = (getattr(paragraph, "layout_label", None) or "").strip().lower()
+        if label in ("callout", "pull_quote", "quote"):
+            return box
+        from babeldoc.format.pdf.document_il.utils.layout_helper import is_quote_block
+
+        if is_quote_block(paragraph, 612.0):
+            return box
         from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
 
         if is_toc_paragraph(paragraph):
