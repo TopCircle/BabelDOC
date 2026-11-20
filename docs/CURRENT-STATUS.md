@@ -1,10 +1,23 @@
-# BabelDOC — 当前状况（2026-11-19）
+# BabelDOC — 当前状况（2026-11-20）
 
 **工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
 **历史布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms`（已归档/废弃，工作流与开发已全面迁入 Nextcloud）  
-**版本:** `0.6.4.107`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.108`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-20 — 独立引言盒扩张拦截、引文免下沉保护与分栏断字合并清理（0.6.4.108）
+
+1. **侧边栏引言框与独立 Quote 盒扩张拦截（`typesetting.py` / `line_interval_plan.py`）**：
+   - 在 `typesetting.py:_pre_expand_narrow_box` 中增加对 `callout`, `pull_quote`, `quote` 以及 `is_quote_block` 的保护拦截，杜绝边栏浮动引言框（如黄色高亮框/侧栏 Callout）向左或向右盲目吞噬主正文空间。
+   - 在 `line_interval_plan.py:attempt_chain_for_paragraph` 中，对未设定显式角色（`role is None`）的段落经 `is_quote_block` 识别为引文的锁定在 `[LayoutAttempt.PRIMARY]`，阻止其错误提权至 `FULL_MEASURE` 破坏分栏隔离。
+2. **同基线与堆叠下沉保护（`shaped_pocket_stack.py`）**：
+   - 在 `shaped_pocket_stack.py:_push_overlaps_down` 中增加 `_is_quote_or_callout` 豁免保护，防止独立边栏引言框被判定为假重叠而被强制下沉挤入正文下方。
+3. **右对齐引言短尾剔除与分栏断字误合流修复（`layout_helper.py` / `callout_merge.py`）**：
+   - 在 `layout_helper.py:_without_short_tail` 中支持右贴边、左缩进短尾行的识别与安全剔除，使右侧悬挂引言框准确被识别；
+   - 彻底移除 `callout_merge.py` 中危险的水平前缀合并逻辑 `_merge_horizontal_prefix_pairs`，避免左右分栏文本因前缀字串相似被暴力拼接破坏。
+4. **单测验证（`tests/`）**：
+   - 更新 `tests/test_callout_merge.py` 覆盖左右独立分栏保护，测试 13 项全数通过；`tests/test_line_interval_plan.py` 56 项测试全数通过。
 
 ## 2026-11-19 — 目录跨栏重叠修复、目录项最小字号保护与下沉阶梯全宽展开（0.6.4.107）
 
