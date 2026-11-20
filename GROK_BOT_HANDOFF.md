@@ -18,6 +18,8 @@
    - 彻底移除 `callout_merge.py` 中危险的水平前缀合并逻辑 `_merge_horizontal_prefix_pairs`，避免左右分栏文本因前缀字串相似被暴力拼接破坏。
 4. **单测验证（`tests/`）**：
    - 更新 `tests/test_callout_merge.py` 覆盖左右独立分栏保护，测试 13 项全数通过；`tests/test_line_interval_plan.py` 56 项测试全数通过。
+5. **VPS 正式站部署（0.6.4.108）**：
+   - 远端 VPS 同步：最新镜像构建完成（`BABELDOC_REF=52d4fe6`），`pdfmt-next-app` 容器重建启动成功，端口 7870 健康检查返回 200 OK。
 
 ## 2026-11-19 — 目录跨栏重叠修复、目录项最小字号保护与下沉阶梯全宽展开（0.6.4.107）
 
