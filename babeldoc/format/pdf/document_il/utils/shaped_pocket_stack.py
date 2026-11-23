@@ -595,9 +595,19 @@ def _ink_extent(paragraph) -> tuple[float, float, float, float] | None:
 
 
 def _crop_floor(page) -> float | None:
+    floor = 0.0
     for name in ("cropbox", "mediabox"):
         holder = getattr(page, name, None)
         box = getattr(holder, "box", None) if holder is not None else None
         if box is not None and box.y is not None:
-            return float(box.y)
-    return None
+            floor = float(box.y)
+            break
+    chrome_tops = []
+    for paragraph in getattr(page, "pdf_paragraph", None) or []:
+        if is_chrome_paragraph(paragraph, page):
+            box = getattr(paragraph, "box", None)
+            if box is not None and box.y2 is not None and float(box.y2) < floor + 120.0:
+                chrome_tops.append(float(box.y2))
+    if chrome_tops:
+        return max(floor + 58.0, max(chrome_tops) + 8.0)
+    return floor + 58.0

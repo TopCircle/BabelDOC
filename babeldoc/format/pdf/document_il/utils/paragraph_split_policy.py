@@ -950,11 +950,14 @@ def should_split_line_pair(
     ``should_split_on_font_face_switch``). ``toc_stack`` keeps every directory
     row on its own line, including a row with no leader.
     """
+    from babeldoc.format.pdf.document_il.utils.toc_rows import is_chapter_heading
     from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_entry_line
 
     if is_toc_leader_line(prev_line) or is_toc_entry_line(prev_line):
         return True
     if curr_line is not None and is_toc_entry_line(curr_line):
+        return True
+    if curr_line is not None and is_chapter_heading(line_text(curr_line).strip()):
         return True
     if curr_line is None:
         return False

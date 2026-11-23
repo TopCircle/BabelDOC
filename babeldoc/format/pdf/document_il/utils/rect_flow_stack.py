@@ -180,9 +180,9 @@ def pack_rect_flow(page, paragraph_gap: float | None = None) -> None:
                     pbox = getattr(paragraph, "box", None)
                     if pbox is not None and getattr(pbox, "y", None) is not None:
                         crop = getattr(page, "cropbox", None) if page is not None else None
-                        footer_limit = 48.0
+                        footer_limit = 58.0
                         if crop and getattr(crop, "box", None) and crop.box.y is not None:
-                            footer_limit = max(float(crop.box.y) + 48.0, 48.0)
+                            footer_limit = max(float(crop.box.y) + 58.0, 58.0)
                         max_allowed_drop = float(pbox.y) - footer_limit
                         if max_allowed_drop < 0:
                             dy = 0.0
@@ -935,6 +935,17 @@ def _role_of(paragraph) -> str | None:
         return None
     if role in ("title", "section_header") and len(lines) >= 4:
         return None
+    if role in ("title", "section_header", "pull_quote", "callout"):
+        text = _source_text(paragraph).strip()
+        if (
+            text.endswith(":")
+            or text.endswith("：")
+            or text.endswith(",")
+            or text.endswith(";")
+            or text.endswith("...")
+            or text.endswith("…")
+        ):
+            return None
     return role
 
 

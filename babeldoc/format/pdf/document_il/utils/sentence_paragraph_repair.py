@@ -322,6 +322,9 @@ def _can_continue(
         return False
     if line_starts_with_list_marker(lower_line):
         return False
+    from babeldoc.format.pdf.document_il.utils.toc_rows import is_chapter_heading
+    if is_chapter_heading(line_text(lower_line).strip()):
+        return False
     if _font_blocks(upper_line, lower_line, font_name_map=font_name_map):
         return False
     if not _lines_continue(upper_line, lower_line):

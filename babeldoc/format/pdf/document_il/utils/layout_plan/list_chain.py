@@ -34,13 +34,18 @@ def list_links(
         for region in facts.regions
         if region.lines and by_decision[region.region_id].base_strategy == "list"
     ]
-    obstacles = [
-        region
-        for region in facts.regions
-        if region.lines and by_decision[region.region_id].base_strategy != "list"
-    ]
     flow_next: dict[str, str] = {}
     for region in items:
+        obstacles = [
+            other
+            for other in facts.regions
+            if other.lines
+            and other.region_id != region.region_id
+            and (
+                by_decision[other.region_id].base_strategy != "list"
+                or not shares_column_left(_marker_left(region), _marker_left(other))
+            )
+        ]
         nearest = next_below(region, items, _marker_left)
         if nearest is None or blocked(region, nearest, obstacles, _marker_left):
             continue

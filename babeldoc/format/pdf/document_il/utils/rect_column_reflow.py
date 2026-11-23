@@ -1859,9 +1859,19 @@ def _spans_display_band(ordered, page) -> bool:
 
 
 def _continues(upper, lower) -> bool:
-    from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
+    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import line_text
+    from babeldoc.format.pdf.document_il.utils.sentence_paragraph_repair import _top_line
+    from babeldoc.format.pdf.document_il.utils.toc_rows import (
+        is_chapter_heading,
+        is_toc_paragraph,
+    )
 
     if is_toc_paragraph(upper) or is_toc_paragraph(lower):
+        return False
+    lower_text = _plain(lower).strip()
+    top_line = _top_line(lower)
+    top_text = line_text(top_line).strip() if top_line is not None else ""
+    if is_chapter_heading(lower_text) or is_chapter_heading(top_text):
         return False
     gap = float(upper.box.y) - float(lower.box.y2)
     line_h = max(8.0, float(upper.box.y2) - float(upper.box.y))
@@ -1905,9 +1915,19 @@ def absorb_short_continuations(page) -> None:
 
 
 def _is_orphan_tail(paragraph) -> bool:
-    from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
+    from babeldoc.format.pdf.document_il.utils.paragraph_split_policy import line_text
+    from babeldoc.format.pdf.document_il.utils.sentence_paragraph_repair import _top_line
+    from babeldoc.format.pdf.document_il.utils.toc_rows import (
+        is_chapter_heading,
+        is_toc_paragraph,
+    )
 
     if is_toc_paragraph(paragraph):
+        return False
+    para_text = _plain(paragraph).strip()
+    top_line = _top_line(paragraph)
+    top_text = line_text(top_line).strip() if top_line is not None else ""
+    if is_chapter_heading(para_text) or is_chapter_heading(top_text):
         return False
     box = getattr(paragraph, "box", None)
     if box is None or None in (box.x, box.y, box.x2, box.y2):

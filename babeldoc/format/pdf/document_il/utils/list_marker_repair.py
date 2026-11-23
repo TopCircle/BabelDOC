@@ -538,9 +538,9 @@ _GLUED_CONSEC_LETTERS_RE = re.compile(
 _MID_OPTION_SPLIT_RE = re.compile(
     r"(?<=[。；;!?！？])\s*(?=[a-zA-Z]\s*(?:\.\s*)?[\.．。、\)])"
 )
-# Also split when options jammed: ``…； c.`` or ``…。 b.`` or ``… B.。大``
+# Also split when options jammed: ``…； c.`` or ``…。 b.`` or ``… B.。大`` or ``…% b. 43%``
 _MID_OPTION_LOOSE_RE = re.compile(
-    r"(?<=[\u4e00-\u9fffA-Za-z0-9）\)])\s+(?=[a-zA-Z]\s*(?:\.\s*)?[\.．。、\)]\s*[\u4e00-\u9fffA-Za-z])"
+    r"(?<=[\u4e00-\u9fffA-Za-z0-9）\)%％\.．。、！？!?])\s+(?=[a-zA-Z]\s*(?:\.\s*)?[\.．。、\)]\s*[\u4e00-\u9fffA-Za-z0-9])"
 )
 
 

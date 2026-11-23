@@ -2233,12 +2233,19 @@ def is_quote_block(
 
     has_quote_marks = False
     try:
-        text = get_paragraph_unicode(para)
+        text = getattr(para, "unicode", None) or get_paragraph_unicode(para)
         if text:
             quote_chars = {'"', '“', '”', "'", '‘', '’',
                            '「', '」', '『', '』',
                            '《', '》'}
             stripped = text.strip()
+            if (
+                stripped.endswith(":")
+                or stripped.endswith("：")
+                or stripped.endswith(",")
+                or stripped.endswith(";")
+            ):
+                return False
             if len(stripped) <= 1 and all(ch in quote_chars for ch in stripped):
                 return False
             first_char = stripped[:1] if stripped else ''

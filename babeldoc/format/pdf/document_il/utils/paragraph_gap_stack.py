@@ -7,6 +7,10 @@ gap inside that column stays the one ``pack_rect_flow`` already set.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import ParagraphGapLink
 from babeldoc.format.pdf.document_il.utils.rect_flow_stack import BODY_PARAGRAPH_GAP
 from babeldoc.format.pdf.document_il.utils.rect_flow_stack import _line_break_dy
@@ -179,9 +183,9 @@ def _seat(link: ParagraphGapLink, by_region, rects) -> None:
         lbox = getattr(lower, "box", None)
         if lbox is not None and getattr(lbox, "y", None) is not None:
             crop = getattr(page, "cropbox", None) if page is not None else None
-            footer_limit = 48.0
+            footer_limit = 58.0
             if crop and getattr(crop, "box", None) and crop.box.y is not None:
-                footer_limit = max(float(crop.box.y) + 48.0, 48.0)
+                footer_limit = max(float(crop.box.y) + 58.0, 58.0)
             max_allowed_drop = float(lbox.y) - footer_limit
             if max_allowed_drop < 0:
                 dy = 0.0

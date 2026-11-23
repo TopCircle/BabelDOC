@@ -1356,6 +1356,13 @@ def paint_toc_leaders(paragraphs, glyph_for=None) -> None:
         anchor_box = _ink_box(anchor) if anchor is not None else None
         baseline = float(anchor_box.y) if anchor_box is not None else float(stamp["y"])
         height = max(0.8, float(stamp["y2"]) - float(stamp["y"]))
+        target_xobj_id = (
+            getattr(anchor, "xobj_id", None)
+            if anchor is not None
+            else getattr(paragraph, "xobj_id", None)
+        )
+        if target_xobj_id is None:
+            target_xobj_id = getattr(paragraph, "xobj_id", None) or stamp.get("xobj_id")
         if glyph_for is not None and anchor is not None and anchor.pdf_style is not None:
             mapped = glyph_for(anchor.pdf_style.font_id, glyph)
             if mapped is not None:
@@ -1378,6 +1385,7 @@ def paint_toc_leaders(paragraphs, glyph_for=None) -> None:
                     char_unicode=glyph,
                     pdf_character_id=character_id,
                     vertical=False,
+                    xobj_id=target_xobj_id,
                 ),
             )
             x += width
@@ -1401,6 +1409,7 @@ def paint_toc_leaders(paragraphs, glyph_for=None) -> None:
                 layout_label="toc",
                 pdf_style=style,
                 debug_id=f"{_row_key(paragraph)}-leader",
+                xobj_id=target_xobj_id,
             ),
         )
     paragraphs.extend(added)

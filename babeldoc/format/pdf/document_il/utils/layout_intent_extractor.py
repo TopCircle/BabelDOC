@@ -516,6 +516,7 @@ class LayoutIntentExtractor:
         # Rule 6.5 — lists and TOCs are content lists, never quotes or callouts
         if paragraph_opens_as_list(para) or label == "list":
             return LayoutIntentRole.LIST, None
+        t = (getattr(para, "unicode", None) or "").strip()
         # Rule 7 — pull quote (P0 single source: is_quote_block).
         # A flat column on the same left as a wrap, with the photo in its
         # margin, is that column. The quote test sees the margin and would
@@ -525,16 +526,18 @@ class LayoutIntentExtractor:
         )
         # A wide block on another paragraph's right wall is that column.
         # The quote test sees the indent and would call it a pull quote.
+        # A sentence ending with a colon or comma is introductory prose, never a pull-quote.
+        ends_intro = t.endswith(":") or t.endswith("：") or t.endswith(",") or t.endswith(";")
         if (
             is_quote_block(para, page_width)
             and not continues
+            and not ends_intro
             and not _on_shared_body_wall(para, walls, pid)
         ):
             return LayoutIntentRole.PULL_QUOTE, None
         # Rule 8 — callout column. A labeled callout stays a callout.
         # An unlabeled narrow box is only inferred as callout if it is a multi-line
         # column (2 <= lines <= 6). Single lines and headings are body / section heads.
-        t = (getattr(para, "unicode", None) or "").strip()
         from babeldoc.format.pdf.document_il.utils.sealed_paragraph_join import (
             _HEADING_PATTERN,
         )
