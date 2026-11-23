@@ -1,10 +1,24 @@
-# BabelDOC — 当前状况（2026-11-20）
+# BabelDOC — 当前状况（2026-11-23）
 
-**工作工程:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next/BabelDOC` · 分支 `main`  
+**工作工程:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
-**历史布局树:** `/Users/yun/workspace/BabelDOC-layout-paradigms`（已归档/废弃，工作流与开发已全面迁入 Nextcloud）  
-**版本:** `0.6.4.108`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.109`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-23 — 目录章节隔离加固、引文冒号引导句误判修复、页脚间距下限与未映射 CID 列表符号清洗（0.6.4.109）
+
+1. **目录章节行隔离（`rect_column_reflow.py` / `sentence_paragraph_repair.py` / `toc_rows.py`）**：
+   - 在 `_continues`、`_is_orphan_tail` 与 `_can_continue` 中增加 `is_chapter_heading` 防线，杜绝无点导引线章节行（如第十六章、第十七章）被错误合流吸纳；同时在 `paint_toc_leaders` 中透传 `xobj_id`，保证目录导引点线坐标系与所属图元完全一致。
+2. **冒号/引言引导句豁免防线（`layout_helper.py` / `layout_intent_extractor.py` / `rect_flow_stack.py`）**：
+   - 彻底修复普通正文首行被 `is_quote_block` 误判为 `pull_quote` 的缺陷：末尾包含 `:`、`：`、`,`、`;` 或省略号的引导性正文不再被判定为引言/引述框，消除多余 44pt 空白死区，段落自然紧凑排布。
+3. **页脚区域底界绝对保护（`rect_flow_stack.py` / `paragraph_gap_stack.py` / `shaped_pocket_stack.py`）**：
+   - 将 `footer_limit` 统一提升至 `58.0 pt`，并在 `shaped_pocket_stack.py:_crop_floor` 中增加 `max(floor + 58.0, max(chrome_tops) + 8.0)`，彻底杜绝下沉段落穿透或横跨底栏红线。
+4. **未映射 CID 列表符号自动清洗（`mt_token_sanitize.py`）**：
+   - 在 `normalize_translated_text` 的清理管线中增加未映射字体 CID 列表符号的规整：行首 `(cid:\d+)` 自动映射为规范的列表点 `• `，并剔除遗留的 `(cid:\d+)` 垃圾字符，彻底解决特定字体编码缺失导致的穿帮字符。
+5. **单测验证（`tests/`）**：
+   - 运行目录与版面测试套件 `test_toc_row_pin.py`, `test_toc_isolation.py`, `test_figure_text_skip.py`，全数 43 项测试通过。
+6. **全书视觉验收（《Anal Pleasure For Her》共 121 页）**：
+   - 121/121 全页肉眼视觉对比与底栏边界审计全数通过，0 截断、0 省略号，已交付至 OneDrive。
 
 ## 2026-11-20 — 独立引言盒扩张拦截、引文免下沉保护与分栏断字合并清理（0.6.4.108）
 
