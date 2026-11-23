@@ -355,6 +355,15 @@ def _scrub_mt_debris(text: str, *, keep_formula_placeholders: bool = False) -> s
         r"\1",
         out,
     )
+    # Map leaked font CID tokens at paragraph/line start to bullet ("(cid:116)(cid:1) " -> "• ")
+    out = re.sub(
+        r"(?m)^([•·●▪◦►▸\x12■⚫⬤◆◇○●◦‣⁃▫\uf643]\s*)(?:\(cid:\d+\)\s*)+",
+        r"\1",
+        out,
+    )
+    out = re.sub(r"(?m)^(?:\(cid:\d+\)\s*)+", "• ", out)
+    # Strip any remaining unmapped font CID tokens leaked from MT
+    out = re.sub(r"\(cid:\d+\)", "", out)
     # Paragraph or line start punctuation strip
     out = re.sub(r"^[，,。．、：:；;]+", "", out)
     # Strip literal escaped carriage returns / newlines (\r or \n) leaked from MT
