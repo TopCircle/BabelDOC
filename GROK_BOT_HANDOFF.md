@@ -19,6 +19,8 @@
    - 运行目录与版面测试套件 `test_toc_row_pin.py`, `test_toc_isolation.py`, `test_figure_text_skip.py`，全数 43 项测试通过。
 6. **全书视觉验收（《Anal Pleasure For Her》共 121 页）**：
    - 121/121 全页肉眼视觉对比与底栏边界审计全数通过，0 截断、0 省略号，已交付至 OneDrive。
+7. **VPS 正式站部署（0.6.4.109）**：
+   - 远端 VPS 同步：最新镜像构建完成（`BABELDOC_REF=22ddbe9ba591c594a2b0720dd622da298aa4ec34`），`pdfmt-next-app` 容器重建启动成功，端口 7870 健康检查返回 200 OK。
 
 ## 2026-11-20 — 独立引言盒扩张拦截、引文免下沉保护与分栏断字合并清理（0.6.4.108）
 
