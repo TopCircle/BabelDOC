@@ -1,9 +1,20 @@
-# BabelDOC — 当前状况（2026-11-24）
+# BabelDOC — 当前状况（2026-11-25）
 
 **工作工程:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
-**版本:** `0.6.4.110`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.111`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-25 — 参考文献原样保留与 OCR 文字层扫描件误判豁免（0.6.4.111）
+
+1. **参考文献/引用章节原样保留（`il_translator.py`）**：
+   - 增强 `_is_bibliography_paragraph(paragraph, local_title=...)` 检测：识别 `References`/`Bibliography` 章节标题下的正文条目、编号引用条目（作者/URL/年份/出版关键词）、作者-年份引文及方括号引文 `[N]`，同时豁免章节标题与网址页脚；
+   - 在 `translate_paragraph` 中对命中的参考文献段落改用 `self.record_skip(page, paragraph, "BIBLIOGRAPHY")`，原样保留英文原始排版，避免 MT 失真与 CJK 重排叠字。
+2. **OCR 文字层 PDF 扫描检测豁免（`detect_scanned_file.py`）**：
+   - 在 `DetectScannedFile.process()` 入口支持 `skip_scanned_detection` 配置开关提前返回；
+   - 当全页背景图占比触发扫描页阈值（`scanned >= threshold`）但整书已有超过 `200` 个字符的文字层（如 `ocrmypdf` 生成的带文字层 PDF）时记录日志并放行翻译，避免误抛 `ScannedPDFError`。
+3. **单测验证（`tests/`）**：
+   - 新增 `tests/test_bibliography_and_ocr_skip.py`（7 项测试）并配合回归套件运行验证通过。
 
 ## 2026-11-24 — 独立引言列表隔离、列表符号换行强制分段、标题粗体截断与垂直窄块合并加固（0.6.4.110）
 
