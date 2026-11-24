@@ -446,18 +446,76 @@ class ILTranslator:
     _CJK_SENT_END_RE = re.compile(r"[。！？]")
 
     @classmethod
-    def _is_bibliography_paragraph(cls, paragraph: PdfParagraph) -> bool:
+    def _is_bibliography_paragraph(
+        cls,
+        paragraph: PdfParagraph,
+        local_title: TitleContextSnapshot | None = None,
+    ) -> bool:
         """True when a paragraph consists of bibliography / reference entries."""
         text = getattr(paragraph, "unicode", None) or ""
-        if len(text) < 40:
+        t = text.strip()
+        if not t or len(t) < 8:
             return False
-        # Multiple author-year citations e.g. "Chalker, R. (2000)." or "Comfort, A. (1972)."
-        author_years = len(re.findall(r"\b[A-Z][a-zA-Z\-]+,\s+[A-Z]\..*?\(\d{4}\)", text))
-        if author_years >= 2:
+
+        # Exact headers / footers to skip
+        if t.lower() in {"references", "bibliography", "table of contents"}:
+            return False
+        if "gabriellemoore.com" in t.lower():
+            return False
+
+        # If the current section title is References or Bibliography, content paragraphs are references!
+        if local_title and getattr(local_title, "unicode", None):
+            t_uni = local_title.unicode.strip().lower()
+            if "reference" in t_uni or "bibliography" in t_uni or "参考文献" in t_uni:
+                if paragraph.layout_label != "title":
+                    return True
+
+        # 1. Numbered citation starting with digit(s) e.g. '1. ', '41, 42. '
+        num_m = re.match(r"^\d{1,3}(?:\s*,\s*\d{1,3})*\.\s+", t)
+        if num_m:
+            rest = t[num_m.end():]
+            # Numbered author e.g. '4. Cox, Tracey'
+            if re.match(r"^[A-Z][a-zA-Z\-]+,\s+[A-Z]", rest):
+                return True
+            # Numbered URL e.g. '44. http://...'
+            if re.match(r"^https?://", rest, re.I):
+                return True
+            # Numbered with year or bib keywords
+            has_year = bool(re.search(r"\b(?:19|20)\d{2}\b", t))
+            has_kw = bool(
+                re.search(
+                    r"\b(?:et\.?\s*al|available|accessed|http|https|www|press|publishing|journal|perspectives|report|survey|study|university|books|ebook|ph\.?d|vol|pp)\b",
+                    t,
+                    re.I,
+                )
+            )
+            if has_year or has_kw:
+                return True
+
+        # 2. General citation with year + keyword
+        has_year = bool(re.search(r"\b(?:19|20)\d{2}\b", t))
+        if has_year:
+            if bool(
+                re.search(
+                    r"\b(?:edition|publishing|press|journal|pp\.|vol\.|paperback|accessed|available|http|https|et\.?\s*al|reprint|perspectives|university|survey|report|proceedings)\b",
+                    t,
+                    re.I,
+                )
+            ):
+                return True
+
+        # 3. Author-year pattern e.g. 'Barclay, L. B. 2010.' or 'Ian Kerner, 2010.'
+        if len(
+            re.findall(
+                r"\b[A-Z][a-zA-Z\-]+,\s+[A-Z\.\s]+(?:\(\d{4}\)|\d{4}\b)", t
+            )
+        ) >= 1:
             return True
-        bracket_cites = len(re.findall(r"\[\d{1,3}\]\s+[A-Z]", text))
-        if bracket_cites >= 2:
+
+        # 4. Bracketed citations [1]
+        if re.search(r"\[\d{1,3}\]\s+[A-Z]", t):
             return True
+
         return False
 
     @classmethod
@@ -2235,20 +2293,14 @@ class ILTranslator:
                 if self.use_as_fallback:
                     # il translator llm only modifies unicode in some situations
                     paragraph.unicode = get_paragraph_unicode(paragraph)
-                # Bibliography / references: preserve original citations without MT distortion
-                if self._is_bibliography_paragraph(paragraph):
-                    text, translate_input = self.pre_translate_paragraph(
-                        paragraph, tracker, page_font_map, xobj_font_map, page=page
+                # Bibliography / references: preserve original citations in pristine layout without MT distortion or CJK reflow
+                if self._is_bibliography_paragraph(paragraph, local_title=local_title_paragraph):
+                    self.record_skip(page, paragraph, "BIBLIOGRAPHY")
+                    logger.info(
+                        "preserve pristine bibliography: id=%s text=%r",
+                        paragraph.debug_id,
+                        (getattr(paragraph, "unicode", None) or "")[:60],
                     )
-                    if text is not None:
-                        logger.info(
-                            "keep bibliography in English: id=%s text=%r",
-                            paragraph.debug_id,
-                            text[:60],
-                        )
-                        self.post_translate_paragraph(
-                            paragraph, tracker, translate_input, text
-                        )
                     return
                 # Near-full: stash membership only (classified on EN
                 # before submit). Do not rematch live host.unicode.

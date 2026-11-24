@@ -175,6 +175,8 @@ class DetectScannedFile:
         self, docs: il_version_1.Document, original_pdf_path, mediabox_data: dict
     ):
         """Generate layouts for all pages that need to be translated."""
+        if getattr(self.translation_config, "skip_scanned_detection", False):
+            return
         # Get pages that need to be translated
 
         pdf_creater = PDFCreater(
@@ -213,6 +215,12 @@ class DetectScannedFile:
                 progress.advance(1)
 
         if scanned >= threshold:
+            total_chars = sum(len(page.pdf_character) for page in docs.page)
+            if total_chars > 200:
+                logger.info(
+                    f"Detected {scanned} image-heavy pages, but document has {total_chars} text characters (e.g. OCR layer). Proceeding with translation."
+                )
+                return
             if self.translation_config.auto_enable_ocr_workaround:
                 logger.warning(
                     f"Detected {scanned} scanned pages, which is more than 80% of the total pages. "
