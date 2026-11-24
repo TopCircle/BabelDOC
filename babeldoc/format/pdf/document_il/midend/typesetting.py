@@ -1592,6 +1592,7 @@ class Typesetting:
         own_scale: set[int] = set()
 
         for page in document.page:
+            self._strip_ocr_skipped_overlays(page)
             # The search only moves downward. A box still off its
             # contour would lock the readable floor before render seats it.
             assign_line_edge_boxes(page)
@@ -3350,6 +3351,7 @@ class Typesetting:
         # 预先构建每页的排除区域缓存，避免重复构建
         self._page_zone_cache: dict[int, ExclusionZoneIndex | None] = {}
         for page in document.page:
+            self._strip_ocr_skipped_overlays(page)
             zones = self._build_page_exclusion_zones(page)
             self._page_zone_cache[id(page)] = (
                 ExclusionZoneIndex(zones) if zones else None
@@ -3579,7 +3581,53 @@ class Typesetting:
             return None
         return font.font_id, int(glyph_id)
 
+    def _strip_ocr_skipped_overlays(self, page: il_version_1.Page) -> None:
+        """Keep scanned page pixels intact for skipped paragraphs in OCR mode."""
+        if not getattr(self.translation_config, "ocr_workaround", False):
+            return
+        shared = getattr(
+            self.translation_config, "shared_context_cross_split_part", None
+        )
+        skipped_pool = getattr(shared, "ocr_skipped_para_ids", None) if shared else None
+        if not skipped_pool:
+            return
+        paras = getattr(page, "pdf_paragraph", None) or []
+        skipped_paras = [p for p in paras if id(p) in skipped_pool]
+        if not skipped_paras:
+            return
+
+        skipped_ids = {id(p) for p in skipped_paras}
+        rect_meta = getattr(shared, "ocr_bg_rect_meta", {})
+        para_layout_ids = getattr(shared, "ocr_para_layout_ids", {})
+        mixed_layout_ids = {
+            para_layout_ids.get(id(p)) for p in skipped_paras
+        } - {None}
+        para_by_id = {id(p): p for p in paras}
+
+        kept_rects = []
+        for rect in getattr(page, "pdf_rectangle", None) or []:
+            meta = rect_meta.get(id(rect))
+            if meta is None:
+                kept_rects.append(rect)
+                continue
+            para_id, layout_id = meta
+            if para_id in skipped_ids:
+                continue
+            if layout_id in mixed_layout_ids:
+                owner = para_by_id.get(para_id)
+                owner_box = getattr(owner, "box", None) if owner is not None else None
+                if owner_box is not None:
+                    rect.box = copy.deepcopy(owner_box)
+            kept_rects.append(rect)
+        page.pdf_rectangle = kept_rects
+
+        for p in skipped_paras:
+            p.pdf_paragraph_composition = []
+            p.unicode = ""
+            p.optimal_scale = 1.0
+
     def render_page(self, page: il_version_1.Page):
+        self._strip_ocr_skipped_overlays(page)
         fonts = self._collect_fonts_for_page(page)
         if (
             page.page_number == 0
@@ -6481,32 +6529,68 @@ class Typesetting:
         def get_font(font_id: str, xobj_id: int | None):
             return resolve_style_font_for_typesetting(fonts, font_id, xobj_id)
 
+        def _keep_glyph(ch: str) -> bool:
+            if ch in ("\n", "\r"):
+                return False
+            if ch == "\t":
+                return True
+            o = ord(ch)
+            return not (o < 32 or o == 127 or 0x80 <= o <= 0x9F)
+
+        def _append_source_char(
+            char: il_version_1.PdfCharacter, debug_info: bool = False
+        ) -> None:
+            style = getattr(char, "pdf_style", None)
+            font_id = getattr(style, "font_id", None) if style else None
+            char_font = get_font(font_id, paragraph.xobj_id) if font_id else None
+            font_name = (getattr(char_font, "name", None) or "").lower()
+            if char_font is not None and "glyphless" in font_name:
+                raw = getattr(char, "char_unicode", None) or ""
+                if not raw:
+                    return
+                from babeldoc.format.pdf.document_il.utils.style_helper import BLACK
+
+                gs = getattr(style, "graphic_state", None)
+                instr = getattr(gs, "passthrough_per_char_instruction", None) or ""
+                visible_gs = BLACK if (gs is None or "Tr" in instr) else gs
+                visible_style = PdfStyle(
+                    font_id=font_id,
+                    font_size=style.font_size,
+                    graphic_state=visible_gs,
+                )
+                for ch in raw:
+                    if not _keep_glyph(ch):
+                        continue
+                    result.append(
+                        TypesettingUnit(
+                            unicode=ch,
+                            font=self.font_mapper.map(char_font, ch),
+                            original_font=char_font,
+                            font_size=style.font_size,
+                            style=visible_style,
+                            debug_info=debug_info,
+                            xobj_id=char.xobj_id,
+                        )
+                    )
+                return
+            result.append(TypesettingUnit(char=char, debug_info=debug_info))
+
         for composition in paragraph.pdf_paragraph_composition:
             if composition is None:
                 continue
             if composition.pdf_line:
-                result.extend(
-                    [
-                        TypesettingUnit(char=char)
-                        for char in composition.pdf_line.pdf_character
-                    ],
-                )
+                for char in composition.pdf_line.pdf_character:
+                    _append_source_char(char)
             elif composition.pdf_character:
-                result.append(
-                    TypesettingUnit(
-                        char=composition.pdf_character,
-                        debug_info=bool(
-                            getattr(composition.pdf_character, "debug_info", False)
-                        ),
+                _append_source_char(
+                    composition.pdf_character,
+                    debug_info=bool(
+                        getattr(composition.pdf_character, "debug_info", False)
                     ),
                 )
             elif composition.pdf_same_style_characters:
-                result.extend(
-                    [
-                        TypesettingUnit(char=char)
-                        for char in composition.pdf_same_style_characters.pdf_character
-                    ],
-                )
+                for char in composition.pdf_same_style_characters.pdf_character:
+                    _append_source_char(char)
             elif composition.pdf_same_style_unicode_characters:
                 style = composition.pdf_same_style_unicode_characters.pdf_style
                 if style is None:

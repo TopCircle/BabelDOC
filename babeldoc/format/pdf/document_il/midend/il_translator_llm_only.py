@@ -612,7 +612,7 @@ class ILTranslatorLLMOnly:
             if paragraph.layout_label == "title":
                 self.shared_context_cross_split_part.recent_title_paragraph = (
                     self.shared_context_cross_split_part.snapshot_title_paragraph(
-                        paragraph
+                        paragraph, page_number=page.page_number
                     )
                 )
 

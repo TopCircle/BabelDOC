@@ -450,6 +450,7 @@ class ILTranslator:
         cls,
         paragraph: PdfParagraph,
         local_title: TitleContextSnapshot | None = None,
+        page_number: int | None = None,
     ) -> bool:
         """True when a paragraph consists of bibliography / reference entries."""
         text = getattr(paragraph, "unicode", None) or ""
@@ -457,62 +458,98 @@ class ILTranslator:
         if not t or len(t) < 8:
             return False
 
-        # Exact headers / footers to skip
-        if t.lower() in {"references", "bibliography", "table of contents"}:
+        lower_t = t.lower()
+        # Exact headers, copyright lines, and site footers are not citations
+        if lower_t in {
+            "references",
+            "bibliography",
+            "table of contents",
+            "www.gabriellemoore.com",
+            "gabriellemoore.com",
+        }:
             return False
-        if "gabriellemoore.com" in t.lower():
+        if (
+            getattr(paragraph, "layout_label", None) == "abandon"
+            and "gabriellemoore.com" in lower_t
+        ):
+            return False
+        if lower_t.startswith("copyright") or t.startswith("©"):
             return False
 
-        # If the current section title is References or Bibliography, content paragraphs are references!
+        has_year = bool(re.search(r"\b(?:19|20)\d{2}\b", t))
+        has_url = bool(re.search(r"https?://|www\.\S+\.[a-z]{2,}", t, re.I))
+        has_author_initial = bool(
+            re.search(r"\b[A-Z][a-zA-Z\-]+,\s+[A-Z](?:\.|\b)", t)
+        )
+        has_strong_bib_kw = bool(
+            re.search(
+                r"\b(?:et\.?\s*al|last\s+accessed|accessed\s+\d|retrieved|isbn|doi:|pp\.\s*\d|vol\.?\s*\d|edition|publishing|press|journal|paperback|reprint|proceedings|dvd)\b",
+                t,
+                re.I,
+            )
+        )
+
+        # Active References/Bibliography section (bounded to nearby pages so multi-volume anthologies never leak)
         if local_title and getattr(local_title, "unicode", None):
             t_uni = local_title.unicode.strip().lower()
-            if "reference" in t_uni or "bibliography" in t_uni or "参考文献" in t_uni:
-                if paragraph.layout_label != "title":
+            is_bib_heading = bool(
+                re.fullmatch(
+                    r"(?:\d+\s*[\.\-:]?\s*)?(?:references?|bibliography|works\s+cited|参考文献)",
+                    t_uni,
+                )
+            )
+            title_pg = getattr(local_title, "page_number", None)
+            near_title = (
+                title_pg is None
+                or page_number is None
+                or 0 <= (page_number - title_pg) <= 4
+            )
+            if (
+                is_bib_heading
+                and near_title
+                and getattr(paragraph, "layout_label", None) != "title"
+            ):
+                if has_year or has_url or has_author_initial or has_strong_bib_kw:
+                    return True
+                # Short author/publisher line inside References without conversational pronouns or step prefixes
+                is_prose = bool(
+                    re.search(
+                        r"\b(?:you|your|you'll|you're|she|her|his)\b", t, re.I
+                    )
+                    or re.match(r"^\d+\.\s+[A-Z][a-z]+:", t)
+                )
+                if len(t) < 60 and not is_prose:
                     return True
 
         # 1. Numbered citation starting with digit(s) e.g. '1. ', '41, 42. '
         num_m = re.match(r"^\d{1,3}(?:\s*,\s*\d{1,3})*\.\s+", t)
         if num_m:
-            rest = t[num_m.end():]
+            rest = t[num_m.end() :]
             # Numbered author e.g. '4. Cox, Tracey'
             if re.match(r"^[A-Z][a-zA-Z\-]+,\s+[A-Z]", rest):
                 return True
             # Numbered URL e.g. '44. http://...'
             if re.match(r"^https?://", rest, re.I):
                 return True
-            # Numbered with year or bib keywords
-            has_year = bool(re.search(r"\b(?:19|20)\d{2}\b", t))
-            has_kw = bool(
-                re.search(
-                    r"\b(?:et\.?\s*al|available|accessed|http|https|www|press|publishing|journal|perspectives|report|survey|study|university|books|ebook|ph\.?d|vol|pp)\b",
-                    t,
-                    re.I,
-                )
-            )
-            if has_year or has_kw:
+            # Numbered with year/URL and explicit citation keyword
+            if (has_year or has_url) and has_strong_bib_kw:
                 return True
 
-        # 2. General citation with year + keyword
-        has_year = bool(re.search(r"\b(?:19|20)\d{2}\b", t))
-        if has_year:
-            if bool(
-                re.search(
-                    r"\b(?:edition|publishing|press|journal|pp\.|vol\.|paperback|accessed|available|http|https|et\.?\s*al|reprint|perspectives|university|survey|report|proceedings)\b",
-                    t,
-                    re.I,
-                )
-            ):
-                return True
-
-        # 3. Author-year pattern e.g. 'Barclay, L. B. 2010.' or 'Ian Kerner, 2010.'
-        if len(
-            re.findall(
-                r"\b[A-Z][a-zA-Z\-]+,\s+[A-Z\.\s]+(?:\(\d{4}\)|\d{4}\b)", t
+        # 2. Unnumbered strong citation patterns (avoid matching body prose like "In a 2006 survey...")
+        if has_author_initial and has_year:
+            return True
+        if has_url and (has_year or "accessed" in lower_t or "retrieved" in lower_t):
+            return True
+        if has_year and bool(
+            re.search(
+                r"\b(?:pp\.\s*\d|vol\.?\s*\d|isbn|doi:|last\s+accessed|retrieved\s+from|et\.?\s*al)\b",
+                t,
+                re.I,
             )
-        ) >= 1:
+        ):
             return True
 
-        # 4. Bracketed citations [1]
+        # 3. Bracketed citations [1] Author
         if re.search(r"\[\d{1,3}\]\s+[A-Z]", t):
             return True
 
@@ -649,7 +686,7 @@ class ILTranslator:
     _CHAPTER_MARKER_RE = re.compile(r"\bChapter\s*(\d{1,3})(?!\d)", re.IGNORECASE)
     #: Rich-text bold markers that split a chapter marker ("Chapter " bold +
     #: "9" regular) and make MT fuse it into "Chapter9直接卷曲".
-    _RICH_TEXT_MARKER_RE = re.compile(r"[〖\u3016]/?[Bb]\d+[〗\u3017]")
+    _RICH_TEXT_MARKER_RE = re.compile(r"[〖\u3016]\s*/?[Bb]\d+\s*[〗\u3017]")
     #: A complete ``Chapter N`` marker can be translated without discarding
     #: its source style.  Split markers are handled by the legacy fallback
     #: below because there is no single style span to preserve.
@@ -795,7 +832,13 @@ class ILTranslator:
         *,
         debug_extra: dict | None = None,
     ) -> None:
-        """Record a skip event (thread-safe). No-op effect on translation."""
+        """Record a skip event (thread-safe). Marks OCR skipped paragraphs."""
+        if getattr(self.translation_config, "ocr_workaround", False):
+            shared = getattr(
+                self.translation_config, "shared_context_cross_split_part", None
+            )
+            if shared is not None:
+                shared.ocr_skipped_para_ids.add(id(paragraph))
         extra = debug_extra if getattr(self.translation_config, "debug", False) else None
         self.skip_report.record(
             page=page,
@@ -976,7 +1019,7 @@ class ILTranslator:
             if paragraph.layout_label == "title":
                 self.shared_context_cross_split_part.recent_title_paragraph = (
                     self.shared_context_cross_split_part.snapshot_title_paragraph(
-                        paragraph
+                        paragraph, page_number=page.page_number
                     )
                 )
             executor.submit(
@@ -1540,7 +1583,7 @@ class ILTranslator:
         return placeholder
 
 
-    _MARKER_RE = re.compile(r"〖[Bb]\d+〗|〖/[Bb]\d+〗")
+    _MARKER_RE = re.compile(r"[〖\u3016]\s*/?[Bb]\d+\s*[〗\u3017]")
 
     @staticmethod
     def _strip_style_markers(text: str) -> str:
@@ -2294,7 +2337,11 @@ class ILTranslator:
                     # il translator llm only modifies unicode in some situations
                     paragraph.unicode = get_paragraph_unicode(paragraph)
                 # Bibliography / references: preserve original citations in pristine layout without MT distortion or CJK reflow
-                if self._is_bibliography_paragraph(paragraph, local_title=local_title_paragraph):
+                if self._is_bibliography_paragraph(
+                    paragraph,
+                    local_title=local_title_paragraph,
+                    page_number=getattr(page, "page_number", None),
+                ):
                     self.record_skip(page, paragraph, "BIBLIOGRAPHY")
                     logger.info(
                         "preserve pristine bibliography: id=%s text=%r",

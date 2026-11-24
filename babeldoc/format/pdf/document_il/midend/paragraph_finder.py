@@ -323,15 +323,20 @@ class ParagraphFinder:
             # first-body tail lands on the first-body head). Vertical room
             # for long ZH is handled per-para in Typesetting._ocr_pre_expand_box
             # via get_max_bottom_space / get_max_right_space.
-            page.pdf_rectangle.append(
-                PdfRectangle(
-                    box=Box(x1, y1, x2, y2),
-                    fill_background=True,
-                    graphic_state=WHITE,
-                    debug_info=False,
-                    xobj_id=paragraph.xobj_id,
-                )
+            rect = PdfRectangle(
+                box=Box(x1, y1, x2, y2),
+                fill_background=True,
+                graphic_state=WHITE,
+                debug_info=False,
+                xobj_id=paragraph.xobj_id,
             )
+            shared = getattr(
+                self.translation_config, "shared_context_cross_split_part", None
+            )
+            if shared is not None:
+                shared.ocr_bg_rect_meta[id(rect)] = (id(paragraph), layout_id)
+                shared.ocr_para_layout_ids[id(paragraph)] = layout_id
+            page.pdf_rectangle.append(rect)
 
     def _page_crop_box(self, page: Page | None):
         if page is None:

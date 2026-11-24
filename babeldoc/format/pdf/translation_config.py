@@ -29,6 +29,7 @@ class TitleContextSnapshot:
     debug_id: str | None
     unicode: str | None
     layout_label: str | None = None
+    page_number: int | None = None
 
 
 class SharedContextCrossSplitPart:
@@ -43,14 +44,21 @@ class SharedContextCrossSplitPart:
         # Statistics for valid characters/text across the whole file
         self.valid_char_count_total: int = 0
         self.total_valid_text_token_count: int = 0
+        # OCR dual-layer background-rect tracking across stages
+        self.ocr_skipped_para_ids: set[int] = set()
+        self.ocr_bg_rect_meta: dict[int, tuple[int, int]] = {}
+        self.ocr_para_layout_ids: dict[int, int] = {}
 
-    def snapshot_title_paragraph(self, paragraph) -> TitleContextSnapshot | None:
+    def snapshot_title_paragraph(
+        self, paragraph, page_number: int | None = None
+    ) -> TitleContextSnapshot | None:
         if paragraph is None:
             return None
         return TitleContextSnapshot(
             debug_id=getattr(paragraph, "debug_id", None),
             unicode=getattr(paragraph, "unicode", None),
             layout_label=getattr(paragraph, "layout_label", None),
+            page_number=page_number,
         )
 
     def initialize_glossaries(self, initial_glossaries: list[Glossary] | None):
