@@ -63,7 +63,10 @@ def is_callout_column(box: Box | None) -> bool:
 
 def is_left_gutter_bar(box: Box | None) -> bool:
     """OA p91 left-gutter red bar (x≈54, width ≲180pt)."""
-    if box is None or box.x is None:
+    if box is None or box.x is None or box.y is None or box.y2 is None:
+        return False
+    h = abs(float(box.y2 - box.y))
+    if h < 25.0:
         return False
     return float(box.x) < 80.0 and 0.0 < box_width(box) < LEFT_GUTTER_BAR_MAX_WIDTH
 
@@ -262,10 +265,13 @@ def try_pre_expand_for_content(
     # Right-side design callouts (tip / merged triangle): left then down.
     # Do NOT treat every width<230 box as a callout — short body/subheads would
     # force full-page left expand and destroy dual layout.
+    is_heading = is_short_heading_text(text, layout_label)
     right_blocked = is_right_blocked(box, get_max_right)
     left_gutter_bar = is_left_gutter_bar(box)
-    force_callout = is_ultra_narrow_column(box) or (
-        is_callout_column(box) and right_blocked
+    force_callout = not is_heading and (
+        is_ultra_narrow_column(box) or (
+            is_callout_column(box) and right_blocked
+        )
     )
     # Even callouts: no expand when content already fits the box.
     if content_w <= box_w + 1.0:
@@ -282,6 +288,10 @@ def try_pre_expand_for_content(
 
     # Ultra-narrow / right-blocked callout column: modest left, then right, down.
     if force_callout:
+        if not right_blocked:
+            right = try_expand_right(box, get_max_right)
+            if right is not None:
+                return right
         left = (
             try_expand_left(box, get_max_left, need_width=content_w)
             if get_max_left is not None

@@ -1433,6 +1433,11 @@ def get_character_layout(
     if not matching_layouts:
         return None
 
+    # Filter out marginal grazes when a dominant layout container exists
+    max_iou = max(m["iou"] for m in matching_layouts)
+    if max_iou >= 0.5:
+        matching_layouts = [m for m in matching_layouts if m["iou"] >= 0.2]
+
     # Sort by priority (ascending) and IoU value (descending)
     matching_layouts.sort(key=lambda x: (x["priority"], -x["iou"]))
 

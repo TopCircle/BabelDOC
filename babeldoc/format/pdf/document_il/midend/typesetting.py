@@ -1931,13 +1931,28 @@ class Typesetting:
                 False,
             )
         )
+        from babeldoc.format.pdf.document_il.utils.layout_intent import (
+            LayoutIntentRole,
+        )
         from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            is_display_band_owner,
             stays_in_source_box,
         )
         from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
 
-        pinned = on_photo or stays_in_source_box(paragraph) or is_toc_paragraph(
-            paragraph
+        is_title = (
+            (getattr(paragraph, "layout_label", None) or "").strip().lower()
+            in ("title", "section_header", "heading")
+            or getattr(getattr(paragraph, "layout_intent", None), "role", None)
+            in (LayoutIntentRole.TITLE, LayoutIntentRole.SECTION_HEADER)
+        )
+        pinned = (
+            on_photo
+            or (
+                stays_in_source_box(paragraph)
+                and not (is_title and not is_display_band_owner(paragraph, page))
+            )
+            or is_toc_paragraph(paragraph)
         )
         ocr_mode = bool(
             getattr(self.translation_config, "ocr_workaround", False)
@@ -3063,11 +3078,21 @@ class Typesetting:
         if getattr(self, "_rect_fill_active", False):
             return box
         # Text painted on a figure, or a title / quote / bar, stays put.
+        from babeldoc.format.pdf.document_il.utils.layout_intent import (
+            LayoutIntentRole,
+        )
         from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
+            is_display_band_owner,
             stays_in_source_box,
         )
 
-        if stays_in_source_box(paragraph):
+        is_title = (
+            (getattr(paragraph, "layout_label", None) or "").strip().lower()
+            in ("title", "section_header", "heading")
+            or getattr(getattr(paragraph, "layout_intent", None), "role", None)
+            in (LayoutIntentRole.TITLE, LayoutIntentRole.SECTION_HEADER)
+        )
+        if stays_in_source_box(paragraph) and not (is_title and not is_display_band_owner(paragraph, page)):
             return box
         label = (getattr(paragraph, "layout_label", None) or "").strip().lower()
         if label in ("callout", "pull_quote", "quote"):
@@ -3735,8 +3760,7 @@ class Typesetting:
                 pack_rect_flow(page)
                 pack_body_paragraphs(page)
                 tops = figure_gap_tops(page)
-            if retyped:
-                _push_overlaps_down(page, BODY_PARAGRAPH_GAP)
+            _push_overlaps_down(page, BODY_PARAGRAPH_GAP)
             run_legacy_column_flow(
                 page,
                 lambda paragraphs, page=page: close_rect_column_gaps(
@@ -3983,6 +4007,13 @@ class Typesetting:
                                 rendered_boxes[id(moved)] = seated
                         overlap_found = True
                         continue
+                    # A failed retypeset puts the packed line back on top of
+                    # its neighbor. The plan already placed these.
+                    if (
+                        getattr(p1, "layout_region_id", None) in planned_ids
+                        or getattr(p2, "layout_region_id", None) in planned_ids
+                    ):
+                        continue
                     if b1 is None or b2 is None:
                         continue
                     if not self._bbox_overlap(b1, b2):
@@ -4038,6 +4069,7 @@ class Typesetting:
                                 rendered_boxes[id(move)] = new_box
                             overlap_found = True
                             continue
+
                     if self._is_bbox_contain_in_vertical(keep_box, move_box):
                         floor_y = None
                         crop = getattr(page, "cropbox", None)
@@ -4054,14 +4086,6 @@ class Typesetting:
                                 rendered_boxes[id(move)] = new_box
                             overlap_found = True
                             continue
-                        continue
-
-                    # A failed retypeset puts the packed line back on top of
-                    # its neighbor. The plan already placed these.
-                    if (
-                        getattr(p1, "layout_region_id", None) in planned_ids
-                        or getattr(p2, "layout_region_id", None) in planned_ids
-                    ):
                         continue
 
                     overlap_found = True
@@ -6615,30 +6639,32 @@ class Typesetting:
         for para in page.pdf_paragraph:
             if para.box == current_box or para.box is None:  # 跳过当前段落
                 continue
-            # 只考虑在当前段落右侧且有垂直重叠的元素
-            if para.box.x > current_box.x and not (
-                para.box.y >= current_box.y2 or para.box.y2 <= current_box.y
-            ):
+            y_overlap = min(current_box.y2, para.box.y2) - max(current_box.y, para.box.y)
+            # 只考虑在当前段落右侧且有实质垂直重叠的元素
+            if para.box.x > current_box.x and y_overlap > 2.0:
                 max_x = min(max_x, para.box.x)
         for char in page.pdf_character:
-            if char.box.x > current_box.x and not (
-                char.box.y >= current_box.y2 or char.box.y2 <= current_box.y
-            ):
+            if char.box is None:
+                continue
+            y_overlap = min(current_box.y2, char.box.y2) - max(current_box.y, char.box.y)
+            if char.box.x > current_box.x and y_overlap > 2.0:
                 max_x = min(max_x, char.box.x)
         # 检查图形
         for figure in page.pdf_figure:
-            if figure.box.x > current_box.x and not (
-                figure.box.y >= current_box.y2 or figure.box.y2 <= current_box.y
-            ):
+            if figure.box is None:
+                continue
+            y_overlap = min(current_box.y2, figure.box.y2) - max(current_box.y, figure.box.y)
+            if figure.box.x > current_box.x and y_overlap > 2.0:
                 max_x = min(max_x, figure.box.x)
 
         # 检查排除区域（Quote 等）
         zone_index = getattr(self, "_current_zone_index", None)
         if zone_index:
             for zone in zone_index.zones:
-                if zone.box.x > current_box.x and not (
-                    zone.box.y >= current_box.y2 or zone.box.y2 <= current_box.y
-                ):
+                if zone.box is None:
+                    continue
+                y_overlap = min(current_box.y2, zone.box.y2) - max(current_box.y, zone.box.y)
+                if zone.box.x > current_box.x and y_overlap > 2.0:
                     max_x = min(max_x, zone.box.x)
 
         return max_x
@@ -6650,30 +6676,28 @@ class Typesetting:
         for para in page.pdf_paragraph:
             if para.box == current_box or para.box is None:
                 continue
-            if para.box.x2 < current_box.x and not (
-                para.box.y >= current_box.y2 or para.box.y2 <= current_box.y
-            ):
+            y_overlap = min(current_box.y2, para.box.y2) - max(current_box.y, para.box.y)
+            if para.box.x2 < current_box.x and y_overlap > 2.0:
                 min_x = max(min_x, para.box.x2)
         for char in page.pdf_character:
             if char.box is None:
                 continue
-            if char.box.x2 < current_box.x and not (
-                char.box.y >= current_box.y2 or char.box.y2 <= current_box.y
-            ):
+            y_overlap = min(current_box.y2, char.box.y2) - max(current_box.y, char.box.y)
+            if char.box.x2 < current_box.x and y_overlap > 2.0:
                 min_x = max(min_x, char.box.x2)
         for figure in page.pdf_figure:
             if figure.box is None:
                 continue
-            if figure.box.x2 < current_box.x and not (
-                figure.box.y >= current_box.y2 or figure.box.y2 <= current_box.y
-            ):
+            y_overlap = min(current_box.y2, figure.box.y2) - max(current_box.y, figure.box.y)
+            if figure.box.x2 < current_box.x and y_overlap > 2.0:
                 min_x = max(min_x, figure.box.x2)
         zone_index = getattr(self, "_current_zone_index", None)
         if zone_index:
             for zone in zone_index.zones:
-                if zone.box.x2 < current_box.x and not (
-                    zone.box.y >= current_box.y2 or zone.box.y2 <= current_box.y
-                ):
+                if zone.box is None:
+                    continue
+                y_overlap = min(current_box.y2, zone.box.y2) - max(current_box.y, zone.box.y)
+                if zone.box.x2 < current_box.x and y_overlap > 2.0:
                     min_x = max(min_x, zone.box.x2)
         return min_x
 

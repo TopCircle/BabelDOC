@@ -470,7 +470,7 @@ def _push_overlaps_down(page, gap: float) -> None:
         if _is_quote_or_callout(upper, page):
             continue
         for lower in bodies[index + 1 :]:
-            if _is_heading(lower) or _is_quote_or_callout(lower, page):
+            if _is_quote_or_callout(lower, page):
                 continue
             if getattr(upper, "xobj_id", None) != getattr(lower, "xobj_id", None):
                 continue
@@ -608,6 +608,11 @@ def _crop_floor(page) -> float | None:
             box = getattr(paragraph, "box", None)
             if box is not None and box.y2 is not None and float(box.y2) < floor + 120.0:
                 chrome_tops.append(float(box.y2))
+    for figure in getattr(page, "pdf_figure", None) or []:
+        fb = getattr(figure, "box", None)
+        if fb is not None and fb.y is not None and fb.y2 is not None:
+            if float(fb.y) < floor + 100.0 and float(fb.y2) < 450.0 and (float(fb.x2) - float(fb.x)) > 200.0:
+                chrome_tops.append(float(fb.y2))
     if chrome_tops:
-        return max(floor + 58.0, max(chrome_tops) + 8.0)
+        return max(floor + 58.0, max(chrome_tops) + 25.0)
     return floor + 58.0

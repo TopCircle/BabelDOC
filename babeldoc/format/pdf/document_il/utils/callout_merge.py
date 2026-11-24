@@ -187,10 +187,22 @@ def _can_merge_vertical(
         return False
     if not _same_xobj(upper, lower):
         return False
+    tu = _para_text(upper).strip()
+    tl = _para_text(lower).strip()
+    if tl.startswith(('“', '"', "‘", "'")) and (
+        tu.endswith(('”', '"', "’", "'")) or tu.endswith(":")
+    ):
+        return False
     # TOC bullets and unequal graphic-state strings are narrow too. Merging
     # them flattens the list, and style intersection then drops the fill.
     if paragraph_starts_with_list_marker(upper) or paragraph_starts_with_list_marker(
         lower
+    ):
+        return False
+    tu = _para_text(upper).strip()
+    tl = _para_text(lower).strip()
+    if tl.startswith(('“', '"', "‘", "'")) and (
+        tu.endswith(('”', '"', "’", "'")) or tu.endswith(":")
     ):
         return False
     if paragraph_fills_differ(upper, lower):
@@ -237,6 +249,12 @@ def _can_merge_right_pinned_wrap(
     if abs(float(bu.x) - float(bl.x)) < 8.0:
         return False
     if not _same_xobj(upper, lower):
+        return False
+    tu = _para_text(upper).strip()
+    tl = _para_text(lower).strip()
+    if tl.startswith(('“', '"', "‘", "'")) and (
+        tu.endswith(('”', '"', "’", "'")) or tu.endswith(":")
+    ):
         return False
     # EN wrap column is often one composition spanning several visual rows
     # (OA p19 cluster y-span ~87pt). Do not use _is_multi_row_block here.

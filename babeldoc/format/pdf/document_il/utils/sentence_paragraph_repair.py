@@ -240,6 +240,8 @@ def _stops_mid_sentence(paragraph: PdfParagraph) -> bool:
     ).rstrip()
     if not text:
         return False
+    if text.startswith(('“', '"', "‘", "'")) and text.endswith(('”', '"', "’", "'")):
+        return False
     if text[-1] in HYPHEN_CHARS:
         # A single-word hyphen stem (e.g. "stimula-") is left for
         # merge_hyphen_wrapped_paragraphs to fuse as a single word.
@@ -321,6 +323,13 @@ def _can_continue(
     if _is_all_caps_heading_line(upper_line):
         return False
     if line_starts_with_list_marker(lower_line):
+        return False
+    upper_t = line_text(upper_line).strip()
+    lower_t = line_text(lower_line).strip()
+    if (
+        (upper_t.endswith(('”', '"', "’", "'")) or upper_t.endswith(":"))
+        and lower_t.startswith(('“', '"', "‘", "'"))
+    ):
         return False
     from babeldoc.format.pdf.document_il.utils.toc_rows import is_chapter_heading
     if is_chapter_heading(line_text(lower_line).strip()):

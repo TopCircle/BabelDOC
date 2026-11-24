@@ -871,6 +871,7 @@ class ParagraphFinder:
         current_paragraph: PdfParagraph | None = None
         current_layout: Layout | None = None
         skip_chars = []
+        force_text_layout = False
 
         for char in page.pdf_character:
             char_layout = get_character_layout(char, layout_index, layout_map)
@@ -927,9 +928,49 @@ class ParagraphFinder:
                     is_new_paragraph = True
                 elif (
                     is_bullet_point(char)
-                    and not current_paragraph.pdf_paragraph_composition
+                    and (
+                        not current_paragraph.pdf_paragraph_composition
+                        or (prev_c and not self._is_same_visual_line(prev_c, char))
+                    )
                 ):
                     is_new_paragraph = True
+                    force_text_layout = True
+                elif (
+                    prev_c
+                    and not self._is_same_visual_line(prev_c, char)
+                ):
+                    curr_u = getattr(char, "char_unicode", "") or ""
+                    last_non_space = None
+                    for comp in reversed(current_paragraph.pdf_paragraph_composition):
+                        c_u = getattr(getattr(comp, "pdf_character", None), "char_unicode", "") or ""
+                        if c_u.strip():
+                            last_non_space = c_u
+                            break
+                    if (
+                        curr_u in ('“', '"', "‘", "'")
+                        and last_non_space in ('”', '"', "’", "'", ":")
+                    ):
+                        is_new_paragraph = True
+                        force_text_layout = True
+
+                    from babeldoc.format.pdf.document_il.utils.face_traits import (
+                        _BOLD_TOKENS,
+                        font_name_tokens,
+                    )
+
+                    prev_f = prev_c.pdf_style.font_id if getattr(prev_c, "pdf_style", None) else None
+                    curr_f = char.pdf_style.font_id if getattr(char, "pdf_style", None) else None
+                    prev_name = font_name_map.get(prev_f, "") if font_name_map and prev_f else ""
+                    curr_name = font_name_map.get(curr_f, "") if font_name_map and curr_f else ""
+                    prev_bold = getattr(getattr(prev_c, "pdf_style", None), "bold", False) or bool(
+                        font_name_tokens(prev_name) & _BOLD_TOKENS
+                    )
+                    curr_bold = getattr(getattr(char, "pdf_style", None), "bold", False) or bool(
+                        font_name_tokens(curr_name) & _BOLD_TOKENS
+                    )
+                    if prev_bold and not curr_bold:
+                        is_new_paragraph = True
+                        force_text_layout = True
 
             if is_new_paragraph:
                 logger.warning(
@@ -939,11 +980,13 @@ class ParagraphFinder:
                     getattr(current_layout, "id", None),
                 )
                 current_layout = char_layout
+                new_label = "text" if force_text_layout else (current_layout.name if current_layout else None)
+                force_text_layout = False
                 current_paragraph = PdfParagraph(
                     pdf_paragraph_composition=[],
                     layout_id=current_layout.id,
                     debug_id=generate_base58_id(),
-                    layout_label=current_layout.name,
+                    layout_label=new_label,
                 )
                 paragraphs.append(current_paragraph)
 

@@ -692,6 +692,14 @@ def should_split_on_font_face_switch(
                 base_prev = font_name_tokens(prev_name) - style_tokens
                 base_curr = font_name_tokens(curr_name) - style_tokens
                 if base_prev and base_curr and (base_prev & base_curr):
+                    bold_tokens = frozenset(
+                        {"bold", "heavy", "black", "semibold", "extrabold", "demibold"}
+                    )
+                    prev_is_bold = bool(font_name_tokens(prev_name) & bold_tokens)
+                    curr_is_bold = bool(font_name_tokens(curr_name) & bold_tokens)
+                    if (prev_is_bold and not curr_is_bold) or (curr_is_bold and not prev_is_bold):
+                        # Weight/boldness switch marks a heading or sub-title boundary
+                        return True
                     return False
 
     if not soft_mid_sentence:
@@ -989,6 +997,13 @@ def should_split_line_pair(
 
     if line_starts_with_list_marker(curr_line):
         return True
+    prev_t = line_text(prev_line).rstrip()
+    curr_t = line_text(curr_line).lstrip()
+    if (
+        (prev_t.endswith(('”', '"', "’", "'")) or prev_t.endswith(":"))
+        and curr_t.startswith(('“', '"', "‘", "'"))
+    ):
+        return True
     # Keep hyphen-wrap tails in this paragraph (even if the ligature glyph
     # uses a different subset font_id). Split would make two translate() calls.
     if is_hyphen_wrap_continuation(prev_line, curr_line):
@@ -1012,7 +1027,16 @@ def should_split_line_pair(
         and prev_width > 0
         and prev_width < median_width * short_line_split_factor
         and not caption_stack
-        and line_ends_sentence(prev_line)
+        and (
+            line_ends_sentence(prev_line)
+            or (
+                prev_t
+                and curr_t
+                and prev_t[0].isupper()
+                and curr_t[0].isupper()
+                and len(prev_t.split()) <= 4
+            )
+        )
     ):
         return True
     # Size jump first: same face, different pt (font.unknown title stack).

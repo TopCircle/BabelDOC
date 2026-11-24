@@ -1747,6 +1747,8 @@ def _indented_body(lead, body) -> bool:
         return False
     if not _is_short_line(lead):
         return False
+    if _plain(body).lstrip().startswith(('“', '"', '‘', "'")):
+        return False
     dx = float(body.box.x) - float(lead.box.x)
     if dx < 6.0 or dx > 40.0:
         return False
@@ -1867,6 +1869,12 @@ def _continues(upper, lower) -> bool:
     )
 
     if is_toc_paragraph(upper) or is_toc_paragraph(lower):
+        return False
+    upper_t = _plain(upper).rstrip()
+    lower_t = _plain(lower).lstrip()
+    if lower_t and lower_t[0] in ('“', '"', '‘', "'"):
+        return False
+    if upper_t and upper_t[-1] in ('”', '"', '’', "'"):
         return False
     lower_text = _plain(lower).strip()
     top_line = _top_line(lower)

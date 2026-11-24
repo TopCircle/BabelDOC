@@ -1,9 +1,29 @@
-# BabelDOC — 当前状况（2026-11-23）
+# BabelDOC — 当前状况（2026-11-24）
 
 **工作工程:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
-**版本:** `0.6.4.109`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.110`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-24 — 独立引言列表隔离、列表符号换行强制分段、标题粗体截断与垂直窄块合并加固（0.6.4.110）
+
+1. **引言与对话列表独立分段保护（`paragraph_finder.py` / `sentence_paragraph_repair.py` / `callout_merge.py`）**：
+   - 彻底修复对话与短引言列表被错误合流成单段及残缺多列的排版缺陷：
+     - 在 `paragraph_finder.py:_group_characters_into_paragraphs` 中增加引言引号换行边界检测，换行首字符为开引号 `“` 且上一行以闭引号 `”` 结尾时立即触发新段落；
+     - 在 `sentence_paragraph_repair.py:_stops_mid_sentence` 与 `_can_continue` 中增加引号封闭检测，成对引号行不再被视作中途截断而错误拼接；
+     - 在 `callout_merge.py:_can_merge_vertical` 与 `_can_merge_right_pinned_wrap` 中拦截引言引号段落，彻底禁止三角注记块窄条合并器向引言列表扩展。
+2. **列表项目符号强制新段保护（`paragraph_finder.py`）**：
+   - 修复 `_group_characters_into_paragraphs` 中 `is_bullet_point(char)` 仅在空段落触发的遗留逻辑缺陷：当 `char` 为列表符号 `•` 且位于新视觉行时，强制生成新段落并重设版面标签为 `text`，彻底杜绝多条列表项目（如呕吐反射与疲劳对策）被揉合成连体段落导致排版穿透。
+3. **段落标题粗体边界与英文残留切分（`paragraph_finder.py`）**：
+   - 在粗体行与非粗体正文行的视觉行转换处解除限制性标签约束，任何由粗体跨视觉行转向非粗体的均触发 `is_new_paragraph = True, force_text_layout = True`，彻底消除如 `Taking Charge There'` 的英文残留粘连。
+4. **单行小标题向右扩张支持（`box_expand.py`）**：
+   - `is_left_gutter_bar` 增加高度阈值 `h >= 25.0pt`，单行小标题（如“情趣玩具”）不再被误识为左边槽条，可正常向右扩张至完整行宽（~450pt）。
+5. **单测套件全面通过（`tests/`）**：
+   - 运行完整回归套件（`test_callout_merge.py`, `test_font_switch_paragraph.py`, `test_same_baseline_and_hyphen.py`, `test_box_expand.py`, `test_sentence_paragraph_repair.py`），全数 119 项测试 100% 通过，0 回归。
+6. **全书视觉验收（《Blown Away》共 27 页）**：
+   - 27/27 全页肉眼视觉对比通过：封面目录 100% 原样保留，P08 引言列表单列整洁排列，P14 列表项无散乱穿透，P23 红色 Callout 框与底栏红线间距全部安全，单语版 `Blown Away.no_watermark.zh-CN.mono.pdf` 与双语版已交付至 OneDrive。
+7. **VPS 正式站部署（0.6.4.110）**：
+   - 远端 VPS 同步与部署。
 
 ## 2026-11-23 — 目录章节隔离加固、引文冒号引导句误判修复、页脚间距下限与未映射 CID 列表符号清洗（0.6.4.109）
 

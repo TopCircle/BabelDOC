@@ -1204,6 +1204,22 @@ def _stamp_for(paragraph):
     return best
 
 
+def toc_paragraph_available_x2(paragraph, default_x2: float) -> float:
+    """Return the available right boundary for a TOC title paragraph before dot leaders."""
+    if paragraph is None:
+        return default_x2
+    text = (getattr(paragraph, "unicode", None) or "").strip()
+    if text.isdigit():
+        return default_x2
+    stamp = _stamp_for(paragraph)
+    if stamp is not None and "leader_x" in stamp:
+        return max(default_x2, float(stamp["leader_x"]) - 8.0)
+    if _LEADERS:
+        min_leader_x = min(float(s.get("leader_x", s["left"])) for s in _LEADERS.values())
+        return max(default_x2, min_leader_x - 8.0)
+    return default_x2
+
+
 def _gap_before_page_number(paragraph, numbers):
     """Right edge of the title and left edge of its page number.
 
@@ -1480,7 +1496,16 @@ def _prevent_contents_page_overlaps(
                 # Trigger condition:
                 # 1. prev is a non-TOC paragraph (e.g. section header or body paragraph)
                 # 2. OR prev was pushed down by an upstream collision
-                if not is_toc_paragraph(prev) or id(prev) in pushed:
+                # 3. OR prev is a multi-line wrapped TOC paragraph
+                from babeldoc.format.pdf.document_il.utils.rect_flow_stack import (
+                    ink_lines,
+                )
+
+                if (
+                    not is_toc_paragraph(prev)
+                    or id(prev) in pushed
+                    or len(ink_lines(prev)) > 1
+                ):
                     overlapping_bottoms.append(prev_bottom)
 
         if overlapping_bottoms:

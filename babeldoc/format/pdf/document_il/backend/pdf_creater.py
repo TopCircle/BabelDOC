@@ -1945,3 +1945,33 @@ class PDFCreater:
         )
         pdf.update_stream(op_container, stream)
         pdf[page.page_number].set_contents(op_container)
+        try:
+            orig_doc = pymupdf.open(self.original_pdf_path)
+            orig_page = orig_doc[page.page_number]
+            target_page = pdf[page.page_number]
+            for d in orig_page.get_drawings():
+                fill = d.get("fill")
+                if fill is not None:
+                    r = d["rect"]
+                    if (
+                        (
+                            r.width < target_page.rect.width - 2.0
+                            or r.height < target_page.rect.height - 2.0
+                        )
+                        and r.width > 5.0
+                        and r.height > 5.0
+                    ):
+                        target_page.draw_rect(
+                            r,
+                            color=d.get("color"),
+                            fill=fill,
+                            fill_opacity=d.get("fill_opacity", 1.0),
+                            overlay=False,
+                        )
+            orig_doc.close()
+        except Exception:
+            logger.warning(
+                "Failed to restore background vector drawings on page %d",
+                page.page_number,
+                exc_info=True,
+            )

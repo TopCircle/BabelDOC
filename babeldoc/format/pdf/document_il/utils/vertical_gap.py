@@ -45,7 +45,7 @@ _TITLE_LABELS = frozenset({"title", "section_header"})
 _X_OVERLAP_SLACK = 8.0
 _DISPLAY_TITLE_HEAD_RE = re.compile(
     r"^(?:part|chapter|section|technique|step|volume|book|act|appendix|bonus|"
-    r"第\s*\d+\s*[部分章节卷]|技巧\s*\d+)",
+    r"第\s*\d+\s*[部分章节卷步]|技巧\s*\d+|奖励|附录)",
     re.IGNORECASE,
 )
 _BARE_COUNTER_RE = re.compile(r"\d{1,3}[.)]?")
@@ -124,10 +124,10 @@ def is_display_title(paragraph: PdfParagraph) -> bool:
     if (
         label in _TITLE_LABELS
         or role in (LayoutIntentRole.TITLE, LayoutIntentRole.SECTION_HEADER)
-    ) and size >= 14.0:
+    ) and size >= 11.0:
         return True
 
-    if t and _DISPLAY_TITLE_HEAD_RE.match(t) and size >= 12.0:
+    if t and _DISPLAY_TITLE_HEAD_RE.match(t) and size >= 10.0:
         return True
 
     # Section subheading heuristic when DocLayout mislabeled as text:
@@ -149,6 +149,10 @@ def is_display_title(paragraph: PdfParagraph) -> bool:
                     or t.endswith("。")
                     or t.endswith("”")
                     or t.endswith("\"")
+                    or t.endswith("!")
+                    or t.endswith("！")
+                    or t.endswith("?")
+                    or t.endswith("？")
                 ):
                     return True
 
@@ -391,7 +395,8 @@ def find_content_above(
         cbox = (ink.get(id(cand)) if ink else None) or layout_box(cand)
         if cbox is None or cbox.y is None or cbox.y2 is None:
             continue
-        if float(cbox.y) <= lower_top - 1.0:
+        # Upper candidate's top must be strictly above lower's top band.
+        if float(cbox.y2) <= lower_top + 1.0:
             continue
         if body_fully_inside_title_band(cbox, lbox) or body_fully_inside_title_band(lbox, cbox):
             continue
@@ -400,16 +405,74 @@ def find_content_above(
         if (
             cand_layout
             and lower_layout
-            and cand_layout.y is not None
+            and cand_layout.y2 is not None
             and lower_layout.y2 is not None
         ):
-            if float(cand_layout.y) <= float(lower_layout.y2) - 1.0:
+            if float(cand_layout.y2) <= float(lower_layout.y2) + 1.0:
                 continue
         if not boxes_x_overlap(lbox, cbox):
             continue
         if best is None or float(cbox.y) < best[0]:
             best = (float(cbox.y), cand)
     return best[1] if best else None
+
+
+def _compute_min_allowed_y(
+    page: Page,
+    to_shift: list[PdfParagraph],
+    ink: dict[int, Box],
+) -> float:
+    crop = getattr(page, "cropbox", None)
+    crop_box = getattr(crop, "box", None) if crop is not None else None
+    floor_y = float(crop_box.y) if crop_box is not None and crop_box.y is not None else 0.0
+    min_allowed_y = floor_y + 25.0
+
+    shift_ids = {id(p) for p in to_shift}
+    shift_bottoms = [
+        float(ink[id(p)].y)
+        for p in to_shift
+        if id(p) in ink and getattr(ink[id(p)], "y", None) is not None
+    ]
+    if not shift_bottoms:
+        return min_allowed_y
+    shift_min_y = min(shift_bottoms)
+    shift_bbox = ink.get(id(to_shift[0]))
+
+    for cand in getattr(page, "pdf_paragraph", None) or []:
+        if is_chrome_paragraph(cand, page):
+            cbox = getattr(cand, "box", None)
+            if cbox is not None and cbox.y2 is not None and float(cbox.y2) < 120.0:
+                min_allowed_y = max(min_allowed_y, float(cbox.y2) + 25.0)
+
+    for fig in getattr(page, "pdf_figure", None) or []:
+        fbox = getattr(fig, "box", None)
+        if fbox is not None and fbox.y2 is not None and float(fbox.y2) < shift_min_y:
+            if (float(fbox.x2 or 0) - float(fbox.x or 0)) > 150.0:
+                min_allowed_y = max(min_allowed_y, float(fbox.y2) + 8.0)
+
+    for form in getattr(page, "pdf_form", None) or []:
+        fbox = getattr(form, "box", None)
+        if fbox is not None and fbox.y2 is not None and float(fbox.y2) < shift_min_y:
+            if (float(fbox.x2 or 0) - float(fbox.x or 0)) > 150.0:
+                min_allowed_y = max(min_allowed_y, float(fbox.y2) + 8.0)
+
+    if shift_bbox is not None:
+        for cand in getattr(page, "pdf_paragraph", None) or []:
+            if id(cand) in shift_ids:
+                continue
+            c_label = (getattr(cand, "layout_label", None) or "").strip().lower()
+            c_intent = getattr(cand, "layout_intent", None)
+            c_role = getattr(c_intent, "role", None) if c_intent is not None else None
+            c_is_callout = c_label in ("callout", "pull_quote") or c_role in (
+                LayoutIntentRole.CALLOUT,
+                LayoutIntentRole.PULL_QUOTE,
+            )
+            cbox = ink.get(id(cand)) or getattr(cand, "box", None)
+            if cbox is not None and cbox.y2 is not None and float(cbox.y2) < shift_min_y:
+                if boxes_x_overlap(shift_bbox, cbox) and (c_is_callout or is_display_title(cand)):
+                    min_allowed_y = max(min_allowed_y, float(cbox.y2) + 6.0)
+
+    return min_allowed_y
 
 
 def enforce_title_body_gaps(
@@ -482,18 +545,32 @@ def enforce_title_body_gaps(
             ):
                 en_gap_above = float(u_layout.y) - float(t_layout.y2)
 
+            title_size = max_font_size(title)
             target_gap_above = max(
-                en_gap_above if en_gap_above is not None and en_gap_above > 0 else 22.0,
-                22.0,
+                en_gap_above if en_gap_above is not None and en_gap_above > 0 else (12.0 if title_size < 20.0 else 22.0),
+                8.0 if title_size < 20.0 else 22.0,
             )
             deficit_above = target_gap_above - zh_gap_above
             if deficit_above > 1.0:
-                dy_above = -min(deficit_above, max_dy)
-                shift_paragraph_y(title, dy_above)
-                new_ink = ink_box(title)
-                if new_ink is not None:
-                    ink[id(title)] = new_ink
-                report.record_shift(dy_above, cascade=1)
+                dy_above = -min(deficit_above, 48.0)
+                min_allowed_y = _compute_min_allowed_y(page, [title], ink)
+                if float(tbox.y) + dy_above < min_allowed_y:
+                    dy_above = min(0.0, min_allowed_y - float(tbox.y))
+                if dy_above < -0.5:
+                    shift_paragraph_y(title, dy_above)
+                    new_ink = ink_box(title)
+                    if new_ink is not None:
+                        ink[id(title)] = new_ink
+                    report.record_shift(dy_above, cascade=1)
+            elif deficit_above < -8.0 and not is_display_band_owner(title, page):
+                excess_above = (-deficit_above) - 4.0
+                dy_up = min(excess_above, max_dy)
+                if dy_up > 2.0:
+                    shift_paragraph_y(title, dy_up)
+                    new_ink = ink_box(title)
+                    if new_ink is not None:
+                        ink[id(title)] = new_ink
+                    report.record_shift(dy_up, cascade=1)
 
         body = find_content_below(
             page,
@@ -513,7 +590,11 @@ def enforce_title_body_gaps(
         body_top = float(bbox.y2)
         zh_gap = title_bottom - body_top
 
-        target_gap = max(en_gap if en_gap is not None else min_gap, 10.0)
+        title_size = max_font_size(title)
+        if title_size < 18.0:
+            target_gap = en_gap if en_gap is not None and en_gap > 0 else 6.0
+        else:
+            target_gap = max(en_gap if en_gap is not None else min_gap, 10.0)
         deficit = gap_deficit(zh_gap, target_gap, fallback=min_gap)
         if deficit <= 0:
             continue
@@ -543,35 +624,41 @@ def enforce_title_body_gaps(
                 continue
             to_shift.append(cand)
 
-        for p in to_shift:
-            shift_paragraph_y(p, dy)
-            new_ink = ink_box(p)
-            if new_ink is not None:
-                ink[id(p)] = new_ink
-        report.record_shift(dy, cascade=len(to_shift))
-        report.record_violation(
-            debug_id=getattr(body, "debug_id", None),
-            kind="gap",
-            delta_pt=dy,
-            policy="single_jump_clamp_24",
-            page_number=page_no,
-            extra={
-                "title_debug_id": getattr(title, "debug_id", None),
-                "en_gap": en_gap,
-                "zh_gap_before": round(zh_gap, 3),
-                "deficit": round(deficit, 3),
-                "raw_dy": round(raw_dy, 3),
-                "clamped": abs(raw_dy) > max_dy + 1e-6,
-            },
-        )
-        logger.debug(
-            "title-body gap P1: page=%s dy=%.1f (raw=%.1f) en_gap=%s deficit=%.1f",
-            page_no,
-            dy,
-            raw_dy,
-            en_gap,
-            deficit,
-        )
+        min_allowed_y = _compute_min_allowed_y(page, to_shift, ink)
+        lowest_y = min(float(ink[id(p)].y) for p in to_shift if id(p) in ink)
+        if lowest_y + dy < min_allowed_y:
+            dy = min(0.0, min_allowed_y - lowest_y)
+
+        if abs(dy) > 0.5:
+            for p in to_shift:
+                shift_paragraph_y(p, dy)
+                new_ink = ink_box(p)
+                if new_ink is not None:
+                    ink[id(p)] = new_ink
+            report.record_shift(dy, cascade=len(to_shift))
+            report.record_violation(
+                debug_id=getattr(body, "debug_id", None),
+                kind="gap",
+                delta_pt=dy,
+                policy="single_jump_clamp_24",
+                page_number=page_no,
+                extra={
+                    "title_debug_id": getattr(title, "debug_id", None),
+                    "en_gap": en_gap,
+                    "zh_gap_before": round(zh_gap, 3),
+                    "deficit": round(deficit, 3),
+                    "raw_dy": round(raw_dy, 3),
+                    "clamped": abs(raw_dy) > max_dy + 1e-6,
+                },
+            )
+            logger.debug(
+                "title-body gap P1: page=%s dy=%.1f (raw=%.1f) en_gap=%s deficit=%.1f",
+                page_no,
+                dy,
+                raw_dy,
+                en_gap,
+                deficit,
+            )
 
     if page_no is not None:
         phase_shifts = report.shifts - post_shifts_before
@@ -667,6 +754,13 @@ def enforce_title_body_gaps_legacy(
             ):
                 continue
             to_shift.append(cand)
+
+        min_allowed_y = _compute_min_allowed_y(page, to_shift, ink)
+        lowest_y = min(float(ink[id(p)].y) for p in to_shift if id(p) in ink)
+        if lowest_y + dy < min_allowed_y:
+            dy = min(0.0, min_allowed_y - lowest_y)
+        if abs(dy) < 0.5:
+            continue
 
         for p in to_shift:
             shift_paragraph_y(p, dy)
