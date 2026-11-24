@@ -14,7 +14,9 @@
    - 在 `DetectScannedFile.process()` 入口支持 `skip_scanned_detection` 配置开关提前返回；
    - 当全页背景图占比触发扫描页阈值（`scanned >= threshold`）但整书已有超过 `200` 个字符的文字层（如 `ocrmypdf` 生成的带文字层 PDF）时记录日志并放行翻译，避免误抛 `ScannedPDFError`。
 3. **单测验证（`tests/`）**：
-   - 新增 `tests/test_bibliography_and_ocr_skip.py`（7 项测试）并配合回归套件运行验证通过。
+   - 新增 `tests/test_bibliography_and_ocr_skip.py`（7 项测试）并配合回归套件运行验证通过（142 passed, 6 skipped）。
+4. **VPS 正式站部署（0.6.4.111）**：
+   - 远端 VPS 同步：最新镜像构建完成（`BABELDOC_REF=fb74b57b8b7d6baebf34a6774ec0d72b4cea8d36`），已备份旧镜像 ID 至 `/opt/workspace/deploy-backups/release-111-20261124T224622Z/old-image-id.txt`，`pdfmt-next-app` 容器重建启动成功，端口 `7870` 健康检查返回 `200 OK`，`runtime_manifest` 核验 `babeldoc_version=0.6.4.111`。
 
 ## 2026-11-24 — 独立引言列表隔离、列表符号换行强制分段、标题粗体截断与垂直窄块合并加固（0.6.4.110）
 
