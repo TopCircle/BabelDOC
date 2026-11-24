@@ -2,8 +2,24 @@
 
 **工作工程:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
-**版本:** `0.6.4.111`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.112`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-25 — OCR 跳过段落黑块消除、GlyphlessFont 映射回退、参考文献精准收敛与标签空白容错（0.6.4.112）
+
+1. **OCR 模式跳过段落保留原图且消除黑块（`translation_config.py` / `paragraph_finder.py` / `il_translator.py` / `typesetting.py`）**：
+   - 修复 `ocr_workaround=True` 下被 `record_skip` 跳过的段落（如 `BIBLIOGRAPHY`）仍被绘出白色遮罩框且 `GlyphlessFont` 原字形被重排成纯黑矩形条（`██████`）的缺陷：
+     - 在 `SharedContextCrossSplitPart` 记录背景白框归属（`ocr_bg_rect_meta`、`ocr_para_layout_ids`）及跳过段落集合（`ocr_skipped_para_ids`）；
+     - `Typesetting._strip_ocr_skipped_overlays()` 在排版前剔除跳过段落的白框、将混排块内已译段落的白框收缩至自身 `paragraph.box`，并清空跳过段落的 `GlyphlessFont` 排版单元，让扫描件原图文字完整透出。
+2. **译文内嵌 `GlyphlessFont` 字符映射为可读字体（`typesetting.py`）**：
+   - 在 `create_typesetting_units` 中检测 `GlyphlessFont` 源字符（如页脚分隔符/页码 `| 7` 或 URL 碎片），转换为经过 `font_mapper.map()` 映射且剔除 `3 Tr` 隐形指令的可读 `TypesettingUnit`，消除句末黑方块 `■`。
+3. **参考文献误杀收紧与跨卷粘连修复（`il_translator.py` / `il_translator_llm_only.py` / `translation_config.py`）**：
+   - 收紧 `_is_bibliography_paragraph()` 规则，去除易误伤正文的泛用词匹配（如 `"In a 2006 survey..."`、`"in a 2011 CNN Health report..."`、`"Copyright © ... Publishing"`）；
+   - 为 `TitleContextSnapshot` 增加 `page_number`，将 `"References"`/`"Bibliography"` 上下文约束在 4 页邻近范围内并过滤含第二人称/步骤标题的散文段落，彻底解决多卷合集跨卷漏翻（`Orgasmic Addiction`、`Mastering Her G-Spot`）；同时仅豁免页脚短网址，保留正文引用的 `gabriellemoore.com` 文献条目。
+4. **富文本标签空白容错清洗（`il_translator.py`）**：
+   - 将 `_RICH_TEXT_MARKER_RE` 与 `_MARKER_RE` 放宽为 `r"[〖\u3016]\s*/?[Bb]\d+\s*[〗\u3017]"`，彻底清理 DeepLX 输出中的带空格标签（如 `〖 /B1 〗`）。
+5. **单测验证（`tests/`）**：
+   - 扩充 `tests/test_bibliography_and_ocr_skip.py`（10 项测试），连同回归套件共计 **145 passed, 6 skipped**。
 
 ## 2026-11-25 — 参考文献原样保留与 OCR 文字层扫描件误判豁免（0.6.4.111）
 
