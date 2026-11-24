@@ -20,6 +20,8 @@
    - 将 `_RICH_TEXT_MARKER_RE` 与 `_MARKER_RE` 放宽为 `r"[〖\u3016]\s*/?[Bb]\d+\s*[〗\u3017]"`，彻底清理 DeepLX 输出中的带空格标签（如 `〖 /B1 〗`）。
 5. **单测验证（`tests/`）**：
    - 扩充 `tests/test_bibliography_and_ocr_skip.py`（10 项测试），连同回归套件共计 **145 passed, 6 skipped**。
+6. **VPS 正式站部署（0.6.4.112）**：
+   - 远端 VPS 同步：最新镜像构建完成（`BABELDOC_REF=9486b52975ea513da5bf23d2709f43c31e2bc791`），旧镜像 ID 已备份至 `/opt/workspace/deploy-backups/release-112-.../old-image-id.txt`，`pdfmt-next-app` 容器重建启动成功，端口 `7870` 健康检查返回 `200 OK`，`runtime_manifest` 核验 `babeldoc_version=0.6.4.112`。
 
 ## 2026-11-25 — 参考文献原样保留与 OCR 文字层扫描件误判豁免（0.6.4.111）
 
