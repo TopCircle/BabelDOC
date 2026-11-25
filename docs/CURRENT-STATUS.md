@@ -12,6 +12,8 @@
      - 扩展 `lift_text_above_covering_images(render_units, translated_xobj_xrefs=...)`，在 `ocr_workaround=True` 时收集承载译文字符/白框的 `pdf_xobject` 引用，将其对应的非图片 `FormRenderUnit` 渲染顺序提升至覆盖图像之后（`top + 1`）。
 2. **单测验证（`tests/`）**：
    - 新增 `test_lift_ocr_xobject_form_above_covering_raster_image`，连同回归套件共计 **148 passed, 6 skipped**。
+3. **VPS 正式站部署（0.6.4.114）**：
+   - 远端 VPS 同步：最新镜像构建完成（`BABELDOC_REF=fe6991dff189dbb77967a715a714a7bc17770728`），旧镜像 ID 已备份至 `/opt/workspace/deploy-backups/release-114-.../old-image-id.txt`，`pdfmt-next-app` 容器重建启动成功，端口 `7870` 健康检查返回 `200 OK`，`runtime_manifest` 核验 `babeldoc_version=0.6.4.114`。
 
 ## 2026-11-25 — XObject OCR 双层检测与 PdfFormula GlyphlessFont 黑块消除（0.6.4.113）
 
