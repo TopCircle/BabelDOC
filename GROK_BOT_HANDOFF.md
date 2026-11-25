@@ -1,9 +1,20 @@
-# BabelDOC — 当前状况（2026-11-25）
+# BabelDOC — 当前状况（2026-11-26）
 
 **工作工程:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
-**版本:** `0.6.4.114`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.115`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-26 — OCR 倾斜容差扩展、散文式引用防误杀与页脚溢出缩放救援（0.6.4.115）
+
+1. **OCR 扫描轻度倾斜容差扩展（`il_creater_active.py`, `il_creater.py`）**：
+   - 修复 OCRmyPDF 生成隐形文字层携带 `0.15°–4°` 轻微基线倾斜角时，`project_native_char` / `on_lt_char` 因硬编码 `±0.1°` 角度阈值丢弃整页正文字符（`Unbreakable Erections P18/P33`、`Wet Orgasms P4/P6/P15/P31` 大段/整页遗漏英文）的缺陷：`ocr_workaround=True` 时放宽至 `±5.0°`，非 OCR 仍维持 `±0.1°`。
+2. **参考文献判定散文防误杀（`il_translator.py`）**：
+   - `_is_bibliography_paragraph` 中 `has_author_initial` 要求缩写后带英文句点 `[A-Z]\.`；对括号/叙述性正文内嵌的 `et. al.`（如 `Wet and Wild P8` `"were studied in 1988 ... (Zaviacic et. al.) who found..."`）避免误跳过翻译。
+3. **窄栏强制溢出撞击页脚区救援缩放（`typesetting.py`）**：
+   - 当 `min_scale > 0.72` 强制应用仍导致底端排版单元跌入页脚区（`y < 32pt`）时，尝试一次 `0.72` 缩放以避让底部品牌标识并防止底行被裁切。
+4. **单测验证（`tests/`）**：
+   - 扩充 `tests/test_bibliography_and_ocr_skip.py`（新增 `test_prose_with_parenthetical_et_al_or_comma_pronoun_not_skipped` 与 `test_ocr_workaround_allows_slight_deskew_rotation`），相关回归套件 **129 passed**，`ruff check` 零错误。
 
 ## 2026-11-25 — OCR XObject 渲染层级提升（消除全页底图覆盖译文缺陷）（0.6.4.114）
 
