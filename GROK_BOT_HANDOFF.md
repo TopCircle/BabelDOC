@@ -15,6 +15,8 @@
    - 当 `min_scale > 0.72` 强制应用仍导致底端排版单元跌入页脚区（`y < 32pt`）时，尝试一次 `0.72` 缩放以避让底部品牌标识并防止底行被裁切。
 4. **单测验证（`tests/`）**：
    - 扩充 `tests/test_bibliography_and_ocr_skip.py`（新增 `test_prose_with_parenthetical_et_al_or_comma_pronoun_not_skipped` 与 `test_ocr_workaround_allows_slight_deskew_rotation`），相关回归套件 **129 passed**，`ruff check` 零错误。
+5. **VPS 正式站部署（0.6.4.115）**：
+   - 远端 VPS 同步：最新镜像构建完成（`BABELDOC_REF=38cd4a755769cbc460745933068fa7285a123338`），旧镜像 ID 已备份至 `/opt/workspace/deploy-backups/release-115-20261126-024953/old-image-id.txt`，`pdfmt-next-app` 容器重建启动成功，端口 `7870` 健康检查返回 `HTTP 200`，运行时核验 `babeldoc 0.6.4.115`。
 
 ## 2026-11-25 — OCR XObject 渲染层级提升（消除全页底图覆盖译文缺陷）（0.6.4.114）
 
