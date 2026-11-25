@@ -388,12 +388,18 @@ def _boxes_intersect(a, b) -> bool:
     return a.x < b.x2 and b.x < a.x2 and a.y < b.y2 and b.y < a.y2
 
 
-def lift_text_above_covering_images(render_units: list[RenderUnit]) -> None:
-    """Draw a glyph after an image that would otherwise cover its strokes.
+def lift_text_above_covering_images(
+    render_units: list[RenderUnit],
+    translated_xobj_xrefs: set[int] | None = None,
+) -> None:
+    """Draw a glyph (or OCR overlay XObject) after an image that would cover it.
 
     A photo is often painted later than the source text and clipped to the
     original line gaps. Translated glyphs keep that early order and then move,
     so the clip slits cut through the new strokes. Same-xobject images only.
+    When ``translated_xobj_xrefs`` is supplied (OCR workaround mode), any Form
+    XObject containing translated text/white-fill boxes is also lifted above
+    full-page raster images so the background image does not paint over it.
     """
     images_by_xobj: dict[object, list[FormRenderUnit]] = {}
     for unit in render_units:
@@ -406,25 +412,47 @@ def lift_text_above_covering_images(render_units: list[RenderUnit]) -> None:
     if not images_by_xobj:
         return
     for unit in render_units:
-        if not isinstance(unit, CharacterRenderUnit):
-            continue
-        images = images_by_xobj.get(unit.xobj_id)
-        if not images:
-            continue
-        char = unit.char
-        visual = getattr(char, "visual_bbox", None)
-        box = visual.box if visual is not None and visual.box is not None else char.box
-        if box is None:
-            continue
-        covering = [
-            image for image in images if _boxes_intersect(box, image.form.box)
-        ]
-        if not covering:
-            continue
-        top = max(image.render_order for image in covering)
-        if unit.render_order > top:
-            continue
-        unit.render_order = top + 1
+        if isinstance(unit, CharacterRenderUnit):
+            images = images_by_xobj.get(unit.xobj_id)
+            if not images:
+                continue
+            char = unit.char
+            visual = getattr(char, "visual_bbox", None)
+            box = visual.box if visual is not None and visual.box is not None else char.box
+            if box is None:
+                continue
+            covering = [
+                image for image in images if _boxes_intersect(box, image.form.box)
+            ]
+            if not covering:
+                continue
+            top = max(image.render_order for image in covering)
+            if unit.render_order > top:
+                continue
+            unit.render_order = top + 1
+        elif translated_xobj_xrefs and isinstance(unit, FormRenderUnit):
+            form = unit.form
+            if getattr(form, "form_type", None) == "image":
+                continue
+            subtype = getattr(form, "pdf_form_subtype", None)
+            xobj_form = getattr(subtype, "pdf_xobj_form", None) if subtype else None
+            xref_id = getattr(xobj_form, "xref_id", None) if xobj_form else None
+            if xref_id not in translated_xobj_xrefs:
+                continue
+            images = images_by_xobj.get(unit.xobj_id)
+            if not images:
+                continue
+            covering = (
+                [image for image in images if _boxes_intersect(form.box, image.form.box)]
+                if form.box is not None
+                else images
+            )
+            if not covering:
+                continue
+            top = max(image.render_order for image in covering)
+            if unit.render_order > top:
+                continue
+            unit.render_order = top + 1
 
 
 class RenderContext:
@@ -1055,7 +1083,23 @@ class PDFCreater:
                         CurveRenderUnit(curve, render_order, sub_render_order)
                     )
 
-        lift_text_above_covering_images(render_units)
+        translated_xobj_xrefs: set[int] | None = None
+        if getattr(translation_config, "ocr_workaround", False):
+            active_xobj_ids = {
+                unit.xobj_id
+                for unit in render_units
+                if isinstance(unit, (CharacterRenderUnit, RectangleRenderUnit))
+                and unit.xobj_id is not None
+            }
+            translated_xobj_xrefs = {
+                xobj.xref_id
+                for xobj in getattr(page, "pdf_xobject", None) or []
+                if xobj.xobj_id in active_xobj_ids and xobj.xref_id is not None
+            }
+
+        lift_text_above_covering_images(
+            render_units, translated_xobj_xrefs=translated_xobj_xrefs
+        )
         return render_units
 
     def render_units_to_stream(

@@ -11,11 +11,18 @@ from babeldoc.format.pdf.document_il import Box
 from babeldoc.format.pdf.document_il import GraphicState
 from babeldoc.format.pdf.document_il import PdfCharacter
 from babeldoc.format.pdf.document_il import PdfFont
+from babeldoc.format.pdf.document_il import PdfForm
+from babeldoc.format.pdf.document_il import PdfFormSubtype
 from babeldoc.format.pdf.document_il import PdfFormula
 from babeldoc.format.pdf.document_il import PdfParagraph
 from babeldoc.format.pdf.document_il import PdfParagraphComposition
 from babeldoc.format.pdf.document_il import PdfRectangle
 from babeldoc.format.pdf.document_il import PdfStyle
+from babeldoc.format.pdf.document_il import PdfXobjForm
+from babeldoc.format.pdf.document_il.backend.pdf_creater import FormRenderUnit
+from babeldoc.format.pdf.document_il.backend.pdf_creater import (
+    lift_text_above_covering_images,
+)
 from babeldoc.format.pdf.document_il.midend.detect_scanned_file import DetectScannedFile
 from babeldoc.format.pdf.document_il.midend.detect_scanned_file import ScannedPDFError
 from babeldoc.format.pdf.document_il.midend.detect_scanned_file import (
@@ -392,3 +399,28 @@ class TestOcrSkippedAndGlyphlessHandling:
         page.get_xobjects.return_value = []
         page.get_fonts.return_value = [(3, "ttf", "TrueType", "GlyphLessFont", "R8", "")]
         assert page_has_invisible_text_layer(doc, page) is True
+
+    def test_lift_ocr_xobject_form_above_covering_raster_image(self):
+        ocr_form = PdfForm(
+            xobj_id=-1,
+            box=Box(0, 0, 792, 612),
+            form_type="xobject",
+            render_order=1,
+            pdf_form_subtype=PdfFormSubtype(
+                pdf_xobj_form=PdfXobjForm(xref_id=35, do_args="OCR-abc")
+            ),
+        )
+        img_form = PdfForm(
+            xobj_id=-1,
+            box=Box(0, 0, 792, 612),
+            form_type="image",
+            render_order=5,
+            pdf_form_subtype=PdfFormSubtype(
+                pdf_xobj_form=PdfXobjForm(xref_id=36, do_args="Im0")
+            ),
+        )
+        ocr_unit = FormRenderUnit(ocr_form, render_order=1, sub_render_order=0)
+        img_unit = FormRenderUnit(img_form, render_order=5, sub_render_order=1)
+
+        lift_text_above_covering_images([ocr_unit, img_unit], translated_xobj_xrefs={35})
+        assert ocr_unit.render_order > img_unit.render_order
