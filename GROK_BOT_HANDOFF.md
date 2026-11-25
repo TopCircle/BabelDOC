@@ -13,6 +13,8 @@
    - 在 `create_typesetting_units` 处理 `composition.pdf_formula` 时，若公式无矢量曲线/Form 且包含 `GlyphlessFont` 字符（如 `I`、`~`、`www.`、页脚数字），转为经 `font_mapper.map()` 映射并剥离 `3 Tr` 的可读字符单元，消除实心黑方块 `█`。
 3. **单测验证（`tests/`）**：
    - 扩充 `tests/test_bibliography_and_ocr_skip.py`（12 项测试），连同回归套件共计 **147 passed, 6 skipped**。
+4. **VPS 正式站部署（0.6.4.113）**：
+   - 远端 VPS 同步：最新镜像构建完成（`BABELDOC_REF=9556d610dc2c3047ef2b95940e282838d0ca1e5e`），旧镜像 ID 已备份至 `/opt/workspace/deploy-backups/release-113-.../old-image-id.txt`，`pdfmt-next-app` 容器重建启动成功，端口 `7870` 健康检查返回 `200 OK`，`runtime_manifest` 核验 `babeldoc_version=0.6.4.113`。
 
 ## 2026-11-25 — OCR 跳过段落黑块消除、GlyphlessFont 映射回退、参考文献精准收敛与标签空白容错（0.6.4.112）
 
