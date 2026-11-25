@@ -2,8 +2,16 @@
 
 **工作工程:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
-**版本:** `0.6.4.113`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.114`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-25 — OCR XObject 渲染层级提升（消除全页底图覆盖译文缺陷）（0.6.4.114）
+
+1. **Form XObject OCR 译文层 Z-Order 提升（`pdf_creater.py`）**：
+   - 修复 `ocrmypdf` 将文字放在 `/OCR-... Do` Form XObject 且顺序位于全页光栅图 `/Im0 Do` 之前时，单语 PDF 页面流依然先画 `/OCR-... Do`（白框+中文）、后画 `/Im0 Do` 导致全页底图覆盖中文译文（视觉仍显示英文）的缺陷：
+     - 扩展 `lift_text_above_covering_images(render_units, translated_xobj_xrefs=...)`，在 `ocr_workaround=True` 时收集承载译文字符/白框的 `pdf_xobject` 引用，将其对应的非图片 `FormRenderUnit` 渲染顺序提升至覆盖图像之后（`top + 1`）。
+2. **单测验证（`tests/`）**：
+   - 新增 `test_lift_ocr_xobject_form_above_covering_raster_image`，连同回归套件共计 **148 passed, 6 skipped**。
 
 ## 2026-11-25 — XObject OCR 双层检测与 PdfFormula GlyphlessFont 黑块消除（0.6.4.113）
 
