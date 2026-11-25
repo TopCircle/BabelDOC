@@ -2,8 +2,17 @@
 
 **工作工程:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
-**版本:** `0.6.4.112`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.6.4.113`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-25 — XObject OCR 双层检测与 PdfFormula GlyphlessFont 黑块消除（0.6.4.113）
+
+1. **Form XObject OCR 隐形文字层检测修复（`detect_scanned_file.py`）**：
+   - 扩展 `page_has_invisible_text_layer()`，除检查页面 `contents` 外同时扫描 `page.get_xobjects()` 引用流中的 `3 Tr` / `OCRTextLayer` / `GlyphLessFont` 与页面 `page.get_fonts()` 字体名，解决 `ocrmypdf` 将 OCR 文本层放入 `/OCR-... Do` XObject 导致 `Forbidden Fruit`、`Hot Licks`、`Turn Her On Faster` 未开启 `ocr_workaround`（成品视觉仍显示英文原图）的缺陷。
+2. **公式单元内嵌 `GlyphlessFont` 黑块消除（`typesetting.py`）**：
+   - 在 `create_typesetting_units` 处理 `composition.pdf_formula` 时，若公式无矢量曲线/Form 且包含 `GlyphlessFont` 字符（如 `I`、`~`、`www.`、页脚数字），转为经 `font_mapper.map()` 映射并剥离 `3 Tr` 的可读字符单元，消除实心黑方块 `█`。
+3. **单测验证（`tests/`）**：
+   - 扩充 `tests/test_bibliography_and_ocr_skip.py`（12 项测试），连同回归套件共计 **147 passed, 6 skipped**。
 
 ## 2026-11-25 — OCR 跳过段落黑块消除、GlyphlessFont 映射回退、参考文献精准收敛与标签空白容错（0.6.4.112）
 
