@@ -479,7 +479,7 @@ class ILTranslator:
         has_year = bool(re.search(r"\b(?:19|20)\d{2}\b", t))
         has_url = bool(re.search(r"https?://|www\.\S+\.[a-z]{2,}", t, re.I))
         has_author_initial = bool(
-            re.search(r"\b[A-Z][a-zA-Z\-]+,\s+[A-Z](?:\.|\b)", t)
+            re.search(r"\b[A-Z][a-zA-Z\-]+,\s+[A-Z]\.", t)
         )
         has_strong_bib_kw = bool(
             re.search(
@@ -542,7 +542,17 @@ class ILTranslator:
             return True
         if has_year and bool(
             re.search(
-                r"\b(?:pp\.\s*\d|vol\.?\s*\d|isbn|doi:|last\s+accessed|retrieved\s+from|et\.?\s*al)\b",
+                r"\b(?:pp\.\s*\d|vol\.?\s*\d|isbn|doi:|last\s+accessed|retrieved\s+from)\b",
+                t,
+                re.I,
+            )
+        ):
+            return True
+        if (
+            has_year
+            and re.search(r"\bet\.?\s*al\b", t, re.I)
+            and not re.search(
+                r"\(\s*[A-Z][a-zA-Z\-]+\s+et\.?\s*al\.?\s*\)|\b(?:were|was)\s+(?:studied|found|reported|shown)\b|\bwho\s+(?:found|studied|reported)\b",
                 t,
                 re.I,
             )

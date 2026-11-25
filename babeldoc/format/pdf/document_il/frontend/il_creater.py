@@ -977,7 +977,19 @@ class ILCreater:
             return
         try:
             rotation_angle = get_rotation_angle(char.matrix)
-            if not (-0.1 <= rotation_angle <= 0.1 or 89.9 <= rotation_angle <= 90.1):
+            angle_tol = (
+                5.0
+                if getattr(
+                    getattr(self, "translation_config", None),
+                    "ocr_workaround",
+                    False,
+                )
+                else 0.1
+            )
+            if not (
+                -angle_tol <= rotation_angle <= angle_tol
+                or (90.0 - angle_tol) <= rotation_angle <= (90.0 + angle_tol)
+            ):
                 return
         except Exception:
             logger.warning(

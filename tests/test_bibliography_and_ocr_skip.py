@@ -424,3 +424,78 @@ class TestOcrSkippedAndGlyphlessHandling:
 
         lift_text_above_covering_images([ocr_unit, img_unit], translated_xobj_xrefs={35})
         assert ocr_unit.render_order > img_unit.render_order
+
+    def test_prose_with_parenthetical_et_al_or_comma_pronoun_not_skipped(self):
+        assert (
+            ILTranslator._is_bibliography_paragraph(
+                _para(
+                    "A small group of women were studied in 1988 by sex researchers "
+                    "(Zaviacic et. al.) who found that 20% of the female participants ejaculated."
+                )
+            )
+            is False
+        )
+        assert (
+            ILTranslator._is_bibliography_paragraph(
+                _para("However, I started researching orgasmic pleasure back in 2008.")
+            )
+            is False
+        )
+        # Real bibliography entries with author initials + et al. + year must still be skipped
+        assert (
+            ILTranslator._is_bibliography_paragraph(
+                _para("Komisaruk, B. R., Whipple, B., et al. (2006). The Science of Orgasm.")
+            )
+            is True
+        )
+
+    def test_ocr_workaround_allows_slight_deskew_rotation(self):
+        # Slightly tilted (0.7 deg) OCR char must be accepted when ocr_workaround=True,
+        # rejected when ocr_workaround=False.
+        import math
+
+        from babeldoc.format.pdf.document_il.frontend.il_creater import ILCreater
+        from babeldoc.format.pdf.document_il.frontend.il_creater_active import (
+            ActiveILCreater,
+        )
+
+        rad = math.radians(0.7)
+        tilted_matrix = (math.cos(rad), math.sin(rad), -math.sin(rad), math.cos(rad), 0.0, 0.0)
+
+        for cls, method_name in (
+            (ActiveILCreater, "project_native_char"),
+            (ILCreater, "on_lt_char"),
+        ):
+            for ocr_flag, expect_collect in ((True, True), (False, False)):
+                stub = cls.__new__(cls)
+                stub.translation_config = SimpleNamespace(ocr_workaround=ocr_flag)
+                collected = []
+                stub._collect_valid_char = collected.append
+                stub.create_graphic_state = lambda _gs: None
+                stub.xobj_map = {}
+                stub.current_page = SimpleNamespace(pdf_font=[])
+                # Call up to _collect_valid_char by giving aw_font_id and catching Font lookup cleanly
+                char_obj = SimpleNamespace(
+                    aw_font_id="F1",
+                    matrix=tilted_matrix,
+                    get_text=lambda: "a",
+                    graphicstate=None,
+                    xobj_id=-1,
+                    size=10.0,
+                    cid=65,
+                    adv=5.0,
+                    bbox=(0.0, 0.0, 5.0, 10.0),
+                )
+                with patch(
+                    "babeldoc.format.pdf.document_il.frontend.il_creater_active.effective_type3_font_size",
+                    return_value=10.0,
+                ), patch(
+                    "babeldoc.format.pdf.document_il.frontend.il_creater.effective_type3_font_size",
+                    return_value=10.0,
+                ):
+                    try:
+                        getattr(stub, method_name)(char_obj)
+                    except AttributeError:
+                        # Stops cleanly after _collect_valid_char at stubbed font_mapper/bbox
+                        pass
+                assert bool(collected) is expect_collect, (cls.__name__, ocr_flag)

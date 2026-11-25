@@ -2519,6 +2519,44 @@ class Typesetting:
         # Force-apply at readable floor even if text overflows the box.
         # Never leave composition empty after apply_layout cleared it.
         if apply_layout and final_typeset_units is None and force_units:
+            min_unit_y = min(
+                (u.y for u in force_units if getattr(u, "y", None) is not None),
+                default=999.0,
+            )
+            if min_scale > 0.72 and min_unit_y < 32.0:
+                rescue_scale = 0.72
+                rescue_ref = (
+                    None
+                    if getattr(self.translation_config, "ocr_workaround", False)
+                    or self._active_wrap(paragraph, box)
+                    else self._extract_original_line_widths(paragraph)
+                )
+                if self.is_cjk and rescue_ref:
+                    rescue_ref = Typesetting._uniform_cjk_reference_widths(
+                        rescue_ref
+                    )
+                rescue_units, _ = self._layout_typesetting_units(
+                    typesetting_units,
+                    box,
+                    rescue_scale,
+                    line_skip,
+                    paragraph,
+                    use_english_line_break=False,
+                    reference_widths=rescue_ref,
+                )
+                if rescue_units:
+                    rescue_min_y = min(
+                        (
+                            u.y
+                            for u in rescue_units
+                            if getattr(u, "y", None) is not None
+                        ),
+                        default=-999.0,
+                    )
+                    if rescue_min_y > min_unit_y:
+                        force_units = rescue_units
+                        min_scale = rescue_scale
+
             paragraph.scale = min_scale
             paragraph.pdf_paragraph_composition = []
             for unit in force_units:
