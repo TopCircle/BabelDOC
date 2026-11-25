@@ -6657,7 +6657,30 @@ class Typesetting:
                         ],
                     )
             elif composition.pdf_formula:
-                result.extend([TypesettingUnit(formular=composition.pdf_formula)])
+                formula = composition.pdf_formula
+                formula_chars = getattr(formula, "pdf_character", None) or []
+                has_glyphless = any(
+                    "glyphless"
+                    in (
+                        getattr(
+                            get_font(c.pdf_style.font_id, paragraph.xobj_id),
+                            "name",
+                            None,
+                        )
+                        or ""
+                    ).lower()
+                    for c in formula_chars
+                    if getattr(c, "pdf_style", None) and c.pdf_style.font_id
+                )
+                if (
+                    has_glyphless
+                    and not getattr(formula, "pdf_curve", None)
+                    and not getattr(formula, "pdf_form", None)
+                ):
+                    for char in formula_chars:
+                        _append_source_char(char)
+                else:
+                    result.extend([TypesettingUnit(formular=formula)])
             else:
                 logger.error(
                     f"Unknown composition type. "

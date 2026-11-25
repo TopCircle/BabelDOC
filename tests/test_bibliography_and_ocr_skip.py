@@ -11,12 +11,16 @@ from babeldoc.format.pdf.document_il import Box
 from babeldoc.format.pdf.document_il import GraphicState
 from babeldoc.format.pdf.document_il import PdfCharacter
 from babeldoc.format.pdf.document_il import PdfFont
+from babeldoc.format.pdf.document_il import PdfFormula
 from babeldoc.format.pdf.document_il import PdfParagraph
 from babeldoc.format.pdf.document_il import PdfParagraphComposition
 from babeldoc.format.pdf.document_il import PdfRectangle
 from babeldoc.format.pdf.document_il import PdfStyle
 from babeldoc.format.pdf.document_il.midend.detect_scanned_file import DetectScannedFile
 from babeldoc.format.pdf.document_il.midend.detect_scanned_file import ScannedPDFError
+from babeldoc.format.pdf.document_il.midend.detect_scanned_file import (
+    page_has_invisible_text_layer,
+)
 from babeldoc.format.pdf.document_il.midend.il_translator import ILTranslator
 from babeldoc.format.pdf.document_il.midend.il_translator import TitleContextSnapshot
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
@@ -332,3 +336,59 @@ class TestOcrSkippedAndGlyphlessHandling:
         assert units[0].font is mapped_font
         assert units[0].can_passthrough is False
         assert "Tr" not in (units[0].style.graphic_state.passthrough_per_char_instruction or "")
+
+    def test_glyphless_font_in_pdf_formula_maps_to_visible_font(self):
+        ts = Typesetting.__new__(Typesetting)
+        ts.is_cjk = True
+        ts.translation_config = SimpleNamespace(ocr_workaround=True)
+        mapped_font = MagicMock()
+        mapped_font.char_lengths.return_value = [6.0]
+        ts.font_mapper = MagicMock()
+        ts.font_mapper.map.return_value = mapped_font
+
+        glyphless = PdfFont(font_id="R8", name="AKDRGQ+GlyphLessFont", bold=False)
+        char = PdfCharacter(
+            pdf_character_id=15,
+            char_unicode="I",
+            box=Box(100, 50, 105, 62),
+            pdf_style=PdfStyle(
+                font_id="R8",
+                font_size=10.0,
+                graphic_state=GraphicState(passthrough_per_char_instruction="3 Tr"),
+            ),
+            xobj_id=-1,
+        )
+        formula = PdfFormula(
+            box=Box(100, 50, 105, 62),
+            pdf_character=[char],
+            pdf_curve=[],
+            pdf_form=[],
+        )
+        para = PdfParagraph(
+            box=Box(100, 50, 105, 62),
+            pdf_paragraph_composition=[PdfParagraphComposition(pdf_formula=formula)],
+            xobj_id=-1,
+        )
+
+        units = ts.create_typesetting_units(para, {"R8": glyphless})
+        assert len(units) == 1
+        assert units[0].unicode == "I"
+        assert units[0].font is mapped_font
+        assert units[0].can_passthrough is False
+
+    def test_page_has_invisible_text_layer_detects_xobject_ocr(self):
+        doc = MagicMock()
+        doc.xref_stream.side_effect = lambda xref: (
+            b"/OCR-abc Do" if xref == 1 else b"BT /R8 10 Tf 3 Tr (Hello) Tj ET"
+        )
+        page = MagicMock()
+        page.get_contents.return_value = [1]
+        page.get_xobjects.return_value = [(2, "OCR-abc", 0, None)]
+        page.get_fonts.return_value = []
+        assert page_has_invisible_text_layer(doc, page) is True
+
+        # Fallback: GlyphLessFont on page font list even without stream hit
+        doc.xref_stream.side_effect = lambda _xref: b"/Im0 Do"
+        page.get_xobjects.return_value = []
+        page.get_fonts.return_value = [(3, "ttf", "TrueType", "GlyphLessFont", "R8", "")]
+        assert page_has_invisible_text_layer(doc, page) is True

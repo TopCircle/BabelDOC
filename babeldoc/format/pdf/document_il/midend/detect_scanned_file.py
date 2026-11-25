@@ -46,16 +46,44 @@ def page_has_invisible_text_layer(doc: pymupdf.Document, page: pymupdf.Page) -> 
 
     Dual-layer PDFs draw a page image for eyes and put copy/search text in an
     invisible layer (``3 Tr``), sometimes tagged ``OCRTextLayer`` / Readdle.
+
+    Some ocrmypdf-generated PDFs place the ``GlyphLessFont + 3 Tr`` layer
+    inside a Form XObject (``/OCR-... Do``) rather than directly in the page
+    content stream.  We therefore also check every referenced XObject stream
+    so those books are correctly detected as dual-layer.
     """
-    for index in page.get_contents() or []:
+    # Collect xrefs to inspect: page content streams + referenced Form XObjects
+    xrefs_to_check: list[int] = list(page.get_contents() or [])
+
+    # Also check Form XObjects referenced by the page (1-level deep)
+    try:
+        for xobj_xref, _name, _unused, _rect in page.get_xobjects():
+            if xobj_xref and xobj_xref not in xrefs_to_check:
+                xrefs_to_check.append(xobj_xref)
+    except Exception:
+        pass
+
+    for index in xrefs_to_check:
         try:
             contents = doc.xref_stream(index) or b""
         except Exception:
             continue
-        if regex.search(rb"\s3\s+Tr\s", contents):
+        if regex.search(rb"\b3\s+Tr\b", contents):
             return True
         if b"OCRTextLayer" in contents or b"ReaddleObject" in contents:
             return True
+        # ocrmypdf Form-XObject OCR: GlyphLessFont used as invisible text font
+        if b"GlyphLessFont" in contents or b"GlyphlessFont" in contents:
+            return True
+
+    # Fallback: check page-level font list for GlyphLessFont (invisible OCR font)
+    try:
+        for _xref, _ext, _ftype, fontname, _alias, _encoding in page.get_fonts():
+            if fontname and "glyphless" in fontname.lower():
+                return True
+    except Exception:
+        pass
+
     return False
 
 
