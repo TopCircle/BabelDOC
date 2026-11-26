@@ -17,7 +17,9 @@
    - 在 `pdf_creater.py` 中以轻量 `bytearray` 缓冲流替换外部 `bitstring.BitStream`，移除 `pyproject.toml` 中 `bitstring` 依赖并锁定 `pymupdf>=1.26.7,<2`；
    - 合入 `Glossary.from_auto_extracted_entries` 词频拼写投票与确定性消歧、`--deterministic-output` / `--capture-stages` / `--capture-dir` 参数、`v0.7.1` 的 `TranslationConfig(input_file=None)` 兼容修复、首页去水印默认行为及 `PdfCharacter` 的 `visual_roundtrip_*` 字段。
 4. **单测验证（`tests/`）**：
-   - 新增 `tests/test_v071_merge_and_security.py` 覆盖 `0.7.1.0` 版本元数据、两大 GHSA 攻击拦截与开关豁免、`input_file=None` 回归、术语投票与内置 `BitStream` 行为。
+   - 新增 `tests/test_v071_merge_and_security.py` 覆盖 `0.7.1.0` 版本元数据、两大 GHSA 攻击拦截与开关豁免、`input_file=None` 回归、术语投票与内置 `BitStream` 行为，关联测试 **49 passed**，`ruff check` 零错误。
+5. **VPS 正式站部署（`0.7.1.0`）**：
+   - 远端 VPS 同步：双亲合并提交已推送并完成最新镜像构建（`BABELDOC_REF=ca26af846f4e4cef79554a5b7cfe206ccfe97f85`），旧镜像 ID 已备份至 `/opt/workspace/deploy-backups/release-0.7.1.0-20261126-110850/old-image-id.txt`，同步放宽 `PDFMathTranslate-next/pyproject.toml` 版本约束至 `babeldoc>=0.6.2,<0.8.0`，`pdfmt-next-app` 容器重建启动成功，端口 `7870` 健康检查返回 `HTTP 200`，WebUI 与运行时核验显示 `BabelDOC Version: 0.7.1.0`。
 
 ## 2026-11-26 — OCR 倾斜容差扩展、散文式引用防误杀与页脚溢出缩放救援（0.6.4.115）
 
