@@ -97,13 +97,17 @@ def use_cmap(name: str):
 
 
 def propagation(r, c):
+    from babeldoc.format.pdf.parser_resource import check_cmap_range_limit
+
     encoding = {}
     len_set = set()
     for one_r in r:
         val_l, len_l = parse_blob_value(one_r[0])
         val_r, len_r = parse_blob_value(one_r[1])
-        if len_l != len_r:
+        if len_l != len_r or val_r < val_l:
             continue
+        span = val_r - val_l + 1
+        check_cmap_range_limit(span, len(encoding) + span, phase="babelpdf_cmap")
         len_set.add(len_l)
         for i, v in enumerate(range(val_l, val_r + 1)):
             val_b = struct.pack(">L", v)

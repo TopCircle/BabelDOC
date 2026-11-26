@@ -2024,12 +2024,8 @@ def compute_reference_metrics(para: PdfParagraph, page=None):
         para.alignment = "left"
 
 
-from babeldoc.format.pdf.document_il.utils.figure_wrap import (  # noqa: E402
-    is_figure_wrap_paragraph,
-)
-from babeldoc.format.pdf.document_il.utils.figure_wrap import (  # noqa: E402, F401
-    is_figure_wrap_taper,
-)
+from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_paragraph  # noqa: E402
+from babeldoc.format.pdf.document_il.utils.figure_wrap import is_figure_wrap_taper  # noqa: E402, F401
 
 
 def _chars_of_comp(comp) -> list:

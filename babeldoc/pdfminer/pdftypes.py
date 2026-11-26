@@ -218,25 +218,84 @@ def stream_value(x: object) -> "PDFStream":
     return x
 
 
-def decompress_corrupted(data: bytes) -> bytes:
+def _decompress_flate_data(
+    data: bytes,
+    *,
+    object_ref: tuple[int, int] | None = None,
+) -> bytes:
+    from babeldoc.format.pdf.parser_resource import (
+        DEFAULT_MAX_DECOMPRESSED_STREAM_BYTES,
+    )
+    from babeldoc.format.pdf.parser_resource import parser_resource_limits_disabled
+    from babeldoc.format.pdf.parser_resource import (
+        raise_stream_decompression_limit_error,
+    )
+
+    if parser_resource_limits_disabled():
+        return zlib.decompress(data)
+
+    limit = DEFAULT_MAX_DECOMPRESSED_STREAM_BYTES
+    decompressor = zlib.decompressobj()
+    out = decompressor.decompress(data, limit + 1)
+    if len(out) > limit or decompressor.unconsumed_tail:
+        raise_stream_decompression_limit_error(
+            max(len(out), limit + 1),
+            limit=limit,
+            object_ref=object_ref,
+        )
+    tail = decompressor.flush()
+    if len(out) + len(tail) > limit:
+        raise_stream_decompression_limit_error(
+            len(out) + len(tail),
+            limit=limit,
+            object_ref=object_ref,
+        )
+    return out + tail
+
+
+def decompress_corrupted(
+    data: bytes,
+    *,
+    object_ref: tuple[int, int] | None = None,
+) -> bytes:
     """Called on some data that can't be properly decoded because of CRC checksum
     error. Attempt to decode it skipping the CRC.
     """
+    from babeldoc.format.pdf.parser_resource import (
+        DEFAULT_MAX_DECOMPRESSED_STREAM_BYTES,
+    )
+    from babeldoc.format.pdf.parser_resource import parser_resource_limits_disabled
+    from babeldoc.format.pdf.parser_resource import (
+        raise_stream_decompression_limit_error,
+    )
+
+    limit = None if parser_resource_limits_disabled() else DEFAULT_MAX_DECOMPRESSED_STREAM_BYTES
     d = zlib.decompressobj()
     f = io.BytesIO(data)
-    result_str = b""
-    buffer = f.read(1)
+    chunks = bytearray()
+    buffer = f.read(4096)
     i = 0
     try:
         while buffer:
-            result_str += d.decompress(buffer)
-            buffer = f.read(1)
-            i += 1
+            if limit is not None:
+                remaining = (limit + 1) - len(chunks)
+                piece = d.decompress(buffer, max(1, remaining))
+                chunks.extend(piece)
+                if len(chunks) > limit or d.unconsumed_tail:
+                    raise_stream_decompression_limit_error(
+                        max(len(chunks), limit + 1),
+                        limit=limit,
+                        object_ref=object_ref,
+                    )
+            else:
+                chunks.extend(d.decompress(buffer))
+            i += len(buffer)
+            buffer = f.read(4096)
     except zlib.error:
         # Let the error propagates if we're not yet in the CRC checksum
         if i < len(data) - 3:
             logger.warning("Data-loss while decompressing corrupted data")
-    return result_str
+    return bytes(chunks)
 
 
 class PDFStream(PDFObject):
@@ -323,9 +382,14 @@ class PDFStream(PDFObject):
             return
         for f, params in filters:
             if f in LITERALS_FLATE_DECODE:
+                object_ref = (
+                    (self.objid, self.genno or 0)
+                    if self.objid is not None
+                    else None
+                )
                 # will get errors if the document is encrypted.
                 try:
-                    data = zlib.decompress(data)
+                    data = _decompress_flate_data(data, object_ref=object_ref)
 
                 except zlib.error as e:
                     if settings.STRICT:
@@ -333,7 +397,7 @@ class PDFStream(PDFObject):
                         raise PDFException(error_msg)
 
                     try:
-                        data = decompress_corrupted(data)
+                        data = decompress_corrupted(data, object_ref=object_ref)
                     except zlib.error:
                         data = b""
 

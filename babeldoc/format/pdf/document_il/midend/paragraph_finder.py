@@ -960,6 +960,8 @@ class ParagraphFinder:
 
                     from babeldoc.format.pdf.document_il.utils.face_traits import (
                         _BOLD_TOKENS,
+                    )
+                    from babeldoc.format.pdf.document_il.utils.face_traits import (
                         font_name_tokens,
                     )
 

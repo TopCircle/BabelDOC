@@ -120,11 +120,17 @@ class SharedContextCrossSplitPart:
             for src, tgts in term_translations.items():
                 if not tgts:
                     continue
-                most_common_tgt = Counter(tgts).most_common(1)[0][0]
-                final_entries.append(GlossaryEntry(src, most_common_tgt))
+                counts = Counter(tgts)
+                highest_count = max(counts.values())
+                most_common_tgt = min(
+                    target for target, count in counts.items() if count == highest_count
+                )
+                entry = GlossaryEntry(src, most_common_tgt)
+                # Preserve each raw extraction occurrence as a source-spelling vote.
+                final_entries.extend([entry] * len(tgts))
 
             if final_entries:
-                self.auto_extracted_glossary = Glossary(
+                self.auto_extracted_glossary = Glossary.from_auto_extracted_entries(
                     name=self.unique_name, entries=final_entries
                 )
 
@@ -244,7 +250,18 @@ class TranslationConfig:
         # layout_intent.role == PULL_QUOTE and never treat WRAP_COLUMN /
         # figure-wrap as quote. True restores pure is_quote_block geometry.
         enable_legacy_quote_geometry: bool = False,
+        capture_stages: bool = False,
+        capture_dir: str | Path | None = None,
+        deterministic_output: bool = False,
+        disable_parser_resource_limits: bool = False,
     ):
+        if type(disable_parser_resource_limits) is not bool:
+            raise TypeError("disable_parser_resource_limits must be a bool")
+        self.disable_parser_resource_limits = disable_parser_resource_limits
+        if disable_parser_resource_limits:
+            logger.warning(
+                "PDF parser resource limits are disabled; untrusted files may exhaust memory or CPU."
+            )
         self.translator = translator
         self.term_extraction_translator = term_extraction_translator or translator
         initial_user_glossaries = list(glossaries) if glossaries else []
@@ -258,6 +275,17 @@ class TranslationConfig:
         self.pages = pages
         self.page_ranges = self.parse_pages(pages) if pages else None
         self.debug = debug
+        self.capture_stages = capture_stages
+        self.capture_dir = Path(capture_dir) if capture_dir is not None else None
+        self.deterministic_output = deterministic_output
+        self._capture_document_name = (
+            Path(input_file).stem if input_file is not None else None
+        )
+        self._capture_part_index = 0
+        logger.warning(
+            "Watermark output mode is deprecated: it no longer adds a watermark; "
+            "it still controls output file names and count."
+        )
         self.watermark_output_mode = watermark_output_mode
 
         self.output_dir = output_dir
@@ -311,15 +339,16 @@ class TranslationConfig:
         if progress_monitor and progress_monitor.cancel_event is None:
             progress_monitor.cancel_event = threading.Event()
 
+        _input_stem = Path(input_file).stem if input_file is not None else "default"
         if working_dir is None:
             if debug:
-                working_dir = Path(CACHE_FOLDER) / "working" / Path(input_file).stem
+                working_dir = Path(CACHE_FOLDER) / "working" / _input_stem
                 self._is_temp_dir = False
             else:
                 working_dir = tempfile.mkdtemp()
                 self._is_temp_dir = True
         else:
-            working_dir = Path(working_dir) / Path(input_file).stem
+            working_dir = Path(working_dir) / _input_stem
             self._is_temp_dir = False
 
         self.working_dir = working_dir
@@ -489,6 +518,28 @@ class TranslationConfig:
 
     def get_working_file_path(self, filename: str) -> Path:
         return Path(self.working_dir) / filename
+
+    def get_stage_capture_file_path(self, stage: str) -> Path | None:
+        if not self.capture_stages:
+            return None
+        if stage not in {
+            "parser",
+            "scan",
+            "layout",
+            "paragraph",
+            "styles",
+            "translation",
+            "typesetting",
+        }:
+            raise ValueError(f"unknown stage capture: {stage}")
+        root = self.capture_dir or (Path(self.working_dir) / "stage-capture")
+        doc_name = self._capture_document_name or "default"
+        return (
+            root
+            / doc_name
+            / f"part-{self._capture_part_index:04d}"
+            / f"{stage}.json.zst"
+        )
 
     def get_part_working_dir(self, part_index: int) -> Path:
         """Get working directory for a specific part"""

@@ -7,9 +7,7 @@ from typing import TYPE_CHECKING
 # string annotation "LayoutIntent | None" on PdfParagraph must resolve in
 # this module's globals. Cycle-free: layout_intent.py imports nothing from
 # this module at runtime (its Box import is TYPE_CHECKING-only).
-from babeldoc.format.pdf.document_il.utils.layout_intent import (
-    LayoutIntent,  # noqa: F401
-)
+from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent  # noqa: F401
 
 if TYPE_CHECKING:
     from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntent
@@ -669,6 +667,24 @@ class PdfCharacter:
         },
     )
     scale: float | None = field(
+        default=None,
+        metadata={
+            "type": "Attribute",
+        },
+    )
+    visual_roundtrip_text_scale_x: float | None = field(
+        default=None,
+        metadata={
+            "type": "Attribute",
+        },
+    )
+    visual_roundtrip_text_scale_y: float | None = field(
+        default=None,
+        metadata={
+            "type": "Attribute",
+        },
+    )
+    visual_roundtrip_text_render_mode: int | None = field(
         default=None,
         metadata={
             "type": "Attribute",

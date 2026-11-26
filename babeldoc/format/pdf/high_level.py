@@ -48,6 +48,7 @@ from babeldoc.format.pdf.document_il.midend.table_parser import TableParser
 from babeldoc.format.pdf.document_il.midend.typesetting import Typesetting
 from babeldoc.format.pdf.document_il.utils.fontmap import FontMapper
 from babeldoc.format.pdf.document_il.xml_converter import XMLConverter
+from babeldoc.format.pdf.parser_resource import parser_resource_limits_context
 from babeldoc.format.pdf.result_merger import ResultMerger
 from babeldoc.format.pdf.split_manager import SplitManager
 from babeldoc.format.pdf.translation_config import TranslateResult
@@ -57,6 +58,10 @@ from babeldoc.progress_monitor import ProgressMonitor
 from babeldoc.utils import memory
 
 logger = logging.getLogger(__name__)
+
+_DETERMINISTIC_PDF_ID = (
+    "[<424142454c444f432d44455445524d31><424142454c444f432d44455445524d32>]"
+)
 
 TRANSLATE_STAGES = [
     ("Parse PDF and Create Intermediate Representation", 14.12),
@@ -198,7 +203,10 @@ def add_metadata(
             else:
                 creator += f", {producer}"
 
-        translated_by = f"BabelDOC{WATERMARK_VERSION}_{time.time()}_Translation_generated_by_AI,please_carefully_discern"
+        producer_timestamp = (
+            0.0 if translate_config.deterministic_output else time.time()
+        )
+        translated_by = f"BabelDOC{WATERMARK_VERSION}_{producer_timestamp}_Translation_generated_by_AI,please_carefully_discern"
         if translate_config.metadata_extra_data:
             translated_by += f"_{translate_config.metadata_extra_data}"
         meta["producer"] = translated_by
@@ -212,6 +220,36 @@ def add_metadata(
         pdf.set_metadata(meta)
         safe_save(pdf, temp_path)
         shutil.move(temp_path, path)
+
+
+def finalize_deterministic_pdf_outputs(translate_result: TranslateResult) -> None:
+    processed = []
+    for attr in (
+        "mono_pdf_path",
+        "dual_pdf_path",
+        "no_watermark_mono_pdf_path",
+        "no_watermark_dual_pdf_path",
+    ):
+        output_path = getattr(translate_result, attr)
+        if not output_path:
+            continue
+        output_path = Path(output_path)
+        if output_path in processed:
+            continue
+        processed.append(output_path)
+
+        temp_path = output_path.with_name(
+            f"{output_path.stem}.deterministic.tmp{output_path.suffix}"
+        )
+        if temp_path.exists():
+            temp_path.unlink()
+        pdf = pymupdf.open(output_path)
+        try:
+            pdf.xref_set_key(-1, "ID", _DETERMINISTIC_PDF_ID)
+            pdf.save(temp_path, no_new_id=True)
+        finally:
+            pdf.close()
+        shutil.move(temp_path, output_path)
 
 
 def fix_cmap(translate_result: TranslateResult, translate_config: TranslationConfig):
@@ -592,6 +630,7 @@ def do_translate(
                             try:
                                 # Create a copy of config for this part
                                 part_config = copy.copy(translation_config)
+                                part_config._capture_part_index = i
                                 part_config.skip_clean = True
                                 should_translate_pages = []
                                 for page in range(
@@ -733,6 +772,8 @@ def do_translate(
             logger.error(
                 f"Failed to migrate TOC from {translation_config.input_file}: {e}"
             )
+        if translation_config.deterministic_output:
+            finalize_deterministic_pdf_outputs(result)
         pm.translate_done(result)
         return result
 
@@ -928,11 +969,14 @@ def _do_translate_single(
         parse_prepared_pdf_with_new_parser_to_legacy_ir,
     )
 
-    docs = parse_prepared_pdf_with_new_parser_to_legacy_ir(
-        temp_pdf_path,
-        config=translation_config,
-        doc_pdf=doc_pdf2zh,
-    )
+    with parser_resource_limits_context(
+        disabled=getattr(translation_config, "disable_parser_resource_limits", False)
+    ):
+        docs = parse_prepared_pdf_with_new_parser_to_legacy_ir(
+            temp_pdf_path,
+            config=translation_config,
+            doc_pdf=doc_pdf2zh,
+        )
     logger.debug(f"finish parse il from {temp_pdf_path}")
     logger.debug(f"finish create il from {temp_pdf_path}")
     if translation_config.only_include_translated_page and not docs.page:
@@ -1183,23 +1227,6 @@ def _do_translate_single(
             docs,
             translation_config.get_working_file_path("add_debug_information.json"),
         )
-    mono_watermark_first_page_doc_bytes = None
-    dual_watermark_first_page_doc_bytes = None
-    try:
-        if translation_config.watermark_output_mode == WatermarkOutputMode.Both:
-            mono_watermark_first_page_doc_bytes, dual_watermark_first_page_doc_bytes = (
-                generate_first_page_with_watermark(
-                    doc_pdf2zh, translation_config, docs, mediabox_data
-                )
-            )
-    except Exception:
-        logger.warning(
-            "Failed to generate watermark for first page, using no watermark"
-        )
-        translation_config.watermark_output_mode = WatermarkOutputMode.NoWatermark
-        mono_watermark_first_page_doc_bytes = None
-        dual_watermark_first_page_doc_bytes = None
-
     typesetter = Typesetting(translation_config)
     typesetter.typesetting_document(docs)
     logger.debug(f"finish typsetting from {temp_pdf_path}")
@@ -1240,30 +1267,31 @@ def _do_translate_single(
 
     pdf_creater = PDFCreater(temp_pdf_path, docs, translation_config, mediabox_data)
     result = pdf_creater.write(translation_config)
-    try:
-        if mono_watermark_first_page_doc_bytes:
-            mono_watermark_pdf = merge_watermark_doc(
-                result.mono_pdf_path,
-                mono_watermark_first_page_doc_bytes,
-                translation_config,
-            )
-            result.mono_pdf_path = mono_watermark_pdf
-    except Exception:
-        result.mono_pdf_path = result.no_watermark_mono_pdf_path
-    try:
-        if dual_watermark_first_page_doc_bytes:
-            dual_watermark_pdf = merge_watermark_doc(
-                result.dual_pdf_path,
-                dual_watermark_first_page_doc_bytes,
-                translation_config,
-            )
-            result.dual_pdf_path = dual_watermark_pdf
-    except Exception:
-        result.dual_pdf_path = result.no_watermark_dual_pdf_path
+    if not translation_config.only_parse_generate_pdf:
+        _copy_both_mode_outputs(result, translation_config)
 
     result.original_pdf_path = translation_config.input_file
 
     return result
+
+
+def _copy_both_mode_outputs(
+    result: TranslateResult, translation_config: TranslationConfig
+) -> None:
+    if translation_config.watermark_output_mode != WatermarkOutputMode.Both:
+        return
+
+    for no_watermark_attr, output_attr in (
+        ("no_watermark_mono_pdf_path", "mono_pdf_path"),
+        ("no_watermark_dual_pdf_path", "dual_pdf_path"),
+    ):
+        no_watermark_path = getattr(result, no_watermark_attr)
+        if no_watermark_path and no_watermark_path.exists():
+            output_path = no_watermark_path.with_name(
+                no_watermark_path.name.replace(".no_watermark", "")
+            )
+            shutil.copyfile(no_watermark_path, output_path)
+            setattr(result, output_attr, output_path)
 
 
 def generate_first_page_with_watermark(

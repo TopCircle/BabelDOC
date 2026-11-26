@@ -352,6 +352,8 @@ class CMapParser(PSStackParser[PSKeyword]):
             return
 
         if token is self.KEYWORD_ENDCIDRANGE:
+            from babeldoc.format.pdf.parser_resource import check_cmap_range_limit
+
             objs = [obj for (__, obj) in self.popall()]
             for start_byte, end_byte, cid in choplist(3, objs):
                 if not isinstance(start_byte, bytes):
@@ -381,8 +383,13 @@ class CMapParser(PSStackParser[PSKeyword]):
                 evar = end_byte[-4:]
                 start = nunpack(svar)
                 end = nunpack(evar)
+                if end < start:
+                    continue
+                span = end - start + 1
+                existing = len(getattr(self.cmap, "cid2unichr", {}))
+                check_cmap_range_limit(span, existing + span, phase="cmap_cidrange")
                 vlen = len(svar)
-                for i in range(end - start + 1):
+                for i in range(span):
                     x = start_prefix + struct.pack(">L", start + i)[-vlen:]
                     self.cmap.add_cid2unichr(cid + i, x)
             return
@@ -403,6 +410,8 @@ class CMapParser(PSStackParser[PSKeyword]):
             return
 
         if token is self.KEYWORD_ENDBFRANGE:
+            from babeldoc.format.pdf.parser_resource import check_cmap_range_limit
+
             objs = [obj for (__, obj) in self.popall()]
             for start_byte, end_byte, code in choplist(3, objs):
                 if not isinstance(start_byte, bytes):
@@ -416,8 +425,13 @@ class CMapParser(PSStackParser[PSKeyword]):
                     continue
                 start = nunpack(start_byte)
                 end = nunpack(end_byte)
+                if end < start:
+                    continue
+                span = end - start + 1
+                existing = len(getattr(self.cmap, "cid2unichr", {}))
+                check_cmap_range_limit(span, existing + span, phase="cmap_bfrange")
                 if isinstance(code, list):
-                    if len(code) != end - start + 1:
+                    if len(code) != span:
                         self._warn_once(
                             "The difference between the start and end "
                             "offsets does not match the code length.",
@@ -432,7 +446,7 @@ class CMapParser(PSStackParser[PSKeyword]):
                     base = nunpack(var)
                     prefix = code[:-4]
                     vlen = len(var)
-                    for i in range(end - start + 1):
+                    for i in range(span):
                         x = prefix + struct.pack(">L", base + i)[-vlen:]
                         self.cmap.add_cid2unichr(start + i, x)
             return

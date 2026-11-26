@@ -106,10 +106,51 @@ def parse_page_contents(document: object, page_xref: int) -> object:
 
 
 def _read_stream_data(document: object, xref: int) -> bytes | None:
+    from babeldoc.format.pdf.parser_resource import (
+        DEFAULT_MAX_DECOMPRESSED_STREAM_BYTES,
+    )
+    from babeldoc.format.pdf.parser_resource import ParserResourceLimitError
+    from babeldoc.format.pdf.parser_resource import parser_resource_limits_disabled
+    from babeldoc.format.pdf.parser_resource import (
+        raise_stream_decompression_limit_error,
+    )
+
     try:
+        if not parser_resource_limits_disabled() and hasattr(
+            document, "xref_stream_raw"
+        ):
+            raw_bytes = document.xref_stream_raw(xref)
+            if raw_bytes is not None:
+                filter_kind, filter_val = document.xref_get_key(xref, "Filter")
+                if filter_kind != "null" and "FlateDecode" in filter_val:
+                    from babeldoc.pdfminer.pdftypes import _decompress_flate_data
+
+                    dp_kind, _ = document.xref_get_key(xref, "DecodeParms")
+                    try:
+                        decoded = _decompress_flate_data(
+                            raw_bytes, object_ref=(xref, 0)
+                        )
+                        if filter_val == "/FlateDecode" and dp_kind == "null":
+                            return decoded
+                    except ParserResourceLimitError:
+                        raise
+                    except Exception:
+                        pass
         stream = document.xref_stream(xref)
+    except ParserResourceLimitError:
+        raise
     except Exception:
         return None
+    if (
+        stream is not None
+        and not parser_resource_limits_disabled()
+        and len(stream) > DEFAULT_MAX_DECOMPRESSED_STREAM_BYTES
+    ):
+        raise_stream_decompression_limit_error(
+            len(stream),
+            limit=DEFAULT_MAX_DECOMPRESSED_STREAM_BYTES,
+            object_ref=(xref, 0),
+        )
     return stream
 
 

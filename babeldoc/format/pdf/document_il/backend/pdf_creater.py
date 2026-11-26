@@ -14,11 +14,6 @@ from pathlib import Path
 import freetype
 import pymupdf
 
-try:
-    from bitstring import BitStream
-except ImportError:
-    from bitstring import BitArray as BitStream  # type: ignore[assignment]
-
 from babeldoc.format.pdf.document_il import PdfOriginalPath
 from babeldoc.format.pdf.document_il import il_version_1
 from babeldoc.format.pdf.document_il.utils.font_subset import (
@@ -39,6 +34,34 @@ from babeldoc.format.pdf.translation_config import TranslationConfig
 from babeldoc.format.pdf.translation_config import WatermarkOutputMode
 
 logger = logging.getLogger(__name__)
+
+
+class BitStream:
+    """Lightweight bytearray buffer replacing external bitstring.BitStream."""
+
+    __slots__ = ("_buf",)
+
+    def __init__(self, initial: "bytes | bytearray | BitStream" = b"") -> None:
+        if isinstance(initial, BitStream):
+            self._buf = bytearray(initial._buf)
+        else:
+            self._buf = bytearray(initial)
+
+    def append(self, data: "bytes | bytearray | memoryview | BitStream") -> None:
+        if isinstance(data, BitStream):
+            self._buf.extend(data._buf)
+        else:
+            self._buf.extend(data)
+
+    def tobytes(self) -> bytes:
+        return bytes(self._buf)
+
+    @property
+    def bytes(self) -> bytes:
+        return bytes(self._buf)
+
+    def __len__(self) -> int:
+        return len(self._buf)
 
 SUBSET_FONT_STAGE_NAME = "Subset font"
 SAVE_PDF_STAGE_NAME = "Save PDF"

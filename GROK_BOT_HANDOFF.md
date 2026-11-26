@@ -2,8 +2,22 @@
 
 **工作工程:** `/Users/yun/workspace/BabelDOC-layout-paradigms` · 分支 `main`  
 **父工程根目录:** `/Users/yun/Nextcloud/Project/PDFMathTranslate-next`（包含 `BabelDOC`、`PDFMathTranslate-next`、`config`）  
-**版本:** `0.6.4.115`（`babeldoc/const.py` 与 `pyproject.toml`）  
+**版本:** `0.7.1.0`（`babeldoc/const.py` 与 `pyproject.toml`）  
 **本文件是当前操作员入口。** 换账号粘贴全文是仓库根目录 `GROK_BOT_HANDOFF.md`。两份冲突时以快照日期更新的一方为准，并立刻同步另一份。不要从 `docs/archive/` 排期。`docs/PLAN-INDEX.md` 这次未改。
+
+## 2026-11-26 — 合并上游 `v0.7.1`、安全解析限流移植与版本升级（`0.6.4.115` → `0.7.1.0`）
+
+1. **上游 `v0.7.1`（`d922e2b0`）合并策略（方案 A）**：
+   - 执行标准 `git merge v0.7.1` 记录双亲历史，同时 **100% 完整保留 Fork 的 385 个定制提交**（Python `frontend` / `midend` / `layout_plan` 27 种版式范式 / `backend` 精修管线与 `hatchling` 秒级构建链路），不引入闲置的 `rust/*` 编译负担。
+2. **PDF 解析安全加固对等移植（`GHSA-h972-phhq-7368` & `GHSA-wrv8-h9rp-6fqq`）**：
+   - 合入 `babeldoc/format/pdf/parser_resource.py`（`ParserResourceLimitError`）与 `parser_errors.py`，默认开启解析安全上限，支持 `TranslationConfig(disable_parser_resource_limits=True)` 显式关闭；
+   - 在 `babeldoc/pdfminer/pdftypes.py` 与 `new_parser/pymupdf_object_access.py` 中使用流式有界解压（默认上限 `128 MiB`）拦截 `FlateDecode` zlib 解压炸弹；
+   - 在 `pdfminer/cmapdb.py`、`new_parser/runtime/to_unicode_parser_runtime.py` 与 `babelpdf/cmap.py` 中增加 `bfrange` / `cidrange` 单区间展开上限（`65,536`）与总条目上限（`262,144`），防御恶意 CMap 内存耗尽攻击。
+3. **移除 `bitstring` 依赖、合入上游 `0.7.1` 新特性与修复**：
+   - 在 `pdf_creater.py` 中以轻量 `bytearray` 缓冲流替换外部 `bitstring.BitStream`，移除 `pyproject.toml` 中 `bitstring` 依赖并锁定 `pymupdf>=1.26.7,<2`；
+   - 合入 `Glossary.from_auto_extracted_entries` 词频拼写投票与确定性消歧、`--deterministic-output` / `--capture-stages` / `--capture-dir` 参数、`v0.7.1` 的 `TranslationConfig(input_file=None)` 兼容修复、首页去水印默认行为及 `PdfCharacter` 的 `visual_roundtrip_*` 字段。
+4. **单测验证（`tests/`）**：
+   - 新增 `tests/test_v071_merge_and_security.py` 覆盖 `0.7.1.0` 版本元数据、两大 GHSA 攻击拦截与开关豁免、`input_file=None` 回归、术语投票与内置 `BitStream` 行为。
 
 ## 2026-11-26 — OCR 倾斜容差扩展、散文式引用防误杀与页脚溢出缩放救援（0.6.4.115）
 

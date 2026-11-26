@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import logging
 
-logger = logging.getLogger(__name__)
-
 from babeldoc.format.pdf.document_il.utils.layout_plan.model import ParagraphGapLink
 from babeldoc.format.pdf.document_il.utils.rect_flow_stack import BODY_PARAGRAPH_GAP
 from babeldoc.format.pdf.document_il.utils.rect_flow_stack import _line_break_dy
 from babeldoc.format.pdf.document_il.utils.rect_flow_stack import _rect_links
 from babeldoc.format.pdf.document_il.utils.rect_flow_stack import ink_lines
 from babeldoc.format.pdf.document_il.utils.rect_flow_stack import shift_paragraph
+
+logger = logging.getLogger(__name__)
 
 
 def seat_dropped_headings(page, drops: dict) -> None:

@@ -103,6 +103,8 @@ def _iter_tokens(data: bytes) -> Iterator[object]:
 
 
 def _apply_cidrange(unicode_map: object, stack: list[object]) -> None:
+    from babeldoc.format.pdf.parser_resource import check_cmap_range_limit
+
     for start_byte, end_byte, cid in _chop(3, stack):
         if not isinstance(start_byte, bytes | bytearray):
             continue
@@ -120,8 +122,13 @@ def _apply_cidrange(unicode_map: object, stack: list[object]) -> None:
         end_var = bytes(end_byte[-4:])
         start = _nunpack(start_var)
         end = _nunpack(end_var)
+        if end < start:
+            continue
+        span = end - start + 1
+        existing = len(getattr(unicode_map, "cid2unichr", {}))
+        check_cmap_range_limit(span, existing + span, phase="tounicode_cidrange")
         value_len = len(start_var)
-        for index in range(end - start + 1):
+        for index in range(span):
             value = start_prefix + struct.pack(">L", start + index)[-value_len:]
             unicode_map.add_cid2unichr(cid + index, value)
 
@@ -133,6 +140,8 @@ def _apply_cidchar(unicode_map: object, stack: list[object]) -> None:
 
 
 def _apply_bfrange(unicode_map: object, stack: list[object]) -> None:
+    from babeldoc.format.pdf.parser_resource import check_cmap_range_limit
+
     for start_byte, end_byte, code in _chop(3, stack):
         if not isinstance(start_byte, bytes | bytearray):
             continue
@@ -142,6 +151,11 @@ def _apply_bfrange(unicode_map: object, stack: list[object]) -> None:
             continue
         start = _nunpack(bytes(start_byte))
         end = _nunpack(bytes(end_byte))
+        if end < start:
+            continue
+        span = end - start + 1
+        existing = len(getattr(unicode_map, "cid2unichr", {}))
+        check_cmap_range_limit(span, existing + span, phase="tounicode_bfrange")
         if isinstance(code, list):
             for cid, unicode_value in zip(range(start, end + 1), code, strict=False):
                 unicode_map.add_cid2unichr(cid, unicode_value)
@@ -152,7 +166,7 @@ def _apply_bfrange(unicode_map: object, stack: list[object]) -> None:
         base = _nunpack(value)
         prefix = code[:-4]
         value_len = len(value)
-        for index in range(end - start + 1):
+        for index in range(span):
             mapped = prefix + struct.pack(">L", base + index)[-value_len:]
             unicode_map.add_cid2unichr(start + index, mapped)
 

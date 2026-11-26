@@ -89,7 +89,6 @@ from babeldoc.format.pdf.document_il.utils.wrap_shape import (
     should_skip_pre_expand_for_wrap,
 )
 from babeldoc.format.pdf.translation_config import TranslationConfig
-from babeldoc.format.pdf.translation_config import WatermarkOutputMode
 
 logger = logging.getLogger(__name__)
 
@@ -1932,11 +1931,11 @@ class Typesetting:
                 False,
             )
         )
-        from babeldoc.format.pdf.document_il.utils.layout_intent import (
-            LayoutIntentRole,
-        )
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
         from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
             is_display_band_owner,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
             stays_in_source_box,
         )
         from babeldoc.format.pdf.document_il.utils.toc_rows import is_toc_paragraph
@@ -3117,11 +3116,11 @@ class Typesetting:
         if getattr(self, "_rect_fill_active", False):
             return box
         # Text painted on a figure, or a title / quote / bar, stays put.
-        from babeldoc.format.pdf.document_il.utils.layout_intent import (
-            LayoutIntentRole,
-        )
+        from babeldoc.format.pdf.document_il.utils.layout_intent import LayoutIntentRole
         from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
             is_display_band_owner,
+        )
+        from babeldoc.format.pdf.document_il.utils.rect_column_reflow import (
             stays_in_source_box,
         )
 
@@ -3667,12 +3666,6 @@ class Typesetting:
     def render_page(self, page: il_version_1.Page):
         self._strip_ocr_skipped_overlays(page)
         fonts = self._collect_fonts_for_page(page)
-        if (
-            page.page_number == 0
-            and self.translation_config.watermark_output_mode
-            == WatermarkOutputMode.Watermarked
-        ):
-            self.add_watermark(page)
         try:
             para_index = index.Index()
             para_map = {}

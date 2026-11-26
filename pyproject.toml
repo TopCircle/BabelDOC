@@ -1,6 +1,6 @@
 [project]
 name = "BabelDOC"
-version = "0.6.4.115"
+version = "0.7.1.0"
 description = "Yet Another Document Translator"
 license = "AGPL-3.0"
 readme = "README.md"
@@ -17,7 +17,6 @@ classifiers = [
 ]
 keywords = ["PDF"]
 dependencies = [
-    "bitstring>=4.3.0,<5.0.0",
     "configargparse>=1.7",
     "httpx[socks]>=0.27.0",
     "huggingface-hub>=0.27.0",
@@ -32,7 +31,7 @@ dependencies = [
     #    "pdfminer-six==20250416",
     "peewee>=3.17.8",
     "psutil>=7.0.0",
-    "pymupdf>=1.26.7",
+    "pymupdf>=1.26.7,<2",
     "rich>=13.9.4",
     "toml>=0.10.2",
     "tqdm>=4.67.1",
@@ -166,10 +165,10 @@ pythonpath = [".", "src"]
 testpaths = ["tests"]
 
 [bumpver]
-# Track upstream BabelDOC as MAJOR.MINOR.PATCH (e.g. 0.6.4).
-# Fork-only bumps use a 4th segment: 0.6.4.1, 0.6.4.2, … — do not advance
+# Track upstream BabelDOC as MAJOR.MINOR.PATCH (e.g. 0.7.1).
+# Fork-only bumps use a 4th segment: 0.7.1.0, 0.7.1.1, … — do not advance
 # PATCH until rebased/synced to a newer upstream release.
-current_version = "0.6.4.115"
+current_version = "0.7.1.0"
 version_pattern = "MAJOR.MINOR.PATCH[.BUILD]"
 
 [bumpver.file_patterns]
